@@ -191,15 +191,19 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let old_transform = render.transform;
 		let old_opacity = render.opacity;
-		render.transform = render.transform * self.transform;
 		render.opacity *= self.opacity;
-		for element in self.iter() {
-			render.blend_mode = element.blend_mode;
-			element.graphic_element_data.render_svg(render, render_params);
-		}
-		render.transform = old_transform;
+		render.parent_tag(
+			"g",
+			|attributes| attributes.push("transform", format_transform_matrix(self.transform)),
+			|render| {
+				for element in self.iter() {
+					render.blend_mode = element.blend_mode;
+					element.graphic_element_data.render_svg(render, render_params);
+				}
+			},
+		);
+
 		render.opacity = old_opacity;
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
