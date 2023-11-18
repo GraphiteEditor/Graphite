@@ -120,11 +120,11 @@
 	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltip={keyboardLockInfoMessage} />
 {:else}
 	<LayoutRow class="user-input-label" classes={{ "text-only": textOnly }}>
-		{#each keysWithLabelsGroups as keysWithLabels, groupIndex (groupIndex)}
+		{#each keysWithLabelsGroups as keysWithLabels, groupIndex}
 			{#if groupIndex > 0}
 				<Separator type="Related" />
 			{/if}
-			{#each keyTextOrIconList(keysWithLabels) as keyInfo, keyIndex (keyIndex)}
+			{#each keyTextOrIconList(keysWithLabels) as keyInfo}
 				<div class={`input-key ${keyInfo.width}`}>
 					{#if keyInfo.icon}
 						<IconLabel icon={keyInfo.icon} />

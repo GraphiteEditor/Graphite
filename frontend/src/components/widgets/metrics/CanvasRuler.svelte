@@ -101,7 +101,7 @@
 <div class={`canvas-ruler ${direction.toLowerCase()}`} bind:this={canvasRuler}>
 	<svg style:width={svgBounds.width} style:height={svgBounds.height}>
 		<path d={svgPath} />
-		{#each svgTexts as svgText, index (index)}
+		{#each svgTexts as svgText}
 			<text transform={svgText.transform}>{svgText.text}</text>
 		{/each}
 	</svg>

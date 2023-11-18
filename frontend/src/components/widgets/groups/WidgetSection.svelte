@@ -20,7 +20,7 @@
 	</button>
 	{#if expanded}
 		<LayoutCol class="body">
-			{#each widgetData.layout as layoutGroup, index (index)}
+			{#each widgetData.layout as layoutGroup}
 				{#if isWidgetRow(layoutGroup)}
 					<WidgetRow widgetData={layoutGroup} {layoutTarget} />
 				{:else if isWidgetSection(layoutGroup)}

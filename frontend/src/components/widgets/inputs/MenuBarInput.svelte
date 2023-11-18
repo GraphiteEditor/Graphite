@@ -74,7 +74,7 @@
 </script>
 
 <div class="menu-bar-input" data-menu-bar-input>
-	{#each entries as entry, index (index)}
+	{#each entries as entry}
 		<div class="entry-container">
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<div

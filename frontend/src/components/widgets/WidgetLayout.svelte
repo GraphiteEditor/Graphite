@@ -16,7 +16,7 @@
 
 <!-- TODO: Refactor this component (together with `WidgetRow.svelte`) to be more logically consistent with our layout definition goals, in terms of naming and capabilities -->
 <div class={`widget-layout ${className} ${extraClasses}`.trim()}>
-	{#each layout.layout as layoutGroup, index (index)}
+	{#each layout.layout as layoutGroup}
 		{#if isWidgetColumn(layoutGroup) || isWidgetRow(layoutGroup)}
 			<WidgetRow widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
 		{:else if isWidgetSection(layoutGroup)}

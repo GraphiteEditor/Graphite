@@ -60,7 +60,7 @@
 <LayoutCol class="panel">
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
-			{#each tabLabels as tabLabel, tabIndex (tabIndex)}
+			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}

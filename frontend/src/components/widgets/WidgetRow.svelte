@@ -83,7 +83,7 @@
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.svelte` as part of its refactor -->
 
 <div class={`widget-${direction}`}>
-	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index (index)}
+	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
