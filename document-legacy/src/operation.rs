@@ -1,8 +1,7 @@
-use crate::layers::blend_mode::BlendMode;
 use crate::layers::layer_info::Layer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
-
+use graphene_core::raster::BlendMode;
 use graphene_std::vector::subpath::Subpath;
 
 use serde::{Deserialize, Serialize};

@@ -19,13 +19,12 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::blend_mode::BlendMode;
-
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
+use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 
 use glam::{DAffine2, DVec2};

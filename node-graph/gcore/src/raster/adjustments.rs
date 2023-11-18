@@ -173,6 +173,58 @@ impl core::fmt::Display for BlendMode {
 		}
 	}
 }
+impl BlendMode {
+	/// Convert the enum to the CSS string for the blend mode.
+	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
+	pub fn to_svg_style_name(&self) -> &'static str {
+		match self {
+			// Normal group
+			BlendMode::Normal => "normal",
+			// Darken group
+			BlendMode::Darken => "darken",
+			BlendMode::Multiply => "multiply",
+			BlendMode::ColorBurn => "color-burn",
+			// Lighten group
+			BlendMode::Lighten => "lighten",
+			BlendMode::Screen => "screen",
+			BlendMode::ColorDodge => "color-dodge",
+			// Contrast group
+			BlendMode::Overlay => "overlay",
+			BlendMode::SoftLight => "soft-light",
+			BlendMode::HardLight => "hard-light",
+			// Inversion group
+			BlendMode::Difference => "difference",
+			BlendMode::Exclusion => "exclusion",
+			// Component group
+			BlendMode::Hue => "hue",
+			BlendMode::Saturation => "saturation",
+			BlendMode::Color => "color",
+			BlendMode::Luminosity => "luminosity",
+			_ => {
+				warn!("Unsupported blend mode {self:?}");
+				"normal"
+			}
+		}
+	}
+
+	/// List of all the blend modes in their conventional ordering and grouping.
+	pub fn list_modes_in_groups() -> [&'static [BlendMode]; 6] {
+		[
+			// Normal group
+			&[BlendMode::Normal],
+			// Darken group
+			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn],
+			// Lighten group
+			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge],
+			// Contrast group
+			&[BlendMode::Overlay, BlendMode::SoftLight, BlendMode::HardLight],
+			// Inversion group
+			&[BlendMode::Difference, BlendMode::Exclusion],
+			// Component group
+			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
+		]
+	}
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LuminanceNode<LuminanceCalculation> {

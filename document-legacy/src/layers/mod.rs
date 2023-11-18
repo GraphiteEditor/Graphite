@@ -14,8 +14,6 @@
 //! using the CSS [`mix-blend-mode`](https://developer.mozilla.org/en-US/docs/Web/CSS/mix-blend-mode) property and the layer opacity.
 
 pub mod base64_serde;
-/// Different ways of combining overlapping SVG elements.
-pub mod blend_mode;
 /// Contains the [FolderLayer](folder_layer::FolderLayer) type that encapsulates other layers, including more folders.
 pub mod folder_layer;
 /// Contains the base [Layer](layer_info::Layer) type, an abstraction over the different types of layers.

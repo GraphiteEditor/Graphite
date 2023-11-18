@@ -232,8 +232,9 @@ impl GraphicElementRendered for VectorData {
 			attributes.push_val(style);
 			if attributes.0.blend_mode != BlendMode::default() {
 				attributes.push_complex("style", |v| {
-					v.svg.push("mix-blend-mode:");
-					v.svg.push(v.blend_mode.to_string());
+					v.svg.push("mix-blend-mode: ");
+					v.svg.push(v.blend_mode.to_svg_style_name());
+					v.svg.push(";");
 				})
 			}
 		});
