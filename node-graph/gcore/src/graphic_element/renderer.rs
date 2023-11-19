@@ -1,4 +1,4 @@
-use crate::raster::{Image, ImageFrame};
+use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
 use base64::Engine;
@@ -58,6 +58,8 @@ pub struct SvgRender {
 	pub svg: SvgSegmentList,
 	pub svg_defs: String,
 	pub transform: DAffine2,
+	pub opacity: f32,
+	pub blend_mode: BlendMode,
 	pub image_data: Vec<(u64, Image<Color>)>,
 	indent: usize,
 }
@@ -68,6 +70,8 @@ impl SvgRender {
 			svg: SvgSegmentList::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
+			opacity: 1.,
+			blend_mode: BlendMode::Normal,
 			image_data: Vec::new(),
 			indent: 0,
 		}
@@ -187,29 +191,52 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		self.iter().for_each(|element| element.graphic_element_data.render_svg(render, render_params))
+		let old_opacity = render.opacity;
+		render.opacity *= self.opacity;
+		render.parent_tag(
+			"g",
+			|attributes| attributes.push("transform", format_transform_matrix(self.transform)),
+			|render| {
+				for element in self.iter() {
+					render.blend_mode = element.blend_mode;
+					element.graphic_element_data.render_svg(render, render_params);
+				}
+			},
+		);
+
+		render.opacity = old_opacity;
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter().filter_map(|element| element.graphic_element_data.bounding_box(transform)).reduce(Quad::combine_bounds)
+		self.iter()
+			.filter_map(|element| element.graphic_element_data.bounding_box(transform * self.transform))
+			.reduce(Quad::combine_bounds)
 	}
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 }
 
 impl GraphicElementRendered for VectorData {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let multiplied_transform = render.transform * self.transform;
 		let layer_bounds = self.bounding_box().unwrap_or_default();
-		let transformed_bounds = self.bounding_box_with_transform(render.transform).unwrap_or_default();
+		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 
 		let mut path = String::new();
 		for subpath in &self.subpaths {
-			let _ = subpath.subpath_to_svg(&mut path, self.transform * render.transform);
+			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
 		render.leaf_tag("path", |attributes| {
 			attributes.push("class", "vector-data");
 			attributes.push("d", path);
 			let render = &mut attributes.0;
-			let style = self.style.render(render_params.view_mode, &mut render.svg_defs, render.transform, layer_bounds, transformed_bounds);
+			let style = self.style.render(render_params.view_mode, &mut render.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(style);
+			if attributes.0.blend_mode != BlendMode::default() {
+				attributes.push_complex("style", |v| {
+					v.svg.push("mix-blend-mode: ");
+					v.svg.push(v.blend_mode.to_svg_style_name());
+					v.svg.push(";");
+				})
+			}
 		});
 	}
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {

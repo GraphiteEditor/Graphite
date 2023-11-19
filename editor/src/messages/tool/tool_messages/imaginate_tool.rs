@@ -3,6 +3,7 @@ use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::Operation;
 
 use glam::DAffine2;
@@ -127,7 +128,7 @@ impl Fsm for ImaginateToolFsmState {
 
 				shape_data.start(responses, document, input, render_data);
 				responses.add(DocumentMessage::StartTransaction);
-				shape_data.path = Some(document.get_path_for_new_layer());
+				shape_data.layer = Some(LayerNodeIdentifier::new(generate_uuid(), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				use graph_craft::document::*;
@@ -163,7 +164,7 @@ impl Fsm for ImaginateToolFsmState {
 
 				// Add a layer with a frame to the document
 				responses.add(Operation::AddFrame {
-					path: shape_data.path.clone().unwrap(),
+					path: shape_data.layer.unwrap().to_path(),
 					insert_index: -1,
 					transform: DAffine2::ZERO.to_cols_array(),
 					network,
@@ -179,8 +180,8 @@ impl Fsm for ImaginateToolFsmState {
 				state
 			}
 			(ImaginateToolFsmState::Drawing, ImaginateToolMessage::DragStop) => {
-				if let Some(layer_path) = &shape_data.path {
-					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
+				if let Some(layer) = &shape_data.layer {
+					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
 				}
 
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);

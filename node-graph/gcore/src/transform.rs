@@ -10,6 +10,7 @@ use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
 use crate::GraphicElementData;
+use crate::GraphicGroup;
 use crate::Node;
 
 pub trait Transform {
@@ -43,6 +44,21 @@ impl<P: Pixel> Transform for &ImageFrame<P> {
 	}
 }
 impl<P: Pixel> TransformMut for ImageFrame<P> {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.transform
+	}
+}
+impl Transform for GraphicGroup {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl Transform for &GraphicGroup {
+	fn transform(&self) -> DAffine2 {
+		self.transform
+	}
+}
+impl TransformMut for GraphicGroup {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
 	}

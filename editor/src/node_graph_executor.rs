@@ -359,7 +359,6 @@ pub struct NodeGraphExecutor {
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	layer_path: Vec<LayerId>,
-	document_id: u64,
 }
 
 impl Default for NodeGraphExecutor {
@@ -468,7 +467,7 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, (document_id, document): (u64, &mut DocumentMessageHandler), layer_path: Vec<LayerId>, viewport_resolution: UVec2) -> Result<(), String> {
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, layer_path: Vec<LayerId>, viewport_resolution: UVec2) -> Result<(), String> {
 		// Get the node graph layer
 		let network = if layer_path.is_empty() {
 			document.network().clone()
@@ -488,7 +487,7 @@ impl NodeGraphExecutor {
 		// Execute the node graph
 		let generation_id = self.queue_execution(network, layer_path.clone(), document_transform, viewport_resolution);
 
-		self.futures.insert(generation_id, ExecutionContext { layer_path, document_id });
+		self.futures.insert(generation_id, ExecutionContext { layer_path });
 
 		Ok(())
 	}
@@ -512,15 +511,27 @@ impl NodeGraphExecutor {
 							warn!("Missing node");
 							continue;
 						}
+						let layer = LayerNodeIdentifier::new(node_id, &document.document_network);
 						responses.add(FrontendMessage::UpdateDocumentLayerDetails {
 							data: LayerPanelEntry {
-								name: "Layer".to_string(),
+								name: if document.metadata.is_artboard(layer) {
+									"Artboard"
+								} else if document.metadata.is_folder(layer) {
+									"Folder"
+								} else {
+									"Layer"
+								}
+								.to_string(),
 								tooltip: format!("Layer id: {node_id}"),
 								visible: true,
-								layer_type: LayerDataTypeDiscriminant::Layer,
+								layer_type: if document.metadata.is_folder(layer) {
+									LayerDataTypeDiscriminant::Folder
+								} else {
+									LayerDataTypeDiscriminant::Layer
+								},
 								layer_metadata: LayerMetadata {
-									expanded: true,
-									selected: document.metadata.selected_layers_contains(LayerNodeIdentifier::new(node_id, &document.document_network)),
+									expanded: layer.has_children(&document.metadata),
+									selected: document.metadata.selected_layers_contains(layer),
 								},
 								path: vec![node_id],
 								thumbnail: svg.to_string(),

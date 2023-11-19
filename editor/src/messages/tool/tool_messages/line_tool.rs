@@ -4,7 +4,8 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::Stroke;
 use graphene_core::Color;
 
@@ -155,7 +156,7 @@ struct LineToolData {
 	drag_current: DVec2,
 	angle: f64,
 	weight: f64,
-	path: Option<Vec<LayerId>>,
+	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 }
 
@@ -186,13 +187,13 @@ impl Fsm for LineToolFsmState {
 				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
 				responses.add(DocumentMessage::StartTransaction);
-				let layer_path = document.get_path_for_new_layer();
-				tool_data.path = Some(layer_path.clone());
-				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
+
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer_path,
+					layer: layer.to_path(),
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
+				tool_data.layer = Some(layer);
 
 				tool_data.weight = tool_options.line_weight;
 
@@ -210,13 +211,13 @@ impl Fsm for LineToolFsmState {
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
-				tool_data.path = None;
+				tool_data.layer = None;
 				LineToolFsmState::Ready
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.path = None;
+				tool_data.layer = None;
 				LineToolFsmState::Ready
 			}
 			(_, LineToolMessage::WorkingColorChanged) => {
@@ -283,7 +284,7 @@ fn generate_transform(tool_data: &mut LineToolData, document_to_viewport: DAffin
 	}
 
 	GraphOperationMessage::TransformSet {
-		layer: tool_data.path.clone().unwrap(),
+		layer: tool_data.layer.unwrap().to_path(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
 		transform_in: TransformIn::Viewport,
 		skip_rerender: false,

@@ -3,6 +3,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
@@ -205,24 +206,21 @@ impl Fsm for EllipseToolFsmState {
 				shape_data.start(responses, document, input, render_data);
 				responses.add(DocumentMessage::StartTransaction);
 
-				// Create a new layer path for this shape
-				let layer_path = document.get_path_for_new_layer();
-				shape_data.path = Some(layer_path.clone());
-
 				// Create a new ellipse vector shape
 				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
 				let manipulator_groups = subpath.manipulator_groups().to_vec();
-				graph_modification_utils::new_vector_layer(vec![subpath], layer_path.clone(), responses);
-				graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, &layer_path, true, responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
+				graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, layer, true, responses);
+				shape_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer_path.clone(),
+					layer: layer.to_path(),
 					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer_path,
+					layer: layer.to_path(),
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 

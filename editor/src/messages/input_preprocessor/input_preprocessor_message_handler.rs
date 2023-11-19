@@ -3,9 +3,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, Mou
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
-pub use document_legacy::DocumentResponse;
-pub use document_legacy::Operation;
-
 use glam::DVec2;
 
 #[derive(Debug, Default)]

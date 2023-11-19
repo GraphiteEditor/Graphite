@@ -1,4 +1,3 @@
-use super::blend_mode::BlendMode;
 use super::folder_layer::FolderLayer;
 use super::layer_layer::LayerLayer;
 use super::shape_layer::ShapeLayer;
@@ -7,6 +6,7 @@ use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
 
+use graphene_core::raster::BlendMode;
 use graphene_core::vector::VectorData;
 use graphene_std::vector::subpath::Subpath;
 

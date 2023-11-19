@@ -11,6 +11,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::RenderData;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
@@ -412,7 +413,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-						let parent = document.metadata().deepest_common_ancestor(document.metadata().selected_layers());
+						let parent = document.metadata().deepest_common_ancestor(document.metadata().selected_layers()).unwrap_or(LayerNodeIdentifier::ROOT);
 
 						responses.add(DocumentMessage::DeselectAllLayers);
 						responses.add(DocumentMessage::StartTransaction);
@@ -499,7 +500,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, layer_path } => {
 				let result = self.executor.submit_node_graph_evaluation(
-					(document_id, self.documents.get_mut(&document_id).expect("Tried to render no existent Document")),
+					self.documents.get_mut(&document_id).expect("Tried to render no existent Document"),
 					layer_path,
 					ipp.viewport_bounds.size().as_uvec2(),
 				);

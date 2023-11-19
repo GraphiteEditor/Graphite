@@ -3,15 +3,15 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::RenderData;
-use document_legacy::LayerId;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
 	drag_start: ViewportPosition,
-	pub path: Option<Vec<LayerId>>,
+	pub layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
 }
 
@@ -45,7 +45,7 @@ impl Resize {
 		lock_ratio: Key,
 		skip_rerender: bool,
 	) -> Option<Message> {
-		let Some(path) = &self.path else {
+		let Some(layer) = self.layer else {
 			return None;
 		};
 
@@ -63,7 +63,7 @@ impl Resize {
 
 		Some(
 			GraphOperationMessage::TransformSet {
-				layer: path.to_vec(),
+				layer: layer.to_path(),
 				transform: DAffine2::from_scale_angle_translation(size, 0., start),
 				transform_in: TransformIn::Viewport,
 				skip_rerender,
@@ -74,6 +74,6 @@ impl Resize {
 
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
 		self.snap_manager.cleanup(responses);
-		self.path = None;
+		self.layer = None;
 	}
 }

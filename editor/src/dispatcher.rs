@@ -258,11 +258,11 @@ mod test {
 	use crate::application::Editor;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::prelude::*;
+	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
 
 	use document_legacy::document_metadata::LayerNodeIdentifier;
 	use document_legacy::LayerId;
-	use document_legacy::Operation;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -308,19 +308,16 @@ mod test {
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
-		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
-		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
 
 		// Existing layers are unaffected
 		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i]);
+			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
-
-		// The ellipse was copied
-		assert_eq!(layers_before_copy[2], layers_after_copy[3]);
 	}
 
 	#[test]
@@ -334,11 +331,9 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
-		let shape_id = document_before_copy.root.as_folder().unwrap().layer_ids[1];
+		let shape_id = document_before_copy.metadata.all_layers().nth(1).unwrap();
 
-		editor.handle_message(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: vec![vec![shape_id]],
-		});
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
@@ -348,19 +343,16 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
-		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
-		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
 
 		// Existing layers are unaffected
 		for i in 0..=2 {
-			assert_eq!(layers_before_copy[i], layers_after_copy[i]);
+			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
-
-		// The shape was copied
-		assert_eq!(layers_before_copy[1], layers_after_copy[3]);
 	}
 
 	#[test]
@@ -368,49 +360,27 @@ mod test {
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
-		const FOLDER_INDEX: usize = 3;
-		const ELLIPSE_INDEX: usize = 2;
-		const SHAPE_INDEX: usize = 1;
-		const RECT_INDEX: usize = 0;
+		const FOLDER_ID: u64 = 3;
 
-		const LINE_INDEX: usize = 0;
-		const PEN_INDEX: usize = 1;
-
-		editor.handle_message(DocumentMessage::CreateEmptyFolder { container_path: vec![] });
+		editor.handle_message(GraphOperationMessage::NewCustomLayer {
+			id: FOLDER_ID,
+			nodes: HashMap::new(),
+			parent: LayerNodeIdentifier::ROOT,
+			insert_index: -1,
+		});
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 
 		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
-		let folder_id = document_before_added_shapes.root.as_folder().unwrap().layer_ids[FOLDER_INDEX];
+		let folder_layer = LayerNodeIdentifier::new(FOLDER_ID, &document_before_added_shapes.document_network);
 
-		// TODO: This adding of a Line and Pen should be rewritten using the corresponding functions in EditorTestUtils.
-		// This has not been done yet as the line and pen tool are not yet able to add layers to the currently selected folder
-		editor.handle_message(Operation::AddLine {
-			path: vec![folder_id, LINE_INDEX as u64],
-			insert_index: 0,
-			transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-			style: Default::default(),
-		});
+		editor.drag_tool(ToolType::Line, 0., 0., 10., 10.);
+		editor.drag_tool(ToolType::Freehand, 10., 20., 30., 40.);
 
-		editor.handle_message(Operation::AddPolyline {
-			path: vec![folder_id, PEN_INDEX as u64],
-			insert_index: 0,
-			transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-			style: Default::default(),
-			points: vec![(10.0, 20.0), (30.0, 40.0)],
-		});
-
-		editor.handle_message(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: vec![vec![folder_id]],
-		});
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
-			insert_index: -1,
-		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT,
@@ -419,37 +389,19 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
-		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
-		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
-
-		assert_eq!(layers_before_copy.len(), 4);
-		assert_eq!(layers_after_copy.len(), 5);
-
-		let rect_before_copy = &layers_before_copy[RECT_INDEX];
-		let ellipse_before_copy = &layers_before_copy[ELLIPSE_INDEX];
-		let shape_before_copy = &layers_before_copy[SHAPE_INDEX];
-		let folder_before_copy = &layers_before_copy[FOLDER_INDEX];
-		let line_before_copy = folder_before_copy.as_folder().unwrap().layers()[LINE_INDEX].clone();
-		let pen_before_copy = folder_before_copy.as_folder().unwrap().layers()[PEN_INDEX].clone();
-
-		assert_eq!(&layers_after_copy[0], rect_before_copy);
-		assert_eq!(&layers_after_copy[1], shape_before_copy);
-		assert_eq!(&layers_after_copy[2], ellipse_before_copy);
-		assert_eq!(&layers_after_copy[3], folder_before_copy);
-		assert_eq!(&layers_after_copy[4], folder_before_copy);
-
-		// Check the layers inside the two folders
-		let first_folder_layers_after_copy = layers_after_copy[3].as_folder().unwrap().layers();
-		let second_folder_layers_after_copy = layers_after_copy[4].as_folder().unwrap().layers();
-
-		assert_eq!(first_folder_layers_after_copy.len(), 2);
-		assert_eq!(second_folder_layers_after_copy.len(), 2);
-
-		assert_eq!(first_folder_layers_after_copy[0], line_before_copy);
-		assert_eq!(first_folder_layers_after_copy[1], pen_before_copy);
-
-		assert_eq!(second_folder_layers_after_copy[0], line_before_copy);
-		assert_eq!(second_folder_layers_after_copy[1], pen_before_copy);
+		let layers_before_added_shapes = document_before_added_shapes.metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
+		let [original_folder, original_freehand, original_line, original_ellipse, original_polygon, original_rect] = layers_before_copy[..] else {
+			panic!("Layers before incorrect");
+		};
+		let [duplicated_folder, freehand_dup, line_dup, folder, freehand, line, ellipse, polygon, rect] = layers_after_copy[..] else {
+			panic!("Layers after incorrect");
+		};
+		assert_eq!(original_folder, folder);
+		assert_eq!(original_ellipse, ellipse);
+		assert_eq!(original_rect, rect);
+		assert_eq!(original_polygon, polygon);
 	}
 
 	#[test]
@@ -464,16 +416,14 @@ mod test {
 	fn copy_paste_deleted_layers() {
 		let mut editor = create_editor_with_three_layers();
 
-		const ELLIPSE_INDEX: usize = 2;
-		const SHAPE_INDEX: usize = 1;
-		const RECT_INDEX: usize = 0;
-
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
-		let rect_id = document_before_copy.root.as_folder().unwrap().layer_ids[RECT_INDEX];
-		let ellipse_id = document_before_copy.root.as_folder().unwrap().layer_ids[ELLIPSE_INDEX];
+		let mut layers = document_before_copy.metadata.all_layers();
+		let rect_id = layers.next().expect("rectangle");
+		let shape_id = layers.next().expect("shape");
+		let ellipse_id = layers.next().expect("ellipse");
 
-		editor.handle_message(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: vec![vec![rect_id], vec![ellipse_id]],
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet {
+			nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 		});
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(DocumentMessage::DeleteSelectedLayers);
@@ -491,20 +441,15 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
 
-		let layers_before_copy = document_before_copy.root.as_folder().unwrap().layers();
-		let layers_after_copy = document_after_copy.root.as_folder().unwrap().layers();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);
 
-		let rect_before_copy = &layers_before_copy[RECT_INDEX];
-		let ellipse_before_copy = &layers_before_copy[ELLIPSE_INDEX];
+		println!("{:?} {:?}", layers_after_copy, layers_before_copy);
 
-		assert_eq!(layers_after_copy[0], layers_before_copy[SHAPE_INDEX]);
-		assert_eq!(&layers_after_copy[2], rect_before_copy);
-		assert_eq!(&layers_after_copy[3], ellipse_before_copy);
-		assert_eq!(&layers_after_copy[4], rect_before_copy);
-		assert_eq!(&layers_after_copy[5], ellipse_before_copy);
+		assert_eq!(layers_after_copy[5], shape_id);
 	}
 
 	#[test]
@@ -574,8 +519,8 @@ mod test {
 		let mut editor = Editor::create();
 
 		let test_files = [
-			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus.graphite")),
-			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires.graphite")),
+			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus-v2.graphite")),
+			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires-v2.graphite")),
 		];
 
 		for (document_name, document_serialized_content) in test_files {

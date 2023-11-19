@@ -329,6 +329,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicGroup, fn_params: [Footprint => graphene_core::GraphicGroup]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicElementData, fn_params: [Footprint => graphene_core::GraphicElementData]),
 		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
 		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
@@ -542,6 +543,8 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 		],
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f32]),
+		register_node!(graphene_core::raster::OpacityNode<_>, input: VectorData, params: [f32]),
+		register_node!(graphene_core::raster::OpacityNode<_>, input: GraphicGroup, params: [f32]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f32]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f32, f32, f32]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
@@ -739,6 +742,32 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 						fn_type!(DVec2),
 					];
 					NodeIOTypes::new(concrete!(Footprint), concrete!(ImageFrame<Color>), params)
+				},
+			),
+			(
+				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+				|mut args| {
+					Box::pin(async move {
+						const EXPECT_MESSAGE: &str = "Not enough arguments provided to construct node";
+
+						args.reverse();
+
+						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
+							DowncastBothNode::<Footprint, GraphicGroup>::new(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<f32>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+						);
+
+						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox
+					})
+				},
+				{
+					let params = vec![fn_type!(Footprint, GraphicGroup), fn_type!(DVec2), fn_type!(f32), fn_type!(DVec2), fn_type!(DVec2), fn_type!(DVec2)];
+					NodeIOTypes::new(concrete!(Footprint), concrete!(GraphicGroup), params)
 				},
 			),
 		],

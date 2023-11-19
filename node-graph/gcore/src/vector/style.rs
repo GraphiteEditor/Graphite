@@ -65,14 +65,14 @@ impl Gradient {
 	}
 
 	/// Adds the gradient def, returning the gradient id
-	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> u64 {
+	fn render_defs(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], opacity: f32) -> u64 {
 		let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 		let updated_transform = multiplied_transform * bound_transform;
 
 		let mut positions = String::new();
 		for (position, color) in self.positions.iter().filter_map(|(pos, color)| color.map(|color| (pos, color))) {
-			let _ = write!(positions, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.rgba_hex());
+			let _ = write!(positions, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.with_alpha(color.a() * opacity).rgba_hex());
 		}
 
 		let mod_gradient = transformed_bound_transform.inverse();
@@ -179,12 +179,12 @@ impl Fill {
 	}
 
 	/// Renders the fill, adding necessary defs.
-	pub fn render(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
+	pub fn render(&self, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2], opacity: f32) -> String {
 		match self {
 			Self::None => r#" fill="none""#.to_string(),
-			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a())),
+			Self::Solid(color) => format!(r##" fill="#{}"{}"##, color.rgb_hex(), format_opacity("fill", color.a() * opacity)),
 			Self::Gradient(gradient) => {
-				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds);
+				let gradient_id = gradient.render_defs(svg_defs, multiplied_transform, bounds, transformed_bounds, opacity);
 				format!(r##" fill="url('#{gradient_id}')""##)
 			}
 		}
@@ -326,12 +326,12 @@ impl Stroke {
 	}
 
 	/// Provide the SVG attributes for the stroke.
-	pub fn render(&self) -> String {
+	pub fn render(&self, opacity: f32) -> String {
 		if let Some(color) = self.color {
 			format!(
 				r##" stroke="#{}"{} stroke-width="{}" stroke-dasharray="{}" stroke-dashoffset="{}" stroke-linecap="{}" stroke-linejoin="{}" stroke-miterlimit="{}" "##,
 				color.rgb_hex(),
-				format_opacity("stroke", color.a()),
+				format_opacity("stroke", opacity * color.a()),
 				self.weight,
 				self.dash_lengths(),
 				self.dash_offset,
@@ -405,15 +405,24 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, specta::Type)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,
+	pub opacity: f32,
+}
+
+impl core::hash::Hash for PathStyle {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.stroke.hash(state);
+		self.fill.hash(state);
+		self.opacity.to_bits().hash(state);
+	}
 }
 
 impl PathStyle {
 	pub const fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
-		Self { stroke, fill }
+		Self { stroke, fill, opacity: 1. }
 	}
 
 	/// Get the current path's [Fill].
@@ -522,12 +531,12 @@ impl PathStyle {
 
 	pub fn render(&self, view_mode: ViewMode, svg_defs: &mut String, multiplied_transform: DAffine2, bounds: [DVec2; 2], transformed_bounds: [DVec2; 2]) -> String {
 		let fill_attribute = match (view_mode, &self.fill) {
-			(ViewMode::Outline, _) => Fill::None.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
-			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds),
+			(ViewMode::Outline, _) => Fill::None.render(svg_defs, multiplied_transform, bounds, transformed_bounds, self.opacity),
+			(_, fill) => fill.render(svg_defs, multiplied_transform, bounds, transformed_bounds, self.opacity),
 		};
 		let stroke_attribute = match (view_mode, &self.stroke) {
-			(ViewMode::Outline, _) => Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render(),
-			(_, Some(stroke)) => stroke.render(),
+			(ViewMode::Outline, _) => Stroke::new(Some(LAYER_OUTLINE_STROKE_COLOR), LAYER_OUTLINE_STROKE_WEIGHT).render(self.opacity),
+			(_, Some(stroke)) => stroke.render(self.opacity),
 			(_, None) => String::new(),
 		};
 

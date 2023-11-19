@@ -2,10 +2,11 @@
 
 #[cfg(feature = "alloc")]
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, Node, RGBMut};
-
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
+use super::{Channel, Color, Node, RGBMut};
+use crate::vector::VectorData;
+use crate::GraphicGroup;
 
 use dyn_any::{DynAny, StaticType};
 
@@ -169,6 +170,58 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Restore => write!(f, "Restore"),
 			BlendMode::MultiplyAlpha => write!(f, "Multiply Alpha"),
 		}
+	}
+}
+impl BlendMode {
+	/// Convert the enum to the CSS string for the blend mode.
+	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
+	pub fn to_svg_style_name(&self) -> &'static str {
+		match self {
+			// Normal group
+			BlendMode::Normal => "normal",
+			// Darken group
+			BlendMode::Darken => "darken",
+			BlendMode::Multiply => "multiply",
+			BlendMode::ColorBurn => "color-burn",
+			// Lighten group
+			BlendMode::Lighten => "lighten",
+			BlendMode::Screen => "screen",
+			BlendMode::ColorDodge => "color-dodge",
+			// Contrast group
+			BlendMode::Overlay => "overlay",
+			BlendMode::SoftLight => "soft-light",
+			BlendMode::HardLight => "hard-light",
+			// Inversion group
+			BlendMode::Difference => "difference",
+			BlendMode::Exclusion => "exclusion",
+			// Component group
+			BlendMode::Hue => "hue",
+			BlendMode::Saturation => "saturation",
+			BlendMode::Color => "color",
+			BlendMode::Luminosity => "luminosity",
+			_ => {
+				warn!("Unsupported blend mode {self:?}");
+				"normal"
+			}
+		}
+	}
+
+	/// List of all the blend modes in their conventional ordering and grouping.
+	pub fn list_modes_in_groups() -> [&'static [BlendMode]; 6] {
+		[
+			// Normal group
+			&[BlendMode::Normal],
+			// Darken group
+			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn],
+			// Lighten group
+			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge],
+			// Contrast group
+			&[BlendMode::Overlay, BlendMode::SoftLight, BlendMode::HardLight],
+			// Inversion group
+			&[BlendMode::Difference, BlendMode::Exclusion],
+			// Component group
+			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
+		]
 	}
 }
 
@@ -848,6 +901,20 @@ pub struct OpacityNode<O> {
 fn image_opacity(color: Color, opacity_multiplier: f32) -> Color {
 	let opacity_multiplier = opacity_multiplier / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+}
+
+#[node_macro::node_impl(OpacityNode)]
+fn image_opacity(mut vector_data: VectorData, opacity_multiplier: f32) -> VectorData {
+	let opacity_multiplier = opacity_multiplier / 100.;
+	vector_data.style.opacity *= opacity_multiplier;
+	vector_data
+}
+
+#[node_macro::node_impl(OpacityNode)]
+fn image_opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f32) -> GraphicGroup {
+	let opacity_multiplier = opacity_multiplier / 100.;
+	graphic_group.opacity *= opacity_multiplier;
+	graphic_group
 }
 
 #[derive(Debug, Clone, Copy)]
