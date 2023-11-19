@@ -3,9 +3,9 @@ use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::Operation;
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 

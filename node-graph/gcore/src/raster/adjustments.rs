@@ -1,13 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::{vector::VectorData, GraphicGroup};
-
 #[cfg(feature = "alloc")]
 use super::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
-use super::{Channel, Color, Node, RGBMut};
-
 #[cfg(feature = "alloc")]
 use super::ImageFrame;
+use super::{Channel, Color, Node, RGBMut};
+use crate::vector::VectorData;
+use crate::GraphicGroup;
 
 use dyn_any::{DynAny, StaticType};
 

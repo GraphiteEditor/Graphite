@@ -392,15 +392,14 @@ mod test {
 		let layers_before_added_shapes = document_before_added_shapes.metadata.all_layers().collect::<Vec<_>>();
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
 		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
-		println!("before shapes {layers_before_added_shapes:?} before copy{layers_before_copy:?} after{layers_after_copy:?}");
-		let [original_folder, orignal_freehand, original_line, original_elipse, original_polygon, original_rect] = layers_before_copy[..] else {
+		let [original_folder, original_freehand, original_line, original_ellipse, original_polygon, original_rect] = layers_before_copy[..] else {
 			panic!("Layers before incorrect");
 		};
-		let [duplicated_folder, freehand_dup, line_dup, folder, freehand, line, elipse, polygon, rect] = layers_after_copy[..] else {
+		let [duplicated_folder, freehand_dup, line_dup, folder, freehand, line, ellipse, polygon, rect] = layers_after_copy[..] else {
 			panic!("Layers after incorrect");
 		};
 		assert_eq!(original_folder, folder);
-		assert_eq!(original_elipse, elipse);
+		assert_eq!(original_ellipse, ellipse);
 		assert_eq!(original_rect, rect);
 		assert_eq!(original_polygon, polygon);
 	}

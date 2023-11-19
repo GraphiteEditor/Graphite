@@ -10,8 +10,8 @@ use crate::messages::portfolio::document::DocumentInputs;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
-use document_legacy::document_metadata::LayerNodeIdentifier;
 
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::RenderData;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;

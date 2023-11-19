@@ -1413,12 +1413,9 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
-		let new_parent = self
-			.metadata()
+		self.metadata()
 			.deepest_common_ancestor(self.metadata().selected_layers())
-			.unwrap_or_else(|| self.metadata().active_artboard());
-		println!("New parent {new_parent:?} layers{:?}", self.metadata().selected_layers().collect::<Vec<_>>());
-		new_parent
+			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document

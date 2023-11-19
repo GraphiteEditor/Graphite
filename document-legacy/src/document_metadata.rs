@@ -71,12 +71,12 @@ impl DocumentMetadata {
 		!self.selected_nodes.is_empty()
 	}
 
-	/// Access the [`NodeRelations`] of a layer
+	/// Access the [`NodeRelations`] of a layer.
 	fn get_relations(&self, node_identifier: LayerNodeIdentifier) -> Option<&NodeRelations> {
 		self.structure.get(&node_identifier)
 	}
 
-	/// Mutably access the [`NodeRelations`] of a layer
+	/// Mutably access the [`NodeRelations`] of a layer.
 	fn get_structure_mut(&mut self, node_identifier: LayerNodeIdentifier) -> &mut NodeRelations {
 		self.structure.entry(node_identifier).or_default()
 	}
@@ -96,16 +96,17 @@ impl DocumentMetadata {
 		sorted_layers
 	}
 
-	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root
+	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root.
 	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<LayerNodeIdentifier> {
 		layers
 			.map(|layer| {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
-
 				layer_path.reverse();
+
 				if !self.folders.contains(&layer) {
 					layer_path.pop();
 				}
+
 				layer_path
 			})
 			.reduce(|mut a, b| {
@@ -122,9 +123,11 @@ impl DocumentMetadata {
 	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
 		self.folders.contains(&layer)
 	}
+
 	pub fn is_artboard(&self, layer: LayerNodeIdentifier) -> bool {
 		self.artboards.contains(&layer)
 	}
+
 	/// Filter out non folder layers
 	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		layers.filter(|layer| self.folders.contains(layer))

@@ -748,15 +748,19 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
+						const EXPECT_MESSAGE: &str = "Not enough arguments provided to construct node";
+
 						args.reverse();
+
 						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
-							DowncastBothNode::<Footprint, GraphicGroup>::new(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<f32>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
+							DowncastBothNode::<Footprint, GraphicGroup>::new(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<f32>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
+							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
 						);
+
 						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})

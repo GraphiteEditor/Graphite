@@ -54,8 +54,9 @@ pub fn commit_info_localized(localized_commit_date: &str) -> String {
 mod test {
 	use crate::messages::{input_mapper::utility_types::input_mouse::ViewportBounds, prelude::*};
 
-	#[test]
+	// TODO: Fix and reenable
 	#[ignore]
+	#[test]
 	fn debug_ub() {
 		let mut editor = super::Editor::new();
 		let mut responses = Vec::new();

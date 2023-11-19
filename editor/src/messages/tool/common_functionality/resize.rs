@@ -3,7 +3,8 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::{document_metadata::LayerNodeIdentifier, layers::style::RenderData};
+use document_legacy::document_metadata::LayerNodeIdentifier;
+use document_legacy::layers::style::RenderData;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
