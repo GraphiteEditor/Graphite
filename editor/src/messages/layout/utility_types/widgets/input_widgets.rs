@@ -193,7 +193,7 @@ pub struct NumberInput {
 
 	// Number presentation
 	#[serde(rename = "displayDecimalPlaces")]
-	#[derivative(Default(value = "3"))]
+	#[derivative(Default(value = "2"))]
 	pub display_decimal_places: u32,
 
 	pub unit: String,

@@ -5,12 +5,12 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	// emits: ["update:value", "textFocused", "textChanged", "cancelTextChange"],
+	// emits: ["update:value", "textFocused", "textChanged", "textChangeCanceled"],
 	const dispatch = createEventDispatcher<{
 		value: string;
 		textFocused: undefined;
 		textChanged: undefined;
-		cancelTextChange: undefined;
+		textChangeCanceled: undefined;
 	}>();
 
 	let className = "";
@@ -27,6 +27,7 @@
 	export let tooltip: string | undefined = undefined;
 	export let sharpRightCorners = false;
 	export let placeholder: string | undefined = undefined;
+	export let hideContextMenu = false;
 
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
 	let id = `${Math.random()}`.substring(2);
@@ -78,13 +79,15 @@
 			{spellcheck}
 			{disabled}
 			{placeholder}
-			bind:value={inputValue}
 			bind:this={inputOrTextarea}
+			bind:value={inputValue}
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && dispatch("cancelTextChange")}
+			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
+			on:pointerdown
+			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
 		/>
 	{:else}
@@ -95,17 +98,19 @@
 			data-scrollable-y
 			{spellcheck}
 			{disabled}
-			bind:value={inputValue}
 			bind:this={inputOrTextarea}
+			bind:value={inputValue}
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
-			on:keydown={(e) => e.key === "Escape" && dispatch("cancelTextChange")}
+			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
+			on:pointerdown
+			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 		/>
 	{/if}
 	{#if label}
-		<label for={`field-input-${id}`}>{label}</label>
+		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
 	{/if}
 	<slot />
 </LayoutRow>

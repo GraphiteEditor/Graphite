@@ -1,9 +1,14 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/wasm-communication/messages";
 
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
+
+	const BUTTONS_LEFT = 0b0000_0001;
+	const BUTTONS_RIGHT = 0b0000_0010;
+	const BUTTON_LEFT = 0;
+	const BUTTON_RIGHT = 2;
 
 	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: number | undefined }>();
@@ -16,13 +21,14 @@
 	export let disabled = false;
 
 	// Value
-	export let value: number | undefined = undefined; // When not provided, a dash is displayed
+	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
+	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
 
 	// Number presentation
-	export let displayDecimalPlaces = 3;
+	export let displayDecimalPlaces = 2;
 	export let unit = "";
 	export let unitIsHiddenWhenEditing = true;
 
@@ -52,26 +58,56 @@
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
 	let self: FieldInput | undefined;
-	let text = displayText(value, displayDecimalPlaces, unit);
+	let inputRangeElement: HTMLInputElement | undefined;
+	let text = displayText(value);
 	let editing = false;
 	// Stays in sync with a binding to the actual input range slider element.
 	let rangeSliderValue = value !== undefined ? value : 0;
 	// Value used to render the position of the fake slider when applicable, and length of the progress colored region to the slider's left.
-	// This is the same as `rangeSliderValue` except in the "mousedown" state, when it has the previous location before the user's mousedown.
+	// This is the same as `rangeSliderValue` except in the "Deciding" state, when it has the previous location before the user's mousedown.
 	let rangeSliderValueAsRendered = value !== undefined ? value : 0;
-	// "default": no interaction is happening.
-	// "mousedown": the user has pressed down the mouse and might next decide to either drag left/right or release without dragging.
-	// "dragging": the user is dragging the slider left/right.
-	let rangeSliderClickDragState: "default" | "mousedown" | "dragging" = "default";
+	// Keeps track of the state of the slider drag as the user transitions through steps of the input process.
+	// - "Ready": no interaction is happening.
+	// - "Deciding": the user has pressed down the mouse and might next decide to either drag left/right or release without dragging.
+	// - "Dragging": the user is dragging the slider left/right.
+	// - "Aborted": the user has right clicked or pressed Escape to abort the drag, but hasn't yet released all mouse buttons.
+	let rangeSliderClickDragState: "Ready" | "Deciding" | "Dragging" | "Aborted" = "Ready";
+	// Stores the initial value upon beginning to drag so it can be restored upon aborting. Set to `undefined` when not dragging.
+	let initialValueBeforeDragging: number | undefined = undefined;
+	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
+	let cumulativeDragDelta = 0;
+	// Track whether the Ctrl key is currently held down.
+	let ctrlKeyDown = false;
 
 	$: watchValue(value);
 
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
+	$: styles = {
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(mode === "Range" ? { "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) } : {}),
+	};
 
-	// Called only when `value` is changed from outside this component
+	// Keep track of the Ctrl key being held down.
+	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
+	onMount(() => {
+		addEventListener("keydown", trackCtrl);
+		addEventListener("keyup", trackCtrl);
+		addEventListener("mousemove", trackCtrl);
+	});
+	onDestroy(() => {
+		removeEventListener("keydown", trackCtrl);
+		removeEventListener("keyup", trackCtrl);
+		removeEventListener("mousemove", trackCtrl);
+	});
+
+	// ===============================
+	// TRACKING AND UPDATING THE VALUE
+	// ===============================
+
+	// Called only when `value` is changed from outside this component.
 	function watchValue(value: number | undefined) {
 		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
-		if (rangeSliderClickDragState === "dragging") return;
+		if (rangeSliderClickDragState === "Dragging") return;
 
 		// Draw a dash if the value is undefined
 		if (value === undefined) {
@@ -88,62 +124,50 @@
 		if (typeof min === "number") sanitized = Math.max(sanitized, min);
 		if (typeof max === "number") sanitized = Math.min(sanitized, max);
 
-		text = displayText(sanitized, displayDecimalPlaces, unit);
+		text = displayText(sanitized);
 	}
 
-	function onSliderInput() {
-		// Keep only 4 digits after the decimal point
-		const ROUNDING_EXPONENT = 4;
-		const ROUNDING_MAGNITUDE = 10 ** ROUNDING_EXPONENT;
-		const roundedValue = Math.round(rangeSliderValue * ROUNDING_MAGNITUDE) / ROUNDING_MAGNITUDE;
+	// Called internally to update the value indirectly by informing the parent component of the new value,
+	// so it can update the prop for this component, finally yielding the value change.
+	function updateValue(newValue: number | undefined) {
+		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
+		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
+		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
-		// Exit if this is an extraneous event invocation that occurred after mouseup, which happens in Firefox
-		if (value !== undefined && Math.abs(value - roundedValue) < 1 / ROUNDING_MAGNITUDE) {
-			return;
+		if (newValueValidated !== undefined) {
+			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
+			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
+
+			rangeSliderValue = newValueValidated;
+			rangeSliderValueAsRendered = newValueValidated;
 		}
 
-		// The first event upon mousedown means we transition to a "mousedown" state
-		if (rangeSliderClickDragState === "default") {
-			rangeSliderClickDragState = "mousedown";
+		text = displayText(newValueValidated);
 
-			// Exit early because we don't want to use the value set by where on the track the user pressed
-			return;
-		}
-
-		// The second event upon mousedown that occurs by moving left or right means the user has committed to dragging the slider
-		if (rangeSliderClickDragState === "mousedown") {
-			rangeSliderClickDragState = "dragging";
-		}
-
-		// If we're in a dragging state, we want to use the new slider value
-		rangeSliderValueAsRendered = roundedValue;
-		updateValue(roundedValue, min, max, displayDecimalPlaces, unit);
+		if (newValue !== undefined) dispatch("value", newValueValidated);
 	}
 
-	function onSliderPointerDown() {
-		// We want to render the fake slider thumb at the old position, which is still the number held by `value`
-		rangeSliderValueAsRendered = value || 0;
+	// ================
+	// HELPER FUNCTIONS
+	// ================
 
-		// Because an `input` event is fired right before or after this (depending on browser), that first
-		// invocation will transition the state machine to `mousedown`. That's why we don't do it here.
+	function displayText(displayValue: number | undefined): string {
+		if (displayValue === undefined) return "-";
+
+		const roundingPower = 10 ** Math.max(displayDecimalPlaces, 0);
+
+		const unitlessDisplayValue = Math.round(displayValue * roundingPower) / roundingPower;
+		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
 	}
 
-	function onSliderPointerUp() {
-		// User clicked but didn't drag, so we focus the text input element
-		if (rangeSliderClickDragState === "mousedown") {
-			const inputElement = self?.element();
-			if (!inputElement) return;
-
-			// Set the slider position back to the original position to undo the user moving it
-			rangeSliderValue = rangeSliderValueAsRendered;
-
-			// Begin editing the number text field
-			inputElement.focus();
-		}
-
-		// Releasing the mouse means we can reset the state machine
-		rangeSliderClickDragState = "default";
+	function unPluralize(unit: string, quantity: number): string {
+		if (quantity !== 1 || !unit.endsWith("s")) return unit;
+		return unit.slice(0, -1);
 	}
+
+	// ===========================
+	// ALL MODES: TEXT VALUE ENTRY
+	// ===========================
 
 	function onTextFocused() {
 		if (value === undefined) text = "";
@@ -156,23 +180,23 @@
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
-	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding)
+	// enter key (via the `change` event) or when the <input> element is unfocused (with the `blur` event binding).
 	function onTextChanged() {
-		// The `unFocus()` call at the bottom of this function and in `onCancelTextChange()` causes this function to be run again, so this check skips a second run
+		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
 		const parsed = parseFloat(text);
 		const newValue = Number.isNaN(parsed) ? undefined : parsed;
 
-		updateValue(newValue, min, max, displayDecimalPlaces, unit);
+		updateValue(newValue);
 
 		editing = false;
 
 		self?.unFocus();
 	}
 
-	function onCancelTextChange() {
-		updateValue(undefined, min, max, displayDecimalPlaces, unit);
+	function onTextChangeCanceled() {
+		updateValue(undefined);
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
@@ -183,17 +207,23 @@
 		self?.unFocus();
 	}
 
+	// =============================
+	// INCREMENT MODE: ARROW BUTTONS
+	// =============================
+
 	function onIncrement(direction: "Decrease" | "Increase") {
 		if (value === undefined) return;
 
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
 			Add: () => {
 				const directionAddend = direction === "Increase" ? step : -step;
-				updateValue(value !== undefined ? value + directionAddend : undefined, min, max, displayDecimalPlaces, unit);
+				const newValue = value !== undefined ? value + directionAddend : undefined;
+				updateValue(newValue);
 			},
 			Multiply: () => {
 				const directionMultiplier = direction === "Increase" ? step : 1 / step;
-				updateValue(value !== undefined ? value * directionMultiplier : undefined, min, max, displayDecimalPlaces, unit);
+				const newValue = value !== undefined ? value * directionMultiplier : undefined;
+				updateValue(newValue);
 			},
 			Callback: () => {
 				if (direction === "Increase") incrementCallbackIncrease?.();
@@ -201,90 +231,380 @@
 			},
 			None: () => {},
 		};
-		const action = actions[incrementBehavior];
-		action();
+		actions[incrementBehavior]();
 	}
 
-	function updateValue(newValue: number | undefined, min: number | undefined, max: number | undefined, displayDecimalPlaces: number, unit: string) {
-		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
-		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
-		let cleaned = newValue !== undefined ? newValue : oldValue;
+	// =======================================
+	// INCREMENT MODE: DRAGGING LEFT AND RIGHT
+	// =======================================
 
-		if (cleaned !== undefined) {
-			if (typeof min === "number" && !Number.isNaN(min)) cleaned = Math.max(cleaned, min);
-			if (typeof max === "number" && !Number.isNaN(max)) cleaned = Math.min(cleaned, max);
+	// TODO: Prevent right clicking the input field from focusing it (i.e. entering its text editing state).
+	// TODO: `preventDefault()` doesn't work. Relevant StackOverflow question without any working answers:
+	// TODO: <https://stackoverflow.com/questions/60746390/react-prevent-right-click-from-focusing-an-otherwise-focusable-element>
+	// TODO: Another potential solution is to somehow track if the user right clicked, then use the "focus" event handler to immediately return
+	// TODO: focus to the previously focused element with `e.relatedTarget.focus();`. But a "FocusEvent" doesn't include mouse button click info.
+	// TODO: Alternatively, we could stick an element in front of the input field that blocks clicks on the underlying input field. Then it could
+	// TODO: call `.focus()` on the input field when left clicked and then hide itself so it doesn't block the input field while being edited.
 
-			rangeSliderValue = cleaned;
-			rangeSliderValueAsRendered = cleaned;
+	function onDragPointerDown(e: PointerEvent) {
+		// Only drag the number with left click (and when it's valid to do so)
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined) return;
+
+		// Don't drag the text value from is input element
+		e.preventDefault();
+
+		// Now we need to wait and see if the user follows this up with a mousemove or mouseup.
+
+		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
+		let alreadyActedGuard = false;
+
+		// If it's a mousemove, we'll enter the dragging state and begin dragging.
+		const onMove = () => {
+			if (alreadyActedGuard) return;
+			alreadyActedGuard = true;
+
+			beginDrag(e);
+			removeEventListener("pointermove", onMove);
+		};
+		// If it's a mouseup, we'll begin editing the text field.
+		const onUp = () => {
+			if (alreadyActedGuard) return;
+			alreadyActedGuard = true;
+
+			self?.focus();
+			removeEventListener("pointerup", onUp);
+		};
+		addEventListener("pointermove", onMove);
+		addEventListener("pointerup", onUp);
+	}
+
+	function beginDrag(e: PointerEvent) {
+		// Get the click target
+		const target = e.target || undefined;
+		if (!(target instanceof HTMLElement)) return;
+
+		// Enter dragging state
+		target.requestPointerLock();
+		initialValueBeforeDragging = value;
+		cumulativeDragDelta = 0;
+
+		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
+		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
+		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
+		let ignoredFirstMovement = false;
+
+		const pointerUp = () => {
+			// Confirm on release by setting the reset value to the current value, so once the pointer lock ends,
+			// the value is set to itself instead of the initial (abort) value in the "pointerlockchange" event handler function.
+			initialValueBeforeDragging = value;
+			cumulativeDragDelta = 0;
+
+			document.exitPointerLock();
+		};
+		const pointerMove = (e: PointerEvent) => {
+			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
+			if (e.buttons & BUTTONS_RIGHT) {
+				document.exitPointerLock();
+				return;
+			}
+
+			// If no buttons are down, we are stuck in the drag state after having released the mouse, so we should exit.
+			if (e.buttons === 0) {
+				document.exitPointerLock();
+				return;
+			}
+
+			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
+				const RATE = 1;
+				const SLOW_RATE = RATE / 10;
+
+				const dragDelta = e.movementX * (e.shiftKey ? RATE : SLOW_RATE);
+				cumulativeDragDelta += dragDelta;
+
+				const combined = initialValueBeforeDragging + cumulativeDragDelta;
+				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
+
+				updateValue(combineSnapped);
+			}
+			ignoredFirstMovement = true;
+		};
+		const pointerLockChange = () => {
+			// Do nothing if we just entered, rather than exited, pointer lock.
+			if (document.pointerLockElement) return;
+
+			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
+			updateValue(initialValueBeforeDragging);
+			initialValueBeforeDragging = undefined;
+			cumulativeDragDelta = 0;
+
+			// Clean up the event listeners.
+			removeEventListener("pointerup", pointerUp);
+			removeEventListener("pointermove", pointerMove);
+			document.removeEventListener("pointerlockchange", pointerLockChange);
+		};
+
+		addEventListener("pointerup", pointerUp);
+		addEventListener("pointermove", pointerMove);
+		document.addEventListener("pointerlockchange", pointerLockChange);
+	}
+
+	// ===============================
+	// RANGE MODE: DRAGGING THE SLIDER
+	// ===============================
+
+	// Called by the range slider's "input" event which fires continuously while the user is dragging the slider.
+	// It also fires once when the user clicks the slider, causing its position to jump to the clicked X position.
+	// Firefox also likes to fire this event more liberally, and it likes to make this event happen after most others,
+	// which is why the logic for this feature has to be pretty complicated to ensure robustness even across unexpected event ordering.
+	//
+	// Summary:
+	// - Do nothing if the user is still dragging with left click after aborting with right click or escape
+	// - If this is the first "input" event upon mousedown, manage the state so we end up waiting for the user to decide on a subsequent action:
+	//     - Right clicking or pressing Escape means we abort from the "Deciding" state and wait for the user to release all mouse buttons before respecting any further input
+	//     - Releasing the click without dragging means we focus the text input element to edit the number field
+	//     - Dragging the slider means we commit to dragging the slider, so we begin watching for an abort from that state (and continue onto the next bullet point below)
+	// - If the user has committed to dragging the slider, so we update this widget's value.
+	function onSliderInput() {
+		// Exit early if the slider is disabled by having been aborted by the user.
+		if (rangeSliderClickDragState === "Aborted") {
+			// If we've just aborted the drag by right clicking, but the user hasn't yet released the left mouse button, Firefox treats
+			// some subsequent interactions with the slider (like that right mouse button release, or maybe mouse movement in some cases)
+			// as input changes to the slider position. Thus, until we leave the "Aborted" state by releasing all mouse buttons,
+			// we have to set the slider position back to currently intended value to fight against Firefox's attempts to let the user move it.
+			updateValue(rangeSliderValueAsRendered);
+
+			// Now we exit early because we're ignoring further user input until the user releases all mouse buttons, which gets us back to the "Ready" state.
+			return;
 		}
 
-		text = displayText(cleaned, displayDecimalPlaces, unit);
+		// Keep only 4 digits after the decimal point.
+		const ROUNDING_EXPONENT = 4;
+		const ROUNDING_MAGNITUDE = 10 ** ROUNDING_EXPONENT;
+		const roundedValue = Math.round(rangeSliderValue * ROUNDING_MAGNITUDE) / ROUNDING_MAGNITUDE;
 
-		if (newValue !== undefined) dispatch("value", cleaned);
+		// Exit if this is an extraneous event invocation that occurred after mouseup, which happens in Firefox.
+		if (value !== undefined && Math.abs(value - roundedValue) < 1 / ROUNDING_MAGNITUDE) {
+			return;
+		}
+
+		// Snap the slider value to the nearest integer if the Ctrl key is held.
+		const snappedValue = ctrlKeyDown ? Math.round(roundedValue) : roundedValue;
+
+		// The first "input" event upon mousedown means we transition to a "Deciding" state, allowing us to wait for the
+		// next event to determine if the user is dragging (to slide the slider) or releasing (to edit the numerical text field).
+		if (rangeSliderClickDragState === "Ready") {
+			// We're in the "Deciding" state now, which means we're waiting for the user to either drag or release the slider.
+			rangeSliderClickDragState = "Deciding";
+
+			// We want to render the fake slider thumb at the old position, which is still the number held by `value`.
+			rangeSliderValueAsRendered = value || 0;
+
+			// We also store this initial value so we can restore it if the user aborts the drag.
+			initialValueBeforeDragging = value;
+
+			// We want to allow the user to right click to abort from this "Deciding" state so the slider isn't stuck waiting for either a drag or release.
+			addEventListener("mousedown", sliderAbortFromMousedown);
+			addEventListener("keydown", sliderAbortFromMousedown);
+
+			// Exit early because we don't want to use the value set by where on the track the user pressed.
+			return;
+		}
+
+		// Now that we've past the point of entering the "Deciding" state in this subsequent invocation, we know that the user has
+		// either dragged or released the mouse so we can stop watching for a right click to abort from that short point in the process.
+		removeEventListener("mousedown", sliderAbortFromMousedown);
+		removeEventListener("keydown", sliderAbortFromMousedown);
+
+		// If the subsequent event upon entering the "Deciding" state is this slider "input" event caused by the user dragging it, that means the user has
+		// committed to dragging the slider (instead of alternatively deciding on releasing it to edit the text field, or aborting with Escape/right click).
+		if (rangeSliderClickDragState === "Deciding") {
+			// We're dragging now, so that's the new state.
+			rangeSliderClickDragState = "Dragging";
+
+			// We want to begin watching for an abort while dragging the slider.
+			addEventListener("pointermove", sliderAbortFromDragging);
+			addEventListener("keydown", sliderAbortFromDragging);
+
+			// Since we've committed to dragging the slider, we want to use the new slider value. Continue to the logic below.
+		}
+
+		// If we're in a dragging state, we want to use the new slider value.
+		rangeSliderValueAsRendered = snappedValue;
+		updateValue(snappedValue);
 	}
 
-	function displayText(value: number | undefined, displayDecimalPlaces: number, unit: string): string {
-		if (value === undefined) return "-";
+	// This handles the user releasing all mouse buttons after clicking (and potentially dragging) the slider.
+	// If the slider wasn't dragged, we focus the text input element to begin editing the number field.
+	// Then, regardless of the above, we clean up the state and event listeners.
+	// This is called by the range slider's "pointerup" event bound in the HTML template.
+	function onSliderPointerUp() {
+		// User clicked but didn't drag, so we focus the text input element.
+		if (rangeSliderClickDragState === "Deciding") {
+			const inputElement = self?.element();
+			if (!inputElement) return;
 
-		// Find the amount of digits on the left side of the decimal
-		// 10.25 == 2
-		// 1.23 == 1
-		// 0.23 == 0 (Reason for the slightly more complicated code)
-		const absValueInt = Math.floor(Math.abs(value));
-		const leftSideDigits = absValueInt === 0 ? 0 : absValueInt.toString().length;
-		const roundingPower = 10 ** Math.max(displayDecimalPlaces - leftSideDigits, 0);
+			// Set the slider position back to the original position to undo the user moving it.
+			rangeSliderValue = rangeSliderValueAsRendered;
 
-		const displayValue = Math.round(value * roundingPower) / roundingPower;
+			// Begin editing the number text field.
+			inputElement.focus();
 
-		return `${displayValue}${unPluralize(unit, value)}`;
+			// In the next step, we'll switch back to the neutral state so that after the user is done editing the text field, the process can begin anew.
+		}
+
+		// Since the user decided to release the slider, we reset to the neutral state so the user can begin the process anew.
+		// But if the slider was aborted, we don't want to reset the state because we're still waiting for the user to release all mouse buttons.
+		if (rangeSliderClickDragState !== "Aborted") {
+			rangeSliderClickDragState = "Ready";
+		}
+
+		// Clean up the event listeners that were for tracking an abort while dragging the slider, now that we're no longer dragging it.
+		removeEventListener("mousedown", sliderAbortFromMousedown);
+		removeEventListener("keydown", sliderAbortFromMousedown);
+		removeEventListener("pointermove", sliderAbortFromDragging);
+		removeEventListener("keydown", sliderAbortFromDragging);
 	}
 
-	function unPluralize(unit: string, value: number): string {
-		if (value === 1 && unit.endsWith("s")) return unit.slice(0, -1);
-		return unit;
+	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.
+	// This function also helps recover and clean up if the window loses focus while dragging the slider.
+	// Since we reuse the function for both the "pointermove" and "keydown" events, it is split into parts that only run for a `PointerEvent` or `KeyboardEvent`.
+	function sliderAbortFromDragging(e: PointerEvent | KeyboardEvent) {
+		// Logic for aborting from pressing Escape.
+		if (e instanceof KeyboardEvent) {
+			// Detect if the user pressed Escape and abort the slider drag.
+			if (e.key === "Escape") {
+				// Call the abort helper function.
+				sliderAbort();
+			}
+		}
+
+		// Logic for aborting from a right click.
+		// Detect if a right click has occurred and abort the slider drag.
+		// This handler's "pointermove" event will be fired upon right click even if the cursor didn't move, which is why it's okay to check in this event handler.
+		if (e instanceof PointerEvent && e.buttons & BUTTONS_RIGHT) {
+			// Call the abort helper function
+			sliderAbort();
+		}
+
+		// Recovery from the window losing focus while dragging the slider.
+		// If somehow the user moved the pointer while not left click-dragging the slider, we know that we were stuck in the "Deciding" state, so we recover and clean up.
+		// This could happen while dragging the slider and using a hotkey to tab away to another window or browser tab, then returning to the stuck state.
+		if (e instanceof PointerEvent && !(e.target === inputRangeElement && e.buttons & BUTTONS_LEFT)) {
+			// Switch back to the neutral state.
+			rangeSliderClickDragState = "Ready";
+
+			// Remove the "pointermove" and "keydown" event listeners that are for tracking an abort while
+			// dragging the slider, now that we're no longer dragging it due to the loss of window focus.
+			removeEventListener("pointermove", sliderAbortFromDragging);
+			removeEventListener("keydown", sliderAbortFromDragging);
+		}
+	}
+
+	// We want to let the user abort immediately after clicking the slider, but not yet deciding to drag or release.
+	// During this momentary step, the slider hasn't moved yet but we want to allow aborting from this limbo state.
+	function sliderAbortFromMousedown(e: MouseEvent | KeyboardEvent) {
+		// Logic for aborting from a right click or pressing Escape.
+		if ((e instanceof KeyboardEvent && e.key === "Escape") || (e instanceof MouseEvent && e.button === BUTTON_RIGHT)) {
+			// Call the abort helper function
+			sliderAbort();
+
+			// Clean up these event listeners because they were for getting us into this function and now we're done with them.
+			removeEventListener("mousedown", sliderAbortFromMousedown);
+			removeEventListener("keydown", sliderAbortFromMousedown);
+		}
+	}
+
+	// Helper function that performs the state management and cleanup for aborting the slider drag.
+	function sliderAbort() {
+		// End the user's drag by instantaneously disabling and re-enabling the range input element
+		if (inputRangeElement) inputRangeElement.disabled = true;
+		setTimeout(() => {
+			if (inputRangeElement) inputRangeElement.disabled = false;
+		}, 0);
+
+		// Set the value back to the original value before the user began dragging.
+		if (initialValueBeforeDragging !== undefined) {
+			rangeSliderValueAsRendered = initialValueBeforeDragging;
+			updateValue(initialValueBeforeDragging);
+		}
+
+		// Set the state to "Aborted" so we can ignore further user input until the user releases all mouse buttons.
+		rangeSliderClickDragState = "Aborted";
+
+		// Detect when all mouse buttons are released so we can exit the "Aborted" state and return to the "Ready" state.
+		// (The "pointerup" event is defined as firing only upon all mouse buttons being released, which is what we need here.)
+		const sliderResetAbort = () => {
+			// Switch back to the neutral state so the user can begin the process anew.
+			// We do this inside setTimeout() to delay this until after Firefox has fired its extraneous "input" event after this "pointerup" event.
+			//
+			// A delay of 0 seems to be sufficient, but if the bug persists, we can try increasing the delay. The bug is reproduced in Firefox by
+			// dragging the slider, hitting Escape, then releasing the mouse button. This results in being transferred by `onSliderInput()` to the
+			// "Deciding" state when we should remain in the "Ready" state as set here. (For debugging, this can be visualized in CSS by
+			// recoloring the fake slider handle, which is shown in the "Deciding" state.)
+			setTimeout(() => {
+				rangeSliderClickDragState = "Ready";
+			}, 0);
+
+			// Clean up the event listener that was used to call this function.
+			removeEventListener("pointerup", sliderResetAbort);
+		};
+		addEventListener("pointerup", sliderResetAbort);
+
+		// Clean up the event listeners that were for tracking an abort while dragging the slider, now that we're no longer dragging it.
+		removeEventListener("pointermove", sliderAbortFromDragging);
+		removeEventListener("keydown", sliderAbortFromDragging);
 	}
 </script>
 
 <FieldInput
-	class={`number-input ${mode.toLocaleLowerCase()}`}
+	class={"number-input"}
+	classes={{
+		increment: mode === "Increment",
+		range: mode === "Range",
+	}}
 	value={text}
 	on:value={({ detail }) => (text = detail)}
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
-	on:cancelTextChange={onCancelTextChange}
+	on:textChangeCanceled={onTextChangeCanceled}
+	on:pointerdown={onDragPointerDown}
 	{label}
 	{disabled}
 	{tooltip}
 	{sharpRightCorners}
+	{styles}
+	hideContextMenu={true}
 	spellcheck={false}
-	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined, "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) }}
 	bind:this={self}
 >
-	{#if value !== undefined && mode === "Increment" && incrementBehavior !== "None"}
-		<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />
-		<button class="arrow right" on:click={() => onIncrement("Increase")} tabindex="-1" />
-	{/if}
-	{#if mode === "Range" && value !== undefined}
-		<input
-			type="range"
-			class="slider"
-			class:hidden={rangeSliderClickDragState === "mousedown"}
-			bind:value={rangeSliderValue}
-			min={rangeMin}
-			max={rangeMax}
-			step={sliderStepValue}
-			{disabled}
-			on:input={onSliderInput}
-			on:pointerdown={onSliderPointerDown}
-			on:pointerup={onSliderPointerUp}
-			tabindex="-1"
-		/>
-	{/if}
 	{#if value !== undefined}
-		{#if value !== undefined && rangeSliderClickDragState === "mousedown"}
-			<div class="fake-slider-thumb" />
+		{#if mode === "Increment" && incrementBehavior !== "None"}
+			<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />
+			<button class="arrow right" on:click={() => onIncrement("Increase")} tabindex="-1" />
 		{/if}
-		<div class="slider-progress" />
+		{#if mode === "Range"}
+			<input
+				type="range"
+				tabindex="-1"
+				class="slider"
+				class:hidden={rangeSliderClickDragState === "Deciding"}
+				{disabled}
+				min={rangeMin}
+				max={rangeMax}
+				step={sliderStepValue}
+				bind:value={rangeSliderValue}
+				on:input={onSliderInput}
+				on:pointerup={onSliderPointerUp}
+				on:contextmenu|preventDefault
+				on:wheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
+				bind:this={inputRangeElement}
+			/>
+			{#if rangeSliderClickDragState === "Deciding"}
+				<div class="fake-slider-thumb" />
+			{/if}
+			<div class="slider-progress" />
+		{/if}
 	{/if}
 </FieldInput>
 
@@ -300,6 +620,7 @@
 				margin-left: 16px;
 			}
 
+			// Keep the right-aligned input element from overlapping the increment arrow on the right
 			input[type="text"]:not(:focus).has-label {
 				margin-right: 16px;
 			}
@@ -311,7 +632,13 @@
 				display: none;
 			}
 
-			// Style the increment arrows
+			// Show the left-right arrow cursor when hovered over the draggable area
+			input[type="text"]:not(:focus),
+			label {
+				cursor: ew-resize;
+			}
+
+			// Style the decrement/increment arrows
 			.arrow {
 				position: absolute;
 				top: 0;
@@ -395,6 +722,15 @@
 					opacity: 0;
 				}
 
+				&:disabled {
+					mix-blend-mode: normal;
+					z-index: 0;
+				}
+
+				&:hover ~ .slider-progress::before {
+					background: var(--color-3-darkgray);
+				}
+
 				// Chromium and Safari
 				&::-webkit-slider-thumb {
 					-webkit-appearance: none; // Required until Safari 15.4 (Graphite supports 15.0+)
@@ -409,13 +745,8 @@
 					background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
-				&:disabled {
-					mix-blend-mode: normal;
-					z-index: 0;
-
-					&::-webkit-slider-thumb {
-						background: var(--color-4-dimgray);
-					}
+				&:disabled::-webkit-slider-thumb {
+					background: var(--color-4-dimgray);
 				}
 
 				// Firefox
@@ -431,8 +762,8 @@
 					background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
-				&:hover ~ .slider-progress::before {
-					background: var(--color-3-darkgray);
+				&:disabled::-moz-range-thumb {
+					background: var(--color-4-dimgray);
 				}
 
 				&::-moz-range-track {

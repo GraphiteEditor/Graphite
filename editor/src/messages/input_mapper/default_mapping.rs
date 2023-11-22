@@ -39,9 +39,9 @@ pub fn default_mapping() -> Mapping {
 			refresh_keys=[Control],
 			action_dispatch=NavigationMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
 		),
-		entry!(KeyDown(Lmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Lmb }),
-		entry!(KeyDown(Mmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Mmb }),
-		entry!(KeyDown(Rmb);  action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Rmb }),
+		entry!(KeyDown(Lmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Lmb }),
+		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Mmb }),
+		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Rmb }),
 		// NORMAL PRIORITY:
 		//
 		// NodeGraphMessage
