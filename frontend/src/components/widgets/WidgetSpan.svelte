@@ -93,7 +93,7 @@
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
-			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => updateLayout(index, value), { debounceTime: 120 }).updateValue(detail)} />
+			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => updateLayout(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
@@ -127,7 +127,7 @@
 		{#if numberInput}
 			<NumberInput
 				{...exclude(numberInput)}
-				on:value={({ detail }) => debouncer((value) => updateLayout(index, value)).updateValue(detail)}
+				on:value={({ detail }) => debouncer((value) => updateLayout(index, value)).debounceUpdateValue(detail)}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
 				sharpRightCorners={nextIsSuffix}

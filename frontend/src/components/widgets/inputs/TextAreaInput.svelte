@@ -21,10 +21,10 @@
 	// Called only when `value` is changed from the <textarea> element via user input and committed, either
 	// via the `change` event or when the <input> element is unfocused (with the `blur` event binding)
 	function onTextChanged() {
-		// The `unFocus()` call in `onCancelTextChange()` causes itself to be run again, so this if statement skips a second run
+		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
 		if (!editing) return;
 
-		onCancelTextChange();
+		onTextChangeCanceled();
 
 		// TODO: Find a less hacky way to do this
 		if (self) dispatch("commitText", self.getValue());
@@ -33,7 +33,7 @@
 		self?.setInputElementValue(self.getValue());
 	}
 
-	function onCancelTextChange() {
+	function onTextChangeCanceled() {
 		editing = false;
 
 		self?.unFocus();
@@ -51,7 +51,7 @@
 	on:value
 	on:textFocused={onTextFocused}
 	on:textChanged={onTextChanged}
-	on:cancelTextChange={onCancelTextChange}
+	on:textChangeCanceled={onTextChangeCanceled}
 	textarea={true}
 	spellcheck={true}
 	{label}

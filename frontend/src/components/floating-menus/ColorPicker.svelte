@@ -379,6 +379,7 @@
 				rangeMax={100}
 				unit="%"
 				mode="Range"
+				displayDecimalPlaces={1}
 				tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
 			/>
 			<LayoutRow class="leftover-space" />
