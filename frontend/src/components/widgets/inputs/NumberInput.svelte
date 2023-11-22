@@ -316,14 +316,14 @@
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const RATE = 1;
-				const SLOW_RATE = RATE / 10;
+				const CHANGE_PER_DRAG_PX = 0.1;
+				const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
 
-				const dragDelta = e.movementX * (e.shiftKey ? RATE : SLOW_RATE);
+				const dragDelta = e.movementX * (e.shiftKey ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
 				cumulativeDragDelta += dragDelta;
 
 				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
+				const combineSnapped = e.ctrlKey || isInteger ? Math.round(combined) : combined;
 
 				updateValue(combineSnapped);
 			}
@@ -388,8 +388,8 @@
 			return;
 		}
 
-		// Snap the slider value to the nearest integer if the Ctrl key is held.
-		const snappedValue = ctrlKeyDown ? Math.round(roundedValue) : roundedValue;
+		// Snap the slider value to the nearest integer if the Ctrl key is held, or the widget is set to integer mode.
+		const snappedValue = ctrlKeyDown || isInteger ? Math.round(roundedValue) : roundedValue;
 
 		// The first "input" event upon mousedown means we transition to a "Deciding" state, allowing us to wait for the
 		// next event to determine if the user is dragging (to slide the slider) or releasing (to edit the numerical text field).
