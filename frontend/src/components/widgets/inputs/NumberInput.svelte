@@ -248,7 +248,7 @@
 
 	function onDragPointerDown(e: PointerEvent) {
 		// Only drag the number with left click (and when it's valid to do so)
-		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined) return;
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled) return;
 
 		// Don't drag the text value from is input element
 		e.preventDefault();
@@ -633,8 +633,8 @@
 			}
 
 			// Show the left-right arrow cursor when hovered over the draggable area
-			input[type="text"]:not(:focus),
-			label {
+			&:not(.disabled) input[type="text"]:not(:focus),
+			&:not(.disabled) label {
 				cursor: ew-resize;
 			}
 

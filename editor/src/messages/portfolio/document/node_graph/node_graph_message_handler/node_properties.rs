@@ -333,7 +333,7 @@ fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name:
 		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
+			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
 		}
 		let entries = vec![entries];
 
@@ -356,7 +356,7 @@ fn noise_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 		let calculation_modes = NoiseType::list();
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::NoiseType(method), node_id, index)));
+			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::NoiseType(method), node_id, index)));
 		}
 		let entries = vec![entries];
 
@@ -381,7 +381,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 			.map(|category| {
 				category
 					.iter()
-					.map(|mode| DropdownEntryData::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*mode), node_id, index)))
+					.map(|mode| MenuListEntry::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*mode), node_id, index)))
 					.collect()
 			})
 			.collect();
@@ -405,7 +405,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usiz
 		let calculation_modes = LuminanceCalculation::list();
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index)));
+			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index)));
 		}
 		let entries = vec![entries];
 
@@ -955,7 +955,7 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.map(|section| {
 				section
 					.iter()
-					.map(|choice| DropdownEntryData::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
+					.map(|choice| MenuListEntry::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
 					.collect()
 			})
 			.collect();
@@ -1577,7 +1577,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let sampling_methods = ImaginateSamplingMethod::list();
 			let mut entries = Vec::with_capacity(sampling_methods.len());
 			for method in sampling_methods {
-				entries.push(DropdownEntryData::new(method.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index)));
+				entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index)));
 			}
 			let entries = vec![entries];
 
@@ -1730,7 +1730,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				let mask_fill_content_modes = ImaginateMaskStartingFill::list();
 				let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
 				for mode in mask_fill_content_modes {
-					entries.push(DropdownEntryData::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
+					entries.push(MenuListEntry::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
 				}
 				let entries = vec![entries];
 

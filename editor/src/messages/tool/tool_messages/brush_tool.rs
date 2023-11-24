@@ -198,7 +198,7 @@ impl LayoutHolder for BrushTool {
 				group
 					.iter()
 					.map(|blend_mode| {
-						DropdownEntryData::new(format!("{blend_mode}"))
+						MenuListEntry::new(format!("{blend_mode}"))
 							.value(format!("{blend_mode:?}"))
 							.on_update(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
 					})

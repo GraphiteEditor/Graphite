@@ -100,6 +100,9 @@ pub struct TextButton {
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 
+	#[serde(rename = "menuListChildren")]
+	pub menu_list_children: MenuListEntrySections,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
