@@ -793,7 +793,7 @@ export type MenuBarEntry = MenuEntryCommon & {
 	disabled?: boolean;
 };
 
-// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `MenuListButton` and `DropdownInput`)
+// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `TextButton` and `DropdownInput`)
 export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
@@ -1055,6 +1055,8 @@ export class TextButton extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
+
+	menuListChildren!: MenuListEntry[][];
 }
 
 export type TextButtonWidget = {

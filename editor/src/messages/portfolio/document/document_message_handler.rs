@@ -1590,11 +1590,11 @@ impl DocumentMessageHandler {
 			widgets: vec![
 				DropdownInput::new(
 					vec![vec![
-						DropdownEntryData::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
-						DropdownEntryData::new(DocumentMode::SelectMode.to_string())
+						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
+						MenuListEntry::new(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						DropdownEntryData::new(DocumentMode::GuideMode.to_string())
+						MenuListEntry::new(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
@@ -1662,7 +1662,7 @@ impl DocumentMessageHandler {
 				modes
 					.iter()
 					.map(|mode| {
-						DropdownEntryData::new(mode.to_string())
+						MenuListEntry::new(mode.to_string())
 							.value(mode.to_string())
 							.on_update(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into())
 					})

@@ -169,8 +169,6 @@
 		}
 
 		input {
-			// text-align: center;
-
 			&:not(:focus).has-label {
 				text-align: right;
 				margin-left: 0;
@@ -201,6 +199,11 @@
 			input,
 			textarea {
 				color: var(--color-8-uppergray);
+			}
+
+			input {
+				// Disables drag-selecting the text, since `user-select: none` doesn't work for input elements
+				pointer-events: none;
 			}
 		}
 	}

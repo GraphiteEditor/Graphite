@@ -11,7 +11,7 @@
 	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/wasm-communication/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import MenuListButton from "@graphite/components/widgets/buttons/MenuListButton.svelte";
+	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
@@ -77,7 +77,7 @@
 			<WindowButtonsMac {maximized} />
 		{:else}
 			{#each entries as entry}
-				<MenuListButton {entry} />
+				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} noBackground={true} />
 			{/each}
 		{/if}
 	</LayoutRow>
@@ -114,6 +114,10 @@
 			&.right {
 				justify-content: flex-end;
 			}
+		}
+
+		.text-button {
+			height: 28px;
 		}
 	}
 </style>

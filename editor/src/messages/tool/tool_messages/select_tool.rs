@@ -103,7 +103,7 @@ impl SelectTool {
 	// 	let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
 	// 		.iter()
 	// 		.map(|mode| {
-	// 			DropdownEntryData::new(mode.to_string())
+	// 			MenuListEntry::new(mode.to_string())
 	// 				.value(mode.to_string())
 	// 				.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
 	// 		})

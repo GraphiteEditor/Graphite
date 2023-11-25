@@ -48,7 +48,7 @@ impl Default for CheckboxInput {
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
 	#[widget_builder(constructor)]
-	pub entries: DropdownInputEntries,
+	pub entries: MenuListEntrySections,
 
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
@@ -68,15 +68,15 @@ pub struct DropdownInput {
 	pub tooltip_shortcut: Option<ActionKeys>,
 	//
 	// Callbacks
-	// `on_update` exists on the `DropdownEntryData`, not this parent `DropdownInput`
+	// `on_update` exists on the `MenuListEntry`, not this parent `DropdownInput`
 }
 
-pub type DropdownInputEntries = Vec<Vec<DropdownEntryData>>;
+pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_holder)]
-pub struct DropdownEntryData {
+pub struct MenuListEntry {
 	pub value: String,
 
 	#[widget_builder(constructor)]
@@ -91,7 +91,7 @@ pub struct DropdownEntryData {
 
 	pub disabled: bool,
 
-	pub children: DropdownInputEntries,
+	pub children: MenuListEntrySections,
 
 	// Callbacks
 	#[serde(skip)]
