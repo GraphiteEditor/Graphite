@@ -186,7 +186,8 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		const newValue = evaluateMathExpression(text);
+		let newValue = evaluateMathExpression(text);
+		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
 		updateValue(newValue);
 
 		editing = false;
