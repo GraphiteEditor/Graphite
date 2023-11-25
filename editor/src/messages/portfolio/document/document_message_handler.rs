@@ -101,8 +101,8 @@ pub struct DocumentInputs<'a> {
 	pub document_id: u64,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
-	pub preferences: &'a PreferencesMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
+	pub graph_view_overlay_open: bool,
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
@@ -113,7 +113,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			ipp,
 			persistent_data,
 			executor,
-			..
+			graph_view_overlay_open,
 		} = document_inputs;
 		use DocumentMessage::*;
 
@@ -191,6 +191,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						document_id,
 						document_name: self.name.as_str(),
 						input: ipp,
+						graph_view_overlay_open,
 					},
 				);
 			}

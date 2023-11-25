@@ -48,8 +48,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							document_id,
 							ipp,
 							persistent_data: &self.persistent_data,
-							preferences,
 							executor: &mut self.executor,
+							graph_view_overlay_open: self.graph_view_overlay_open,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -64,8 +64,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						document_id,
 						ipp,
 						persistent_data: &self.persistent_data,
-						preferences,
 						executor: &mut self.executor,
+						graph_view_overlay_open: self.graph_view_overlay_open,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -273,6 +273,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					layout_target: LayoutTarget::GraphViewOverlayButton,
 				});
 
+				if open {
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				}
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
 			PortfolioMessage::GraphViewOverlayToggle => {
@@ -474,6 +477,9 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				if self.graph_view_overlay_open {
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				}
 			}
 			PortfolioMessage::SetActiveDocument { document_id } => {
 				self.active_document_id = Some(document_id);
