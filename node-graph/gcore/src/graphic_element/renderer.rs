@@ -284,6 +284,7 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			|attributes| {
 				attributes.push("class", "artboard");
+				attributes.push("transform", format_transform_matrix(self.graphic_group.transform));
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
@@ -298,11 +299,15 @@ impl GraphicElementRendered for Artboard {
 				}
 			},
 			|render| {
+				let old_opacity = render.opacity;
+				render.opacity *= self.graphic_group.opacity;
+
 				// Contents
 				for element in self.graphic_group.iter() {
 					render.blend_mode = element.blend_mode;
 					element.graphic_element_data.render_svg(render, render_params);
 				}
+				render.opacity = old_opacity;
 			},
 		);
 	}
