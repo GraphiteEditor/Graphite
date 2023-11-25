@@ -142,8 +142,8 @@
 		const outputIndex = Number(link.linkStartOutputIndex);
 		const inputIndex = Number(link.linkEndInputIndex);
 
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((node) => node.id == link.linkStart)];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((node) => node.id == link.linkEnd)] || undefined;
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((node) => node.id === link.linkStart)];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((node) => node.id === link.linkEnd)] || undefined;
 
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
@@ -665,7 +665,7 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
-		{#each $nodeGraph.nodes.map((node, nodeIndex) => ({ node, nodeIndex })).filter(({ node }) => node.displayName === "Layer") as { node, nodeIndex } (String(node.id))}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName === "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (String(node.id))}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
@@ -688,10 +688,10 @@
 						viewBox="0 0 8 8"
 						class="port"
 						data-port="input"
-						bind:this={inputs[nodeIndex][0]}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
 						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+						bind:this={inputs[nodeIndex][0]}
 					>
 						<title>{node.primaryInput} data</title>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -707,10 +707,10 @@
 							viewBox="0 0 8 8"
 							class="port top"
 							data-port="output"
-							bind:this={outputs[nodeIndex][0]}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							bind:this={outputs[nodeIndex][0]}
 						>
 							<title>{node.primaryOutput.dataType} data</title>
 							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
@@ -721,10 +721,10 @@
 						viewBox="0 0 8 8"
 						class="port bottom"
 						data-port="input"
-						bind:this={inputs[nodeIndex][1]}
 						data-datatype={stackDatainput.dataType}
 						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
 						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+						bind:this={inputs[nodeIndex][1]}
 					>
 						<title>{stackDatainput.dataType} data</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
@@ -744,7 +744,7 @@
 			</div>
 		{/each}
 		<!-- Nodes -->
-		{#each $nodeGraph.nodes.map((node, nodeIndex) => ({ node, nodeIndex })).filter(({ node }) => node.displayName !== "Layer") as { node, nodeIndex } (String(node.id))}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName !== "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (String(node.id))}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			<div
@@ -784,10 +784,10 @@
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="input"
-							bind:this={inputs[nodeIndex][0]}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+							bind:this={inputs[nodeIndex][0]}
 						>
 							<title>{node.primaryInput} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -800,10 +800,10 @@
 								viewBox="0 0 8 8"
 								class="port"
 								data-port="input"
-								bind:this={inputs[nodeIndex][index + 1]}
 								data-datatype={parameter.dataType}
 								style:--data-color={`var(--color-data-${parameter.dataType})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+								bind:this={inputs[nodeIndex][index + 1]}
 							>
 								<title>{parameter.dataType} data</title>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -819,10 +819,10 @@
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="output"
-							bind:this={outputs[nodeIndex][0]}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							bind:this={outputs[nodeIndex][0]}
 						>
 							<title>{node.primaryOutput.dataType} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
@@ -834,10 +834,10 @@
 							viewBox="0 0 8 8"
 							class="port"
 							data-port="output"
-							bind:this={outputs[nodeIndex][outputIndex + 1]}
 							data-datatype={parameter.dataType}
 							style:--data-color={`var(--color-data-${parameter.dataType})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+							bind:this={outputs[nodeIndex][outputIndex + 1]}
 						>
 							<title>{parameter.dataType} data</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
