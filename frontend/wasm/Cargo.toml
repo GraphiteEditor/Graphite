@@ -37,6 +37,7 @@ ron = { version = "0.8", optional = true }
 bezier-rs = { path = "../../libraries/bezier-rs" }
 # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 wgpu = { version = "0.17", features = ["fragile-send-sync-non-atomic-wasm"] }
+meval = "0.2.0"
 
 [dependencies.web-sys]
 version = "0.3.4"

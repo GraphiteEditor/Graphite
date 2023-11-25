@@ -755,3 +755,18 @@ impl Drop for JsEditorHandle {
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
 }
+
+#[wasm_bindgen(js_name = evaluateMathExpression)]
+pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
+	// TODO: Rewrite our own purpose-built math expression parser that supports unit conversions.
+	// TODO: In the meantime, it would also be good to hack in a preprocessor for implicit multiplication which is a missing feature in meval.
+
+	let mut context = meval::Context::new();
+	context.var("π", std::f64::consts::PI);
+	context.var("τ", std::f64::consts::TAU);
+	context.var("tau", std::f64::consts::TAU);
+
+	let expression = expression.to_lowercase();
+
+	meval::eval_str_with_context(&expression, &context).ok()
+}
