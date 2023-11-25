@@ -158,7 +158,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			#[remain::unsorted]
 			Navigation(message) => {
-				let document_bounds = self.metadata().document_bounds();
+				let document_bounds = self.metadata().document_bounds_viewport_space();
 				self.navigation_handler.process_message(
 					message,
 					responses,
@@ -306,7 +306,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			DeselectAllLayers => {
-				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
 			DirtyRenderDocument => {
@@ -623,7 +623,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.metadata().document_bounds().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2]);
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -657,20 +657,20 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				})
 			}
 			SelectAllLayers => {
-				let all = self.all_layers().map(|path| path.to_vec()).collect();
-				responses.add_front(SetSelectedLayers { replacement_selected_layers: all });
+				let all = self.metadata().all_layers().map(|layer| layer.to_node()).collect();
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all });
 			}
 			SelectedLayersLower => {
-				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 });
+				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 });
 			}
 			SelectedLayersLowerToBack => {
-				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
+				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX });
 			}
 			SelectedLayersRaise => {
-				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 });
+				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 });
 			}
 			SelectedLayersRaiseToFront => {
-				responses.add_front(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX });
+				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
 			}
 			SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
@@ -813,7 +813,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
-				responses.add_front(DocumentMessage::DirtyRenderDocument);
+				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
 			StartTransaction => self.backup(responses),
 			ToggleLayerExpansion { layer } => {
@@ -876,7 +876,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.metadata().document_bounds() {
+				if let Some(bounds) = self.metadata().document_bounds_document_space() {
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds,
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),

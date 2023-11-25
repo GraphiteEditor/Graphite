@@ -49,6 +49,7 @@ pub enum LayerDataTypeDiscriminant {
 	Folder,
 	Shape,
 	Layer,
+	Artboard,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
@@ -57,6 +58,7 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 			LayerDataTypeDiscriminant::Folder => write!(f, "Folder"),
 			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Layer => write!(f, "Layer"),
+			LayerDataTypeDiscriminant::Artboard => write!(f, "Artboard"),
 		}
 	}
 }

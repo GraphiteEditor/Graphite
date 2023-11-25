@@ -34,7 +34,7 @@ impl OriginalTransforms {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				for &layer in selected {
-					layer_map.entry(layer).or_insert_with(|| document.metadata.transform_to_document(layer));
+					layer_map.entry(layer).or_insert_with(|| document.metadata.local_transform(layer));
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -366,6 +366,40 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
+	fn transform_layer(document: &Document, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+		let Some(&original_transform) = original_transform else { return };
+		let parent = layer.parent(&document.metadata);
+		let to = parent.map(|parent| document.metadata.transform_to_viewport(parent)).unwrap_or(document.metadata.document_to_viewport);
+		let new = to.inverse() * transformation * to * original_transform;
+		responses.add(GraphOperationMessage::TransformSet {
+			layer: layer.to_path(),
+			transform: new,
+			transform_in: TransformIn::Local,
+			skip_rerender: false,
+		});
+	}
+
+	fn transform_path(document: &Document, layer: LayerNodeIdentifier, initial_points: Option<&Vec<(ManipulatorPointId, DVec2)>>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+		let viewspace = document.metadata.transform_to_viewport(layer);
+		let layerspace_rotation = viewspace.inverse() * transformation;
+
+		let Some(initial_points) = initial_points else {
+			return;
+		};
+
+		for (point_id, position) in initial_points {
+			let viewport_point = viewspace.transform_point2(*position);
+			let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
+			let point = *point_id;
+			let position = new_pos_viewport;
+
+			responses.add(GraphOperationMessage::Vector {
+				layer: layer.to_path(),
+				modification: VectorDataModification::SetManipulatorPosition { point, position },
+			});
+		}
+	}
+
 	pub fn update_transforms(&mut self, delta: DAffine2) {
 		if !self.selected.is_empty() {
 			let pivot = DAffine2::from_translation(*self.pivot);
@@ -374,56 +408,13 @@ impl<'a> Selected<'a> {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_ancestors in self.document.metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
-				let parent = layer.parent(&self.document.metadata);
-				if *self.tool_type == ToolType::Select {
-					let original_layer_transforms = match self.original_transforms {
-						OriginalTransforms::Layer(layer_map) => *layer_map.get(&layer).unwrap(),
-						OriginalTransforms::Path(_path_map) => {
-							warn!("Found Path variant in original_transforms, returning identity transform for layer {layer:?}");
-							DAffine2::IDENTITY
-						}
-					};
-					let to = parent
-						.map(|parent| self.document.metadata.transform_to_viewport(parent))
-						.unwrap_or(self.document.metadata.document_to_viewport);
-					let new = to.inverse() * transformation * to * original_layer_transforms;
-					self.responses.add(GraphOperationMessage::TransformSet {
-						layer: layer.to_path(),
-						transform: new,
-						transform_in: TransformIn::Local,
-						skip_rerender: false,
-					});
+
+				match &self.original_transforms {
+					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document, layer, layer_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document, layer, path_transforms.get(&layer), transformation, self.responses),
 				}
-				if *self.tool_type == ToolType::Path {
-					let viewspace = self.document.metadata.transform_to_viewport(layer);
-					let layerspace_rotation = viewspace.inverse() * transformation;
-
-					let initial_points = match self.original_transforms {
-						OriginalTransforms::Layer(_layer_map) => {
-							warn!("Found Layer variant in original_transforms when Path wanted, returning identity transform for layer");
-							None
-						}
-						OriginalTransforms::Path(path_map) => path_map.get(&layer),
-					};
-
-					let Some(original) = initial_points else {
-						warn!("Initial Points empty, it should not be possible to reach here without points");
-						continue;
-					};
-					for (point_id, position) in original {
-						let viewport_point = viewspace.transform_point2(*position);
-						let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-						let point = *point_id;
-						let position = new_pos_viewport;
-
-						self.responses.add(GraphOperationMessage::Vector {
-							layer: layer.to_path(),
-							modification: VectorDataModification::SetManipulatorPosition { point, position },
-						});
-					}
-				}
-				self.responses.add(BroadcastEvent::DocumentIsDirty);
 			}
+			self.responses.add(BroadcastEvent::DocumentIsDirty);
 		}
 	}
 

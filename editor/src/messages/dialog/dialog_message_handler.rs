@@ -11,9 +11,14 @@ pub struct DialogMessageHandler {
 	preferences_dialog: PreferencesDialogMessageHandler,
 }
 
-impl MessageHandler<DialogMessage, (&PortfolioMessageHandler, &PreferencesMessageHandler)> for DialogMessageHandler {
+pub struct DialogData<'a> {
+	pub portfolio: &'a PortfolioMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
+}
+
+impl MessageHandler<DialogMessage, DialogData<'_>> for DialogMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, (portfolio, preferences): (&PortfolioMessageHandler, &PreferencesMessageHandler)) {
+	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, DialogData { portfolio, preferences }: DialogData) {
 		#[remain::sorted]
 		match message {
 			#[remain::unsorted]

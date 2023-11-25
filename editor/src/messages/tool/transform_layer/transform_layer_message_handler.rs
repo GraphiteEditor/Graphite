@@ -2,6 +2,7 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
@@ -23,10 +24,12 @@ pub struct TransformLayerMessageHandler {
 	original_transforms: OriginalTransforms,
 	pivot: DVec2,
 }
+
 impl TransformLayerMessageHandler {
 	pub fn is_transforming(&self) -> bool {
 		self.transform_operation != TransformOperation::None
 	}
+
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
 		let axis_constraint = match self.transform_operation {
 			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
@@ -40,18 +43,17 @@ impl TransformLayerMessageHandler {
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, ipp, tool_data, shape_editor): TransformData) {
+	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
-		let selected_layers = document.layer_metadata.iter().filter_map(|(layer_path, data)| data.selected.then_some(layer_path)).collect::<Vec<_>>();
-		let selected_layers_n = document.metadata().selected_layers().collect::<Vec<_>>();
+		let selected_layers = document.metadata().selected_layers().collect::<Vec<_>>();
 
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
 			&mut self.pivot,
-			&selected_layers_n,
+			&selected_layers,
 			responses,
 			&document.document_legacy,
 			Some(shape_editor),
@@ -65,33 +67,26 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Ok(layer) = document.document_legacy.layer(selected_layers[0]) {
-					if let Some(vector_data) = layer.as_vector_data() {
-						*selected.original_transforms = OriginalTransforms::default();
-						let viewspace = &mut document.document_legacy.generate_transform_relative_to_viewport(selected_layers[0]).ok().unwrap_or_default();
+				if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.document_legacy)) {
+					*selected.original_transforms = OriginalTransforms::default();
+					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
-						let mut point_count: usize = 0;
-						let count_point = |position| {
-							point_count += 1;
-							position
-						};
-						let get_location = |point: &ManipulatorPointId| {
-							vector_data
-								.manipulator_from_id(point.group)
-								.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
-								.map(|position| viewspace.transform_point2(position))
-						};
-						let points = shape_editor.selected_points();
+					let mut point_count: usize = 0;
+					let get_location = |point: &ManipulatorPointId| {
+						graph_modification_utils::get_manipulator_from_id(subpaths, point.group)
+							.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
+							.map(|position| viewspace.transform_point2(position))
+					};
+					let points = shape_editor.selected_points();
 
-						*selected.pivot = points.filter_map(get_location).map(count_point).sum::<DVec2>() / point_count as f64;
-					}
+					*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
 				}
 			} else {
 				*selected.pivot = selected.mean_average_of_pivots();
 			}
 
-			*mouse_position = ipp.mouse.position;
-			*start_mouse = ipp.mouse.position;
+			*mouse_position = input.mouse.position;
+			*start_mouse = input.mouse.position;
 			selected.original_transforms.clear();
 		};
 
@@ -106,9 +101,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				for layer_path in document.selected_layers() {
-					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.to_vec() });
-				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
@@ -175,9 +168,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
 			PointerMove { slow_key, snap_key } => {
-				self.slow = ipp.keyboard.get(slow_key as usize);
+				self.slow = input.keyboard.get(slow_key as usize);
 
-				let new_snap = ipp.keyboard.get(snap_key as usize);
+				let new_snap = input.keyboard.get(snap_key as usize);
 				if new_snap != self.snap {
 					self.snap = new_snap;
 					let axis_constraint = match self.transform_operation {
@@ -189,7 +182,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				}
 
 				if self.typing.digits.is_empty() {
-					let delta_pos = ipp.mouse.position - self.mouse_position;
+					let delta_pos = input.mouse.position - self.mouse_position;
 
 					match self.transform_operation {
 						TransformOperation::None => unreachable!(),
@@ -201,7 +194,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = *selected.pivot - self.mouse_position;
-							let end_offset = *selected.pivot - ipp.mouse.position;
+							let end_offset = *selected.pivot - input.mouse.position;
 							let angle = start_offset.angle_between(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
@@ -212,7 +205,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						TransformOperation::Scaling(scale) => {
 							let change = {
 								let previous_frame_dist = (self.mouse_position - *selected.pivot).length();
-								let current_frame_dist = (ipp.mouse.position - *selected.pivot).length();
+								let current_frame_dist = (input.mouse.position - *selected.pivot).length();
 								let start_transform_dist = (self.start_mouse - *selected.pivot).length();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
@@ -225,7 +218,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 						}
 					};
 				}
-				self.mouse_position = ipp.mouse.position;
+				self.mouse_position = input.mouse.position;
 			}
 			SelectionChanged => {
 				let target_layers = document.metadata().selected_layers().collect();

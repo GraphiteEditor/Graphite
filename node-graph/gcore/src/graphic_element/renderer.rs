@@ -299,7 +299,10 @@ impl GraphicElementRendered for Artboard {
 			},
 			|render| {
 				// Contents
-				self.graphic_group.render_svg(render, render_params);
+				for element in self.graphic_group.iter() {
+					render.blend_mode = element.blend_mode;
+					element.graphic_element_data.render_svg(render, render_params);
+				}
 			},
 		);
 	}

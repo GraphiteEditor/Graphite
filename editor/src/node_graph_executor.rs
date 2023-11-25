@@ -71,8 +71,7 @@ pub(crate) struct GenerationRequest {
 	generation_id: u64,
 	graph: NodeNetwork,
 	path: Vec<LayerId>,
-	transform: DAffine2,
-	viewport_resolution: UVec2,
+	render_config: RenderConfig,
 }
 
 pub(crate) struct GenerationResponse {
@@ -146,12 +145,12 @@ impl NodeRuntime {
 				NodeRuntimeMessage::GenerationRequest(GenerationRequest {
 					generation_id,
 					graph,
-					transform,
+					render_config,
 					path,
-					viewport_resolution,
 					..
 				}) => {
-					let (result, monitor_nodes) = self.execute_network(&path, graph, transform, viewport_resolution).await;
+					let transform = render_config.viewport.transform;
+					let (result, monitor_nodes) = self.execute_network(&path, graph, render_config).await;
 					let mut responses = VecDeque::new();
 					if let Some(ref monitor_nodes) = monitor_nodes {
 						self.update_thumbnails(&path, monitor_nodes, &mut responses);
@@ -173,7 +172,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, Option<MonitorNodes>) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, render_config: RenderConfig) -> (Result<TaggedValue, String>, Option<MonitorNodes>) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -182,17 +181,7 @@ impl NodeRuntime {
 			application_io: self.wasm_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			imaginate_preferences: &self.imaginate_preferences,
-			render_config: RenderConfig {
-				viewport: Footprint {
-					transform,
-					resolution: viewport_resolution,
-					..Default::default()
-				},
-				#[cfg(any(feature = "resvg", feature = "vello"))]
-				export_format: graphene_core::application_io::ExportFormat::Canvas,
-				#[cfg(not(any(feature = "resvg", feature = "vello")))]
-				export_format: graphene_core::application_io::ExportFormat::Svg,
-			},
+			render_config,
 			image_frame: None,
 		};
 
@@ -283,6 +272,7 @@ impl NodeRuntime {
 				continue;
 			};
 			let graphic_element_data = &io_data.output;
+			error!("graphic element data {node_id}: {} {graphic_element_data:?}", graphic_element_data.transform());
 			use graphene_core::renderer::*;
 			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
 			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);
@@ -399,14 +389,13 @@ impl Default for NodeGraphExecutor {
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, network: NodeNetwork, layer_path: Vec<LayerId>, transform: DAffine2, viewport_resolution: UVec2) -> u64 {
+	fn queue_execution(&self, network: NodeNetwork, layer_path: Vec<LayerId>, render_config: RenderConfig) -> u64 {
 		let generation_id = generate_uuid();
 		let request = GenerationRequest {
 			path: layer_path,
 			graph: network,
 			generation_id,
-			transform,
-			viewport_resolution,
+			render_config,
 		};
 		self.sender.send(NodeRuntimeMessage::GenerationRequest(request)).expect("Failed to send generation request");
 
@@ -499,11 +488,21 @@ impl NodeGraphExecutor {
 			layer_layer.network.clone()
 		};
 
-		// Construct the input image frame
-		let document_transform = document.document_legacy.metadata.document_to_viewport;
+		let render_config = RenderConfig {
+			viewport: Footprint {
+				transform: document.document_legacy.metadata.document_to_viewport,
+				resolution: viewport_resolution,
+				..Default::default()
+			},
+			#[cfg(any(feature = "resvg", feature = "vello"))]
+			export_format: graphene_core::application_io::ExportFormat::Canvas,
+			#[cfg(not(any(feature = "resvg", feature = "vello")))]
+			export_format: graphene_core::application_io::ExportFormat::Svg,
+			view_mode: document.view_mode,
+		};
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, layer_path.clone(), document_transform, viewport_resolution);
+		let generation_id = self.queue_execution(network, layer_path.clone(), render_config);
 
 		self.futures.insert(generation_id, ExecutionContext { layer_path });
 
@@ -542,7 +541,9 @@ impl NodeGraphExecutor {
 								.to_string(),
 								tooltip: format!("Layer id: {node_id}"),
 								visible: !document.document_network.disabled.contains(&layer.to_node()),
-								layer_type: if document.metadata.is_folder(layer) {
+								layer_type: if document.metadata.is_artboard(layer) {
+									LayerDataTypeDiscriminant::Artboard
+								} else if document.metadata.is_folder(layer) {
 									LayerDataTypeDiscriminant::Folder
 								} else {
 									LayerDataTypeDiscriminant::Layer

@@ -1,13 +1,13 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::node_graph::resolve_document_node_type;
 use crate::messages::portfolio::document::node_graph::transform_utils::get_current_transform;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils;
 
-use document_legacy::layers::layer_layer::CachedOutputData;
-use document_legacy::LayerId;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeInput, NodeNetwork};
-use graphene_core::raster::{BlendMode, ImageFrame};
+use graph_craft::document::{DocumentNodeMetadata, NodeInput};
+use graphene_core::raster::BlendMode;
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
@@ -289,20 +289,23 @@ impl ToolTransition for BrushTool {
 #[derive(Clone, Debug, Default)]
 struct BrushToolData {
 	strokes: Vec<BrushStroke>,
-	layer_path: Vec<LayerId>,
+	layer: Option<LayerNodeIdentifier>,
 	transform: DAffine2,
 }
 
 impl BrushToolData {
-	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<&Vec<LayerId>> {
+	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.transform = DAffine2::IDENTITY;
-		if document.selected_layers().count() != 1 {
+
+		if document.metadata().selected_layers().count() != 1 {
 			return None;
 		}
-		self.layer_path = document.selected_layers().next()?.to_vec();
-		let layer = document.document_legacy.layer(&self.layer_path).ok().and_then(|layer| layer.as_layer().ok())?;
-		let network = &layer.network;
-		for (node, _node_id) in network.primary_flow() {
+		let Some(layer) = document.metadata().selected_layers().next() else {
+			return None;
+		};
+
+		self.layer = Some(layer);
+		for (node, _node_id) in document.network().primary_flow_from_node(Some(layer.to_node())) {
 			if node.name == "Brush" {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {
@@ -314,21 +317,20 @@ impl BrushToolData {
 				};
 				self.strokes = strokes.clone();
 
-				return Some(&self.layer_path);
+				return Some(layer);
 			} else if node.name == "Transform" {
 				self.transform = get_current_transform(&node.inputs) * self.transform;
 			}
 		}
 
 		self.transform = DAffine2::IDENTITY;
-
-		matches!(layer.cached_output_data, CachedOutputData::BlobURL(_) | CachedOutputData::SurfaceId(_)).then_some(&self.layer_path)
+		None
 	}
 
 	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
-		let layer = self.layer_path.clone();
+		let Some(layer) = self.layer else { return };
 		let strokes = self.strokes.clone();
-		responses.add(GraphOperationMessage::Brush { layer, strokes });
+		responses.add(GraphOperationMessage::Brush { layer: layer.to_path(), strokes });
 	}
 }
 
@@ -341,27 +343,27 @@ impl Fsm for BrushToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let document_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-		let layer_position = tool_data.transform.inverse().transform_point2(document_position);
-
 		let ToolMessage::Brush(event) = event else {
 			return self;
 		};
 		match (self, event) {
 			(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
-				let layer_path = tool_data.load_existing_strokes(document);
-				let new_layer = layer_path.is_none();
-				if new_layer {
-					responses.add(DocumentMessage::DeselectAllLayers);
-					tool_data.layer_path = document.get_path_for_new_layer();
-				}
-				let layer_position = tool_data.transform.inverse().transform_point2(document_position);
+				let loaded_layer = tool_data.load_existing_strokes(document);
+
+				let layer = loaded_layer.unwrap_or_else(|| new_brush_layer(document, responses));
+				tool_data.layer = Some(layer);
+
+				let parent = layer.parent(document.metadata()).unwrap_or_default();
+				let parent_transform = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
+				let layer_position = tool_data.transform.inverse().transform_point2(parent_transform);
+
+				let layer_document_scale = document.metadata().transform_to_document(parent) * tool_data.transform;
 				// TODO: Also scale it based on the input image ('Background' parameter).
 				// TODO: Resizing the input image results in a different brush size from the chosen diameter.
 				let layer_scale = 0.0001_f64 // Safety against division by zero
-					.max((tool_data.transform.matrix2 * glam::DVec2::X).length())
-					.max((tool_data.transform.matrix2 * glam::DVec2::Y).length());
+					.max((layer_document_scale.matrix2 * glam::DVec2::X).length())
+					.max((layer_document_scale.matrix2 * glam::DVec2::Y).length());
 
 				// Start a new stroke with a single sample
 				let blend_mode = match tool_options.draw_mode {
@@ -381,17 +383,20 @@ impl Fsm for BrushToolFsmState {
 					},
 				});
 
-				if new_layer {
-					add_brush_render(tool_options, tool_data, responses);
-				}
 				tool_data.update_strokes(responses);
 
 				BrushToolFsmState::Drawing
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
-				if let Some(stroke) = tool_data.strokes.last_mut() {
-					stroke.trace.push(BrushInputSample { position: layer_position })
+				if let Some(layer) = tool_data.layer {
+					if let Some(stroke) = tool_data.strokes.last_mut() {
+						let parent = layer.parent(document.metadata()).unwrap_or_default();
+						let parent_position = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
+						let layer_position = tool_data.transform.inverse().transform_point2(parent_position);
+
+						stroke.trace.push(BrushInputSample { position: layer_position })
+					}
 				}
 				tool_data.update_strokes(responses);
 
@@ -438,11 +443,24 @@ impl Fsm for BrushToolFsmState {
 	}
 }
 
-fn add_brush_render(_tool_options: &BrushOptions, data: &BrushToolData, responses: &mut VecDeque<Message>) {
-	let mut network = NodeNetwork::default();
-	let output_node = network.push_output_node();
-	if let Some(node) = network.nodes.get_mut(&output_node) {
-		node.inputs.push(NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true))
-	}
-	graph_modification_utils::new_custom_layer(network, data.layer_path.clone(), responses);
+fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	responses.add(DocumentMessage::DeselectAllLayers);
+
+	let brush_node = resolve_document_node_type("Brush")
+		.expect("Brush node does not exist")
+		.to_document_node_default_inputs([], DocumentNodeMetadata::position((-8, 0)));
+	let cull_node = resolve_document_node_type("Cull")
+		.expect("Cull node does not exist")
+		.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], DocumentNodeMetadata::default());
+
+	let id = generate_uuid();
+	responses.add(GraphOperationMessage::NewCustomLayer {
+		id,
+		nodes: HashMap::from([(1, brush_node), (0, cull_node)]),
+		parent: document.new_layer_parent(),
+		insert_index: -1,
+	});
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
+
+	LayerNodeIdentifier::new_unchecked(id)
 }

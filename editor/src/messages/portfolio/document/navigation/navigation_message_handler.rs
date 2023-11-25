@@ -68,12 +68,10 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(SetCanvasZoom { zoom_factor: new_scale });
 			}
 			FitViewportToBounds {
-				bounds: [bounds_corner_a, bounds_corner_b],
+				bounds: [pos1, pos2],
 				padding_scale_factor,
 				prevent_zoom_past_100,
 			} => {
-				let pos1 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_a);
-				let pos2 = document.metadata.document_to_viewport.inverse().transform_point2(bounds_corner_b);
 				let v1 = document.metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
 				let v2 = document.metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
@@ -98,8 +96,9 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
+					let transform = document.metadata.document_to_viewport.inverse();
 					responses.add(FitViewportToBounds {
-						bounds,
+						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
 						prevent_zoom_past_100: false,
 					})
@@ -382,16 +381,18 @@ impl NavigationMessageHandler {
 	}
 
 	pub fn calculate_offset_transform(&self, viewport_center: DVec2) -> DAffine2 {
+		let scaled_centre = viewport_center / self.snapped_scale();
+
 		// Try to avoid fractional coordinates to reduce anti aliasing.
 		let scale = self.snapped_scale();
-		let rounded_pan = ((self.pan + viewport_center) * scale).round() / scale - viewport_center;
+		let rounded_pan = ((self.pan + scaled_centre) * scale).round() / scale - scaled_centre;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
-		let offset_transform = DAffine2::from_translation(viewport_center);
+		let offset_transform = DAffine2::from_translation(scaled_centre);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
 		let angle_transform = DAffine2::from_angle(self.snapped_angle());
 		let translation_transform = DAffine2::from_translation(rounded_pan);
-		scale_transform * offset_transform * angle_transform * offset_transform.inverse() * translation_transform
+		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
 	fn create_document_transform(&self, viewport_center: DVec2, responses: &mut VecDeque<Message>) {
@@ -403,7 +404,7 @@ impl NavigationMessageHandler {
 		let new_viewport_bounds = viewport_bounds / zoom_factor;
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
-		let delta = delta_size * (-mouse_fraction);
+		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
 		NavigationMessage::TranslateCanvas { delta }.into()
 	}

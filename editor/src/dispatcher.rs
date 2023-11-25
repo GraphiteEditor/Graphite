@@ -1,5 +1,6 @@
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
+use crate::messages::dialog::DialogData;
 use crate::messages::prelude::*;
 
 use graphene_core::text::Font;
@@ -112,11 +113,11 @@ impl Dispatcher {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
 				Dialog(message) => {
-					self.message_handlers.dialog_message_handler.process_message(
-						message,
-						&mut queue,
-						(&self.message_handlers.portfolio_message_handler, &self.message_handlers.preferences_message_handler),
-					);
+					let data = DialogData {
+						portfolio: &self.message_handlers.portfolio_message_handler,
+						preferences: &self.message_handlers.preferences_message_handler,
+					};
+					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, data);
 				}
 				Frontend(message) => {
 					// Handle these messages immediately by returning early

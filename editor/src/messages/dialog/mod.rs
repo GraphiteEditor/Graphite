@@ -16,4 +16,4 @@ pub mod simple_dialogs;
 #[doc(inline)]
 pub use dialog_message::{DialogMessage, DialogMessageDiscriminant};
 #[doc(inline)]
-pub use dialog_message_handler::DialogMessageHandler;
+pub use dialog_message_handler::*;

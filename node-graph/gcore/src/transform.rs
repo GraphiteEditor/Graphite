@@ -69,8 +69,8 @@ impl Transform for GraphicElementData {
 			GraphicElementData::VectorShape(vector_shape) => vector_shape.transform(),
 			GraphicElementData::ImageFrame(image_frame) => image_frame.transform(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
-			GraphicElementData::GraphicGroup(_graphic_group) => DAffine2::IDENTITY,
-			GraphicElementData::Artboard(_artboard) => DAffine2::IDENTITY,
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.transform(),
+			GraphicElementData::Artboard(artboard) => artboard.graphic_group.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
@@ -78,23 +78,17 @@ impl Transform for GraphicElementData {
 			GraphicElementData::VectorShape(vector_shape) => vector_shape.local_pivot(pivot),
 			GraphicElementData::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
-			GraphicElementData::GraphicGroup(_graphic_group) => pivot,
-			GraphicElementData::Artboard(_artboard) => pivot,
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
+			GraphicElementData::Artboard(artboard) => artboard.graphic_group.local_pivot(pivot),
 		}
 	}
 	fn decompose_scale(&self) -> DVec2 {
-		let standard = || {
-			DVec2::new(
-				self.transform().transform_vector2((1., 0.).into()).length(),
-				self.transform().transform_vector2((0., 1.).into()).length(),
-			)
-		};
 		match self {
 			GraphicElementData::VectorShape(vector_shape) => vector_shape.decompose_scale(),
 			GraphicElementData::ImageFrame(image_frame) => image_frame.decompose_scale(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
-			GraphicElementData::GraphicGroup(_graphic_group) => standard(),
-			GraphicElementData::Artboard(_artboard) => standard(),
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.decompose_scale(),
+			GraphicElementData::Artboard(artboard) => artboard.graphic_group.decompose_scale(),
 		}
 	}
 }
@@ -104,8 +98,8 @@ impl TransformMut for GraphicElementData {
 			GraphicElementData::VectorShape(vector_shape) => vector_shape.transform_mut(),
 			GraphicElementData::ImageFrame(image_frame) => image_frame.transform_mut(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
-			GraphicElementData::GraphicGroup(_graphic_group) => todo!("Mutable transform of graphic group"),
-			GraphicElementData::Artboard(_artboard) => todo!("Mutable transform of artboard"),
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
+			GraphicElementData::Artboard(artboard) => artboard.graphic_group.transform_mut(),
 		}
 	}
 }

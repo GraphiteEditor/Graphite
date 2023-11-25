@@ -1,9 +1,10 @@
+use crate::consts::VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use graphene_core::uuid::generate_uuid;
 
-use glam::{IVec2, UVec2};
+use glam::{DVec2, IVec2, UVec2};
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default)]
@@ -24,13 +25,18 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 
-				if !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0 {
+				let create_artboard = !self.infinite && self.dimensions.x > 0 && self.dimensions.y > 0;
+				if create_artboard {
 					let id = generate_uuid();
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
 						artboard: graphene_core::Artboard::new(IVec2::ZERO, self.dimensions.as_ivec2()),
 					});
-					responses.add(DocumentMessage::ZoomCanvasToFitAll);
+					responses.add(NavigationMessage::FitViewportToBounds {
+						bounds: [DVec2::ZERO, self.dimensions.as_dvec2()],
+						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
+						prevent_zoom_past_100: true,
+					});
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);

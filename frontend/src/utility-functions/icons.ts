@@ -161,6 +161,7 @@ const SOLID_16PX = {
 	AlignRight: { svg: AlignRight, size: 16 },
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
+	Artboard: { svg: GeneralArtboardTool, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },

@@ -698,7 +698,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Layer";
+export type LayerType = "Folder" | "Layer" | "Artboard";
 
 export class ImaginateImageData {
 	readonly path!: BigUint64Array;
