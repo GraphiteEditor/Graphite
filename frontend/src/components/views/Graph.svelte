@@ -40,6 +40,9 @@
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
 
+	let inputs: SVGSVGElement[][] = [];
+	let outputs: SVGSVGElement[][] = [];
+
 	$: watchNodes($nodeGraph.nodes);
 
 	$: gridSpacing = calculateGridSpacing(transform.scale);
@@ -126,17 +129,21 @@
 	}
 
 	async function watchNodes(nodes: FrontendNode[]) {
+		nodes.forEach((_, index) => {
+			if (!inputs[index]) inputs[index] = [];
+			if (!outputs[index]) outputs[index] = [];
+		});
+
 		selected = selected.filter((id) => nodes.find((node) => node.id === id));
 		await refreshLinks();
 	}
 
-	function resolveLink(link: FrontendNodeLink, containerBounds: HTMLDivElement): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
+	function resolveLink(link: FrontendNodeLink): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
 		const outputIndex = Number(link.linkStartOutputIndex);
 		const inputIndex = Number(link.linkEndInputIndex);
 
-		const nodeOutputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkStart)}"] [data-port="output"]`) || undefined;
-
-		const nodeInputConnectors = containerBounds.querySelectorAll(`[data-node="${String(link.linkEnd)}"] [data-port="input"]`) || undefined;
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((node) => node.id == link.linkStart)];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((node) => node.id == link.linkEnd)] || undefined;
 
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
@@ -146,12 +153,9 @@
 	async function refreshLinks() {
 		await tick();
 
-		if (!nodesContainer) return;
-		const theNodesContainer = nodesContainer;
-
 		const links = $nodeGraph.links;
 		nodeLinkPaths = links.flatMap((link, index) => {
-			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
 			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.displayName === "Layer";
@@ -463,7 +467,7 @@
 
 		// Find the link that the node has been dragged on top of
 		const link = $nodeGraph.links.find((link): boolean => {
-			const { nodeInput, nodeOutput } = resolveLink(link, theNodesContainer);
+			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return false;
 
 			const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
@@ -661,7 +665,7 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
-		{#each $nodeGraph.nodes.filter((node) => node.displayName === "Layer") as node (String(node.id))}
+		{#each $nodeGraph.nodes.map((node, nodeIndex) => ({ node, nodeIndex })).filter(({ node }) => node.displayName === "Layer") as { node, nodeIndex } (String(node.id))}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
@@ -684,6 +688,7 @@
 						viewBox="0 0 8 8"
 						class="port"
 						data-port="input"
+						bind:this={inputs[nodeIndex][0]}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
 						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
@@ -702,6 +707,7 @@
 							viewBox="0 0 8 8"
 							class="port top"
 							data-port="output"
+							bind:this={outputs[nodeIndex][0]}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
@@ -715,6 +721,7 @@
 						viewBox="0 0 8 8"
 						class="port bottom"
 						data-port="input"
+						bind:this={inputs[nodeIndex][1]}
 						data-datatype={stackDatainput.dataType}
 						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
 						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
@@ -737,7 +744,7 @@
 			</div>
 		{/each}
 		<!-- Nodes -->
-		{#each $nodeGraph.nodes.filter((node) => node.displayName !== "Layer") as node (String(node.id))}
+		{#each $nodeGraph.nodes.map((node, nodeIndex) => ({ node, nodeIndex })).filter(({ node }) => node.displayName !== "Layer") as { node, nodeIndex } (String(node.id))}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			<div
@@ -777,6 +784,7 @@
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="input"
+							bind:this={inputs[nodeIndex][0]}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
@@ -792,6 +800,7 @@
 								viewBox="0 0 8 8"
 								class="port"
 								data-port="input"
+								bind:this={inputs[nodeIndex][index + 1]}
 								data-datatype={parameter.dataType}
 								style:--data-color={`var(--color-data-${parameter.dataType})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
@@ -810,6 +819,7 @@
 							viewBox="0 0 8 8"
 							class="port primary-port"
 							data-port="output"
+							bind:this={outputs[nodeIndex][0]}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
@@ -818,12 +828,13 @@
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
-					{#each node.exposedOutputs as parameter}
+					{#each node.exposedOutputs as parameter, outputIndex}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="port"
 							data-port="output"
+							bind:this={outputs[nodeIndex][outputIndex + 1]}
 							data-datatype={parameter.dataType}
 							style:--data-color={`var(--color-data-${parameter.dataType})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
