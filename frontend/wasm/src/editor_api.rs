@@ -755,3 +755,86 @@ impl Drop for JsEditorHandle {
 		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
 	}
 }
+
+#[wasm_bindgen(js_name = evaluateMathExpression)]
+pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
+	// TODO: Rewrite our own purpose-built math expression parser that supports unit conversions.
+
+	let mut context = meval::Context::new();
+	context.var("tau", std::f64::consts::TAU);
+	context.func("log", f64::log10);
+	context.func("log10", f64::log10);
+	context.func("log2", f64::log2);
+
+	// Insert asterisks where implicit multiplication is used in the expression string
+	let expression = implicit_multiplication_preprocess(expression);
+
+	meval::eval_str_with_context(&expression, &context).ok()
+}
+
+// Modified from this public domain snippet: <https://gist.github.com/Titaniumtown/c181be5d06505e003d8c4d1e372684ff>
+// Discussion: <https://github.com/rekka/meval-rs/issues/28#issuecomment-1826381922>
+pub fn implicit_multiplication_preprocess(expression: &str) -> String {
+	let function = expression.to_lowercase().replace("log10(", "log(").replace("log2(", "logtwo(").replace("pi", "π").replace("tau", "τ");
+	let valid_variables: Vec<char> = "eπτ".chars().collect();
+	let letters: Vec<char> = ('a'..='z').chain('A'..='Z').collect();
+	let numbers: Vec<char> = ('0'..='9').collect();
+	let function_chars: Vec<char> = function.chars().collect();
+	let mut output_string: String = String::new();
+	let mut prev_chars: Vec<char> = Vec::new();
+
+	for c in function_chars {
+		let mut add_asterisk: bool = false;
+		let prev_chars_len = prev_chars.len();
+
+		let prev_prev_char = if prev_chars_len >= 2 { *prev_chars.get(prev_chars_len - 2).unwrap() } else { ' ' };
+
+		let prev_char = if prev_chars_len >= 1 { *prev_chars.get(prev_chars_len - 1).unwrap() } else { ' ' };
+
+		let c_letters_var = letters.contains(&c) | valid_variables.contains(&c);
+		let prev_letters_var = valid_variables.contains(&prev_char) | letters.contains(&prev_char);
+
+		if prev_char == ')' {
+			if (c == '(') | numbers.contains(&c) | c_letters_var {
+				add_asterisk = true;
+			}
+		} else if c == '(' {
+			if (valid_variables.contains(&prev_char) | (')' == prev_char) | numbers.contains(&prev_char)) && !letters.contains(&prev_prev_char) {
+				add_asterisk = true;
+			}
+		} else if numbers.contains(&prev_char) {
+			if (c == '(') | c_letters_var {
+				add_asterisk = true;
+			}
+		} else if letters.contains(&c) {
+			if numbers.contains(&prev_char) | (valid_variables.contains(&prev_char) && valid_variables.contains(&c)) {
+				add_asterisk = true;
+			}
+		} else if (numbers.contains(&c) | c_letters_var) && prev_letters_var {
+			add_asterisk = true;
+		}
+
+		if add_asterisk {
+			output_string += "*";
+		}
+
+		prev_chars.push(c);
+		output_string += &c.to_string();
+	}
+
+	// We have to convert the Greek symbols back to ASCII because meval doesn't support unicode symbols as context constants
+	output_string.replace("logtwo(", "log2(").replace("π", "pi").replace("τ", "tau")
+}
+
+#[test]
+fn implicit_multiplication_preprocess_tests() {
+	assert_eq!(implicit_multiplication_preprocess("2pi"), "2*pi");
+	assert_eq!(implicit_multiplication_preprocess("sin(2pi)"), "sin(2*pi)");
+	assert_eq!(implicit_multiplication_preprocess("2sin(pi)"), "2*sin(pi)");
+	assert_eq!(implicit_multiplication_preprocess("2sin(3(4 + 5))"), "2*sin(3*(4 + 5))");
+	assert_eq!(implicit_multiplication_preprocess("3abs(-4)"), "3*abs(-4)");
+	assert_eq!(implicit_multiplication_preprocess("-1(4)"), "-1*(4)");
+	assert_eq!(implicit_multiplication_preprocess("(-1)4"), "(-1)*4");
+	assert_eq!(implicit_multiplication_preprocess("(((-1)))(4)"), "(((-1)))*(4)");
+	assert_eq!(implicit_multiplication_preprocess("2sin(pi) + 2cos(tau)"), "2*sin(pi) + 2*cos(tau)");
+}
