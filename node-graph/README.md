@@ -21,7 +21,7 @@ pub struct DocumentNode {
 	pub path: Option<Vec<NodeId>>,
 }
 ```
-(Explanatory comments omitted; the actual definition is currently found in [`node-graph/graph-craft/src/document.rs`](https://github.com/GraphiteEditor/Graphite/blob/improve-node-docs/node-graph/graph-craft/src/document.rs))
+(Explanatory comments omitted; the actual definition is currently found in [`node-graph/graph-craft/src/document.rs`](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/graph-craft/src/document.rs))
 
 Each `DocumentNode` is of a particular type, for example the "Opacity" node type. You can define your own type of document node in `editor/src/messages/portfolio/document/node_graph/node_graph_message_handler/document_node_types.rs`. A sample document node type definition for the opacity node is shown:
 
