@@ -12,7 +12,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
-use graph_craft::proto::ProtoNetwork;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::Image;
@@ -155,8 +154,8 @@ impl NodeRuntime {
 					let (result, monitor_nodes) = self.execute_network(&path, graph, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
 					if let Some(ref monitor_nodes) = monitor_nodes {
-						self.update_thumbnails(&path, &monitor_nodes, &mut responses);
-						self.update_upstream_transforms(&monitor_nodes);
+						self.update_thumbnails(&path, monitor_nodes, &mut responses);
+						self.update_upstream_transforms(monitor_nodes);
 					}
 					let response = GenerationResponse {
 						generation_id,
@@ -206,7 +205,6 @@ impl NodeRuntime {
 		let font_hash_code = graph_input_hash.finish();
 		graph.hash(&mut graph_input_hash);
 		let hash_code = graph_input_hash.finish();
-		log::debug!("Hash code: {}", hash_code);
 
 		if self.graph_hash != Some(hash_code) {
 			self.graph_hash = None;
