@@ -311,13 +311,22 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Frame Selected".into(),
-						shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-						action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
-						disabled: no_active_document,
-						..MenuBarEntry::default()
-					}],
+					vec![
+						MenuBarEntry {
+							label: "Frame Selected".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Ruler".into(),
+							shortcut: action_keys!(DocumentMessageDiscriminant::ToggleRulers),
+							action: MenuBarEntry::create_action(|_| DocumentMessage::ToggleRulers.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+					],
 				]),
 			),
 			MenuBarEntry::new_root(
