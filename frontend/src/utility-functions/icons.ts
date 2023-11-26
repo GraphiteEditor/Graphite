@@ -93,6 +93,7 @@ import AlignLeft from "@graphite-frontend/assets/icon-16px-solid/align-left.svg"
 import AlignRight from "@graphite-frontend/assets/icon-16px-solid/align-right.svg";
 import AlignTop from "@graphite-frontend/assets/icon-16px-solid/align-top.svg";
 import AlignVerticalCenter from "@graphite-frontend/assets/icon-16px-solid/align-vertical-center.svg";
+import Artboard from "@graphite-frontend/assets/icon-16px-solid/artboard.svg";
 import BooleanDifference from "@graphite-frontend/assets/icon-16px-solid/boolean-difference.svg";
 import BooleanIntersect from "@graphite-frontend/assets/icon-16px-solid/boolean-intersect.svg";
 import BooleanSubtractBack from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-back.svg";
@@ -118,7 +119,6 @@ import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg"
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
-import NodeArtboard from "@graphite-frontend/assets/icon-16px-solid/node-artboard.svg";
 import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite-frontend/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite-frontend/assets/icon-16px-solid/node-color-correction.svg";
@@ -161,7 +161,7 @@ const SOLID_16PX = {
 	AlignRight: { svg: AlignRight, size: 16 },
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
-	Artboard: { svg: GeneralArtboardTool, size: 16 },
+	Artboard: { svg: Artboard, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },
@@ -187,7 +187,6 @@ const SOLID_16PX = {
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
-	NodeArtboard: { svg: NodeArtboard, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
