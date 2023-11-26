@@ -1099,7 +1099,6 @@ impl DocumentMessageHandler {
 		let mut space = 0;
 		for layer_node in folder.children(self.metadata()) {
 			data.push(layer_node.to_node());
-			info!("Pushed child");
 			space += 1;
 			if layer_node.has_children(self.metadata()) {
 				path.push(layer_node.to_node());

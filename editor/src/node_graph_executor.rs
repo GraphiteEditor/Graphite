@@ -57,6 +57,7 @@ pub struct NodeRuntime {
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) transforms: HashMap<NodeId, DAffine2>,
 	pub(crate) upstream_transforms: HashMap<NodeId, DAffine2>,
+	graph_hash: Option<u64>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -124,6 +125,7 @@ impl NodeRuntime {
 			canvas_cache: HashMap::new(),
 			click_targets: HashMap::new(),
 			transforms: HashMap::new(),
+			graph_hash: None,
 			upstream_transforms: HashMap::new(),
 		}
 	}
@@ -151,8 +153,10 @@ impl NodeRuntime {
 				}) => {
 					let (result, monitor_nodes) = self.execute_network(&path, graph, transform, viewport_resolution).await;
 					let mut responses = VecDeque::new();
-					self.update_thumbnails(&path, &monitor_nodes, &mut responses);
-					self.update_upstream_transforms(&monitor_nodes);
+					if let Some(ref monitor_nodes) = monitor_nodes {
+						self.update_thumbnails(&path, monitor_nodes, &mut responses);
+						self.update_upstream_transforms(monitor_nodes);
+					}
 					let response = GenerationResponse {
 						generation_id,
 						result,
@@ -169,7 +173,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, MonitorNodes) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, transform: DAffine2, viewport_resolution: UVec2) -> (Result<TaggedValue, String>, Option<MonitorNodes>) {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -198,27 +202,41 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
+		let font_hash_code = graph_input_hash.finish();
+		graph.hash(&mut graph_input_hash);
+		let hash_code = graph_input_hash.finish();
 
-		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
+		if self.graph_hash != Some(hash_code) {
+			self.graph_hash = None;
+		}
 
-		let monitor_nodes = scoped_network
-			.recursive_nodes()
-			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-			.map(|(_, node)| node.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
+		let mut cached_monitor_nodes = None;
 
-		// We assume only one output
-		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
-		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network) {
-			Ok(network) => network,
-			Err(e) => return (Err(e), monitor_nodes),
-		};
+		if self.graph_hash.is_none() {
+			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
 
-		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		if let Err(e) = self.executor.update(proto_network).await {
-			error!("Failed to update executor:\n{e}");
-			return (Err(e), monitor_nodes);
+			let monitor_nodes = scoped_network
+				.recursive_nodes()
+				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
+				.map(|(_, node)| node.path.clone().unwrap_or_default())
+				.collect::<Vec<_>>();
+
+			// We assume only one output
+			assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
+			let c = Compiler {};
+			let proto_network = match c.compile_single(scoped_network) {
+				Ok(network) => network,
+				Err(e) => return (Err(e), Some(monitor_nodes)),
+			};
+
+			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+			if let Err(e) = self.executor.update(proto_network).await {
+				error!("Failed to update executor:\n{e}");
+				return (Err(e), Some(monitor_nodes));
+			}
+
+			cached_monitor_nodes = Some(monitor_nodes);
+			self.graph_hash = Some(hash_code);
 		}
 
 		use graph_craft::graphene_compiler::Executor;
@@ -231,7 +249,7 @@ impl NodeRuntime {
 		};
 		let result = match result {
 			Ok(value) => value,
-			Err(e) => return (Err(e), monitor_nodes),
+			Err(e) => return (Err(e), cached_monitor_nodes),
 		};
 
 		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
@@ -244,7 +262,7 @@ impl NodeRuntime {
 				}
 			}
 		}
-		(Ok(result), monitor_nodes)
+		(Ok(result), cached_monitor_nodes)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
