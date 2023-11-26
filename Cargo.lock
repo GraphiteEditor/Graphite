@@ -526,7 +526,6 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
- "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -889,14 +888,12 @@ name = "compilation-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "future-executor",
  "gpu-compiler-bin-wrapper",
  "gpu-executor",
  "graph-craft",
  "graphene-core",
  "reqwest",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -922,16 +919,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f057a694a54f12365049b0958a1685bb52d567f5593b355fbf685838e873d400"
 dependencies = [
  "crossbeam-utils",
-]
-
-[[package]]
-name = "console_error_panic_hook"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
-dependencies = [
- "cfg-if",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1292,12 +1279,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dyn-clone"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "545b22097d44f8a9581187cdf93de7a71e4722bf51200cfaba810865b49a495d"
-
-[[package]]
 name = "either"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,16 +1578,6 @@ checksum = "df420e2e84819663797d1ec6544b13c5be84629e7bb00dc960d6917db2987843"
 dependencies = [
  "mac",
  "new_debug_unreachable",
-]
-
-[[package]]
-name = "future-executor"
-version = "0.1.0"
-dependencies = [
- "futures",
- "log",
- "wasm-bindgen-futures",
- "wasm-rs-async-executor",
 ]
 
 [[package]]
@@ -2098,7 +2069,6 @@ dependencies = [
  "node-macro",
  "num-traits",
  "serde",
- "spirv",
  "web-sys",
 ]
 
@@ -2106,7 +2076,6 @@ dependencies = [
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "base64 0.21.5",
  "bezier-rs",
  "bytemuck",
@@ -2128,7 +2097,6 @@ dependencies = [
  "bitflags 2.4.1",
  "chrono",
  "dyn-any",
- "env_logger",
  "fern",
  "futures",
  "glam",
@@ -2142,7 +2110,6 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
- "test-case",
  "tokio",
  "wasm-bindgen",
  "wgpu",
@@ -2185,7 +2152,6 @@ dependencies = [
  "bytemuck",
  "compilation-client",
  "dyn-any",
- "dyn-clone",
  "futures",
  "glam",
  "gpu-compiler-bin-wrapper",
@@ -2204,7 +2170,6 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "url",
  "vello",
@@ -2315,7 +2280,6 @@ dependencies = [
  "serde-wasm-bindgen",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-bindgen-test",
  "web-sys",
  "wgpu",
 ]
@@ -2771,7 +2735,6 @@ name = "interpreted-executor"
 version = "0.1.0"
 dependencies = [
  "dyn-any",
- "dyn-clone",
  "futures",
  "glam",
  "gpu-executor",
@@ -2782,7 +2745,6 @@ dependencies = [
  "num-traits",
  "once_cell",
  "serde",
- "typed-arena",
  "wgpu-executor",
 ]
 
@@ -6283,12 +6245,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17f77d76d837a7830fe1d4f12b7b4ba4192c1888001c7164257e4bc6d21d96b4"
 
 [[package]]
-name = "typed-arena"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
-
-[[package]]
 name = "typenum"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6772,43 +6728,6 @@ name = "wasm-bindgen-shared"
 version = "0.2.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca6ad05a4870b2bf5fe995117d3728437bd27d7cd5f06f13c17443ef369775a1"
-
-[[package]]
-name = "wasm-bindgen-test"
-version = "0.3.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e6e302a7ea94f83a6d09e78e7dc7d9ca7b186bc2829c24a22d0753efd680671"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "scoped-tls",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test-macro",
-]
-
-[[package]]
-name = "wasm-bindgen-test-macro"
-version = "0.3.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb993dd8c836930ed130e020e77d9b2e65dd0fbab1b67c790b0f5d80b11a575"
-dependencies = [
- "proc-macro2",
- "quote",
-]
-
-[[package]]
-name = "wasm-rs-async-executor"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fed8e8c10166d28c68859dd5d159d408fa50fdf668ae39461f2ea41148655d52"
-dependencies = [
- "futures",
- "js-sys",
- "pin-project",
- "wasm-bindgen",
- "web-sys",
-]
 
 [[package]]
 name = "wasm-streams"

@@ -54,5 +54,3 @@ path = "../../document-legacy"
 package = "graphite-document-legacy"
 
 [dev-dependencies]
-env_logger = "0.10"
-test-case = "3.1"

@@ -44,9 +44,6 @@ features = [
 	"HtmlCanvasElement",
 ]
 
-[dev-dependencies]
-wasm-bindgen-test = "0.3.22"
-
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
 

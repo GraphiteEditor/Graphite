@@ -26,5 +26,4 @@ base64 = { workspace = true }
 bezier-rs = { workspace = true }
 specta = { workspace = true }
 bytemuck = { workspace = true }
-anyhow = { workspace = true }
 rustc-hash = { workspace = true }

@@ -83,7 +83,7 @@ jobs:
 
       - name: 🦀 Build Rust code
         run: |
-          mold -run cargo build
+          mold -run cargo build --all-features
 
       - name: 🧪 Run Rust tests
         run: |

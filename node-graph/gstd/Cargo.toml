@@ -48,13 +48,11 @@ gpu-executor = { path = "../gpu-executor", optional = true }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
 compilation-client = { path = "../compilation-client", optional = true }
 bytemuck = { workspace = true }
-tempfile = "3"
 image = { workspace = true, default-features = false, features = [
 	"png",
 	"jpeg",
 ] }
 base64 = { workspace = true, optional = true }
-dyn-clone = "1.0"
 wgpu = { workspace = true, optional = true }
 log = { workspace = true }
 bezier-rs = { workspace = true, features = ["serde"] }
