@@ -12,7 +12,7 @@ jobs:
     # Command should be limited to core team members (those in the organization) for security.
     # From the GitHub Actions docs:
     # author_association = 'MEMBER': Author is a member of the organization that owns the repository.
-    if: github.event.issue.pull_request && github.event.comment.body == '!build' && github.event.comment.author_association == 'MEMBER'
+    if: github.event.issue.pull_request && (github.event.comment.body == '!build' || github.event.comment.body == '!build-profiling') && github.event.comment.author_association == 'MEMBER'
     runs-on: self-hosted
     permissions:
       contents: read
@@ -67,12 +67,23 @@ jobs:
           export INDEX_HTML_HEAD_REPLACEMENT=""
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
+      - name: ⌨ Set build command based on comment
+        id: build_command
+        run: |
+          if [[ "${{ github.event.comment.body }}" == "!build" ]]; then
+            echo "command=build" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
+            echo "command=build-profiling" >> $GITHUB_OUTPUT
+          else
+            echo "command=print-building-help" >> $GITHUB_OUTPUT
+          fi
+
       - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
         run: |
           cd frontend
-          mold -run npm run build
+          mold -run npm run ${{ steps.build_command.outputs.command }}
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
