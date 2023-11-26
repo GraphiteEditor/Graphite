@@ -12,6 +12,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
+use graph_craft::proto::ProtoNetwork;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::raster::Image;
@@ -57,6 +58,7 @@ pub struct NodeRuntime {
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) transforms: HashMap<NodeId, DAffine2>,
 	pub(crate) upstream_transforms: HashMap<NodeId, DAffine2>,
+	compile_cache: Option<(u64, Vec<Vec<NodeId>>)>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
 
@@ -124,6 +126,7 @@ impl NodeRuntime {
 			canvas_cache: HashMap::new(),
 			click_targets: HashMap::new(),
 			transforms: HashMap::new(),
+			compile_cache: None,
 			upstream_transforms: HashMap::new(),
 		}
 	}
@@ -198,28 +201,40 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
+		let font_hash_code = graph_input_hash.finish();
+		graph.hash(&mut graph_input_hash);
+		let hash_code = graph_input_hash.finish();
 
-		let scoped_network = wrap_network_in_scope(graph, graph_input_hash.finish());
-
-		let monitor_nodes = scoped_network
-			.recursive_nodes()
-			.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-			.map(|(_, node)| node.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
-
-		// We assume only one output
-		assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
-		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network) {
-			Ok(network) => network,
-			Err(e) => return (Err(e), monitor_nodes),
-		};
-
-		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-		if let Err(e) = self.executor.update(proto_network).await {
-			error!("Failed to update executor:\n{e}");
-			return (Err(e), monitor_nodes);
+		if self.compile_cache.as_ref().map(|(hash, _)| *hash) != Some(hash_code) {
+			self.compile_cache = None;
 		}
+
+		if self.compile_cache.is_none() {
+			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
+
+			let monitor_nodes = scoped_network
+				.recursive_nodes()
+				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
+				.map(|(_, node)| node.path.clone().unwrap_or_default())
+				.collect::<Vec<_>>();
+
+			// We assume only one output
+			assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
+			let c = Compiler {};
+			let proto_network = match c.compile_single(scoped_network) {
+				Ok(network) => network,
+				Err(e) => return (Err(e), monitor_nodes),
+			};
+
+			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+			if let Err(e) = self.executor.update(proto_network).await {
+				error!("Failed to update executor:\n{e}");
+				return (Err(e), monitor_nodes);
+			}
+
+			self.compile_cache = Some((hash_code, monitor_nodes));
+		}
+		let (hash_code, monitor_nodes) = self.compile_cache.as_ref().unwrap();
 
 		use graph_craft::graphene_compiler::Executor;
 
@@ -231,7 +246,7 @@ impl NodeRuntime {
 		};
 		let result = match result {
 			Ok(value) => value,
-			Err(e) => return (Err(e), monitor_nodes),
+			Err(e) => return (Err(e), monitor_nodes.clone()),
 		};
 
 		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
@@ -244,7 +259,7 @@ impl NodeRuntime {
 				}
 			}
 		}
-		(Ok(result), monitor_nodes)
+		(Ok(result), monitor_nodes.clone())
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
