@@ -14,11 +14,12 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_core::raster::Image;
+use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
+use graphene_core::vector::VectorData;
 
 use graphene_core::{Color, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
@@ -315,11 +316,19 @@ impl NodeRuntime {
 				warn!("Failed to introspect monitor node for upstream transforms");
 				continue;
 			};
-			let Some(graphic_element_data) = value.downcast_ref::<graphene_core::vector::VectorData>() else {
-				warn!("Failed to downcast transform input to vector data");
+			let Some(transform) = value
+				.downcast_ref::<graphene_core::memo::IORecord<Footprint, VectorData>>()
+				.map(|vector_data| vector_data.output.transform())
+				.or_else(|| {
+					value
+						.downcast_ref::<graphene_core::memo::IORecord<Footprint, ImageFrame<Color>>>()
+						.map(|image| image.output.transform())
+				})
+			else {
+				warn!("Failed to downcast transform input");
 				continue;
 			};
-			self.upstream_transforms.insert(node_id, graphic_element_data.transform());
+			self.upstream_transforms.insert(node_id, transform);
 		}
 	}
 }

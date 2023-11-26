@@ -37,10 +37,16 @@ impl<P: Pixel> Transform for ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.local_pivot(pivot)
+	}
 }
 impl<P: Pixel> Transform for &ImageFrame<P> {
 	fn transform(&self) -> DAffine2 {
 		self.transform
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		(*self).local_pivot(pivot)
 	}
 }
 impl<P: Pixel> TransformMut for ImageFrame<P> {

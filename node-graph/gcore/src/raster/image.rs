@@ -349,6 +349,13 @@ impl<P: Hash + Pixel> Hash for ImageFrame<P> {
 	}
 }
 
+impl<P: Pixel> ImageFrame<P> {
+	/// Compute the pivot in local space with the current transform applied
+	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
+		self.transform.transform_point2(normalized_pivot)
+	}
+}
+
 /* This does not work because of missing specialization
  * so we have to manually implement this for now
 impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {

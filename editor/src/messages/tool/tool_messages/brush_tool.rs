@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::resolve_document_node_type;
-use crate::messages::portfolio::document::node_graph::transform_utils::get_current_transform;
+use crate::messages::portfolio::document::node_graph::transform_utils::{get_current_normalized_pivot, get_current_transform};
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
@@ -305,7 +305,7 @@ impl BrushToolData {
 		};
 
 		self.layer = Some(layer);
-		for (node, _node_id) in document.network().primary_flow_from_node(Some(layer.to_node())) {
+		for (node, node_id) in document.network().primary_flow_from_node(Some(layer.to_node())) {
 			if node.name == "Brush" {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {
@@ -319,7 +319,9 @@ impl BrushToolData {
 
 				return Some(layer);
 			} else if node.name == "Transform" {
-				self.transform = get_current_transform(&node.inputs) * self.transform;
+				let upstream = document.metadata().upstream_transform(node_id);
+				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
+				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;
 			}
 		}
 

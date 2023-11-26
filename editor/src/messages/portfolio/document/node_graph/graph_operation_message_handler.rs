@@ -575,7 +575,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
+				let parent_transform = document
+					.metadata
+					.transform_to_viewport(layer_identifier.parent(&document.metadata).unwrap_or(LayerNodeIdentifier::ROOT));
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);

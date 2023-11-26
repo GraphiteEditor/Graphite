@@ -65,17 +65,16 @@ impl Pivot {
 
 		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
 		if selected_layers_count == 1 {
-			if let Some(normalized_pivot) = graph_modification_utils::get_pivot(first, &document.document_legacy) {
-				self.normalized_pivot = normalized_pivot;
-				self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
-				self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
-			}
+			let normalized_pivot = graph_modification_utils::get_pivot(first, &document.document_legacy).unwrap_or(DVec2::splat(0.5));
+			self.normalized_pivot = normalized_pivot;
+			self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
+			self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
 		} else {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
 				.document_legacy
 				.selected_visible_layers()
-				.filter_map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.document_legacy))
+				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.document_legacy))
 				.reduce(|a, b| a + b)
 				.unwrap_or_default();
 
