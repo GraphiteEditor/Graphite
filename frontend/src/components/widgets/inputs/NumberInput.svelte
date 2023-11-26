@@ -2,6 +2,7 @@
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/wasm-communication/messages";
+	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
@@ -185,13 +186,11 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		const parsed = parseFloat(text);
-		const newValue = Number.isNaN(parsed) ? undefined : parsed;
-
+		let newValue = evaluateMathExpression(text);
+		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
 		updateValue(newValue);
 
 		editing = false;
-
 		self?.unFocus();
 	}
 
