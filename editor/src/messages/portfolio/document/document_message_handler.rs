@@ -835,6 +835,25 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			ToggleRulers => {
+				self.rulers_visible = !self.rulers_visible;
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
+				// let document_transform_scale = self.navigation_handler.snapped_scale();
+				//
+				// let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
+				// let log = document_transform_scale.log2();
+				// let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				// let ruler_spacing = ruler_interval * document_transform_scale;
+				//
+				// responses.add(FrontendMessage::UpdateDocumentRulers {
+				// 	origin: ruler_origin.into(),
+				// 	spacing: ruler_spacing,
+				// 	interval: ruler_interval,
+				// 	visible: self.rulers_visible,
+				// });
+				// info!(responses);
+			}
 			Undo => {
 				self.undo_in_progress = true;
 				responses.add(BroadcastEvent::ToolAbort);

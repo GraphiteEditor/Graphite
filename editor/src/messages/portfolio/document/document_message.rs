@@ -187,6 +187,7 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion {
 		layer: NodeId,
 	},
+	ToggleRulers,
 	Undo,
 	UndoFinished,
 	UngroupSelectedLayers,
