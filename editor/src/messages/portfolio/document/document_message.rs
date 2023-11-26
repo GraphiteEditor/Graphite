@@ -185,10 +185,7 @@ pub enum DocumentMessage {
 	},
 	StartTransaction,
 	ToggleLayerExpansion {
-		layer_path: Vec<LayerId>,
-	},
-	ToggleLayerVisibility {
-		layer_path: Vec<LayerId>,
+		layer: NodeId,
 	},
 	Undo,
 	UndoFinished,

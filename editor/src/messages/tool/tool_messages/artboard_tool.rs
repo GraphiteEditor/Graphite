@@ -150,11 +150,7 @@ impl ArtboardToolData {
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
 
-		let mut intersections = document
-			.document_legacy
-			.metadata
-			.click_xray(input.mouse.position)
-			.filter(|&layer| is_artboard(layer, &document.document_legacy));
+		let mut intersections = document.document_legacy.click_xray(input.mouse.position).filter(|&layer| is_artboard(layer, &document.document_legacy));
 
 		responses.add(BroadcastEvent::DocumentIsDirty);
 		if let Some(intersection) = intersections.next() {

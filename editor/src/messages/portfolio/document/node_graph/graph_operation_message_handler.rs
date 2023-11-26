@@ -625,7 +625,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -678,14 +678,14 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 				}
 
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -699,7 +699,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&[id], document, node_graph, responses) {
@@ -716,7 +716,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				for id in artboard_nodes {
 					modify_inputs.delete_layer(id);
 				}
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 			}
 		}
 	}

@@ -809,9 +809,14 @@ impl NodeNetwork {
 			return;
 		};
 
-		if self.disabled.contains(&id) {
+		if node.implementation != DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()) && self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
-			node.inputs.drain(1..);
+			if node.name == "Layer" {
+				// Connect layer node to the graphic group below
+				node.inputs.drain(..7);
+			} else {
+				node.inputs.drain(1..);
+			}
 			self.nodes.insert(id, node);
 			return;
 		}

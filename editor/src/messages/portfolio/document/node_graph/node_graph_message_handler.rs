@@ -208,7 +208,7 @@ impl NodeGraphMessageHandler {
 				let hide_button = TextButton::new(if is_hidden { "Show" } else { "Hide" })
 					.tooltip(if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" })
 					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleHidden))
-					.on_update(move |_| NodeGraphMessage::ToggleHidden.into())
+					.on_update(move |_| NodeGraphMessage::ToggleSelectedHidden.into())
 					.widget_holder();
 				widgets.push(hide_button);
 			}
@@ -458,7 +458,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
-				document.metadata.load_structure(&document.document_network);
+				document.load_network_structure();
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
@@ -803,7 +803,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
 						*node_input = input;
 						if structure_changed {
-							document.metadata.load_structure(&document.document_network);
+							document.load_network_structure();
 						}
 					}
 				}
@@ -882,7 +882,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
-			NodeGraphMessage::ToggleHidden => {
+			NodeGraphMessage::ToggleSelectedHidden => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -890,6 +890,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					for &node_id in document.metadata.selected_nodes() {
 						responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
 					}
+				}
+			}
+			NodeGraphMessage::ToggleHidden { node_id } => {
+				if let Some(network) = document.document_network.nested_network(&self.network) {
+					let new_hidden = !network.disabled.contains(&node_id);
+					responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
 				}
 			}
 			NodeGraphMessage::SetHidden { node_id, hidden } => {

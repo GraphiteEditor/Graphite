@@ -541,14 +541,14 @@ impl NodeGraphExecutor {
 								}
 								.to_string(),
 								tooltip: format!("Layer id: {node_id}"),
-								visible: true,
+								visible: !document.document_network.disabled.contains(&layer.to_node()),
 								layer_type: if document.metadata.is_folder(layer) {
 									LayerDataTypeDiscriminant::Folder
 								} else {
 									LayerDataTypeDiscriminant::Layer
 								},
 								layer_metadata: LayerMetadata {
-									expanded: layer.has_children(&document.metadata),
+									expanded: layer.has_children(&document.metadata) && !document.collapsed_folders.contains(&layer),
 									selected: document.metadata.selected_layers_contains(layer),
 								},
 								path: vec![node_id],

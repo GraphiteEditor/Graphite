@@ -52,7 +52,7 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		let mut layers = document.metadata().selected_visible_layers();
+		let mut layers = document.document_legacy.selected_visible_layers();
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
 			self.normalized_pivot = DVec2::splat(0.5);
@@ -73,7 +73,7 @@ impl Pivot {
 		} else {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
-				.metadata()
+				.document_legacy
 				.selected_visible_layers()
 				.filter_map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.document_legacy))
 				.reduce(|a, b| a + b)
@@ -81,7 +81,7 @@ impl Pivot {
 
 			let pivot = xy_summation / selected_layers_count as f64;
 			self.pivot = Some(pivot);
-			let [min, max] = document.metadata().selected_visible_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			let [min, max] = document.document_legacy.selected_visible_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
 			self.normalized_pivot = (pivot - min) / (max - min);
 
 			self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
@@ -157,7 +157,7 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for layer in document.metadata().selected_visible_layers() {
+		for layer in document.document_legacy.selected_visible_layers() {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			let pivot = transform.inverse().transform_point2(position);
 			// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.

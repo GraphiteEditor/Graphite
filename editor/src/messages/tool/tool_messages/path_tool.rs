@@ -246,7 +246,7 @@ impl PathToolData {
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) {
+		else if let Some(layer) = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network) {
 			if shift {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {

@@ -393,10 +393,10 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
-				tool_data.path_outlines.update_selected(document.metadata().selected_layers(), document, responses);
+				tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses);
 				tool_data.path_outlines.intersect_test_hovered(input, document, responses);
 
-				match (document.metadata().selected_visible_layers_bounding_box_viewport(), tool_data.bounding_box_overlays.take()) {
+				match (document.document_legacy.selected_visible_layers_bounding_box_viewport(), tool_data.bounding_box_overlays.take()) {
 					(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
 					(Some(bounds), paths) => {
 						let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
@@ -417,7 +417,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::EditLayer) => {
 				// Edit the clicked layer
-				if let Some(intersect) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) {
+				if let Some(intersect) = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
 						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.document_legacy, responses),
@@ -450,8 +450,8 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document.metadata().selected_visible_layers().collect();
-				let intersection = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
+				let mut selected: Vec<_> = document.document_legacy.selected_visible_layers().collect();
+				let intersection = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -706,7 +706,7 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.metadata().intersect_quad(quad, &document.document_legacy.document_network);
+					let intersection = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network);
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document.metadata().selected_layers().filter(|&layer| !path.starts_with(layer, document.metadata())).collect();
@@ -777,7 +777,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
 				// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
-				tool_data.layers_dragging = document.metadata().intersect_quad(quad, &document.document_legacy.document_network).collect();
+				tool_data.layers_dragging = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network).collect();
 				responses.add_front(NodeGraphMessage::SelectedNodesSet {
 					nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 				});
