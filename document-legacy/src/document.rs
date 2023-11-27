@@ -1,5 +1,4 @@
-use crate::document_metadata::is_artboard;
-use crate::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -7,20 +6,19 @@ use crate::layers::layer_layer::{CachedOutputData, LayerLayer};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
-use glam::{DAffine2, DVec2};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::transform::Footprint;
+use graphene_core::{concrete, generic, NodeIdentifier};
 use graphene_std::wasm_application_io::WasmEditorApi;
+
+use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::vec;
-
-use graph_craft::document::{DocumentNode, NodeNetwork, NodeOutput};
-use graph_craft::document::{DocumentNodeImplementation, NodeId};
-use graphene_core::{concrete, generic, NodeIdentifier};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
