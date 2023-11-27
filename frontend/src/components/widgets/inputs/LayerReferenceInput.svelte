@@ -10,7 +10,6 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: string | undefined }>();
 
 	export let value: string | undefined = undefined;

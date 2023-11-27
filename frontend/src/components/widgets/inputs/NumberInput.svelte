@@ -11,7 +11,6 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: number | undefined }>();
 
 	// Label

@@ -7,7 +7,6 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{ value: Color }>();
 
 	let open = false;

@@ -14,7 +14,6 @@
 
 	const pointerPosition = (direction: ScrollbarDirection, e: PointerEvent): number => (direction === "Vertical" ? e.clientY : e.clientX);
 
-	// emits: { "update:handlePosition": null, pressTrack: (pointerOffset: number) => typeof pointerOffset === "number" }
 	const dispatch = createEventDispatcher<{ handlePosition: number; pressTrack: number }>();
 
 	export let direction: ScrollbarDirection = "Vertical";

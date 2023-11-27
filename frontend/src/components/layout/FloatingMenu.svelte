@@ -10,7 +10,6 @@
 
 	const POINTER_STRAY_DISTANCE = 100;
 
-	// emits: ["update:open", "naturalWidth"],
 	const dispatch = createEventDispatcher<{ open: boolean; naturalWidth: number }>();
 
 	let className = "";

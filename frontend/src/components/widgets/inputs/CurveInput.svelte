@@ -6,7 +6,6 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	// emits: ["update:value"],
 	const dispatch = createEventDispatcher<{
 		value: Curve;
 	}>();

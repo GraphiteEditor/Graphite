@@ -10,7 +10,6 @@
 
 	const DASH_ENTRY = { label: "-" };
 
-	// emits: ["update:selectedIndex"],
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	let menuList: MenuList | undefined;

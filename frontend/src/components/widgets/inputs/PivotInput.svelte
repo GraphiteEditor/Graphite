@@ -3,7 +3,6 @@
 
 	import type { PivotPosition } from "@graphite/wasm-communication/messages";
 
-	// emits: ["update:position"],
 	const dispatch = createEventDispatcher<{ position: PivotPosition }>();
 
 	export let position: string;

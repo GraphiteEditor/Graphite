@@ -6,7 +6,6 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	// emits: ["update:checked"],
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
 
 	export let checked = false;

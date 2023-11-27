@@ -31,7 +31,6 @@
 
 	const editor = getContext<Editor>("editor");
 
-	// emits: ["update:color", "update:open"],
 	const dispatch = createEventDispatcher<{ color: Color }>();
 
 	export let color: Color;

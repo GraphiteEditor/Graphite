@@ -7,7 +7,6 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	// emits: ["update:selectedIndex"],
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	export let entries: RadioEntries;

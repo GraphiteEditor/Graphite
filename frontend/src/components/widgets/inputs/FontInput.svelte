@@ -11,7 +11,6 @@
 
 	const fonts = getContext<FontsState>("fonts");
 
-	// emits: ["update:fontFamily", "update:fontStyle", "changeFont"],
 	const dispatch = createEventDispatcher<{
 		fontFamily: string;
 		fontStyle: string;

@@ -5,7 +5,6 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	// emits: ["update:value", "textFocused", "textChanged", "textChangeCanceled"],
 	const dispatch = createEventDispatcher<{
 		value: string;
 		textFocused: undefined;

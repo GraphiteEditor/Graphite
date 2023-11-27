@@ -16,7 +16,6 @@
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
 
-	// emits: ["update:open", "update:activeEntry", "naturalWidth"],
 	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
 
 	export let entries: MenuListEntry[][];
