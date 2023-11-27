@@ -3,6 +3,9 @@
 </script>
 
 <script lang="ts">
+	import { onMount } from "svelte";
+	onMount(resize);
+
 	const RULER_THICKNESS = 16;
 	const MAJOR_MARK_THICKNESS = 16;
 	const MEDIUM_MARK_THICKNESS = 6;
