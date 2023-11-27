@@ -6,14 +6,15 @@ use crate::messages::prelude::*;
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
 	no_active_document: bool,
+	rulers_hidden: bool,
 }
 
-impl MessageHandler<MenuBarMessage, bool> for MenuBarMessageHandler {
+impl MessageHandler<MenuBarMessage, (bool, bool)> for MenuBarMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, has_active_document: bool) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, (has_active_document, rulers_hidden): (bool, bool)) {
 		use MenuBarMessage::*;
 		self.no_active_document = !has_active_document;
-
+		self.rulers_hidden = rulers_hidden;
 		#[remain::sorted]
 		match message {
 			SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
@@ -321,8 +322,9 @@ impl LayoutHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Ruler".into(),
-							shortcut: action_keys!(DocumentMessageDiscriminant::ToggleRulers),
-							action: MenuBarEntry::create_action(|_| DocumentMessage::ToggleRulers.into()),
+							icon: Some(if self.rulers_hidden { "CheckboxUnchecked" } else { "CheckboxChecked" }.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},

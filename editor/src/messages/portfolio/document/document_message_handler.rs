@@ -110,6 +110,7 @@ pub struct DocumentInputs<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub graph_view_overlay_open: bool,
+	pub rulers_visible: bool,
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
@@ -121,9 +122,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			persistent_data,
 			executor,
 			graph_view_overlay_open,
+			rulers_visible,
 		} = document_inputs;
 		use DocumentMessage::*;
-
+		self.rulers_visible = rulers_visible;
 		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
 
 		#[remain::sorted]
@@ -832,25 +834,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					self.document_legacy.collapsed_folders.push(layer);
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			ToggleRulers => {
-				self.rulers_visible = !self.rulers_visible;
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::RenderScrollbars);
-				// let document_transform_scale = self.navigation_handler.snapped_scale();
-				//
-				// let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
-				// let log = document_transform_scale.log2();
-				// let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
-				// let ruler_spacing = ruler_interval * document_transform_scale;
-				//
-				// responses.add(FrontendMessage::UpdateDocumentRulers {
-				// 	origin: ruler_origin.into(),
-				// 	spacing: ruler_spacing,
-				// 	interval: ruler_interval,
-				// 	visible: self.rulers_visible,
-				// });
-				// info!(responses);
 			}
 			Undo => {
 				self.undo_in_progress = true;
