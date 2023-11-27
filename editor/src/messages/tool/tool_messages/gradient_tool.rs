@@ -391,7 +391,7 @@ impl Fsm for GradientToolFsmState {
 					SelectedGradient::update(&mut tool_data.selected_gradient, document, responses);
 				}
 
-				for layer in document.metadata().selected_visible_layers() {
+				for layer in document.document_legacy.selected_visible_layers() {
 					if let Some(gradient) = get_gradient(layer, &document.document_legacy) {
 						let dragging = tool_data
 							.selected_gradient
@@ -526,7 +526,7 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.metadata().click(input.mouse.position, &document.document_legacy.document_network);
+					let selected_layer = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {

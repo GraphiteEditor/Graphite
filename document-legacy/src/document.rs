@@ -1,4 +1,4 @@
-use crate::document_metadata::DocumentMetadata;
+use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLayer;
 use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
@@ -6,20 +6,19 @@ use crate::layers::layer_layer::{CachedOutputData, LayerLayer};
 use crate::layers::shape_layer::ShapeLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
+use graphene_core::renderer::ClickTarget;
+use graphene_core::transform::Footprint;
+use graphene_core::{concrete, generic, NodeIdentifier};
+use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::{DAffine2, DVec2};
-use graphene_core::transform::Footprint;
-use graphene_std::wasm_application_io::WasmEditorApi;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::vec;
-
-use graph_craft::document::{DocumentNode, NodeOutput};
-use graph_craft::document::{DocumentNodeImplementation, NodeId};
-use graphene_core::{concrete, generic, NodeIdentifier};
 
 /// A number that identifies a layer.
 /// This does not technically need to be unique globally, only within a folder.
@@ -34,7 +33,9 @@ pub struct Document {
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
 	#[serde(default)]
-	pub document_network: graph_craft::document::NodeNetwork,
+	pub document_network: NodeNetwork,
+	#[serde(default)]
+	pub collapsed_folders: Vec<LayerNodeIdentifier>,
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
 	#[serde(default)]
@@ -53,7 +54,7 @@ impl Default for Document {
 			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
 			document_network: {
-				use graph_craft::document::{value::TaggedValue, NodeInput, NodeNetwork};
+				use graph_craft::document::{value::TaggedValue, NodeInput};
 				let mut network = NodeNetwork::default();
 				let node = graph_craft::document::DocumentNode {
 					name: "Output".into(),
@@ -106,12 +107,61 @@ impl Default for Document {
 				network
 			},
 			metadata: Default::default(),
+			collapsed_folders: Vec::new(),
 			commit_hash: String::new(),
 		}
 	}
 }
 
 impl Document {
+	pub fn layer_visible(&self, layer: LayerNodeIdentifier) -> bool {
+		!layer.ancestors(&self.metadata).any(|layer| self.document_network.disabled.contains(&layer.to_node()))
+	}
+
+	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.metadata.selected_layers().filter(|&layer| self.layer_visible(layer))
+	}
+
+	pub fn load_network_structure(&mut self) {
+		self.metadata.load_structure(&self.document_network);
+		self.collapsed_folders.retain(|&layer| self.metadata.layer_exists(layer));
+	}
+
+	/// Runs an intersection test with all layers and a viewport space quad
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
+		self.metadata
+			.root()
+			.decendants(&self.metadata)
+			.filter(|&layer| self.layer_visible(layer))
+			.filter(|&layer| !is_artboard(layer, network))
+			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
+			.map(|(layer, _)| layer)
+	}
+
+	/// Find all of the layers that were clicked on from a viewport space location
+	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
+		self.metadata
+			.root()
+			.decendants(&self.metadata)
+			.filter(|&layer| self.layer_visible(layer))
+			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
+			.map(|(layer, _)| layer)
+	}
+
+	/// Find the layer that has been clicked on from a viewport space location
+	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
+	}
+	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_visible_layers()
+			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.reduce(graphene_core::renderer::Quad::combine_bounds)
+	}
+
 	/// Wrapper around render, that returns the whole document as a Response.
 	pub fn render_root(&mut self, render_data: &RenderData) -> String {
 		// Render and append to the defs section

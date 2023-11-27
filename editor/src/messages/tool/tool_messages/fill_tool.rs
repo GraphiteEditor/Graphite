@@ -68,7 +68,7 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else {
 			return self;
 		};
-		let Some(layer_identifier) = document.metadata().click(input.mouse.position, &document.document_legacy.document_network) else {
+		let Some(layer_identifier) = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network) else {
 			return self;
 		};
 		let layer = layer_identifier.to_path();

@@ -162,7 +162,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.navigation_handler.process_message(
 					message,
 					responses,
-					(&self.document_legacy, document_bounds, ipp, self.metadata().selected_visible_layers_bounding_box_viewport()),
+					(&self.document_legacy, document_bounds, ipp, self.document_legacy.selected_visible_layers_bounding_box_viewport()),
 				);
 			}
 			#[remain::unsorted]
@@ -223,7 +223,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.metadata().selected_visible_layers_bounding_box_viewport() else {
+				let Some(combined_box) = self.document_legacy.selected_visible_layers_bounding_box_viewport() else {
 					return;
 				};
 
@@ -276,13 +276,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			CreateEmptyFolder { parent } => {
 				let id = generate_uuid();
 
-				responses.add(DocumentMessage::DeselectAllLayers);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
 				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DebugPrintDocument => {
 				info!("{:#?}\n{:#?}", self.document_legacy, self.layer_metadata);
@@ -356,7 +356,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// Calculate the bounding box of the region to be exported
 				let bounds = match bounds {
 					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
-					ExportBounds::Selection => self.metadata().selected_visible_layers_bounding_box_viewport(),
+					ExportBounds::Selection => self.document_legacy.selected_visible_layers_bounding_box_viewport(),
 					ExportBounds::Artboard(id) => self.metadata().bounding_box_document(id),
 				}
 				.unwrap_or_default();
@@ -387,7 +387,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.metadata().selected_visible_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.document_legacy.selected_visible_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					for layer in self.metadata().selected_layers() {
@@ -428,7 +428,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
-				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers()).unwrap_or(LayerNodeIdentifier::ROOT);
+				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers(), true).unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let folder_id = generate_uuid();
 
@@ -816,17 +816,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add_front(DocumentMessage::DirtyRenderDocument);
 			}
 			StartTransaction => self.backup(responses),
-			ToggleLayerExpansion { layer_path } => {
-				self.layer_metadata_mut(&layer_path).expanded ^= true;
-				responses.add(DocumentStructureChanged);
-				responses.add(LayerChanged { affected_layer_path: layer_path })
-			}
-			ToggleLayerVisibility { layer_path } => {
-				if let Ok(layer) = self.document_legacy.layer(&layer_path) {
-					let visible = layer.visible;
-					responses.add(DocumentOperation::SetLayerVisibility { path: layer_path, visible: !visible });
-					responses.add(BroadcastEvent::DocumentIsDirty);
+			ToggleLayerExpansion { layer } => {
+				let layer = LayerNodeIdentifier::new(layer, self.network());
+				if self.document_legacy.collapsed_folders.contains(&layer) {
+					self.document_legacy.collapsed_folders.retain(|&collapsed_layer| collapsed_layer != layer);
+				} else {
+					self.document_legacy.collapsed_folders.push(layer);
 				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			Undo => {
 				self.undo_in_progress = true;
@@ -1074,13 +1071,6 @@ impl DocumentMessageHandler {
 		self.layer_metadata.get(path).map(|layer| layer.selected).unwrap_or(false)
 	}
 
-	pub fn selected_visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.selected_layers().filter(|path| match self.document_legacy.layer(path) {
-			Ok(layer) => layer.visible,
-			Err(_) => false,
-		})
-	}
-
 	pub fn visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.all_layers().filter(|path| match self.document_legacy.layer(path) {
 			Ok(layer) => layer.visible,
@@ -1100,7 +1090,7 @@ impl DocumentMessageHandler {
 		for layer_node in folder.children(self.metadata()) {
 			data.push(layer_node.to_node());
 			space += 1;
-			if layer_node.has_children(self.metadata()) {
+			if layer_node.has_children(self.metadata()) && !self.document_legacy.collapsed_folders.contains(&layer_node) {
 				path.push(layer_node.to_node());
 
 				// TODO: Skip if folder is not expanded.
@@ -1414,7 +1404,7 @@ impl DocumentMessageHandler {
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
 		self.metadata()
-			.deepest_common_ancestor(self.metadata().selected_layers())
+			.deepest_common_ancestor(self.metadata().selected_layers(), false)
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 

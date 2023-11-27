@@ -95,7 +95,10 @@ pub enum NodeGraphMessage {
 	ShiftNode {
 		node_id: NodeId,
 	},
-	ToggleHidden,
+	ToggleSelectedHidden,
+	ToggleHidden {
+		node_id: NodeId,
+	},
 	SetHidden {
 		node_id: NodeId,
 		hidden: bool,

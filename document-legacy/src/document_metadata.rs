@@ -55,10 +55,6 @@ impl DocumentMetadata {
 		self.selected_layers().any(|selected| selected == layer)
 	}
 
-	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers()
-	}
-
 	pub fn selected_nodes(&self) -> core::slice::Iter<'_, NodeId> {
 		self.selected_nodes.iter()
 	}
@@ -69,6 +65,14 @@ impl DocumentMetadata {
 
 	pub fn has_selected_nodes(&self) -> bool {
 		!self.selected_nodes.is_empty()
+	}
+
+	pub fn layer_exists(&self, layer: LayerNodeIdentifier) -> bool {
+		self.structure.contains_key(&layer)
+	}
+
+	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
+		self.click_targets.get(&layer)
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -97,13 +101,13 @@ impl DocumentMetadata {
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root.
-	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<LayerNodeIdentifier> {
+	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
 		layers
 			.map(|layer| {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
 				layer_path.reverse();
 
-				if !self.folders.contains(&layer) {
+				if include_self || !self.folders.contains(&layer) {
 					layer_path.pop();
 				}
 
@@ -200,6 +204,11 @@ impl DocumentMetadata {
 				current = sibling_below(graph, current_node);
 			}
 		}
+
+		self.selected_nodes.retain(|node| graph.nodes.contains_key(node));
+		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
+		self.transforms.retain(|layer, _| self.structure.contains_key(layer));
+		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
 }
 
@@ -235,11 +244,11 @@ impl DocumentMetadata {
 	}
 }
 
-fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
 }
 
-fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
 		|| network
 			.primary_flow_from_node(Some(layer.to_node()))
@@ -252,32 +261,6 @@ impl DocumentMetadata {
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
 		self.click_targets = new_click_targets;
-	}
-
-	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		let document_quad = self.document_to_viewport.inverse() * viewport_quad;
-		self.root()
-			.decendants(self)
-			.filter(|&layer| !is_artboard(layer, network))
-			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.transform_to_document(*layer))))
-			.map(|(layer, _)| layer)
-	}
-
-	/// Find all of the layers that were clicked on from a viewport space location
-	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		let point = self.document_to_viewport.inverse().transform_point2(viewport_location);
-		self.root()
-			.decendants(self)
-			.filter_map(|layer| self.click_targets.get(&layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.transform_to_document(*layer))))
-			.map(|(layer, _)| layer)
-	}
-
-	/// Find the layer that has been clicked on from a viewport space location
-	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
@@ -314,10 +297,6 @@ impl DocumentMetadata {
 	/// Get the bounding box of the click target of the specified layer in viewport space
 	pub fn bounding_box_viewport(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(layer, self.transform_to_viewport(layer))
-	}
-
-	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.selected_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
 	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
