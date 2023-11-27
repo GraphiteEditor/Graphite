@@ -30,6 +30,10 @@ use graphene_core::raster::ImageFrame;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
+pub const fn default_bool<const V: bool>() -> bool {
+	V
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub document_legacy: DocumentLegacy,
@@ -40,6 +44,7 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
+	#[serde(default = "default_bool::<true>")]
 	pub rulers_visible: bool,
 	#[serde(skip)]
 	pub snapping_state: SnappingState,
