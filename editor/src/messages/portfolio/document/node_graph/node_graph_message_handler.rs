@@ -193,11 +193,17 @@ impl NodeGraphMessageHandler {
 		if let Some(network) = document.document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();
 
+			// TODO: Replace this with an add node button
+			let add_nodes_label = TextLabel::new("Right Click Graph to Add Nodes").italic(true).widget_holder();
+			widgets.push(add_nodes_label);
+
 			// Don't allow disabling input or output nodes
 			let mut selected_nodes = document.metadata.selected_nodes().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
 
 			// If there is at least one other selected node then show the hide or show button
 			if selected_nodes.next().is_some() {
+				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 				// Check if any of the selected nodes are disabled
 				let is_hidden = document.metadata.selected_nodes().any(|id| network.disabled.contains(id));
 
@@ -205,9 +211,11 @@ impl NodeGraphMessageHandler {
 				let multiple_nodes = selected_nodes.next().is_some();
 
 				// Generate the enable or disable button accordingly
-				let hide_button = TextButton::new(if is_hidden { "Show" } else { "Hide" })
-					.tooltip(if is_hidden { "Show node" } else { "Hide node" }.to_string() + if multiple_nodes { "s" } else { "" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleHidden))
+				let (hide_show_label, hide_show_icon) = if is_hidden { ("Make Visible", "EyeHidden") } else { ("Make Hidden", "EyeVisible") };
+				let hide_button = TextButton::new(hide_show_label)
+					.icon(Some(hide_show_icon.to_string()))
+					.tooltip(if is_hidden { "Show selected nodes/layers" } else { "Hide selected nodes/layers" }.to_string() + if multiple_nodes { "s" } else { "" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedHidden))
 					.on_update(move |_| NodeGraphMessage::ToggleSelectedHidden.into())
 					.widget_holder();
 				widgets.push(hide_button);
@@ -216,13 +224,16 @@ impl NodeGraphMessageHandler {
 			// If only one node is selected then show the preview or stop previewing button
 			let mut selected_nodes = document.metadata.selected_nodes();
 			if let (Some(&node_id), None) = (selected_nodes.next(), selected_nodes.next()) {
+				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
 
 				// Don't show stop previewing button on the original output node
 				if !(is_output && network.previous_outputs_contain(node_id).unwrap_or(true)) {
 					let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
-						.tooltip(if is_output { "Restore preview to Output node" } else { "Preview node" }.to_string() + " (Shortcut: Alt-click node)")
+						.icon(Some("Rescale".to_string()))
+						.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
 						.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 						.widget_holder();
 					widgets.push(output_button);
@@ -962,7 +973,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleHidden)
+			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleSelectedHidden)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
