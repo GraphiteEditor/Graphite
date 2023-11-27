@@ -10,7 +10,6 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
@@ -29,7 +28,6 @@
 		blue: [0, 0, 1],
 		magenta: [1, 0, 1],
 	};
-	const COLOR_SPACE_CHOICES = [[{ label: "sRGB" }]];
 
 	const editor = getContext<Editor>("editor");
 
@@ -37,8 +35,8 @@
 	const dispatch = createEventDispatcher<{ color: Color }>();
 
 	export let color: Color;
-	// export let allowTransparency = false; // TODO: Implement
 	export let allowNone = false;
+	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
@@ -62,6 +60,8 @@
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
 
+	let hexCodeInputWidget: TextInput | undefined;
+
 	$: watchOpen(open);
 	$: watchColor(color);
 
@@ -77,7 +77,11 @@
 	}
 
 	function watchOpen(open: boolean) {
-		if (!open) setInitialHSVA(hue, saturation, value, alpha, isNone);
+		if (open) {
+			setTimeout(() => hexCodeInputWidget?.focus(), 0);
+		} else {
+			setInitialHSVA(hue, saturation, value, alpha, isNone);
+		}
 	}
 
 	function watchColor(color: Color) {
@@ -302,9 +306,9 @@
 					<TextLabel>Initial</TextLabel>
 				</LayoutCol>
 			</LayoutRow>
-			<DropdownInput entries={COLOR_SPACE_CHOICES} selectedIndex={0} disabled={true} tooltip="Color Space and HDR (coming soon)" />
+			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltip="Color model, color space, and HDR (coming soon)" /> -->
 			<LayoutRow>
-				<TextLabel tooltip="Color code in hexadecimal format">Hex</TextLabel>
+				<TextLabel tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel>
 				<Separator />
 				<LayoutRow>
 					<TextInput
@@ -312,6 +316,7 @@
 						on:commitText={({ detail }) => setColorCode(detail)}
 						centered={true}
 						tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}
+						bind:this={hexCodeInputWidget}
 					/>
 				</LayoutRow>
 			</LayoutRow>
@@ -338,9 +343,9 @@
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltip={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}
-					>HSV</TextLabel
-				>
+				<TextLabel tooltip={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}>
+					HSV
+				</TextLabel>
 				<Separator />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
@@ -358,9 +363,9 @@
 							unit={channel === "h" ? "°" : "%"}
 							minWidth={56}
 							tooltip={{
-								h: `Hue component, the "color" along the rainbow`,
-								s: `Saturation component, the "colorfulness" from gray to vivid`,
-								v: "Value (or Brightness), the distance away from being darkened to black",
+								h: `Hue component, the shade along the spectrum of the rainbow`,
+								s: `Saturation component, the vividness from grayscale to full color`,
+								v: "Value component, the brightness from black to full color",
 							}[channel]}
 						/>
 					{/each}

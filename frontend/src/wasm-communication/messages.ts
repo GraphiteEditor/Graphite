@@ -770,11 +770,11 @@ export class ColorButton extends WidgetProps {
 	)
 	value!: Color;
 
+	disabled!: boolean;
+
 	allowNone!: boolean;
 
-	// TODO: Implement
-	// allowTransparency!: boolean;
-	// disabled!: boolean;
+	// allowTransparency!: boolean; // TODO: Implement
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;

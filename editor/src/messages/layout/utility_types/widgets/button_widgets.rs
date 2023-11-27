@@ -125,10 +125,13 @@ pub struct ColorButton {
 	#[widget_builder(constructor)]
 	pub value: Option<Color>,
 
+	pub disabled: bool,
+
 	// TODO: Implement
 	// #[serde(rename = "allowTransparency")]
 	// #[derivative(Default(value = "false"))]
 	// pub allow_transparency: bool,
+	//
 	#[serde(rename = "allowNone")]
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,
