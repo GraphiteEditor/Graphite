@@ -282,7 +282,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let metadata = output_node.metadata.clone();
-		let new_input = output_node.inputs[0].clone();
+		let new_input = output_node.inputs.first().cloned().filter(|input| input.as_node().is_some());
 		let node_id = generate_uuid();
 
 		output_node.metadata.position.x += 8;
@@ -292,7 +292,7 @@ impl<'a> ModifyInputsContext<'a> {
 			warn!("Node type \"{name}\" doesn't exist");
 			return;
 		};
-		let mut new_document_node = node_type.to_document_node_default_inputs([Some(new_input)], metadata);
+		let mut new_document_node = node_type.to_document_node_default_inputs([new_input], metadata);
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
 		self.network.nodes.insert(node_id, new_document_node);
 	}
@@ -575,7 +575,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
+				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
+				let parent_transform = document
+					.metadata
+					.transform_to_viewport(layer_identifier.parent(&document.metadata).unwrap_or(LayerNodeIdentifier::ROOT));
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
@@ -597,8 +600,12 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				transform_in,
 				skip_rerender,
 			} => {
-				let parent_transform = document.metadata.document_to_viewport * document.multiply_transforms(&layer[..layer.len() - 1]).unwrap_or_default();
-				let current_transform = Some(document.metadata.transform_to_viewport(LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network)));
+				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
+				let parent_transform = document
+					.metadata
+					.transform_to_viewport(layer_identifier.parent(&document.metadata).unwrap_or(LayerNodeIdentifier::ROOT));
+
+				let current_transform = Some(document.metadata.transform_to_viewport(layer_identifier));
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);

@@ -156,6 +156,8 @@ impl Document {
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
 		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
 	}
+
+	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_visible_layers()
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))

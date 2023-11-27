@@ -800,6 +800,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			},
 		)],
 		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [Artboard]),
+		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		vec![(
 			NodeIdentifier::new("graphene_core::transform::CullNode<_>"),
 			|args| {

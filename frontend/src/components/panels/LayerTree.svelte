@@ -4,14 +4,8 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import {
-		type LayerPanelEntry,
-		defaultWidgetLayout,
-		patchWidgetLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerTreeStructureJs,
-		UpdateLayerTreeOptionsLayout,
-	} from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayerTreeOptionsLayout } from "@graphite/wasm-communication/messages";
+	import type { LayerType, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -152,6 +146,10 @@
 		editor.instance.deselectAllLayers();
 	}
 
+	function isGroupOrArtboard(layerType: LayerType) {
+		return layerType === "Folder" || layerType === "Artboard";
+	}
+
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
@@ -195,9 +193,9 @@
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					insertFolder = layer.layerType === "Folder" ? layer.path : layer.path.slice(0, layer.path.length - 1);
-					insertIndex = layer.layerType === "Folder" ? 0 : folderIndex + 1;
-					highlightFolder = layer.layerType === "Folder";
+					insertFolder = isGroupOrArtboard(layer.layerType) ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = isGroupOrArtboard(layer.layerType) ? 0 : folderIndex + 1;
+					highlightFolder = isGroupOrArtboard("Folder");
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
@@ -338,7 +336,7 @@
 
 					<div class="indent" style:margin-left={layerIndent(listing.entry)} />
 
-					{#if listing.entry.layerType === "Folder"}
+					{#if isGroupOrArtboard(listing.entry.layerType)}
 						<button class="expand-arrow" class:expanded={listing.entry.layerMetadata.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
 					{/if}
 					<LayoutRow

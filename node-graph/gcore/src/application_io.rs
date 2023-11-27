@@ -1,6 +1,7 @@
 use crate::raster::ImageFrame;
 use crate::text::FontCache;
 use crate::transform::{Footprint, Transform, TransformMut};
+use crate::vector::style::ViewMode;
 use crate::{Color, Node};
 
 use dyn_any::{StaticType, StaticTypeSized};
@@ -151,6 +152,7 @@ pub enum ExportFormat {
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
+	pub view_mode: ViewMode,
 }
 
 pub struct EditorApi<'a, Io> {

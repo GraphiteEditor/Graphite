@@ -222,7 +222,16 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a
 // transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, DAffine2>) {
+	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, DAffine2>) {
+		let mut stack = vec![(LayerNodeIdentifier::ROOT, DAffine2::IDENTITY)];
+		while let Some((layer, transform)) = stack.pop() {
+			for child in layer.children(self) {
+				let Some(new_transform) = new_transforms.get_mut(&child) else { continue };
+				*new_transform = transform * *new_transform;
+
+				stack.push((child, *new_transform));
+			}
+		}
 		self.transforms = new_transforms;
 		self.upstream_transforms = new_upstream_transforms;
 	}
@@ -233,6 +242,10 @@ impl DocumentMetadata {
 			warn!("Tried to access transform of bad layer {layer:?}");
 			DAffine2::IDENTITY
 		})
+	}
+
+	pub fn local_transform(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		self.transform_to_document(layer.parent(self).unwrap_or_default()).inverse() * self.transform_to_document(layer)
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
@@ -299,9 +312,14 @@ impl DocumentMetadata {
 		self.bounding_box_with_transform(layer, self.transform_to_viewport(layer))
 	}
 
-	/// Calculates the document bounds used for scrolling and centring (the layer bounds or the artboard (if applicable))
-	pub fn document_bounds(&self) -> Option<[DVec2; 2]> {
+	/// Calculates the document bounds in viewport space
+	pub fn document_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the document bounds in document space
+	pub fn document_bounds_document_space(&self) -> Option<[DVec2; 2]> {
+		self.all_layers().filter_map(|layer| self.bounding_box_document(layer)).reduce(Quad::combine_bounds)
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> graphene_core::vector::Subpath {
@@ -546,8 +564,8 @@ impl From<NodeId> for LayerNodeIdentifier {
 }
 
 impl From<LayerNodeIdentifier> for NodeId {
-	fn from(identifer: LayerNodeIdentifier) -> Self {
-		identifer.to_node()
+	fn from(identifier: LayerNodeIdentifier) -> Self {
+		identifier.to_node()
 	}
 }
 

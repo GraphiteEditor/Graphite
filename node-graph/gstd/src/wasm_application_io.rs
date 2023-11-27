@@ -6,7 +6,6 @@ use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportForma
 use graphene_core::raster::Image;
 use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
 use graphene_core::transform::Footprint;
-use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 use graphene_core::{
 	raster::{color::SRGBA8, ImageFrame},
@@ -285,7 +284,6 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 	image
 }
 pub use graph_craft::document::value::RenderOutput;
-
 pub struct RenderNode<Data, Surface, Parameter> {
 	data: Data,
 	surface_handle: Surface,
@@ -365,7 +363,7 @@ where
 	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
 		Box::pin(async move {
 			let footprint = editor.render_config.viewport;
-			let render_params = RenderParams::new(ViewMode::Normal, graphene_core::renderer::ImageRenderMode::Base64, None, false);
+			let render_params = RenderParams::new(editor.render_config.view_mode, graphene_core::renderer::ImageRenderMode::Base64, None, false);
 
 			let output_format = editor.render_config.export_format;
 			match output_format {
@@ -393,7 +391,7 @@ where
 			use graphene_core::renderer::ImageRenderMode;
 
 			let footprint = editor.render_config.viewport;
-			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::Base64, None, false);
+			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false);
 
 			let output_format = editor.render_config.export_format;
 			match output_format {
