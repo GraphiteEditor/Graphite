@@ -273,7 +273,6 @@ impl NodeRuntime {
 				continue;
 			};
 			let graphic_element_data = &io_data.output;
-			error!("graphic element data {node_id}: {} {graphic_element_data:?}", graphic_element_data.transform());
 			use graphene_core::renderer::*;
 			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
 			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);

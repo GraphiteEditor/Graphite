@@ -146,7 +146,9 @@
 		editor.instance.deselectAllLayers();
 	}
 
-	const isGroup = (layerType: LayerType) => layerType === "Folder" || layerType === "Artboard";
+	function isGroupOrArtboard(layerType: LayerType) {
+		return layerType === "Folder" || layerType === "Artboard";
+	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
 		const treeChildren = tree.div()?.children;
@@ -191,9 +193,9 @@
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					insertFolder = isGroup(layer.layerType) ? layer.path : layer.path.slice(0, layer.path.length - 1);
-					insertIndex = isGroup(layer.layerType) ? 0 : folderIndex + 1;
-					highlightFolder = isGroup("Folder");
+					insertFolder = isGroupOrArtboard(layer.layerType) ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = isGroupOrArtboard(layer.layerType) ? 0 : folderIndex + 1;
+					highlightFolder = isGroupOrArtboard("Folder");
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
@@ -334,7 +336,7 @@
 
 					<div class="indent" style:margin-left={layerIndent(listing.entry)} />
 
-					{#if isGroup(listing.entry.layerType)}
+					{#if isGroupOrArtboard(listing.entry.layerType)}
 						<button class="expand-arrow" class:expanded={listing.entry.layerMetadata.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
 					{/if}
 					<LayoutRow
