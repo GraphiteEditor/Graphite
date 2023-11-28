@@ -30,8 +30,10 @@ use graphene_core::raster::ImageFrame;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-pub const fn default_bool<const V: bool>() -> bool {
-	V
+/// Utility function for providing a default boolean value to serde.
+#[inline(always)]
+fn return_true() -> bool {
+	true
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -44,11 +46,11 @@ pub struct DocumentMessageHandler {
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
-	#[serde(default = "default_bool::<true>")]
-	pub rulers_visible: bool,
 	#[serde(skip)]
 	pub snapping_state: SnappingState,
 	pub overlays_visible: bool,
+	#[serde(default = "return_true")]
+	pub rulers_visible: bool,
 
 	#[serde(skip)]
 	pub document_undo_history: VecDeque<DocumentSave>,
@@ -85,9 +87,9 @@ impl Default for DocumentMessageHandler {
 
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
-			rulers_visible: true,
 			snapping_state: SnappingState::default(),
 			overlays_visible: true,
+			rulers_visible: true,
 
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
