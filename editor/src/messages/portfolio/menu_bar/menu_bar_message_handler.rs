@@ -290,8 +290,17 @@ impl LayoutHolder for MenuBarMessageHandler {
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
+					],
+					vec![
 						MenuBarEntry {
-							label: "Zoom to Fit".into(),
+							label: "Zoom to Fit Selection".into(),
+							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
+							disabled: no_active_document,
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Zoom to Fit All".into(),
 							shortcut: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
 							action: MenuBarEntry::create_action(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
 							disabled: no_active_document,
@@ -312,23 +321,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![
-						MenuBarEntry {
-							label: "Frame Selected".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::FitViewportToSelection.into()),
-							disabled: no_active_document,
-							..MenuBarEntry::default()
-						},
-						MenuBarEntry {
-							label: "Ruler".into(),
-							icon: Some(if self.rulers_hidden { "CheckboxUnchecked" } else { "CheckboxChecked" }.into()),
-							shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
-							action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
-							disabled: no_active_document,
-							..MenuBarEntry::default()
-						},
-					],
+					vec![MenuBarEntry {
+						label: "Rulers".into(),
+						icon: Some(if self.rulers_hidden { "CheckboxUnchecked" } else { "CheckboxChecked" }.into()),
+						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
+						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
+						disabled: no_active_document,
+						..MenuBarEntry::default()
+					}],
 				]),
 			),
 			MenuBarEntry::new_root(

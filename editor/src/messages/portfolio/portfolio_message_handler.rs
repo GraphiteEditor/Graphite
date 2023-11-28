@@ -560,6 +560,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			OpenDocument,
 			PasteIntoFolder,
 			PrevDocument,
+			ToggleRulers,
 		);
 
 		if self.graph_view_overlay_open {
