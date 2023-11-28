@@ -5,16 +5,18 @@ use crate::messages::prelude::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
-	no_active_document: bool,
-	rulers_hidden: bool,
+	has_active_document: bool,
+	rulers_visible: bool,
 }
 
 impl MessageHandler<MenuBarMessage, (bool, bool)> for MenuBarMessageHandler {
 	#[remain::check]
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, (has_active_document, rulers_hidden): (bool, bool)) {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, (has_active_document, rulers_visible): (bool, bool)) {
 		use MenuBarMessage::*;
-		self.no_active_document = !has_active_document;
-		self.rulers_hidden = rulers_hidden;
+
+		self.has_active_document = has_active_document;
+		self.rulers_visible = rulers_visible;
+
 		#[remain::sorted]
 		match message {
 			SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
@@ -28,7 +30,8 @@ impl MessageHandler<MenuBarMessage, (bool, bool)> for MenuBarMessageHandler {
 
 impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
-		let no_active_document = self.no_active_document;
+		let no_active_document = !self.has_active_document;
+
 		let menu_bar_entries = vec![
 			MenuBarEntry {
 				icon: Some("GraphiteLogo".into()),
@@ -90,6 +93,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Import…".into(),
 							shortcut: action_keys!(PortfolioMessageDiscriminant::Import),
 							action: MenuBarEntry::create_action(|_| PortfolioMessage::Import.into()),
+							disabled: no_active_document, // TODO: Allow importing an image (or dragging it in, or pasting) without an active document to create a new one with an artboards of the image's size (issue #1140)
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
@@ -323,7 +327,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					],
 					vec![MenuBarEntry {
 						label: "Rulers".into(),
-						icon: Some(if self.rulers_hidden { "CheckboxUnchecked" } else { "CheckboxChecked" }.into()),
+						icon: Some(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
 						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRulers.into()),
 						disabled: no_active_document,
