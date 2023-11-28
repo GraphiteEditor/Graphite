@@ -114,6 +114,7 @@ pub enum PortfolioMessage {
 		document_id: u64,
 		layer_path: Vec<LayerId>,
 	},
+	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
 }

@@ -473,6 +473,8 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly spacing!: number;
 
 	readonly interval!: number;
+
+	readonly visible!: boolean;
 }
 
 export class UpdateEyedropperSamplingState extends JsMessage {

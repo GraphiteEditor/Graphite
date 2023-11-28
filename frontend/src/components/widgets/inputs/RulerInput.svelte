@@ -3,6 +3,8 @@
 </script>
 
 <script lang="ts">
+	import { onMount } from "svelte";
+
 	const RULER_THICKNESS = 16;
 	const MAJOR_MARK_THICKNESS = 16;
 	const MEDIUM_MARK_THICKNESS = 6;
@@ -96,6 +98,8 @@
 		const remainder = n % m;
 		return Math.floor(remainder >= 0 ? remainder : remainder + m);
 	}
+
+	onMount(resize);
 </script>
 
 <div class={`ruler-input ${direction.toLowerCase()}`} bind:this={rulerInput}>

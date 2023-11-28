@@ -57,6 +57,7 @@
 	let rulerOrigin: XY = { x: 0, y: 0 };
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
+	let rulersVisible = true;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -213,10 +214,11 @@
 		scrollbarMultiplier = multiplier;
 	}
 
-	export function updateDocumentRulers(origin: XY, spacing: number, interval: number) {
+	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean) {
 		rulerOrigin = origin;
 		rulerSpacing = spacing;
 		rulerInterval = interval;
+		rulersVisible = visible;
 	}
 
 	// Update mouse cursor icon
@@ -371,8 +373,8 @@
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, async (data) => {
 			await tick();
 
-			const { origin, spacing, interval } = data;
-			updateDocumentRulers(origin, spacing, interval);
+			const { origin, spacing, interval, visible } = data;
+			updateDocumentRulers(origin, spacing, interval, visible);
 		});
 
 		// Update mouse cursor icon
@@ -440,13 +442,17 @@
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="table">
-			<LayoutRow class="ruler-or-scrollbar top-ruler">
-				<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
-			</LayoutRow>
+			{#if rulersVisible}
+				<LayoutRow class="ruler-or-scrollbar top-ruler">
+					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+				</LayoutRow>
+			{/if}
 			<LayoutRow class="viewport-container">
-				<LayoutCol class="ruler-or-scrollbar">
-					<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
-				</LayoutCol>
+				{#if rulersVisible}
+					<LayoutCol class="ruler-or-scrollbar">
+						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+					</LayoutCol>
+				{/if}
 				<LayoutCol class="viewport-container" styles={{ cursor: canvasCursor }}>
 					{#if cursorEyedropper}
 						<EyedropperPreview

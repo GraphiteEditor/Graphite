@@ -30,6 +30,12 @@ use graphene_core::raster::ImageFrame;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
+/// Utility function for providing a default boolean value to serde.
+#[inline(always)]
+fn return_true() -> bool {
+	true
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
 	pub document_legacy: DocumentLegacy,
@@ -43,6 +49,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub snapping_state: SnappingState,
 	pub overlays_visible: bool,
+	#[serde(default = "return_true")]
+	pub rulers_visible: bool,
 
 	#[serde(skip)]
 	pub document_undo_history: VecDeque<DocumentSave>,
@@ -81,6 +89,7 @@ impl Default for DocumentMessageHandler {
 			view_mode: ViewMode::default(),
 			snapping_state: SnappingState::default(),
 			overlays_visible: true,
+			rulers_visible: true,
 
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
@@ -614,6 +623,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
 					interval: ruler_interval,
+					visible: self.rulers_visible,
 				});
 			}
 			RenderScrollbars => {

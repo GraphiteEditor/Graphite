@@ -38,7 +38,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, has_active_document),
+			PortfolioMessage::MenuBar(message) => {
+				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.documents.get_mut(&document_id) {
+						self.menu_bar_message_handler.process_message(message, responses, (has_active_document, document.rulers_visible));
+					}
+				}
+			}
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -517,6 +523,14 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					});
 				}
 			}
+			PortfolioMessage::ToggleRulers => {
+				if let Some(document) = self.active_document_mut() {
+					document.rulers_visible = !document.rulers_visible;
+
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(MenuBarMessage::SendLayout);
+				}
+			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses);
@@ -552,6 +566,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			OpenDocument,
 			PasteIntoFolder,
 			PrevDocument,
+			ToggleRulers,
 		);
 
 		if self.graph_view_overlay_open {
