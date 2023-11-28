@@ -23,7 +23,6 @@ pub struct PortfolioMessageHandler {
 	documents: HashMap<u64, DocumentMessageHandler>,
 	document_ids: Vec<u64>,
 	active_document_id: Option<u64>,
-	rulers_hidden: bool,
 	graph_view_overlay_open: bool,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -39,7 +38,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			PortfolioMessage::MenuBar(message) => self.menu_bar_message_handler.process_message(message, responses, (has_active_document, self.rulers_hidden)),
+			PortfolioMessage::MenuBar(message) => {
+				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.documents.get_mut(&document_id) {
+						self.menu_bar_message_handler.process_message(message, responses, (has_active_document, document.rulers_visible));
+					}
+				}
+			}
 			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -50,7 +55,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
 							graph_view_overlay_open: self.graph_view_overlay_open,
-							rulers_visible: !self.rulers_hidden,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -67,7 +71,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
 						graph_view_overlay_open: self.graph_view_overlay_open,
-						rulers_visible: !self.rulers_hidden,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -521,9 +524,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
-				self.rulers_hidden = !self.rulers_hidden;
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(MenuBarMessage::SendLayout);
+				if let Some(document) = self.active_document_mut() {
+					document.rulers_visible = !document.rulers_visible;
+
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(MenuBarMessage::SendLayout);
+				}
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {

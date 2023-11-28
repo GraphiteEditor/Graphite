@@ -112,7 +112,6 @@ pub struct DocumentInputs<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub graph_view_overlay_open: bool,
-	pub rulers_visible: bool,
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
@@ -124,10 +123,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			persistent_data,
 			executor,
 			graph_view_overlay_open,
-			rulers_visible,
 		} = document_inputs;
 		use DocumentMessage::*;
-		self.rulers_visible = rulers_visible;
+
 		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
 
 		#[remain::sorted]
