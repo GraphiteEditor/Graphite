@@ -258,6 +258,7 @@ impl NodeRuntime {
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
 	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: &[Vec<u64>], responses: &mut VecDeque<Message>) {
 		let mut image_data: Vec<_> = Vec::new();
+		self.thumbnails.retain(|id, _| monitor_nodes.iter().any(|node_path| node_path.contains(id)));
 		for node_path in monitor_nodes {
 			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");

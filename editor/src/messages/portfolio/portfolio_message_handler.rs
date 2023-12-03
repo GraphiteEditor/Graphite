@@ -691,7 +691,6 @@ impl PortfolioMessageHandler {
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-			warn!("Polling node graph with no document");
 			return;
 		};
 
