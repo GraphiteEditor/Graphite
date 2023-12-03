@@ -1,6 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::ClickTarget;
-use graphene_core::transform::{Footprint, Transform};
+use graphene_core::transform::Footprint;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -10,7 +10,6 @@ use graphene_core::renderer::Quad;
 
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
-	transforms: HashMap<LayerNodeIdentifier, DAffine2>,
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	artboards: HashSet<LayerNodeIdentifier>,
@@ -24,7 +23,6 @@ pub struct DocumentMetadata {
 impl Default for DocumentMetadata {
 	fn default() -> Self {
 		Self {
-			transforms: HashMap::new(),
 			upstream_transforms: HashMap::new(),
 			click_targets: HashMap::new(),
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
@@ -208,7 +206,6 @@ impl DocumentMetadata {
 
 		self.selected_nodes.retain(|node| graph.nodes.contains_key(node));
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
-		self.transforms.retain(|layer, _| self.structure.contains_key(layer));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
 }
@@ -223,41 +220,29 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a
 // transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
-	// TODO: check if we can remove the new_transforms parameter all together to make the api cleaner
-	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
-		let inverse_document_to_viewport = self.document_to_viewport.inverse();
-		// Set the layer transform to its footprint
-		for (id, (footprint, transform)) in new_upstream_transforms.iter() {
-			let transform = inverse_document_to_viewport * footprint.transform();
-			self.transforms.insert(LayerNodeIdentifier::new_unchecked(*id), transform);
-		}
-		self.transforms = new_transforms;
+	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
 		self.upstream_transforms = new_upstream_transforms;
 	}
 
 	/// Access the cached transformation to document space from layer space
 	pub fn transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.transforms.get(&layer).copied().unwrap_or_else(|| {
-			// TODO: If the node graph has not been executed yet, the list of transforms will be empty.
-			// This is a temporary fix to avoid console spam but we should think about changing the return
-			// type of this function to be `Option<DAffine2>` because returning IDENTITY does not necessarily make sense.
-			if !self.transforms.is_empty() {
-				warn!("Tried to access transform of bad layer {layer:?}");
-			}
-			DAffine2::IDENTITY
-		})
-	}
-
-	pub fn local_transform(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.transform_to_document(layer.parent(self).unwrap_or_default()).inverse() * self.transform_to_document(layer)
+		self.document_to_viewport.inverse() * self.transform_to_viewport(layer)
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.document_to_viewport * self.transform_to_document(layer)
+		self.upstream_transforms
+			.get(&layer.to_node())
+			.copied()
+			.map(|(footprint, transform)| footprint.transform * transform)
+			.unwrap_or(DAffine2::IDENTITY)
 	}
 
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
 		self.upstream_transforms.get(&node_id).copied().map(|(_, transform)| transform).unwrap_or(DAffine2::IDENTITY)
+	}
+
+	pub fn downstream_transform_to_viewport(&self, node_id: NodeId) -> DAffine2 {
+		self.upstream_transforms.get(&node_id).copied().map(|(footprint, _)| footprint.transform).unwrap_or(DAffine2::IDENTITY)
 	}
 }
 

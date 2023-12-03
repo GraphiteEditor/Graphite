@@ -34,7 +34,7 @@ impl OriginalTransforms {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				for &layer in selected {
-					layer_map.entry(layer).or_insert_with(|| document.metadata.local_transform(layer));
+					layer_map.entry(layer).or_insert_with(|| document.metadata.upstream_transform(layer.to_node()));
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -368,8 +368,7 @@ impl<'a> Selected<'a> {
 
 	fn transform_layer(document: &Document, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let Some(&original_transform) = original_transform else { return };
-		let parent = layer.parent(&document.metadata);
-		let to = parent.map(|parent| document.metadata.transform_to_viewport(parent)).unwrap_or(document.metadata.document_to_viewport);
+		let to = document.metadata.downstream_transform_to_viewport(layer.to_node());
 		let new = to.inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer: layer.to_path(),
