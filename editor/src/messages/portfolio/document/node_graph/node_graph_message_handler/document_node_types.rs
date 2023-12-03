@@ -258,7 +258,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Artboard",
 			category: "General",
-			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _>"),
+			identifier: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
@@ -268,6 +268,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
+			manual_composition: Some(concrete!(Footprint)),
 			..Default::default()
 		},
 		DocumentNodeBlueprint {

@@ -14,6 +14,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
@@ -21,7 +22,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 
-use graphene_core::{Color, SurfaceFrame, SurfaceId};
+use graphene_core::{Color, GraphicElementData, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -56,10 +57,10 @@ pub struct NodeRuntime {
 	imaginate_preferences: ImaginatePreferences,
 	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	pub(crate) transforms: HashMap<NodeId, DAffine2>,
-	pub(crate) upstream_transforms: HashMap<NodeId, DAffine2>,
+	pub(crate) upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	graph_hash: Option<u64>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
+	monitor_nodes: Vec<Vec<NodeId>>,
 }
 
 enum NodeRuntimeMessage {
@@ -81,8 +82,7 @@ pub(crate) struct GenerationResponse {
 	updates: VecDeque<Message>,
 	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
-	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
-	new_upstream_transforms: HashMap<NodeId, DAffine2>,
+	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
 
@@ -109,8 +109,6 @@ thread_local! {
 	pub(crate) static NODE_RUNTIME: Rc<RefCell<Option<NodeRuntime>>> = Rc::new(RefCell::new(None));
 }
 
-type MonitorNodes = Vec<Vec<NodeId>>;
-
 impl NodeRuntime {
 	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
 		let executor = DynamicExecutor::default();
@@ -124,9 +122,9 @@ impl NodeRuntime {
 			wasm_io: None,
 			canvas_cache: HashMap::new(),
 			click_targets: HashMap::new(),
-			transforms: HashMap::new(),
 			graph_hash: None,
 			upstream_transforms: HashMap::new(),
+			monitor_nodes: Vec::new(),
 		}
 	}
 	pub async fn run(&mut self) {
@@ -151,19 +149,18 @@ impl NodeRuntime {
 					..
 				}) => {
 					let transform = render_config.viewport.transform;
-					let (result, monitor_nodes) = self.execute_network(&path, graph, render_config).await;
+					let result = self.execute_network(&path, graph, render_config).await;
 					let mut responses = VecDeque::new();
-					if let Some(ref monitor_nodes) = monitor_nodes {
-						self.update_thumbnails(&path, monitor_nodes, &mut responses);
-						self.update_upstream_transforms(monitor_nodes);
-					}
+
+					self.update_thumbnails(&path, &mut responses);
+					self.update_upstream_transforms();
+
 					let response = GenerationResponse {
 						generation_id,
 						result,
 						updates: responses,
 						new_thumbnails: self.thumbnails.clone(),
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
-						new_transforms: self.transforms.clone().into_iter().map(|(id, transform)| (LayerNodeIdentifier::new_unchecked(id), transform)).collect(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
 						transform,
 					};
@@ -173,7 +170,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, render_config: RenderConfig) -> (Result<TaggedValue, String>, Option<MonitorNodes>) {
+	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -200,12 +197,10 @@ impl NodeRuntime {
 			self.graph_hash = None;
 		}
 
-		let mut cached_monitor_nodes = None;
-
 		if self.graph_hash.is_none() {
 			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
 
-			let monitor_nodes = scoped_network
+			self.monitor_nodes = scoped_network
 				.recursive_nodes()
 				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
 				.map(|(_, node)| node.path.clone().unwrap_or_default())
@@ -216,16 +211,15 @@ impl NodeRuntime {
 			let c = Compiler {};
 			let proto_network = match c.compile_single(scoped_network) {
 				Ok(network) => network,
-				Err(e) => return (Err(e), Some(monitor_nodes)),
+				Err(e) => return Err(e),
 			};
 
 			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 			if let Err(e) = self.executor.update(proto_network).await {
 				error!("Failed to update executor:\n{e}");
-				return (Err(e), Some(monitor_nodes));
+				return Err(e);
 			}
 
-			cached_monitor_nodes = Some(monitor_nodes);
 			self.graph_hash = Some(hash_code);
 		}
 
@@ -239,7 +233,7 @@ impl NodeRuntime {
 		};
 		let result = match result {
 			Ok(value) => value,
-			Err(e) => return (Err(e), cached_monitor_nodes),
+			Err(e) => return Err(e),
 		};
 
 		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
@@ -252,13 +246,14 @@ impl NodeRuntime {
 				}
 			}
 		}
-		(Ok(result), cached_monitor_nodes)
+		Ok(result)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
-	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], monitor_nodes: &[Vec<u64>], responses: &mut VecDeque<Message>) {
+	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], responses: &mut VecDeque<Message>) {
 		let mut image_data: Vec<_> = Vec::new();
-		for node_path in monitor_nodes {
+		self.thumbnails.retain(|id, _| self.monitor_nodes.iter().any(|node_path| node_path.contains(id)));
+		for node_path in &self.monitor_nodes {
 			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");
 				continue;
@@ -268,8 +263,7 @@ impl NodeRuntime {
 				continue;
 			};
 
-			let Some(io_data) = value.downcast_ref::<graphene_core::memo::IORecord<Footprint, graphene_core::GraphicElementData>>() else {
-				warn!("Failed to downcast thumbnail to graphic element data");
+			let Some(io_data) = value.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElementData>>() else {
 				continue;
 			};
 			let graphic_element_data = &io_data.output;
@@ -283,9 +277,8 @@ impl NodeRuntime {
 
 			let click_targets = self.click_targets.entry(node_id).or_default();
 			click_targets.clear();
+			// Add the graphic element data's click targets to the click targets vector
 			graphic_element_data.add_click_targets(click_targets);
-
-			self.transforms.insert(node_id, graphic_element_data.transform());
 
 			let old_thumbnail = self.thumbnails.entry(node_id).or_default();
 			if *old_thumbnail != render.svg {
@@ -305,8 +298,8 @@ impl NodeRuntime {
 		}
 	}
 
-	pub fn update_upstream_transforms(&mut self, monitor_nodes: &[Vec<u64>]) {
-		for node_path in monitor_nodes {
+	pub fn update_upstream_transforms(&mut self) {
+		for node_path in &self.monitor_nodes {
 			let Some(node_id) = node_path.get(node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");
 				continue;
@@ -315,14 +308,16 @@ impl NodeRuntime {
 				warn!("Failed to introspect monitor node for upstream transforms");
 				continue;
 			};
-			let Some(transform) = value
-				.downcast_ref::<graphene_core::memo::IORecord<Footprint, VectorData>>()
-				.map(|vector_data| vector_data.output.transform())
-				.or_else(|| {
-					value
-						.downcast_ref::<graphene_core::memo::IORecord<Footprint, ImageFrame<Color>>>()
-						.map(|image| image.output.transform())
-				})
+
+			fn try_downcast<T: Transform + 'static>(value: &dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
+				let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
+				let transform = io_data.output.transform();
+				Some((io_data.input, transform))
+			}
+
+			let Some(transform) = try_downcast::<VectorData>(value.as_ref())
+				.or_else(|| try_downcast::<ImageFrame<Color>>(value.as_ref()))
+				.or_else(|| try_downcast::<GraphicElementData>(value.as_ref()))
 			else {
 				warn!("Failed to downcast transform input");
 				continue;
@@ -527,7 +522,6 @@ impl NodeGraphExecutor {
 					updates,
 					new_thumbnails,
 					new_click_targets,
-					new_transforms,
 					new_upstream_transforms,
 					transform,
 				}) => {
@@ -566,7 +560,7 @@ impl NodeGraphExecutor {
 						});
 					}
 					self.thumbnails = new_thumbnails;
-					document.metadata.update_transforms(new_transforms, new_upstream_transforms);
+					document.metadata.update_transforms(new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;

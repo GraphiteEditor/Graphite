@@ -844,7 +844,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ToGraphicElementData, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: GraphicGroup, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: Artboard, params: []),
-		register_node!(graphene_core::ConstructArtboardNode<_, _, _, _>, input: GraphicGroup, params: [glam::IVec2, glam::IVec2, Color, bool]),
+		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
 	];
 	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {

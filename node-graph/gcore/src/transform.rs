@@ -9,6 +9,7 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
+use crate::Artboard;
 use crate::GraphicElementData;
 use crate::GraphicGroup;
 use crate::Node;
@@ -76,7 +77,7 @@ impl Transform for GraphicElementData {
 			GraphicElementData::ImageFrame(image_frame) => image_frame.transform(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
 			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.transform(),
-			GraphicElementData::Artboard(artboard) => artboard.graphic_group.transform(),
+			GraphicElementData::Artboard(artboard) => artboard.transform(),
 		}
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
@@ -85,7 +86,7 @@ impl Transform for GraphicElementData {
 			GraphicElementData::ImageFrame(image_frame) => image_frame.local_pivot(pivot),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
 			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.local_pivot(pivot),
-			GraphicElementData::Artboard(artboard) => artboard.graphic_group.local_pivot(pivot),
+			GraphicElementData::Artboard(artboard) => artboard.local_pivot(pivot),
 		}
 	}
 	fn decompose_scale(&self) -> DVec2 {
@@ -94,7 +95,7 @@ impl Transform for GraphicElementData {
 			GraphicElementData::ImageFrame(image_frame) => image_frame.decompose_scale(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
 			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.decompose_scale(),
-			GraphicElementData::Artboard(artboard) => artboard.graphic_group.decompose_scale(),
+			GraphicElementData::Artboard(artboard) => artboard.decompose_scale(),
 		}
 	}
 }
@@ -105,7 +106,7 @@ impl TransformMut for GraphicElementData {
 			GraphicElementData::ImageFrame(image_frame) => image_frame.transform_mut(),
 			GraphicElementData::Text(_) => todo!("Transform of text"),
 			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.transform_mut(),
-			GraphicElementData::Artboard(artboard) => artboard.graphic_group.transform_mut(),
+			GraphicElementData::Artboard(_) => todo!("Transform of artboard"),
 		}
 	}
 }
@@ -121,6 +122,15 @@ impl Transform for VectorData {
 impl TransformMut for VectorData {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
+	}
+}
+
+impl Transform for Artboard {
+	fn transform(&self) -> DAffine2 {
+		DAffine2::IDENTITY
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.location.as_dvec2() + self.dimensions.as_dvec2() * pivot
 	}
 }
 

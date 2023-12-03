@@ -284,15 +284,20 @@ impl GraphicElementRendered for Artboard {
 			"g",
 			|attributes| {
 				attributes.push("class", "artboard");
-				attributes.push("transform", format_transform_matrix(self.graphic_group.transform));
+				attributes.push(
+					"transform",
+					format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform),
+				);
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
 					use std::fmt::Write;
 					write!(
 						&mut attributes.0.svg_defs,
-						r##"<clipPath id="{id}"><rect x="{}" y="{}" width="{}" height="{}"/></clipPath>"##,
-						self.location.x, self.location.y, self.dimensions.x, self.dimensions.y
+						r##"<clipPath id="{id}"><rect x="0" y="0" width="{}" height="{}" transform="{}"/></clipPath>"##,
+						self.dimensions.x,
+						self.dimensions.y,
+						format_transform_matrix(self.graphic_group.transform.inverse())
 					)
 					.unwrap();
 					attributes.push("clip-path", selector);
