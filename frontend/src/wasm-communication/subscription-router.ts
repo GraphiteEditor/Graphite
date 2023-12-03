@@ -44,16 +44,26 @@ export function createSubscriptionRouter() {
 		// The resulting `message` is an instance of a class that extends `JsMessage`.
 		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, instance);
 
-		// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
-		const callback = subscriptions[message.constructor.name];
-
 		// If we have constructed a valid message, then we try and execute the callback that the frontend has associated with this message.
-		// The frontend should always have a callback for all messages, and so we display an error if one was not found.
-		if (message) {
-			if (callback) callback(message);
-			// eslint-disable-next-line no-console
-			else console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
-		}
+		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.
+		let retries = 0;
+		const callCallback = () => {
+			// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
+			const callback = subscriptions[message.constructor.name];
+
+			// Attempt to call the callback, but try again several times on the next stack frame if it is not yet registered due to message ordering.
+			if (callback) {
+				callback(message);
+			} else if (retries <= 3) {
+				retries += 1;
+				setTimeout(callCallback, 0);
+			} else {
+				// eslint-disable-next-line no-console
+				console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
+			}
+		};
+
+		callCallback();
 	};
 
 	return {
