@@ -54,6 +54,10 @@ pub trait Node<'i, Input: 'i>: 'i {
 	fn eval(&'i self, input: Input) -> Self::Output;
 	/// Resets the node, e.g. the LetNode's cache is set to None.
 	fn reset(&self) {}
+	/// Returns the name of the node for diagnostic purposes.
+	fn node_name(&self) -> &'static str {
+		core::any::type_name::<Self>()
+	}
 	/// Serialize the node which is used for the `introspect` function which can retrieve values from monitor nodes.
 	#[cfg(feature = "std")]
 	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
@@ -98,10 +102,6 @@ where
 	Self::Output: 'i + StaticTypeSized,
 	Input: 'i + StaticTypeSized,
 {
-	fn node_name(&self) -> &'static str {
-		core::any::type_name::<Self>()
-	}
-
 	fn input_type(&self) -> TypeId {
 		TypeId::of::<Input::Static>()
 	}

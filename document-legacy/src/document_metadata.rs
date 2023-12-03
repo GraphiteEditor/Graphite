@@ -1,5 +1,6 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::ClickTarget;
+use graphene_core::transform::{Footprint, Transform};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -10,7 +11,7 @@ use graphene_core::renderer::Quad;
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	transforms: HashMap<LayerNodeIdentifier, DAffine2>,
-	upstream_transforms: HashMap<NodeId, DAffine2>,
+	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	artboards: HashSet<LayerNodeIdentifier>,
 	folders: HashSet<LayerNodeIdentifier>,
@@ -222,14 +223,10 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a
 // transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, DAffine2>) {
-		let mut stack = vec![(LayerNodeIdentifier::ROOT, DAffine2::IDENTITY)];
-		while let Some((layer, transform)) = stack.pop() {
-			for child in layer.children(self) {
-				let Some(new_transform) = new_transforms.get_mut(&child) else { continue };
-				*new_transform = transform * *new_transform;
-
-				stack.push((child, *new_transform));
+	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
+		for (layer, transform) in new_transforms.iter_mut() {
+			if let Some((footprint, _)) = new_upstream_transforms.get(&layer.to_node()) {
+				*transform = footprint.transform() * (*transform);
 			}
 		}
 		self.transforms = new_transforms;
@@ -239,7 +236,12 @@ impl DocumentMetadata {
 	/// Access the cached transformation to document space from layer space
 	pub fn transform_to_document(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		self.transforms.get(&layer).copied().unwrap_or_else(|| {
-			warn!("Tried to access transform of bad layer {layer:?}");
+			// TODO: If the node graph has not been executed yet, the list of transforms will be empty.
+			// This is a temporary fix to avoid console spam but we should think about changing the return
+			// type of this function to be `Option<DAffine2>` because returning IDENTITY does not necessarily make sense.
+			if !self.transforms.is_empty() {
+				warn!("Tried to access transform of bad layer {layer:?}");
+			}
 			DAffine2::IDENTITY
 		})
 	}
@@ -253,7 +255,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
-		self.upstream_transforms.get(&node_id).copied().unwrap_or(DAffine2::IDENTITY)
+		self.upstream_transforms.get(&node_id).copied().map(|(_, transform)| transform).unwrap_or(DAffine2::IDENTITY)
 	}
 }
 

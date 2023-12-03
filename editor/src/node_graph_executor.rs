@@ -14,6 +14,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, Type};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
 use graphene_core::text::FontCache;
@@ -57,7 +58,7 @@ pub struct NodeRuntime {
 	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) transforms: HashMap<NodeId, DAffine2>,
-	pub(crate) upstream_transforms: HashMap<NodeId, DAffine2>,
+	pub(crate) upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	graph_hash: Option<u64>,
 	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 }
@@ -82,7 +83,7 @@ pub(crate) struct GenerationResponse {
 	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_transforms: HashMap<LayerNodeIdentifier, DAffine2>,
-	new_upstream_transforms: HashMap<NodeId, DAffine2>,
+	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	transform: DAffine2,
 }
 
@@ -269,7 +270,7 @@ impl NodeRuntime {
 				continue;
 			};
 
-			let Some(io_data) = value.downcast_ref::<graphene_core::memo::IORecord<Footprint, graphene_core::GraphicElementData>>() else {
+			let Some(io_data) = value.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElementData>>() else {
 				warn!("Failed to downcast thumbnail to graphic element data");
 				continue;
 			};
@@ -284,6 +285,7 @@ impl NodeRuntime {
 
 			let click_targets = self.click_targets.entry(node_id).or_default();
 			click_targets.clear();
+			// Add the graphic element data's click targets to the click targets vector
 			graphic_element_data.add_click_targets(click_targets);
 
 			self.transforms.insert(node_id, graphic_element_data.transform());
@@ -316,19 +318,16 @@ impl NodeRuntime {
 				warn!("Failed to introspect monitor node for upstream transforms");
 				continue;
 			};
-			let Some(transform) = value
-				.downcast_ref::<graphene_core::memo::IORecord<Footprint, VectorData>>()
-				.map(|vector_data| vector_data.output.transform())
-				.or_else(|| {
-					value
-						.downcast_ref::<graphene_core::memo::IORecord<Footprint, ImageFrame<Color>>>()
-						.map(|image| image.output.transform())
-				})
-				.or_else(|| {
-					value
-						.downcast_ref::<graphene_core::memo::IORecord<Footprint, GraphicElementData>>()
-						.map(|image| image.output.transform())
-				})
+
+			fn try_downcast<T: Transform + 'static>(value: & dyn std::any::Any) -> Option<(Footprint, DAffine2)> {
+				let io_data = value.downcast_ref::<IORecord<Footprint, T>>()?;
+				let transform = io_data.output.transform();
+				Some((io_data.input, transform))
+			}
+
+			let Some(transform) = try_downcast::<VectorData>(value.as_ref())
+				.or_else(|| try_downcast::<ImageFrame<Color>>(value.as_ref()))
+				.or_else(|| try_downcast::<GraphicElementData>(value.as_ref()))
 			else {
 				warn!("Failed to downcast transform input");
 				continue;
