@@ -224,9 +224,13 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
 	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
-		for (layer, transform) in new_transforms.iter_mut() {
-			if let Some((footprint, _)) = new_upstream_transforms.get(&layer.to_node()) {
-				*transform = footprint.transform() * (*transform);
+		let mut stack = vec![(LayerNodeIdentifier::ROOT, DAffine2::IDENTITY)];
+		while let Some((layer, transform)) = stack.pop() {
+			for child in layer.children(self) {
+				let Some(new_transform) = new_transforms.get_mut(&child) else { continue };
+				*new_transform = transform * *new_transform;
+
+				stack.push((child, *new_transform));
 			}
 		}
 		self.transforms = new_transforms;
