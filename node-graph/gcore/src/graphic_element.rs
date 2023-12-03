@@ -1,4 +1,5 @@
 use crate::raster::{BlendMode, ImageFrame};
+use crate::transform::Footprint;
 use crate::vector::VectorData;
 use crate::{Color, Node};
 
@@ -136,7 +137,8 @@ fn to_graphic_element_data<Data: Into<GraphicElementData>>(graphic_element_data:
 	graphic_element_data.into()
 }
 
-pub struct ConstructArtboardNode<Location, Dimensions, Background, Clip> {
+pub struct ConstructArtboardNode<Contents, Location, Dimensions, Background, Clip> {
+	contents: Contents,
 	location: Location,
 	dimensions: Dimensions,
 	background: Background,
@@ -144,7 +146,16 @@ pub struct ConstructArtboardNode<Location, Dimensions, Background, Clip> {
 }
 
 #[node_fn(ConstructArtboardNode)]
-fn construct_artboard(graphic_group: GraphicGroup, location: IVec2, dimensions: IVec2, background: Color, clip: bool) -> Artboard {
+async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
+	mut footprint: Footprint,
+	contents: impl Node<Footprint, Output = Fut>,
+	location: IVec2,
+	dimensions: IVec2,
+	background: Color,
+	clip: bool,
+) -> Artboard {
+	footprint.transform = footprint.transform * DAffine2::from_translation(location.as_dvec2());
+	let graphic_group = self.contents.eval(footprint).await;
 	Artboard {
 		graphic_group,
 		location: location.min(location + dimensions),
