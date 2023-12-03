@@ -665,7 +665,7 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName === "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (String(node.id))}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName === "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
@@ -744,7 +744,7 @@
 			</div>
 		{/each}
 		<!-- Nodes -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName !== "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (String(node.id))}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName !== "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			<div
