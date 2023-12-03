@@ -264,7 +264,6 @@ impl NodeRuntime {
 			};
 
 			let Some(io_data) = value.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElementData>>() else {
-				warn!("Failed to downcast thumbnail to graphic element data");
 				continue;
 			};
 			let graphic_element_data = &io_data.output;

@@ -581,16 +581,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
-
-				let transform = transform.to_cols_array();
-				responses.add(match transform_in {
-					TransformIn::Local => Operation::TransformLayer { path: layer, transform },
-					TransformIn::Scope { scope } => {
-						let scope = scope.to_cols_array();
-						Operation::TransformLayerInScope { path: layer, transform, scope }
-					}
-					TransformIn::Viewport => Operation::TransformLayerInViewport { path: layer, transform },
-				});
 			}
 			GraphOperationMessage::TransformSet {
 				layer,
