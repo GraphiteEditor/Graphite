@@ -9,6 +9,7 @@ use crate::raster::bbox::AxisAlignedBbox;
 use crate::raster::ImageFrame;
 use crate::raster::Pixel;
 use crate::vector::VectorData;
+use crate::Artboard;
 use crate::GraphicElementData;
 use crate::GraphicGroup;
 use crate::Node;
@@ -121,6 +122,21 @@ impl Transform for VectorData {
 impl TransformMut for VectorData {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
+	}
+}
+
+impl Transform for Artboard {
+	fn transform(&self) -> DAffine2 {
+		self.graphic_group.transform()
+	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.graphic_group.local_pivot(pivot)
+	}
+}
+
+impl TransformMut for Artboard {
+	fn transform_mut(&mut self) -> &mut DAffine2 {
+		&mut self.graphic_group.transform
 	}
 }
 

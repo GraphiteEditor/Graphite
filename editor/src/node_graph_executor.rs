@@ -21,7 +21,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 
-use graphene_core::{Color, SurfaceFrame, SurfaceId};
+use graphene_core::{Color, GraphicElementData, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -322,6 +322,11 @@ impl NodeRuntime {
 				.or_else(|| {
 					value
 						.downcast_ref::<graphene_core::memo::IORecord<Footprint, ImageFrame<Color>>>()
+						.map(|image| image.output.transform())
+				})
+				.or_else(|| {
+					value
+						.downcast_ref::<graphene_core::memo::IORecord<Footprint, GraphicElementData>>()
 						.map(|image| image.output.transform())
 				})
 			else {
