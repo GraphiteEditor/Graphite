@@ -223,15 +223,13 @@ fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a
 // transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
+	// TODO: check if we can remove the new_transforms parameter all together to make the api cleaner
 	pub fn update_transforms(&mut self, mut new_transforms: HashMap<LayerNodeIdentifier, DAffine2>, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
-		let mut stack = vec![(LayerNodeIdentifier::ROOT, DAffine2::IDENTITY)];
-		while let Some((layer, transform)) = stack.pop() {
-			for child in layer.children(self) {
-				let Some(new_transform) = new_transforms.get_mut(&child) else { continue };
-				*new_transform = transform * *new_transform;
-
-				stack.push((child, *new_transform));
-			}
+		let inverse_document_to_viewport = self.document_to_viewport.inverse();
+		// Set the layer transform to its footprint
+		for (id, (footprint, transform)) in new_upstream_transforms.iter() {
+			let transform = inverse_document_to_viewport * footprint.transform();
+			self.transforms.insert(LayerNodeIdentifier::new_unchecked(*id), transform);
 		}
 		self.transforms = new_transforms;
 		self.upstream_transforms = new_upstream_transforms;
