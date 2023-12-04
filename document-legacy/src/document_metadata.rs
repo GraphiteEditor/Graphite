@@ -230,19 +230,25 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.upstream_transforms
-			.get(&layer.to_node())
+		layer
+			.ancestors(self)
+			.filter_map(|layer| self.upstream_transforms.get(&layer.to_node()))
 			.copied()
 			.map(|(footprint, transform)| footprint.transform * transform)
-			.unwrap_or(DAffine2::IDENTITY)
+			.next()
+			.unwrap_or(self.document_to_viewport)
 	}
 
 	pub fn upstream_transform(&self, node_id: NodeId) -> DAffine2 {
 		self.upstream_transforms.get(&node_id).copied().map(|(_, transform)| transform).unwrap_or(DAffine2::IDENTITY)
 	}
 
-	pub fn downstream_transform_to_viewport(&self, node_id: NodeId) -> DAffine2 {
-		self.upstream_transforms.get(&node_id).copied().map(|(footprint, _)| footprint.transform).unwrap_or(DAffine2::IDENTITY)
+	pub fn downstream_transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		self.upstream_transforms
+			.get(&layer.to_node())
+			.copied()
+			.map(|(footprint, _)| footprint.transform)
+			.unwrap_or_else(|| self.transform_to_viewport(layer))
 	}
 }
 

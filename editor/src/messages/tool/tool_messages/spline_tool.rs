@@ -203,8 +203,6 @@ impl Fsm for SplineToolFsmState {
 			..
 		} = tool_action_data;
 
-		let transform = document.metadata().document_to_viewport;
-
 		let ToolMessage::Spline(event) = event else {
 			return self;
 		};
@@ -217,6 +215,9 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 
+				let parent = document.new_layer_parent();
+				let transform = document.metadata().transform_to_viewport(parent);
+
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
@@ -228,7 +229,7 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let layer = graph_modification_utils::new_vector_layer(vec![], generate_uuid(), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![], generate_uuid(), parent, responses);
 
 				responses.add(GraphOperationMessage::FillSet {
 					layer: layer.to_path(),
@@ -244,7 +245,11 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
+				let Some(layer) = tool_data.layer else {
+					return SplineToolFsmState::Ready;
+				};
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
 				if let Some(last_pos) = tool_data.points.last() {
@@ -259,7 +264,11 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
+				let Some(layer) = tool_data.layer else {
+					return SplineToolFsmState::Ready;
+				};
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 

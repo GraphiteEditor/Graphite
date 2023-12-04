@@ -192,8 +192,6 @@ impl Fsm for FreehandToolFsmState {
 			document, global_tool_data, input, ..
 		} = tool_action_data;
 
-		let transform = document.metadata().document_to_viewport;
-
 		let ToolMessage::Freehand(event) = event else {
 			return self;
 		};
@@ -202,6 +200,8 @@ impl Fsm for FreehandToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 
+				let parent = document.new_layer_parent();
+				let transform = document.metadata().transform_to_viewport(parent);
 				let pos = transform.inverse().transform_point2(input.mouse.position);
 
 				tool_data.dragged = false;
@@ -211,7 +211,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), parent, responses);
 				tool_data.layer = Some(layer);
 
 				responses.add(GraphOperationMessage::FillSet {
@@ -227,10 +227,11 @@ impl Fsm for FreehandToolFsmState {
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
-				let pos = transform.inverse().transform_point2(input.mouse.position);
+				if let Some(layer) = tool_data.layer.clone() {
+					let transform = document.metadata().transform_to_viewport(layer);
+					let pos = transform.inverse().transform_point2(input.mouse.position);
 
-				if tool_data.last_point != pos {
-					if let Some(layer) = tool_data.layer.clone() {
+					if tool_data.last_point != pos {
 						let manipulator_group = ManipulatorGroup::new_anchor(pos);
 						let modification = VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group };
 						responses.add(GraphOperationMessage::Vector { layer: layer.to_path(), modification });

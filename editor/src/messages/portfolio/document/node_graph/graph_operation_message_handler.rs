@@ -437,11 +437,6 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn vector_modify(&mut self, modification: VectorDataModification) {
-		// TODO: Allow modifying a graph with a "Text" node.
-		if self.network.nodes.values().any(|node| node.name == "Text") {
-			return;
-		}
-
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let mut empty = false;
@@ -576,7 +571,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
-				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier.to_node());
+				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier);
 				let bounds = LayerBounds::new(document, &layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_layer(&layer, document, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
@@ -589,7 +584,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				skip_rerender,
 			} => {
 				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
-				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier.to_node());
+				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier);
 
 				let current_transform = Some(document.metadata.transform_to_viewport(layer_identifier));
 				let bounds = LayerBounds::new(document, &layer);
