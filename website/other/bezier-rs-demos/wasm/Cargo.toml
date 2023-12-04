@@ -19,7 +19,7 @@ log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 wasm-bindgen = { workspace = true }
 serde_json = { workspace = true }
-serde-wasm-bindgen = "0.5"
+serde-wasm-bindgen = "0.6"
 js-sys = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 

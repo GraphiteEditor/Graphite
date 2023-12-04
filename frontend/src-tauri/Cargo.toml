@@ -17,7 +17,7 @@ tauri-build = { version = "1.2", features = [] }
 [dependencies]
 serde_json = { workspace = true }
 serde = { workspace = true }
-tauri = { version = "1.2", features = [
+tauri = { version = "1.5", features = [
 	"api-all",
 	"devtools",
 	"linux-protocol-headers",

@@ -12,7 +12,7 @@ serde_json = "1.0"
 graph-craft = { version = "0.1.0", path = "../graph-craft", features = [
 	"serde",
 ] }
-graphene-core = { workspace = true, path = "../gcore" }
+graphene-core = { workspace = true }
 gpu-executor = { version = "0.1.0", path = "../gpu-executor" }
 gpu-compiler-bin-wrapper = { version = "0.1.0", path = "../gpu-compiler/gpu-compiler-bin-wrapper" }
 anyhow = { workspace = true }
