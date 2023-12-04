@@ -368,7 +368,7 @@ impl<'a> Selected<'a> {
 
 	fn transform_layer(document: &Document, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let Some(&original_transform) = original_transform else { return };
-		let to = document.metadata.downstream_transform_to_viewport(layer.to_node());
+		let to = document.metadata.downstream_transform_to_viewport(layer);
 		let new = to.inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer: layer.to_path(),

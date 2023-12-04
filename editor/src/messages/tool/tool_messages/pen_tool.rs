@@ -245,7 +245,7 @@ impl PenToolData {
 		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Get the position and set properties
-		let transform = document.metadata().document_to_viewport * document.metadata().transform_to_viewport(parent);
+		let transform = document.metadata().transform_to_viewport(parent);
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
 		let start_position = transform.inverse().transform_point2(snapped_position);
 		self.weight = line_weight;
