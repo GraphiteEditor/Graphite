@@ -1,11 +1,12 @@
 <script lang="ts" context="module">
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+
 	import Document from "@graphite/components/panels/Document.svelte";
 	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 
 	const PANEL_COMPONENTS = {
 		Document,
@@ -83,6 +84,7 @@
 				if (file?.type.startsWith("image")) {
 					const imageData = await extractPixelData(file);
 					editor.instance.openNewDocument(imageData.width, imageData.height);
+					await tick();
 					editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 					console.log("Doc opened");
 				}
