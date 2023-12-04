@@ -539,8 +539,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
 
 				// Align the layer with the mouse or center of viewport
-				let viewport_location = mouse.map_or(ipp.viewport_bounds.center(), |pos| pos.into());
-				let center_in_viewport = DAffine2::from_translation(viewport_location - ipp.viewport_bounds.top_left);
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
+				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
 				let center_in_viewport_layerspace = center_in_viewport;
 
 				// Scale the image to fit into a 512x512 box
