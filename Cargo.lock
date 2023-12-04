@@ -2315,6 +2315,7 @@ dependencies = [
  "test-case",
  "thiserror",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wgpu-executor",
 ]
 
