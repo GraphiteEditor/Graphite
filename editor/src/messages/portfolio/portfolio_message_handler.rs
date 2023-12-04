@@ -1,6 +1,6 @@
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
+use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -12,6 +12,7 @@ use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::layers::style::RenderData;
+use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -392,6 +393,24 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						}
 					}
 				}
+			}
+			PortfolioMessage::OpenNewDocument { x, y } => {
+				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				warn!("Testing things");
+
+				responses.add(PortfolioMessage::NewDocumentWithName { name: "Untitled Doc".to_string() });
+
+				let id = generate_uuid();
+				let dimensions = UVec2 { x, y };
+				responses.add(GraphOperationMessage::NewArtboard {
+					id,
+					artboard: graphene_core::Artboard::new(IVec2::ZERO, dimensions.as_ivec2()),
+				});
+				responses.add(NavigationMessage::FitViewportToBounds {
+					bounds: [DVec2::ZERO, dimensions.as_dvec2()],
+					padding_scale_factor: None,
+					prevent_zoom_past_100: true,
+				});
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {

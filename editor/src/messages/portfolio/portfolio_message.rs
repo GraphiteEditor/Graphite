@@ -88,6 +88,10 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
+	OpenNewDocument {
+		x: u32,
+		y: u32,
+	},
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,

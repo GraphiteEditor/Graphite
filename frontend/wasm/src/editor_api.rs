@@ -330,6 +330,12 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = openNewDocument)]
+	pub fn open_new_document(&self, x: u32, y: u32) {
+		let message = PortfolioMessage::OpenNewDocument { x, y };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
 	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFileWithId {

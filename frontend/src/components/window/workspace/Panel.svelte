@@ -5,6 +5,7 @@
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 
 	const PANEL_COMPONENTS = {
 		Document,
@@ -49,6 +50,73 @@
 
 		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
+	}
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		const files = e.dataTransfer?.files;
+		if (!files) {
+			return;
+		}
+		let file = files[0];
+		if (isGraphiteFile(file)) {
+			let filename = "Untitled Document";
+			let reader = new FileReader();
+			reader.onload = (e) => {
+				const fileContent = e.target?.result;
+				editor.instance.openDocumentFile(filename, fileContent);
+
+				// Now you have the file content as a string
+				console.log(fileContent);
+			};
+
+			// Read the file as text
+			reader.readAsText(file);
+		} else {
+			const { dataTransfer } = e;
+			if (!dataTransfer) return;
+			e.preventDefault();
+
+			//	setTimeout(() => editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height), 1000);
+			Array.from(dataTransfer.items).forEach(async (item) => {
+				const file = item.getAsFile();
+				console.log(file?.type);
+				if (file?.type.startsWith("image")) {
+					const imageData = await extractPixelData(file);
+					editor.instance.openNewDocument(imageData.width, imageData.height);
+					editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+					console.log("Doc opened");
+				}
+			});
+		}
+	}
+
+	function isGraphiteFile(file: File): boolean {
+		const extension = file.name.split(".").pop()?.toLowerCase();
+		return extension === "graphite";
+	}
+
+	function handleDropv1(e: DragEvent) {
+		e.preventDefault();
+		const files = e.dataTransfer?.files;
+		if (!files) {
+			return;
+		}
+		let filename = "Untitled Document";
+		let file = files[0];
+		let reader = new FileReader();
+		reader.onload = (e) => {
+			const fileContent = e.target?.result;
+			editor.instance.openDocumentFile(filename, fileContent);
+
+			// Now you have the file content as a string
+			console.log(fileContent);
+		};
+
+		// Read the file as text
+		reader.readAsText(file);
+	}
+	function handleDrag(e: DragEvent) {
+		e.preventDefault();
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -111,8 +179,8 @@
 		{#if panelType}
 			<svelte:component this={PANEL_COMPONENTS[panelType]} />
 		{:else}
-			<LayoutCol class="empty-panel">
-				<LayoutCol class="content">
+			<LayoutCol class="empty-panel " on:dragover={handleDrag} on:drop={handleDrop}>
+				<LayoutCol class="content ">
 					<LayoutRow class="logotype">
 						<IconLabel icon="GraphiteLogotypeSolid" />
 					</LayoutRow>
