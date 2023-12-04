@@ -12,49 +12,47 @@ license = "Apache-2.0"
 
 [features]
 default = ["wasm"]
-gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "graphene-core/gpu", "wgpu-executor", "gpu-executor"]
+gpu = [
+	"interpreted-executor/gpu",
+	"graphene-std/gpu",
+	"graphene-core/gpu",
+	"wgpu-executor",
+	"gpu-executor",
+]
 quantization = [
 	"graphene-std/quantization",
 	"interpreted-executor/quantization",
 ]
-wasm = ["wasm-bindgen", "future-executor", "graphene-std/wasm"]
+wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 
 [dependencies]
-log = "0.4"
-bitflags = { version = "2.3", features = ["serde"] }
-thiserror = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
+log = { workspace = true }
+bitflags = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 graphite-proc-macros = { path = "../proc-macros" }
-bezier-rs = { path = "../libraries/bezier-rs" }
-glam = { version = "0.24", features = ["serde", "debug-glam-assert"] }
-remain = "0.2.2"
-derivative = "2.2.0"
-once_cell = "1.13.0" # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
+bezier-rs = { workspace = true }
+glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
+remain = { workspace = true }
+derivative = { workspace = true }
 specta.workspace = true
-
-# Node graph
-image = { version = "0.24", default-features = false, features = [
-	"bmp",
-	"png",
-] }
+image = { workspace = true, features = ["bmp", "png"] }
 graph-craft = { path = "../node-graph/graph-craft" }
 wgpu-executor = { path = "../node-graph/wgpu-executor", optional = true }
 gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
-dyn-any = { path = "../libraries/dyn-any" }
+dyn-any = { workspace = true }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd" }
-future-executor = { path = "../node-graph/future-executor", optional = true }
 num_enum = "0.6.1"
-
 wasm-bindgen = { workspace = true, optional = true }
-
-[dependencies.document-legacy]
-path = "../document-legacy"
-package = "graphite-document-legacy"
+wasm-bindgen-futures = { workspace = true, optional = true }
+document-legacy = { workspace = true }
+# Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
+once_cell = "1.13.0"
 
 [dev-dependencies]
 env_logger = "0.10"
 test-case = "3.1"
-futures = "0.3.28"
+futures = { workspace = true }

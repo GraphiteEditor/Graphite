@@ -16,10 +16,6 @@ pub async fn compile(networks: Vec<ProtoNetwork>, inputs: Vec<Type>, outputs: Ve
 	})
 }
 
-pub fn compile_sync(networks: Vec<ProtoNetwork>, inputs: Vec<Type>, outputs: Vec<Type>, io: ShaderIO) -> Result<Shader, reqwest::Error> {
-	future_executor::block_on(compile(networks, inputs, outputs, io))
-}
-
 // TODO: should we add the entry point as a field?
 /// A compiled shader with type annotations.
 pub struct Shader {

@@ -9,62 +9,61 @@ license = "MIT OR Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-std = ["dyn-any", "dyn-any/std", "alloc", "glam/std", "specta", "num-traits/std", "rustybuzz", "image"]
-default = ["async", "serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
+std = [
+	"dyn-any",
+	"dyn-any/std",
+	"alloc",
+	"glam/std",
+	"specta",
+	"num-traits/std",
+	"rustybuzz",
+	"image",
+]
+default = ["serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
 log = ["dep:log"]
-serde = ["dep:serde", "glam/serde", "bezier-rs/serde", "bezier-rs/serde", "base64"]
+serde = [
+	"dep:serde",
+	"glam/serde",
+	"bezier-rs/serde",
+	"bezier-rs/serde",
+	"base64",
+]
 gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
-async = ["async-trait", "alloc"]
 nightly = []
 alloc = ["dyn-any", "bezier-rs"]
 type_id_logging = []
 wasm = ["web-sys"]
 
 [dependencies]
-dyn-any = { path = "../../libraries/dyn-any", features = [
-	"derive",
-	"glam",
-], optional = true, default-features = false }
-
-spirv-std = { version = "0.9", optional = true }
-bytemuck = { version = "1.8", features = ["derive"] }
-async-trait = { version = "0.1", optional = true }
-serde = { version = "1.0", features = [
-	"derive",
-	"rc"
-], optional = true, default-features = false }
-log = { version = "0.4", optional = true }
-
-rand_chacha = { version = "0.3.1", optional = true }
-bezier-rs = { path = "../../libraries/bezier-rs", optional = true }
-kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
-	"serde",
-], optional = true }
-spin = "0.9.2"
-glam = { version = "0.24", default-features = false, features = [
+dyn-any = { workspace = true, optional = true }
+spirv-std = { workspace = true, optional = true }
+bytemuck = { workspace = true, features = ["derive"] }
+serde = { workspace = true, optional = true, features = ["derive"] }
+log = { workspace = true, optional = true }
+rand_chacha = { workspace = true, optional = true }
+bezier-rs = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
+glam = { workspace = true, default-features = false, features = [
 	"scalar-math",
 ] }
-node-macro = { path = "../node-macro" }
-base64 = { version = "0.21", optional = true }
-image = { version = "0.24", optional = true, default-features = false, features = [
+node-macro = { workspace = true }
+base64 = { workspace = true, optional = true }
+image = { workspace = true, optional = true, default-features = false, features = [
 	"png",
 ] }
-specta.workspace = true
-specta.optional = true
+specta = { workspace = true, optional = true }
 
-rustybuzz = { version = "0.8.0", optional = true }
+rustybuzz = { workspace = true, optional = true }
 
-num-derive = { version = "0.4" }
-num-traits = { version = "0.2.15", default-features = false, features = [
-	"i128",
-] }
+num-derive = { workspace = true }
+num-traits = { workspace = true, default-features = false, features = ["i128"] }
 
 
 wasm-bindgen = { workspace = true, optional = true }
-js-sys = { version = "0.3.55", optional = true }
-usvg = "0.35.0"
+js-sys = { workspace = true, optional = true }
+usvg = { workspace = true }
 
 [dependencies.web-sys]
-version = "0.3.4"
+workspace = true
 optional = true
 features = ["HtmlCanvasElement"]

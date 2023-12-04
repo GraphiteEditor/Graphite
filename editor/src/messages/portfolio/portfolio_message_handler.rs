@@ -293,7 +293,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.persistent_data.imaginate.poll_server_check();
 				#[cfg(target_arch = "wasm32")]
 				if let Some(fut) = self.persistent_data.imaginate.initiate_server_check() {
-					future_executor::spawn(async move {
+					wasm_bindgen_futures::spawn_local(async move {
 						let () = fut.await;
 						use wasm_bindgen::prelude::*;
 

@@ -20,36 +20,29 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 editor = { path = "../../editor", package = "graphite-editor" }
-document-legacy = { path = "../../document-legacy", package = "graphite-document-legacy" }
-graph-craft = { path = "../../node-graph/graph-craft" }
-log = "0.4"
-graphene-core = { path = "../../node-graph/gcore", features = [
-	"async",
-	"std",
-	"alloc",
-] }
-serde = { version = "1.0", features = ["derive"] }
+document-legacy = { workspace = true }
+graph-craft = { workspace = true }
+log = { workspace = true }
+graphene-core = { workspace = true, features = ["std", "alloc"] }
+serde = { workspace = true, features = ["derive"] }
 wasm-bindgen = { workspace = true }
-serde-wasm-bindgen = "0.5.0"
-js-sys = "0.3.63"
-wasm-bindgen-futures = "0.4.36"
+serde-wasm-bindgen = "0.6"
+js-sys = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 ron = { version = "0.8", optional = true }
-bezier-rs = { path = "../../libraries/bezier-rs" }
+bezier-rs = { workspace = true }
 # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 wgpu = { version = "0.17", features = ["fragile-send-sync-non-atomic-wasm"] }
 meval = "0.2.0"
 
 [dependencies.web-sys]
-version = "0.3.4"
+workspace = true
 features = [
 	"Window",
 	"CanvasRenderingContext2d",
 	"Document",
 	"HtmlCanvasElement",
 ]
-
-[dev-dependencies]
-wasm-bindgen-test = "0.3.22"
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

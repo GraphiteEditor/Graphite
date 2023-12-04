@@ -13,20 +13,15 @@ quantization = ["graphene-std/quantization"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-graphene-core = { path = "../gcore", features = ["async", "std"] }
+graphene-core = { workspace = true, features = ["std"] }
 graphene-std = { path = "../gstd" }
 graph-craft = { path = "../graph-craft" }
 gpu-executor = { path = "../gpu-executor" }
 wgpu-executor = { path = "../wgpu-executor" }
-dyn-any = { path = "../../libraries/dyn-any", features = [
-	"log-bad-types",
-	"glam",
-] }
-num-traits = "0.2"
-dyn-clone = "1.0"
-log = "0.4"
-serde = { version = "1", features = ["derive"], optional = true }
-glam = { version = "0.24" }
-once_cell = "1.18" # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-futures = "0.3.28"
-typed-arena = "2.0.2"
+dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }
+num-traits = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, optional = true }
+glam = { workspace = true }
+once_cell = "1.18"                                                   # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
+futures = { workspace = true }

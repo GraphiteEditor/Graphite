@@ -19,13 +19,13 @@ default = ["serde-discriminant"]
 serde-discriminant = []
 
 [dependencies]
-proc-macro2 = "1"
-syn = { version = "2.0", features = ["full"] }
-quote = "1.0.9"
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
+quote = { workspace = true }
 
 [dev-dependencies.editor]
 path = "../editor"
 package = "graphite-editor"
 
 [dev-dependencies]
-serde = "1"
+serde = { workspace = true }

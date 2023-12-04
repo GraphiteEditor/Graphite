@@ -7,6 +7,7 @@ use bezier_rs::Subpath;
 pub use quad::Quad;
 
 use glam::{DAffine2, DVec2};
+use usvg::TreeParsing;
 
 mod quad;
 
@@ -182,11 +183,38 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	result.push(')');
 	result
 }
+fn to_transform(transform: DAffine2) -> usvg::Transform {
+	let cols = transform.to_cols_array();
+	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
+}
 
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
+	fn to_usvg_node(&self) -> usvg::Node {
+		let mut render = SvgRender::new();
+		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::BlobUrl, None, false);
+		self.render_svg(&mut render, &render_params);
+		render.format_svg(DVec2::ZERO, DVec2::ONE);
+		let svg = render.svg.to_string();
+
+		let opt = usvg::Options::default();
+
+		let tree = usvg::Tree::from_str(&svg, &opt).expect("Failed to parse SVG");
+		tree.root.clone()
+	}
+	fn to_usvg_tree(&self, resolution: glam::UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
+		let root_node = self.to_usvg_node();
+		usvg::Tree {
+			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
+			view_box: usvg::ViewBox {
+				rect: usvg::NonZeroRect::from_ltrb(viewbox[0].x as f32, viewbox[0].y as f32, viewbox[1].x as f32, viewbox[1].y as f32).unwrap(),
+				aspect: usvg::AspectRatio::default(),
+			},
+			root: root_node.clone(),
+		}
+	}
 }
 
 impl GraphicElementRendered for GraphicGroup {
@@ -212,6 +240,14 @@ impl GraphicElementRendered for GraphicGroup {
 			.reduce(Quad::combine_bounds)
 	}
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn to_usvg_node(&self) -> usvg::Node {
+		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+		for element in self.iter() {
+			root_node.append(element.to_usvg_node());
+		}
+		root_node
+	}
 }
 
 impl GraphicElementRendered for VectorData {
@@ -249,6 +285,40 @@ impl GraphicElementRendered for VectorData {
 			subpath
 		};
 		click_targets.extend(self.subpaths.iter().cloned().map(update_closed).map(|subpath| ClickTarget { stroke_width, subpath }))
+	}
+
+	fn to_usvg_node(&self) -> usvg::Node {
+		use bezier_rs::BezierHandles;
+		use usvg::tiny_skia_path::PathBuilder;
+		let mut builder = PathBuilder::new();
+		let vector_data = self;
+
+		let transform = to_transform(vector_data.transform);
+		for subpath in vector_data.subpaths.iter() {
+			let start = vector_data.transform.transform_point2(subpath[0].anchor);
+			builder.move_to(start.x as f32, start.y as f32);
+			for bezier in subpath.iter() {
+				bezier.apply_transformation(|pos| vector_data.transform.transform_point2(pos));
+				let end = bezier.end;
+				match bezier.handles {
+					BezierHandles::Linear => builder.line_to(end.x as f32, end.y as f32),
+					BezierHandles::Quadratic { handle } => builder.quad_to(handle.x as f32, handle.y as f32, end.x as f32, end.y as f32),
+					BezierHandles::Cubic { handle_start, handle_end } => {
+						builder.cubic_to(handle_start.x as f32, handle_start.y as f32, handle_end.x as f32, handle_end.y as f32, end.x as f32, end.y as f32)
+					}
+				}
+			}
+			if subpath.closed {
+				builder.close()
+			}
+		}
+		let path = builder.finish().unwrap();
+		let mut path = usvg::Path::new(path.into());
+		path.transform = transform;
+		// TODO: use proper style
+		path.fill = None;
+		path.stroke = Some(usvg::Stroke::default());
+		usvg::Node::new(usvg::NodeKind::Path(path))
 	}
 }
 
@@ -379,6 +449,25 @@ impl GraphicElementRendered for ImageFrame<Color> {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
 	}
+
+	fn to_usvg_node(&self) -> usvg::Node {
+		let image_frame = self;
+		if image_frame.image.width * image_frame.image.height == 0 {
+			return usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+		}
+		let png = image_frame.image.to_png();
+		usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
+			id: String::new(),
+			transform: to_transform(image_frame.transform),
+			visibility: usvg::Visibility::Visible,
+			view_box: usvg::ViewBox {
+				rect: usvg::NonZeroRect::from_xywh(0., 0., 1., 1.).unwrap(),
+				aspect: usvg::AspectRatio::default(),
+			},
+			rendering_mode: usvg::ImageRendering::OptimizeSpeed,
+			kind: usvg::ImageKind::PNG(png.into()),
+		}))
+	}
 }
 
 impl GraphicElementRendered for GraphicElementData {
@@ -411,6 +500,16 @@ impl GraphicElementRendered for GraphicElementData {
 			GraphicElementData::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
+
+	fn to_usvg_node(&self) -> usvg::Node {
+		match self {
+			GraphicElementData::VectorShape(vector_data) => vector_data.to_usvg_node(),
+			GraphicElementData::ImageFrame(image_frame) => image_frame.to_usvg_node(),
+			GraphicElementData::Text(text) => text.to_usvg_node(),
+			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
+			GraphicElementData::Artboard(artboard) => artboard.to_usvg_node(),
+		}
+	}
 }
 
 /// Used to stop rust complaining about upstream traits adding display implementations to `Option<Color>`. This would not be an issue as we control that crate.
@@ -436,6 +535,26 @@ impl<T: Primitive> GraphicElementRendered for T {
 	}
 
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn to_usvg_node(&self) -> usvg::Node {
+		let text = self;
+		usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
+			id: String::new(),
+			transform: usvg::Transform::identity(),
+			rendering_mode: usvg::TextRendering::OptimizeSpeed,
+			positions: Vec::new(),
+			rotate: Vec::new(),
+			writing_mode: usvg::WritingMode::LeftToRight,
+			chunks: vec![usvg::TextChunk {
+				text: text.to_string(),
+				x: None,
+				y: None,
+				anchor: usvg::TextAnchor::Start,
+				spans: vec![],
+				text_flow: usvg::TextFlow::Linear,
+			}],
+		}))
+	}
 }
 
 impl GraphicElementRendered for Option<Color> {
