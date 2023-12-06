@@ -198,23 +198,16 @@
 	.layout-col {
 		.scrollable-x,
 		.scrollable-y {
+			overflow: hidden;
+
 			// Firefox (standardized in CSS, but less capable)
 			scrollbar-width: thin;
 			scrollbar-color: var(--color-5-dullgray) transparent;
-
-			&:not(:hover) {
-				scrollbar-width: none;
-			}
 
 			// WebKit (only in Chromium/Safari but more capable)
 			&::-webkit-scrollbar {
 				width: calc(2px + 6px + 2px);
 				height: calc(2px + 6px + 2px);
-			}
-
-			&:not(:hover)::-webkit-scrollbar {
-				width: 0;
-				height: 0;
 			}
 
 			&::-webkit-scrollbar-track {

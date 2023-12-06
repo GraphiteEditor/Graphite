@@ -12,7 +12,7 @@
 	let self: HTMLDivElement | undefined;
 
 	$: extraClasses = Object.entries(classes)
-		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 	$: extraStyles = Object.entries(styles)
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))

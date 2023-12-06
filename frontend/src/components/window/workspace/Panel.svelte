@@ -178,7 +178,7 @@
 
 				.tab {
 					flex: 0 1 auto;
-					height: 100%;
+					height: 28px;
 					padding: 0 8px;
 					align-items: center;
 					position: relative;
@@ -216,7 +216,7 @@
 						white-space: nowrap;
 						text-overflow: ellipsis;
 						// Height and line-height required because https://stackoverflow.com/a/21611191/775283
-						height: 100%;
+						height: 28px;
 						line-height: 28px;
 					}
 

@@ -1271,17 +1271,17 @@ export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetSection;
 
 export type WidgetSpanColumn = { columnWidgets: Widget[] };
 export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
-	return Boolean((layoutColumn as WidgetSpanColumn).columnWidgets);
+	return Boolean((layoutColumn as WidgetSpanColumn)?.columnWidgets);
 }
 
 export type WidgetSpanRow = { rowWidgets: Widget[] };
 export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
-	return Boolean((layoutRow as WidgetSpanRow).rowWidgets);
+	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
 export type WidgetSection = { name: string; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
-	return Boolean((layoutRow as WidgetSection).layout);
+	return Boolean((layoutRow as WidgetSection)?.layout);
 }
 
 // Unpacking rust types to more usable type in the frontend

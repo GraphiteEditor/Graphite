@@ -363,7 +363,6 @@
 			height: 32px;
 			flex: 0 0 auto;
 			margin: 0 4px;
-			align-items: center;
 
 			.widget-span {
 				width: 100%;

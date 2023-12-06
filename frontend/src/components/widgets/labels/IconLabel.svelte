@@ -14,7 +14,7 @@
 		return `size-${ICONS[icon].size}`;
 	})(icon);
 	$: extraClasses = Object.entries(classes)
-		.flatMap((classAndState) => (classAndState[1] ? [classAndState[0]] : []))
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 </script>
 

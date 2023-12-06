@@ -9,11 +9,15 @@
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any; // TODO: Give type
 
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+
 	let expanded = true;
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
-<LayoutCol class="widget-section">
+<LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
@@ -38,6 +42,7 @@
 <style lang="scss" global>
 	.widget-section {
 		flex: 0 0 auto;
+		margin: 0 4px;
 
 		.header {
 			text-align: left;

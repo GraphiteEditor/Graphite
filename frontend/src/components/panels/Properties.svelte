@@ -30,23 +30,23 @@
 	<LayoutRow class="options-bar">
 		<WidgetLayout layout={propertiesOptionsLayout} />
 	</LayoutRow>
-	<LayoutRow class="sections" scrollableY={true}>
+	<LayoutCol class="sections" scrollableY={true}>
 		<WidgetLayout layout={propertiesSectionsLayout} />
-	</LayoutRow>
+	</LayoutCol>
 </LayoutCol>
 
 <style lang="scss" global>
 	.properties {
 		height: 100%;
-
-		.widget-layout {
-			flex: 1 1 100%;
-			margin: 0 4px;
-		}
+		flex: 1 1 100%;
 
 		.options-bar {
-			height: 32px;
-			flex: 0 0 auto;
+			min-height: 32px;
+			margin: 0 4px;
+
+			.widget-span {
+				width: 100%;
+			}
 		}
 
 		.sections {

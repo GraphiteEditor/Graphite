@@ -21,6 +21,7 @@
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
 		UpdateDocumentNodeRender,
+		isWidgetSpanRow,
 	} from "@graphite/wasm-communication/messages";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -80,6 +81,39 @@
 
 	$: canvasWidthCSS = canvasDimensionCSS(canvasSvgWidth);
 	$: canvasHeightCSS = canvasDimensionCSS(canvasSvgHeight);
+	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
+		if (!isWidgetSpanRow(layoutGroup)) return undefined;
+
+		let totalSeparators = 0;
+		let totalToolRowsFor1Columns = 0;
+		let totalToolRowsFor2Columns = 0;
+		let totalToolRowsFor3Columns = 0;
+
+		const tally = () => {
+			totalToolRowsFor1Columns += toolsInCurrentGroup;
+			totalToolRowsFor2Columns += Math.ceil(toolsInCurrentGroup / 2);
+			totalToolRowsFor3Columns += Math.ceil(toolsInCurrentGroup / 3);
+			toolsInCurrentGroup = 0;
+		};
+
+		let toolsInCurrentGroup = 0;
+		layoutGroup.rowWidgets.forEach((widget) => {
+			if (widget.props.kind === "Separator") {
+				totalSeparators += 1;
+				tally();
+			} else {
+				toolsInCurrentGroup += 1;
+			}
+		});
+		tally();
+
+		return {
+			totalSeparators,
+			totalToolRowsFor1Columns,
+			totalToolRowsFor2Columns,
+			totalToolRowsFor3Columns,
+		};
+	})($document.toolShelfLayout.layout[0]);
 
 	function pasteFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -428,17 +462,26 @@
 			<WidgetLayout layout={$document.nodeGraphBarLayout} />
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="shelf-and-table">
+	<LayoutRow
+		class="shelf-and-table"
+		styles={toolShelfTotalToolsAndSeparators && {
+			"--total-separators": toolShelfTotalToolsAndSeparators.totalSeparators,
+			"--total-tool-rows-for-1-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor1Columns,
+			"--total-tool-rows-for-2-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor2Columns,
+			"--total-tool-rows-for-3-columns": toolShelfTotalToolsAndSeparators.totalToolRowsFor3Columns,
+		}}
+	>
 		<LayoutCol class="shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
 					<WidgetLayout layout={$document.toolShelfLayout} />
 				</LayoutCol>
+			{:else}
+				<LayoutRow class="spacer" />
 			{/if}
-			<LayoutCol class="spacer" />
 			<LayoutCol class="shelf-bottom-widgets">
-				<WidgetLayout layout={$document.graphViewOverlayButtonLayout} />
-				<WidgetLayout layout={$document.workingColorsLayout} />
+				<WidgetLayout class={"graph-overlay-button-area"} layout={$document.graphViewOverlayButtonLayout} />
+				<WidgetLayout class={"working-colors-button-area"} layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="table">
@@ -523,71 +566,102 @@
 				min-width: 40px;
 			}
 
-			&.for-graph .widget-layout {
-				flex-direction: row;
-				flex-grow: 1;
+			&.for-graph {
 				justify-content: space-between;
 			}
 		}
 
 		.shelf-and-table {
+			// Enables usage of the `100cqh` unit to reference the height of this container element.
+			container-type: size;
+			// Be sure to recalculate this if the items below the tools (working colors and graph overlay buttons) change height in the future.
+			--height-of-elements-below-tools: 104px;
+			// Target height for the tools within the container above the lower elements.
+			--available-height: calc(100cqh - var(--height-of-elements-below-tools));
+			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest number of columns to be used.
+			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
+			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
+			// Evaluates to 0px (if false) or 1px (if true). We multiply by 1000000 to force the result to be an integer 0 or 1 and not interpolate values in-between.
+			--needs-at-least-2-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--1-col-required-height))) * 1000000), 1px));
+			--needs-at-least-3-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--2-col-required-height))) * 1000000), 1px));
+			--columns: calc(1px + var(--needs-at-least-2-columns) + var(--needs-at-least-3-columns));
+
 			.shelf {
-				width: 32px;
 				flex: 0 0 auto;
+				justify-content: space-between;
 
 				.tools {
 					flex: 0 1 auto;
 
-					.icon-button[title^="Coming Soon"] {
-						opacity: 0.25;
-						transition: opacity 0.25s;
-
-						&:hover {
-							opacity: 1;
-						}
+					// Firefox-specific workaround for this bug causing the scrollbar to cover up the toolbar instead of widening to accommodate the scrollbar:
+					// <https://bugzilla.mozilla.org/show_bug.cgi?id=764076>
+					// <https://stackoverflow.com/questions/63278303/firefox-does-not-take-vertical-scrollbar-width-into-account-when-calculating-par>
+					// Remove this when the Firefox bug is fixed.
+					@-moz-document url-prefix() {
+						--available-height-plus-1: calc(var(--available-height) + 1px);
+						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
+						--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
+						--firefox-scrollbar-width-space-occupied: 8; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
+						padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
 					}
 
-					.icon-button:not(.active) {
-						.color-general {
-							fill: var(--color-data-general);
+					.widget-span {
+						flex-wrap: wrap;
+						width: calc(var(--columns) * 32);
+
+						.icon-button {
+							margin: 0;
+
+							&[title^="Coming Soon"] {
+								opacity: 0.25;
+								transition: opacity 0.25s;
+
+								&:hover {
+									opacity: 1;
+								}
+							}
+
+							&:not(.active) {
+								.color-general {
+									fill: var(--color-data-general);
+								}
+
+								.color-vector {
+									fill: var(--color-data-vector);
+								}
+
+								.color-raster {
+									fill: var(--color-data-raster);
+								}
+							}
 						}
 
-						.color-vector {
-							fill: var(--color-data-vector);
-						}
-
-						.color-raster {
-							fill: var(--color-data-raster);
+						.separator {
+							min-height: 0;
 						}
 					}
-				}
-
-				.spacer {
-					flex: 1 0 auto;
-					min-height: 20px;
 				}
 
 				.shelf-bottom-widgets {
 					flex: 0 0 auto;
+					align-items: center;
 
-					.widget-layout:first-of-type {
+					.graph-overlay-button-area {
 						height: auto;
 						align-items: center;
 					}
 
-					.widget-layout:last-of-type {
+					.working-colors-button-area {
 						height: auto;
+						margin: 0;
+						min-height: 0;
 
-						.widget-span.row {
-							min-height: 0;
+						.working-colors-button {
+							margin: 0;
+						}
 
-							.working-colors-button {
-								margin: 0;
-							}
-
-							.icon-button {
-								--widget-height: 0;
-							}
+						.icon-button {
+							--widget-height: 0;
 						}
 					}
 				}

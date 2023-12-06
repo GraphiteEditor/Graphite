@@ -38,6 +38,14 @@
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	export let layoutTarget: any;
 
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+
+	$: extraClasses = Object.entries(classes)
+		.flatMap(([className, stateName]) => (stateName ? [className] : []))
+		.join(" ");
+
 	$: direction = watchDirection(widgetData);
 	$: widgets = watchWidgets(widgetData);
 	$: widgetsAndNextSiblingIsSuffix = watchWidgetsAndNextSiblingIsSuffix(widgets);
@@ -81,7 +89,7 @@
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 <!-- TODO: Also rename this component, and probably move the `widget-${direction}` wrapper to be part of `WidgetLayout.svelte` as part of its refactor -->
 
-<div class="widget-span" class:row={direction === "row"} class:column={direction === "column"}>
+<div class={`widget-span ${className} ${extraClasses}`.trim()} class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}

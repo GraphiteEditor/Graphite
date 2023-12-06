@@ -281,7 +281,7 @@ impl LayoutHolder for ToolData {
 			.collect();
 
 		Layout::WidgetLayout(WidgetLayout {
-			layout: vec![LayoutGroup::Column { widgets: tool_groups_layout }],
+			layout: vec![LayoutGroup::Row { widgets: tool_groups_layout }],
 		})
 	}
 }
