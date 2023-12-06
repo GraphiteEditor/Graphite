@@ -32,7 +32,7 @@
 
 		if (!editor.instance.inDevelopmentMode()) return { name };
 
-		const tooltip = `Document ID ${doc.id}`;
+		const tooltip = `Document ID: ${doc.id}`;
 		return { name, tooltip };
 	});
 

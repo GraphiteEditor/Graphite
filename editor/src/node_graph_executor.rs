@@ -541,7 +541,7 @@ impl NodeGraphExecutor {
 									"Layer"
 								}
 								.to_string(),
-								tooltip: format!("Layer id: {node_id}"),
+								tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 								visible: !document.document_network.disabled.contains(&layer.to_node()),
 								layer_type: if document.metadata.is_artboard(layer) {
 									LayerDataTypeDiscriminant::Artboard

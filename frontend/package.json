@@ -8,6 +8,7 @@
 	"scripts": {
 		"start": "npm run build-wasm && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
 		"profiling": "npm run build-wasm-profiling && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm-profiling\" || (npm run print-building-help && exit 1)",
+		"production": "npm run build-wasm-prod && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
 		"build": "npm run build-wasm-prod && vite build || (npm run print-building-help && exit 1)",
 		"build-profiling": "npm run build-wasm-profiling && vite build || (npm run print-building-help && exit 1)",
 		"lint": "eslint .",

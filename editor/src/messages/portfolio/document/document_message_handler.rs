@@ -43,6 +43,8 @@ pub struct DocumentMessageHandler {
 	pub auto_saved_document_identifier: u64,
 	pub name: String,
 	pub version: String,
+	#[serde(default)]
+	pub commit_hash: String,
 
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
@@ -62,11 +64,13 @@ pub struct DocumentMessageHandler {
 
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
+	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
 
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
+	#[serde(skip)]
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
 	node_graph_handler: NodeGraphMessageHandler,
@@ -74,16 +78,13 @@ pub struct DocumentMessageHandler {
 
 impl Default for DocumentMessageHandler {
 	fn default() -> Self {
-		let document_legacy = DocumentLegacy {
-			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			..Default::default()
-		};
 		Self {
-			document_legacy,
+			document_legacy: DocumentLegacy::default(),
 			saved_document_identifier: 0,
 			auto_saved_document_identifier: 0,
 			name: String::from("Untitled Document"),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
+			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
 
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),

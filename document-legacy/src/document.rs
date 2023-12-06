@@ -38,8 +38,6 @@ pub struct Document {
 	pub collapsed_folders: Vec<LayerNodeIdentifier>,
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
-	#[serde(default)]
-	pub commit_hash: String,
 }
 
 impl PartialEq for Document {
@@ -108,7 +106,6 @@ impl Default for Document {
 			},
 			metadata: Default::default(),
 			collapsed_folders: Vec::new(),
-			commit_hash: String::new(),
 		}
 	}
 }

@@ -13,12 +13,22 @@ use document_legacy::document::Document;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 enum TransformOperation {
+	#[default]
 	None,
-	Pan { pre_commit_pan: DVec2 },
-	Rotate { pre_commit_tilt: f64, snap_tilt: bool, snap_tilt_released: bool },
-	Zoom { pre_commit_zoom: f64, snap_zoom_enabled: bool },
+	Pan {
+		pre_commit_pan: DVec2,
+	},
+	Rotate {
+		pre_commit_tilt: f64,
+		snap_tilt: bool,
+		snap_tilt_released: bool,
+	},
+	Zoom {
+		pre_commit_zoom: f64,
+		snap_zoom_enabled: bool,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,8 +37,11 @@ pub struct NavigationMessageHandler {
 	pub tilt: f64,
 	pub zoom: f64,
 
+	#[serde(skip)]
 	transform_operation: TransformOperation,
+	#[serde(skip)]
 	mouse_position: ViewportPosition,
+	#[serde(skip)]
 	finish_operation_with_click: bool,
 }
 
