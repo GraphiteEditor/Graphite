@@ -668,7 +668,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				})
 			}
 			SelectAllLayers => {
-				let all = self.metadata().all_layers().map(|layer| layer.to_node()).collect();
+				let all = self.metadata().all_layers_except_artboards().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all });
 			}
 			SelectedLayersLower => {

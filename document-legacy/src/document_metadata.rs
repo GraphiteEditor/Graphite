@@ -46,6 +46,10 @@ impl DocumentMetadata {
 		self.root().decendants(self)
 	}
 
+	pub fn all_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.all_layers().filter(move |layer| !self.artboards.contains(layer))
+	}
+
 	pub fn selected_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.all_layers().filter(|layer| self.selected_nodes.contains(&layer.to_node()))
 	}
