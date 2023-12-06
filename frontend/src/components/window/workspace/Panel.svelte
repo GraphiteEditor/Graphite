@@ -1,6 +1,6 @@
 <script lang="ts" context="module">
 	import Document from "@graphite/components/panels/Document.svelte";
-	import LayerTree from "@graphite/components/panels/LayerTree.svelte";
+	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
@@ -8,7 +8,7 @@
 
 	const PANEL_COMPONENTS = {
 		Document,
-		LayerTree,
+		Layers,
 		Properties,
 	};
 	type PanelTypes = keyof typeof PANEL_COMPONENTS;

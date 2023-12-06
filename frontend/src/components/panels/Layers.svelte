@@ -23,8 +23,6 @@
 	let list: LayoutCol | undefined;
 
 	const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
-	const LAYER_INDENT = 16;
-	const INSERT_MARK_MARGIN_LEFT = 4 + 32 + LAYER_INDENT;
 	const INSERT_MARK_OFFSET = 2;
 
 	type DraggingData = {
@@ -67,18 +65,6 @@
 			updateLayerInTree(targetPath, targetLayer);
 		});
 	});
-
-	function layerIndent(layer: LayerPanelEntry): string {
-		return `${layer.path.length * LAYER_INDENT}px`;
-	}
-
-	function markIndent(path: BigUint64Array): string {
-		return `${INSERT_MARK_MARGIN_LEFT + path.length * LAYER_INDENT}px`;
-	}
-
-	function markTopOffset(height: number): string {
-		return `${height}px`;
-	}
 
 	function toggleLayerVisibility(path: BigUint64Array) {
 		editor.instance.toggleLayerVisibility(path);
@@ -171,15 +157,11 @@
 
 		if (treeChildren !== undefined && treeOffset !== undefined) {
 			Array.from(treeChildren).forEach((treeChild, index) => {
-				const layerComponents = treeChild.getElementsByClassName("layer");
-				if (layerComponents.length !== 1) return;
-				const child = layerComponents[0];
-
-				const indexAttribute = child.getAttribute("data-index");
+				const indexAttribute = treeChild.getAttribute("data-index");
 				if (!indexAttribute) return;
 				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
 
-				const rect = child.getBoundingClientRect();
+				const rect = treeChild.getBoundingClientRect();
 				const position = rect.top + rect.height / 2;
 				const distance = position - clientY;
 
@@ -312,76 +294,70 @@
 	}
 </script>
 
-<LayoutCol class="layer-tree" on:dragleave={() => (dragInPanel = false)}>
+<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="options-bar" scrollableX={true}>
 		<WidgetLayout layout={layerTreeOptionsLayout} />
 	</LayoutRow>
-	<LayoutRow class="layer-tree-rows" scrollableY={true}>
+	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
 			{#each layers as listing, index (String(listing.entry.path.slice(-1)))}
 				<LayoutRow
-					class="layer-row"
+					class="layer"
 					classes={{
+						selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.layerMetadata.selected,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertFolder === listing.entry.path,
 					}}
+					styles={{ "--layer-indent-levels": `${listing.entry.path.length - 1}` }}
+					data-layer={String(listing.entry.path)}
+					data-index={index}
+					tooltip={listing.entry.tooltip}
+					{draggable}
+					on:dragstart={(e) => draggable && dragStart(e, listing)}
+					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					<LayoutRow class="visibility">
-						<IconButton
-							action={(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())}
-							size={24}
-							icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-							tooltip={listing.entry.visible ? "Visible" : "Hidden"}
-						/>
-					</LayoutRow>
-
-					<div class="indent" style:margin-left={layerIndent(listing.entry)} />
-
 					{#if isGroupOrArtboard(listing.entry.layerType)}
 						<button class="expand-arrow" class:expanded={listing.entry.layerMetadata.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
-					{/if}
-					<LayoutRow
-						class="layer"
-						classes={{
-							selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.layerMetadata.selected,
-						}}
-						data-layer={String(listing.entry.path)}
-						data-index={index}
-						tooltip={listing.entry.tooltip}
-						{draggable}
-						on:dragstart={(e) => draggable && dragStart(e, listing)}
-						on:click={(e) => selectLayerWithModifiers(e, listing)}
-					>
-						<LayoutRow class="layer-type-icon">
-							<IconLabel icon={listing.entry.layerType || "Info"} />
-						</LayoutRow>
-						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
-							<input
-								data-text-input
-								type="text"
-								value={listing.entry.name}
-								placeholder={`Untitled ${listing.entry.layerType || "[Unknown Layer Type]"}`}
-								disabled={!listing.editingName}
-								on:blur={() => onEditLayerNameDeselect(listing)}
-								on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-								on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
-								on:change={(e) => onEditLayerNameChange(listing, e)}
-							/>
-						</LayoutRow>
+						{#if listing.entry.layerType === "Artboard"}
+							<IconLabel icon="Artboard" class={"layer-type-icon"} />
+						{:else if listing.entry.layerType === "Folder"}
+							<IconLabel icon="Folder" class={"layer-type-icon"} />
+						{/if}
+					{:else}
 						<div class="thumbnail">
 							{@html listing.entry.thumbnail}
 						</div>
+					{/if}
+					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
+						<input
+							data-text-input
+							type="text"
+							value={listing.entry.name}
+							placeholder={`Untitled ${listing.entry.layerType || "[Unknown Layer Type]"}`}
+							disabled={!listing.editingName}
+							on:blur={() => onEditLayerNameDeselect(listing)}
+							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
+							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
+							on:change={(e) => onEditLayerNameChange(listing, e)}
+						/>
 					</LayoutRow>
+					<IconButton
+						class={"visibility"}
+						action={(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())}
+						size={24}
+						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
+						tooltip={listing.entry.visible ? "Visible" : "Hidden"}
+					/>
 				</LayoutRow>
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={markIndent(draggingData.insertFolder)} style:top={markTopOffset(draggingData.markerHeight)} />
+			<div class="insert-mark" style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
 </LayoutCol>
 
 <style lang="scss" global>
-	.layer-tree {
+	.layers {
 		// Options bar
 		.options-bar {
 			height: 32px;
@@ -389,8 +365,9 @@
 			margin: 0 4px;
 			align-items: center;
 
-			.widget-layout {
+			.widget-span {
 				width: 100%;
+				height: 100%;
 				min-width: 300px;
 			}
 
@@ -407,35 +384,32 @@
 		}
 
 		// Layer tree
-		.layer-tree-rows {
-			margin-top: 4px;
-			// Crop away the 1px border below the bottom layer entry when it uses the full space of this panel
-			margin-bottom: -1px;
+		.list-area {
+			margin: 4px 0;
 			position: relative;
 
-			.layer-row {
+			.layer {
 				flex: 0 0 auto;
 				align-items: center;
 				position: relative;
 				height: 32px;
 				margin: 0 4px;
-				border-bottom: 1px solid var(--color-4-dimgray);
+				padding-left: calc(4px + var(--layer-indent-levels) * 16px);
+				border-bottom: 1px solid var(--color-2-mildblack);
+				border-radius: 2px;
 
-				.visibility {
-					flex: 0 0 auto;
-					height: 100%;
-					align-items: center;
+				&.selected {
+					background: var(--color-4-dimgray);
+				}
 
-					.icon-button {
-						height: 100%;
-						width: calc(24px + 2 * 4px);
-					}
+				&.insert-folder {
+					outline: 3px solid var(--color-e-nearwhite);
+					outline-offset: -3px;
 				}
 
 				.expand-arrow {
 					padding: 0;
 					margin: 0;
-					margin-left: -16px;
 					width: 16px;
 					height: 100%;
 					border: none;
@@ -467,93 +441,83 @@
 					}
 				}
 
-				.layer {
-					align-items: center;
-					z-index: 1;
-					width: 100%;
-					height: 100%;
-					padding: 0 4px;
+				.layer-type-icon {
+					flex: 0 0 auto;
+					margin-left: 4px;
+				}
+
+				.thumbnail {
+					width: 36px;
+					height: 24px;
+					background: white;
 					border-radius: 2px;
-					margin-right: 8px;
+					flex: 0 0 auto;
 
-					&.selected {
-						background: var(--color-5-dullgray);
+					svg {
+						width: calc(100% - 4px);
+						height: calc(100% - 4px);
+						margin: 2px;
 					}
+				}
 
-					.layer-type-icon {
-						flex: 0 0 auto;
-						margin: 0 4px;
-					}
+				.layer-name {
+					flex: 1 1 100%;
+					margin: 0 8px;
 
-					.layer-name {
-						flex: 1 1 100%;
-						margin: 0 4px;
+					input {
+						color: inherit;
+						background: none;
+						border: none;
+						outline: none; // Ok for input element
+						margin: 0;
+						padding: 0;
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						overflow: hidden;
+						border-radius: 2px;
+						height: 24px;
+						width: 100%;
 
-						input {
+						&:disabled {
+							-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+							user-select: none;
+							// Workaround for `user-select: none` not working on <input> elements
+							pointer-events: none;
+						}
+
+						&::placeholder {
+							opacity: 1;
 							color: inherit;
-							background: none;
-							border: none;
-							outline: none; // Ok for input element
-							margin: 0;
-							padding: 0;
-							text-overflow: ellipsis;
-							white-space: nowrap;
-							overflow: hidden;
-							border-radius: 2px;
-							height: 24px;
-							width: 100%;
+							font-style: italic;
+						}
 
-							&:disabled {
-								-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
-								user-select: none;
-								// Workaround for `user-select: none` not working on <input> elements
-								pointer-events: none;
-							}
+						&:focus {
+							background: var(--color-1-nearblack);
+							padding: 0 4px;
 
 							&::placeholder {
-								opacity: 1;
-								color: inherit;
-								font-style: italic;
+								opacity: 0.5;
 							}
-
-							&:focus {
-								background: var(--color-1-nearblack);
-								padding: 0 4px;
-
-								&::placeholder {
-									opacity: 0.5;
-								}
-							}
-						}
-					}
-
-					.thumbnail {
-						width: 36px;
-						height: 24px;
-						margin: 2px 0;
-						margin-left: 4px;
-						background: white;
-						border-radius: 2px;
-						flex: 0 0 auto;
-
-						svg {
-							width: calc(100% - 4px);
-							height: calc(100% - 4px);
-							margin: 2px;
 						}
 					}
 				}
 
-				&.insert-folder .layer {
-					outline: 3px solid var(--color-e-nearwhite);
-					outline-offset: -3px;
+				.visibility {
+					flex: 0 0 auto;
+					align-items: center;
+					height: 100%;
+
+					.icon-button {
+						height: 100%;
+						width: calc(24px + 2 * 4px);
+					}
 				}
 			}
 
 			.insert-mark {
 				position: absolute;
-				// `left` is applied dynamically
-				right: 0;
+				left: 4px;
+				right: 4px;
 				background: var(--color-e-nearwhite);
 				margin-top: -2px;
 				height: 5px;
