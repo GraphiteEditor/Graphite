@@ -495,6 +495,8 @@ pub struct HintInfo {
 	pub label: String,
 	/// Draws a prepended "+" symbol which indicates that this is a refinement upon a previous hint in the group.
 	pub plus: bool,
+	/// Draws a prepended "/" symbol which indicates that this is an alternative to a previous hint in the group.
+	pub slash: bool,
 }
 
 impl HintInfo {
@@ -506,6 +508,19 @@ impl HintInfo {
 			mouse: None,
 			label: label.into(),
 			plus: false,
+			slash: false,
+		}
+	}
+
+	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<String>) -> Self {
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		Self {
+			key_groups,
+			key_groups_mac: None,
+			mouse: None,
+			label: label.into(),
+			plus: false,
+			slash: false,
 		}
 	}
 
@@ -516,6 +531,7 @@ impl HintInfo {
 			mouse: Some(mouse_motion),
 			label: label.into(),
 			plus: false,
+			slash: false,
 		}
 	}
 
@@ -526,6 +542,7 @@ impl HintInfo {
 			mouse: None,
 			label: label.into(),
 			plus: false,
+			slash: false,
 		}
 	}
 
@@ -537,26 +554,34 @@ impl HintInfo {
 			mouse: Some(mouse_motion),
 			label: label.into(),
 			plus: false,
+			slash: false,
+		}
+	}
+
+	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<String>) -> Self {
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		Self {
+			key_groups,
+			key_groups_mac: None,
+			mouse: Some(mouse_motion),
+			label: label.into(),
+			plus: false,
+			slash: false,
 		}
 	}
 
 	pub fn arrow_keys(label: impl Into<String>) -> Self {
-		HintInfo {
-			key_groups: vec![
-				KeysGroup(vec![Key::ArrowUp]).into(),
-				KeysGroup(vec![Key::ArrowRight]).into(),
-				KeysGroup(vec![Key::ArrowDown]).into(),
-				KeysGroup(vec![Key::ArrowLeft]).into(),
-			],
-			key_groups_mac: None,
-			mouse: None,
-			label: label.into(),
-			plus: false,
-		}
+		let multi_keys = [[Key::ArrowUp], [Key::ArrowRight], [Key::ArrowDown], [Key::ArrowLeft]];
+		Self::multi_keys(multi_keys, label)
 	}
 
 	pub fn prepend_plus(mut self) -> Self {
 		self.plus = true;
+		self
+	}
+
+	pub fn prepend_slash(mut self) -> Self {
+		self.slash = true;
 		self
 	}
 

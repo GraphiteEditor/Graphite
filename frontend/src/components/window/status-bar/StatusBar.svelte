@@ -35,6 +35,9 @@
 				{#if hint.plus}
 					<LayoutRow class="plus">+</LayoutRow>
 				{/if}
+				{#if hint.slash}
+					<LayoutRow class="slash">/</LayoutRow>
+				{/if}
 				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)}>{hint.label}</UserInputLabel>
 			{/each}
 		{/each}
@@ -57,7 +60,8 @@
 				margin: 0;
 			}
 
-			.plus {
+			.plus,
+			.slash {
 				flex: 0 0 auto;
 				align-items: center;
 				font-weight: 700;

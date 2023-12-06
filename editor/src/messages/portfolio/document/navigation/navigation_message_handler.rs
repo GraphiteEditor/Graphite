@@ -196,9 +196,10 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 							mouse: None,
 							label: String::from("Snap 15°"),
 							plus: false,
+							slash: false,
 						}]),
 						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Confirm")]),
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")]),
 					]),
 				});
 
@@ -269,7 +270,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")])]),
+					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")])]),
 				});
 
 				self.mouse_position = ipp.mouse.position;
@@ -308,10 +309,11 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
 							key_groups_mac: None,
 							mouse: None,
-							label: String::from("Snap Increments"),
+							label: String::from("Increments"),
 							plus: false,
+							slash: false,
 						}]),
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Abort")]),
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")]),
 					]),
 				});
 

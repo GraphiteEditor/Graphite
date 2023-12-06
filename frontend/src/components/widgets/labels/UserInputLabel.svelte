@@ -225,7 +225,7 @@
 			}
 		}
 
-		.hint-text {
+		.hint-text:not(:empty) {
 			margin-left: 4px;
 		}
 

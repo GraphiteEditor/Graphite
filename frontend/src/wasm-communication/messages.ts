@@ -172,6 +172,8 @@ export class HintInfo {
 	readonly label!: string;
 
 	readonly plus!: boolean;
+
+	readonly slash!: boolean;
 }
 
 // Rust enum `Key`
