@@ -71,6 +71,11 @@ export default defineConfig({
 					},
 				}),
 			],
+			output: {
+				// Inject `.min` into the filename of minified CSS files to tell Cloudflare not to minify it again.
+				// Cloudflare's minifier breaks the CSS due to a bug where it removes whitespace around calc() plus operators.
+				assetFileNames: (info) => `assets/[name]-[hash]${info.name?.endsWith(".css") ? ".min" : ""}[extname]`,
+			},
 		},
 	},
 });
