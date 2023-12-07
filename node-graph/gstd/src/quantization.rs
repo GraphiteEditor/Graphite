@@ -1,5 +1,4 @@
 use autoquant::packing::ErrorFunction;
-use dyn_any::{DynAny, StaticType};
 use graphene_core::quantization::*;
 use graphene_core::raster::{Color, ImageFrame};
 use graphene_core::Node;

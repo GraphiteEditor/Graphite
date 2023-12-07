@@ -18,7 +18,6 @@ pub enum PropertiesPanelMessage {
 	Deactivate,
 	Init,
 	ModifyFill { fill: Fill },
-	ModifyName { name: String },
 	ModifyPreserveAspect { preserve_aspect: bool },
 	ModifyStroke { stroke: Stroke },
 	ModifyTransform { value: f64, transform_op: TransformOp },

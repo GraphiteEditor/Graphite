@@ -103,6 +103,14 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		hidden: bool,
 	},
+	SetName {
+		node_id: NodeId,
+		name: String,
+	},
+	SetNameImpl {
+		node_id: NodeId,
+		name: String,
+	},
 	TogglePreview {
 		node_id: NodeId,
 	},

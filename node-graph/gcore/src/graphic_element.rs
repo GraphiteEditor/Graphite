@@ -19,6 +19,7 @@ pub mod renderer;
 pub struct GraphicGroup {
 	elements: Vec<GraphicElement>,
 	pub opacity: f32,
+	pub blend_mode: BlendMode,
 	pub transform: DAffine2,
 }
 
@@ -41,29 +42,16 @@ pub enum GraphicElementData {
 	Artboard(Artboard),
 }
 
-/// A named [`GraphicElementData`] with a blend mode, opacity, as well as visibility, locked, and collapsed states.
+// TODO: Remove this wrapper and directly use GraphicElementData
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicElement {
-	pub name: String,
-	pub blend_mode: BlendMode,
-	/// In range 0..=1
-	pub opacity: f32,
-	pub visible: bool,
-	pub locked: bool,
-	pub collapsed: bool,
 	pub graphic_element_data: GraphicElementData,
 }
 
 impl Default for GraphicElement {
 	fn default() -> Self {
 		Self {
-			name: "".to_owned(),
-			blend_mode: BlendMode::Normal,
-			opacity: 1.,
-			visible: true,
-			locked: false,
-			collapsed: false,
 			graphic_element_data: GraphicElementData::VectorShape(Box::new(VectorData::empty())),
 		}
 	}
@@ -93,14 +81,8 @@ impl Artboard {
 	}
 }
 
-pub struct ConstructLayerNode<GraphicElementData, Name, BlendMode, Opacity, Visible, Locked, Collapsed, Stack> {
+pub struct ConstructLayerNode<GraphicElementData, Stack> {
 	graphic_element_data: GraphicElementData,
-	name: Name,
-	blend_mode: BlendMode,
-	opacity: Opacity,
-	visible: Visible,
-	locked: Locked,
-	collapsed: Collapsed,
 	stack: Stack,
 }
 
@@ -108,23 +90,11 @@ pub struct ConstructLayerNode<GraphicElementData, Name, BlendMode, Opacity, Visi
 async fn construct_layer<Data: Into<GraphicElementData>, Fut1: Future<Output = Data>, Fut2: Future<Output = GraphicGroup>>(
 	footprint: crate::transform::Footprint,
 	graphic_element_data: impl Node<crate::transform::Footprint, Output = Fut1>,
-	name: String,
-	blend_mode: BlendMode,
-	opacity: f32,
-	visible: bool,
-	locked: bool,
-	collapsed: bool,
 	mut stack: impl Node<crate::transform::Footprint, Output = Fut2>,
 ) -> GraphicGroup {
 	let graphic_element_data = self.graphic_element_data.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
 	stack.push(GraphicElement {
-		name,
-		blend_mode,
-		opacity: opacity / 100.,
-		visible,
-		locked,
-		collapsed,
 		graphic_element_data: graphic_element_data.into(),
 	});
 	stack
@@ -154,7 +124,7 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 	background: Color,
 	clip: bool,
 ) -> Artboard {
-	footprint.transform = footprint.transform * DAffine2::from_translation(location.as_dvec2());
+	footprint.transform *= DAffine2::from_translation(location.as_dvec2());
 	let graphic_group = self.contents.eval(footprint).await;
 	Artboard {
 		graphic_group,
@@ -212,13 +182,11 @@ where
 	T: ToGraphicElement,
 {
 	fn from(value: T) -> Self {
-		let element = GraphicElement {
-			graphic_element_data: value.into(),
-			..Default::default()
-		};
+		let element = GraphicElement { graphic_element_data: value.into() };
 		Self {
 			elements: (vec![element]),
 			opacity: 1.,
+			blend_mode: BlendMode::Normal,
 			transform: DAffine2::IDENTITY,
 		}
 	}
@@ -228,6 +196,7 @@ impl GraphicGroup {
 	pub const EMPTY: Self = Self {
 		elements: Vec::new(),
 		opacity: 1.,
+		blend_mode: BlendMode::Normal,
 		transform: DAffine2::IDENTITY,
 	};
 
@@ -337,12 +306,6 @@ impl GraphicElement {
 
 impl core::hash::Hash for GraphicElement {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.name.hash(state);
-		self.blend_mode.hash(state);
-		self.opacity.to_bits().hash(state);
-		self.visible.hash(state);
-		self.locked.hash(state);
-		self.collapsed.hash(state);
 		self.graphic_element_data.hash(state);
 	}
 }

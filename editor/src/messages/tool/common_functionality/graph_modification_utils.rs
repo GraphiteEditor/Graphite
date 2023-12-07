@@ -228,7 +228,7 @@ impl<'a> NodeGraphLayer<'a> {
 			error!("Tried to modify root layer");
 			return None;
 		};
-		while node_graph.nodes.get(&layer_node)?.name != "Layer" {
+		while !node_graph.nodes.get(&layer_node)?.is_layer() {
 			layer_node = outwards_links.get(&layer_node)?.first().copied()?;
 		}
 		Some(Self {

@@ -5,7 +5,7 @@
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeLink, FrontendNodeType, FrontendNode } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -116,8 +116,8 @@
 			const from = connectorToNodeIndex(linkInProgressFromConnector);
 			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
 
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.displayName === "Layer";
-			const linkEnd = $nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.displayName === "Layer" && to?.index !== 0;
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.isLayer;
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.isLayer && to?.index !== 0;
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
@@ -158,8 +158,8 @@
 			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.displayName === "Layer";
-			const linkEnd = $nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.displayName === "Layer" && link.linkEndInputIndex !== 0n;
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.isLayer;
+			const linkEnd = $nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -604,6 +604,11 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
+	function dataTypeTooltip(dataType: FrontendGraphDataType): string {
+		const capitalized = dataType[0].toUpperCase() + dataType.slice(1);
+		return `${capitalized} Data`;
+	}
+
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 			selected = updateNodeGraphSelection.selected;
@@ -665,7 +670,7 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName === "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
@@ -693,7 +698,9 @@
 						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][0]}
 					>
-						<title>{node.primaryInput} data</title>
+						{#if node.primaryInput}
+							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
+						{/if}
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 					</svg>
 				</div>
@@ -712,7 +719,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{node.primaryOutput.dataType} data</title>
+							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
 							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
 						</svg>
 					{/if}
@@ -726,12 +733,13 @@
 						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{stackDatainput.dataType} data</title>
+						<title>{dataTypeTooltip(stackDatainput.dataType)}</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 					</svg>
 				</div>
 				<div class="details">
-					<TextLabel tooltip={`${node.displayName} node with id: ${node.id}`}>{node.displayName}</TextLabel>
+					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.name}>{node.name || "Layer"}</TextLabel>
 				</div>
 
 				<svg class="border-mask" width="0" height="0">
@@ -744,7 +752,7 @@
 			</div>
 		{/each}
 		<!-- Nodes -->
-		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.displayName !== "Layer" ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
+		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
 			{@const clipPathId = `${Math.random()}`.substring(2)}
 			<div
@@ -752,7 +760,6 @@
 				class:selected={selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
-				class:is-layer={node.displayName === "Layer"}
 				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
@@ -762,8 +769,9 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.displayName)} />
-					<TextLabel tooltip={`${node.displayName} node (ID: ${node.id})`}>{node.displayName}</TextLabel>
+					<IconLabel icon={nodeIcon(node.identifier)} />
+					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.name}>{node.name || node.identifier}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}
@@ -789,7 +797,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{node.primaryInput} data</title>
+							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -805,7 +813,7 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 								bind:this={inputs[nodeIndex][index + 1]}
 							>
-								<title>{parameter.dataType} data</title>
+								<title>{dataTypeTooltip(parameter.dataType)}</title>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
 						{/if}
@@ -824,7 +832,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{node.primaryOutput.dataType} data</title>
+							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -839,7 +847,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + 1]}
 						>
-							<title>{parameter.dataType} data</title>
+							<title>{dataTypeTooltip(parameter.dataType)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/each}
@@ -1179,7 +1187,6 @@
 				width: 100%;
 				height: 24px;
 				border-radius: 2px 2px 0 0;
-				font-style: italic;
 				background: rgba(255, 255, 255, 0.05);
 
 				&.no-parameter-section {

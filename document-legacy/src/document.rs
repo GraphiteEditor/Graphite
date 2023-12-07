@@ -1031,13 +1031,6 @@ impl Document {
 				layer.visible = visible;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetLayerName { path, name } => {
-				self.mark_as_dirty(&path)?;
-				let layer = self.layer_mut(&path)?;
-				layer.name = if name.as_str() == "" { None } else { Some(name) };
-
-				Some(vec![LayerChanged { path }])
-			}
 			Operation::SetLayerBlendMode { path, blend_mode } => {
 				self.mark_as_dirty(&path)?;
 				self.layer_mut(&path)?.blend_mode = blend_mode;

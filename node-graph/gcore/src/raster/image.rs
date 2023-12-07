@@ -250,7 +250,6 @@ fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImageFrame<P: Pixel> {
 	pub image: Image<P>,
-
 	// The transform that maps image space to layer space.
 	//
 	// Image space is unitless [0, 1] for both axes, with x axis positive
@@ -261,6 +260,7 @@ pub struct ImageFrame<P: Pixel> {
 	// positive going right and y axis positive going down, with the origin
 	// being an unspecified quantity.
 	pub transform: DAffine2,
+	pub blend_mode: BlendMode,
 }
 
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
@@ -312,6 +312,7 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 		Self {
 			image: Image::empty(),
 			transform: DAffine2::ZERO,
+			blend_mode: BlendMode::Normal,
 		}
 	}
 
@@ -319,6 +320,7 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 		Self {
 			image: Image::empty(),
 			transform: DAffine2::IDENTITY,
+			blend_mode: BlendMode::Normal,
 		}
 	}
 
@@ -379,6 +381,7 @@ impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
 				height: image.image.height,
 			},
 			transform: image.transform,
+			blend_mode: BlendMode::Normal,
 		}
 	}
 }
@@ -393,6 +396,7 @@ impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
 				height: image.image.height,
 			},
 			transform: image.transform,
+			blend_mode: BlendMode::Normal,
 		}
 	}
 }

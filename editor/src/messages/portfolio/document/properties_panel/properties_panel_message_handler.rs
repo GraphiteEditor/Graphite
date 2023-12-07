@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PropertiesPanelMessageHandler {
-	active_selection: Option<Vec<LayerId>>,
+	active_selection: Option<Vec<LayerId>>, // TODO: Delete this if it's indeed dead code?
 }
 
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
@@ -38,7 +38,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					responses.add(NodeGraphMessage::CloseNodeGraph);
 				} else {
 					let path = paths.into_iter().next().unwrap();
-					if Some(&path) != self.active_selection.as_ref() {
+					if self.active_selection.as_ref() != Some(&path) {
 						// Update the layer visibility
 						if artwork_document
 							.layer(&path)
@@ -86,10 +86,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 
 				self.create_document_operation(Operation::SetLayerTransform { path: path.clone(), transform }, true, responses);
 			}
-			ModifyName { name } => {
-				let path = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				self.create_document_operation(Operation::SetLayerName { path, name }, true, responses);
-			}
 			ModifyPreserveAspect { preserve_aspect } => {
 				let layer_path = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				self.create_document_operation(Operation::SetLayerPreserveAspect { layer_path, preserve_aspect }, true, responses);
@@ -131,6 +127,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			}
 			ResendActiveProperties => {
 				if let Some(path) = self.active_selection.clone() {
+					// TODO: Remove this conditional now that the document graph is the only form of graph? (Also any other related code.)
 					let layer = artwork_document.layer(&path).unwrap();
 					register_artwork_layer_properties(artwork_document, path, layer, responses, persistent_data, node_graph_message_handler, executor);
 				} else {

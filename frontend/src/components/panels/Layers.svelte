@@ -83,7 +83,8 @@
 
 		await tick();
 
-		const textInput = (list?.div()?.querySelector("[data-text-input]:not([disabled])") || undefined) as HTMLInputElement | undefined;
+		const query = list?.div()?.querySelector("[data-text-input]:not([disabled])");
+		const textInput = (query instanceof HTMLInputElement && query) || undefined;
 		textInput?.select();
 	}
 
@@ -92,20 +93,23 @@
 		if (!listing.editingName) return;
 
 		draggable = true;
-
-		const name = (e.target as HTMLInputElement | undefined)?.value;
 		listing.editingName = false;
 		layers = layers;
-		if (name) editor.instance.setLayerName(listing.entry.path, name);
+
+		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
+		editor.instance.setLayerName(listing.entry.path, name);
+		listing.entry.name = name;
 	}
 
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
 		draggable = true;
-
 		listing.editingName = false;
 		layers = layers;
 
-		await tick();
+		// Set it back to the original name if the user didn't enter a new name
+		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.name;
+
+		// Deselect the text so it doesn't appear selected while the input field becomes disabled and styled to look like regular text
 		window.getSelection()?.removeAllRanges();
 	}
 
@@ -153,7 +157,7 @@
 		let highlightFolder = false;
 
 		let markerHeight = 0;
-		let previousHeight = undefined as undefined | number;
+		let previousHeight: number | undefined = undefined;
 
 		if (treeChildren !== undefined && treeOffset !== undefined) {
 			Array.from(treeChildren).forEach((treeChild, index) => {
@@ -212,8 +216,9 @@
 			if (!layer.layerMetadata.selected) selectLayer(false, false, listing);
 		};
 
-		const target = (event.target || undefined) as HTMLElement | undefined;
-		const draggingELement = (target?.closest("[data-layer]") || undefined) as HTMLElement | undefined;
+		const target = (event.target instanceof HTMLElement && event.target) || undefined;
+		const closest = target?.closest("[data-layer]") || undefined;
+		const draggingELement = (closest instanceof HTMLElement && closest) || undefined;
 		if (draggingELement) beginDraggingElement(draggingELement);
 
 		// Set style of cursor for drag
@@ -332,7 +337,7 @@
 							data-text-input
 							type="text"
 							value={listing.entry.name}
-							placeholder={`Untitled ${listing.entry.layerType || "[Unknown Layer Type]"}`}
+							placeholder={listing.entry.layerType}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -484,12 +489,6 @@
 							pointer-events: none;
 						}
 
-						&::placeholder {
-							opacity: 1;
-							color: inherit;
-							font-style: italic;
-						}
-
 						&:focus {
 							background: var(--color-1-nearblack);
 							padding: 0 4px;
@@ -497,6 +496,12 @@
 							&::placeholder {
 								opacity: 0.5;
 							}
+						}
+
+						&::placeholder {
+							opacity: 1;
+							color: inherit;
+							font-style: italic;
 						}
 					}
 				}

@@ -43,5 +43,8 @@
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
-	"files.insertFinalNewline": true
+	"files.insertFinalNewline": true,
+	"files.associations": {
+		"*.graphite": "json"
+	}
 }

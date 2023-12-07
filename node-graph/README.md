@@ -102,7 +102,7 @@ The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `1
 
 ## Creating a new protonode
 
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node_fn` macro, which can be applied to a function like `image_opacity` with an attribute of the name of the node:
+Instead of manually implementing the `Node` trait with complex generics, one can use the `node_fn` macro, which can be applied to a function like `opacity_node` with an attribute of the name of the node:
 
 ```rs
 #[derive(Debug, Clone, Copy)]
@@ -111,7 +111,7 @@ pub struct OpacityNode<O> {
 }
 
 #[node_macro::node_fn(OpacityNode)]
-fn image_opacity(color: Color, opacity_multiplier: f64) -> Color {
+fn opacity_node(color: Color, opacity_multiplier: f64) -> Color {
 	let opacity_multiplier = opacity_multiplier as f32 / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }

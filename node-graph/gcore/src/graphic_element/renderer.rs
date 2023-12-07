@@ -59,8 +59,6 @@ pub struct SvgRender {
 	pub svg: SvgSegmentList,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub opacity: f32,
-	pub blend_mode: BlendMode,
 	pub image_data: Vec<(u64, Image<Color>)>,
 	indent: usize,
 }
@@ -71,8 +69,6 @@ impl SvgRender {
 			svg: SvgSegmentList::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
-			opacity: 1.,
-			blend_mode: BlendMode::Normal,
 			image_data: Vec::new(),
 			indent: 0,
 		}
@@ -121,6 +117,7 @@ impl SvgRender {
 		self.indent();
 		self.svg.push("<");
 		self.svg.push(name.clone());
+		// Wraps `self` in a newtype (1-tuple) which is then mutated by the `attributes` closure
 		attributes(&mut SvgRenderAttrs(self));
 		self.svg.push(">");
 		let length = self.svg.len();
@@ -183,6 +180,7 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 	result.push(')');
 	result
 }
+
 fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
@@ -204,6 +202,7 @@ pub trait GraphicElementRendered {
 		let tree = usvg::Tree::from_str(&svg, &opt).expect("Failed to parse SVG");
 		tree.root.clone()
 	}
+
 	fn to_usvg_tree(&self, resolution: glam::UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
 		let root_node = self.to_usvg_node();
 		usvg::Tree {
@@ -219,26 +218,33 @@ pub trait GraphicElementRendered {
 
 impl GraphicElementRendered for GraphicGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let old_opacity = render.opacity;
-		render.opacity *= self.opacity;
 		render.parent_tag(
 			"g",
-			|attributes| attributes.push("transform", format_transform_matrix(self.transform)),
+			|attributes| {
+				attributes.push("transform", format_transform_matrix(self.transform));
+
+				if self.opacity < 1. {
+					attributes.push("opacity", self.opacity.to_string());
+				}
+
+				if self.blend_mode != BlendMode::default() {
+					attributes.push("style", self.blend_mode.render());
+				}
+			},
 			|render| {
 				for element in self.iter() {
-					render.blend_mode = element.blend_mode;
 					element.graphic_element_data.render_svg(render, render_params);
 				}
 			},
 		);
-
-		render.opacity = old_opacity;
 	}
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.iter()
 			.filter_map(|element| element.graphic_element_data.bounding_box(transform * self.transform))
 			.reduce(Quad::combine_bounds)
 	}
+
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
 
 	fn to_usvg_node(&self) -> usvg::Node {
@@ -260,24 +266,31 @@ impl GraphicElementRendered for VectorData {
 		for subpath in &self.subpaths {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
+
 		render.leaf_tag("path", |attributes| {
 			attributes.push("class", "vector-data");
+
 			attributes.push("d", path);
-			let render = &mut attributes.0;
-			let style = self.style.render(render_params.view_mode, &mut render.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
-			attributes.push_val(style);
-			if attributes.0.blend_mode != BlendMode::default() {
-				attributes.push_complex("style", |v| {
-					v.svg.push("mix-blend-mode: ");
-					v.svg.push(v.blend_mode.to_svg_style_name());
-					v.svg.push(";");
-				})
+
+			let fill_and_stroke = self
+				.style
+				.render(render_params.view_mode, &mut attributes.0.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
+			attributes.push_val(fill_and_stroke);
+
+			if self.style.opacity < 1. {
+				attributes.push("opacity", self.style.opacity.to_string());
+			}
+
+			if self.style.blend_mode != BlendMode::default() {
+				attributes.push("style", self.style.blend_mode.render());
 			}
 		});
 	}
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.bounding_box_with_transform(self.transform * transform)
 	}
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
 		let update_closed = |mut subpath: bezier_rs::Subpath<ManipulatorGroupId>| {
@@ -345,19 +358,24 @@ impl GraphicElementRendered for Artboard {
 				attributes.push("font-size", "14px");
 			},
 			|render| {
+				// TODO: Use the artboard's layer name
 				render.svg.push("Artboard");
 			},
 		);
 
-		// Contents group
+		// Contents group (includes the artwork but not the background)
 		render.parent_tag(
+			// SVG group tag
 			"g",
+			// Group tag attributes
 			|attributes| {
 				attributes.push("class", "artboard");
+
 				attributes.push(
 					"transform",
 					format_transform_matrix(DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform),
 				);
+
 				if self.clip {
 					let id = format!("artboard-{}", generate_uuid());
 					let selector = format!("url(#{id})");
@@ -373,19 +391,15 @@ impl GraphicElementRendered for Artboard {
 					attributes.push("clip-path", selector);
 				}
 			},
+			// Artboard contents
 			|render| {
-				let old_opacity = render.opacity;
-				render.opacity *= self.graphic_group.opacity;
-
-				// Contents
 				for element in self.graphic_group.iter() {
-					render.blend_mode = element.blend_mode;
 					element.graphic_element_data.render_svg(render, render_params);
 				}
-				render.opacity = old_opacity;
 			},
 		);
 	}
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let artboard_bounds = (transform * Quad::from_box([self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()])).bounding_box();
 		if self.clip {
@@ -394,6 +408,7 @@ impl GraphicElementRendered for Artboard {
 			[self.graphic_group.bounding_box(transform), Some(artboard_bounds)].into_iter().flatten().reduce(Quad::combine_bounds)
 		}
 	}
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget { stroke_width: 0., subpath });
@@ -412,7 +427,10 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					attributes.push("height", 1.to_string());
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
-					attributes.push("href", SvgSegment::BlobUrl(uuid))
+					attributes.push("href", SvgSegment::BlobUrl(uuid));
+					if self.blend_mode != BlendMode::default() {
+						attributes.push("style", self.blend_mode.render());
+					}
 				});
 				render.image_data.push((uuid, self.image.clone()))
 			}
@@ -429,11 +447,13 @@ impl GraphicElementRendered for ImageFrame<Color> {
 
 				render.leaf_tag("image", |attributes| {
 					attributes.push("width", 1.to_string());
-
 					attributes.push("height", 1.to_string());
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
-					attributes.push("href", base64_string)
+					attributes.push("href", base64_string);
+					if self.blend_mode != BlendMode::default() {
+						attributes.push("style", self.blend_mode.render());
+					}
 				});
 			}
 			ImageRenderMode::Canvas => {
@@ -441,10 +461,12 @@ impl GraphicElementRendered for ImageFrame<Color> {
 			}
 		}
 	}
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		let transform = self.transform * transform;
 		(transform.matrix2 != glam::DMat2::ZERO).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
 	}
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget { subpath, stroke_width: 0. });
@@ -563,6 +585,7 @@ impl GraphicElementRendered for Option<Color> {
 			render.parent_tag("text", |_| {}, |render| render.leaf_node("Empty color"));
 			return;
 		};
+		let color_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
 
 		render.leaf_tag("rect", |attributes| {
 			attributes.push("width", "100");
@@ -570,7 +593,6 @@ impl GraphicElementRendered for Option<Color> {
 			attributes.push("y", "40");
 			attributes.push("fill", format!("#{}", color.rgba_hex()));
 		});
-		let color_info = format!("{:?} #{} {:?}", color, color.rgba_hex(), color.to_rgba8_srgb());
 		render.parent_tag("text", text_attributes, |render| render.leaf_node(color_info))
 	}
 

@@ -215,10 +215,12 @@ impl DocumentMetadata {
 }
 
 fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	graph.primary_flow_from_node(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.name == "Layer")
+	graph.primary_flow_from_node(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.is_layer())
 }
+
 fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	node.inputs[7].as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.name == "Layer").map(|node| (node, id)))
+	let construct_layer_node = &node.inputs[1];
+	construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)))
 }
 
 // transforms
@@ -265,7 +267,7 @@ pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 		|| network
 			.primary_flow_from_node(Some(layer.to_node()))
 			.skip(1)
-			.any(|(node, _)| node.name == "Artboard" || node.name == "Layer")
+			.any(|(node, _)| node.name == "Artboard" || node.is_layer())
 }
 
 // click targets
@@ -640,7 +642,7 @@ pub struct NodeRelations {
 }
 
 fn is_layer_node(node: NodeId, network: &NodeNetwork) -> bool {
-	node == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node).is_some_and(|node| node.name == "Layer")
+	node == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node).is_some_and(|node| node.is_layer())
 }
 
 #[test]

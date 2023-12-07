@@ -96,8 +96,10 @@ impl NodeImplementation {
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeBlueprint {
+	// TODO: Rename to `identifier` (also rename the TODOs in the `DocumentNode` struct)
 	pub name: &'static str,
 	pub category: &'static str,
+	// TODO: Rename to `implementation` (also rename the TODOs in the `DocumentNode` struct)
 	pub identifier: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
@@ -115,7 +117,7 @@ impl Default for DocumentNodeBlueprint {
 			inputs: Default::default(),
 			outputs: Default::default(),
 			has_primary_output: true,
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			manual_composition: Default::default(),
 		}
 	}
@@ -198,7 +200,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			name: "Layer",
 			category: "General",
 			identifier: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 2, 2, 2, 2, 2, 2, 2],
+				inputs: vec![0, 2],
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					(
@@ -225,15 +227,9 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
 								NodeInput::node(1, 0),
-								NodeInput::Network(concrete!(String)),
-								NodeInput::Network(concrete!(BlendMode)),
-								NodeInput::Network(concrete!(f32)),
-								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(bool)),
-								NodeInput::Network(concrete!(bool)),
 								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
 							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _, _, _, _, _, _, _>"),
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
 							..Default::default()
 						},
 					),
@@ -242,17 +238,11 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				..Default::default()
 			}),
 			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Name", TaggedValue::String(String::new()), false),
-				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
-				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
-				DocumentInputType::value("Visible", TaggedValue::Bool(true), false),
-				DocumentInputType::value("Locked", TaggedValue::Bool(false), false),
-				DocumentInputType::value("Collapsed", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Stack", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
-			properties: node_properties::layer_properties,
+			properties: node_properties::layer_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -748,12 +738,12 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Blend Mode",
-			category: "Image Adjustments",
+			name: "Blend Mode Value",
+			category: "Inputs",
 			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
-			inputs: vec![DocumentInputType::value("Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
+			inputs: vec![DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			properties: node_properties::blend_mode_properties,
+			properties: node_properties::blend_mode_value_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1442,7 +1432,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Second", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
-				DocumentInputType::value("Opacity", TaggedValue::F32(100.0), false),
+				DocumentInputType::value("Opacity", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::blend_properties,
@@ -1708,7 +1698,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::multiply_opacity,
+			properties: node_properties::opacity_properties,
+			..Default::default()
+		},
+		DocumentNodeBlueprint {
+			name: "Blend Mode",
+			category: "Image Adjustments",
+			identifier: NodeImplementation::proto("graphene_core::raster::BlendModeNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false),
+			],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			properties: node_properties::blend_mode_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1803,7 +1805,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::FloorNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1812,7 +1814,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::CeilNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1821,7 +1823,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::RoundNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1830,7 +1832,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::AbsoluteNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1851,7 +1853,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::NaturalLogNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1860,7 +1862,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::SineNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1869,7 +1871,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::CosineNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1878,7 +1880,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::ops::TangentNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1935,7 +1937,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
 			inputs: vec![DocumentInputType::value("Input", TaggedValue::String("Not Connected to a value yet".into()), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -1980,7 +1982,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::logic::LogicNotNode"),
 			inputs: vec![DocumentInputType::value("Input", TaggedValue::Bool(false), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		(*IMAGINATE_NODE).clone(),
@@ -2077,6 +2079,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			inputs: vec![
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
+				// TODO: Keavon asks: what is this for? Is it dead code? It seems to only be set, never read.
 				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
@@ -2234,7 +2237,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -2269,7 +2272,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			identifier: NodeImplementation::proto("graphene_core::vector::SplineFromPointsNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::no_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
@@ -2471,7 +2474,7 @@ impl DocumentNodeBlueprint {
 		self.to_document_node(inputs, metadata)
 	}
 
-	/// Converts the [DocumentNodeBlueprint] type to a [DocumentNode], completly default
+	/// Converts the [DocumentNodeBlueprint] type to a [DocumentNode], completely default
 	pub fn default_document_node(&self) -> DocumentNode {
 		self.to_document_node(self.inputs.iter().map(|input| input.default.clone()), DocumentNodeMetadata::default())
 	}
