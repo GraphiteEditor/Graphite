@@ -82,7 +82,7 @@ impl Default for DocumentMessageHandler {
 			document_legacy: DocumentLegacy::default(),
 			saved_document_identifier: 0,
 			auto_saved_document_identifier: 0,
-			name: String::from("Untitled Document"),
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
 
@@ -211,7 +211,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			// Messages
 			AbortTransaction => {
 				if !self.undo_in_progress {
-					self.undo(responses).unwrap_or_else(|e| warn!("{e}"));
+					self.undo(responses);
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 				}
 			}
@@ -329,8 +329,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add_front(DocumentMessage::DirtyRenderDocument);
 				}
 			}
-			DocumentHistoryBackward => self.undo(responses).unwrap_or_else(|e| warn!("{e}")),
-			DocumentHistoryForward => self.redo(responses).unwrap_or_else(|e| warn!("{e}")),
+			DocumentHistoryBackward => self.undo(responses),
+			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
@@ -577,7 +577,11 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let image_frame = ImageFrame { image, transform: DAffine2::IDENTITY };
+				let image_frame = ImageFrame {
+					image,
+					transform: DAffine2::IDENTITY,
+					blend_mode: BlendMode::Normal,
+				};
 
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let layer = graph_modification_utils::new_image_layer(image_frame, generate_uuid(), self.new_layer_parent(), responses);
@@ -649,7 +653,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 			}
 			RollbackTransaction => {
-				self.rollback(responses).unwrap_or_else(|e| warn!("{e}"));
+				self.rollback(responses);
 				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			SaveDocument => {
@@ -770,15 +774,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
 				responses.add(DocumentStructureChanged);
 				responses.add(LayerChanged { affected_layer_path: layer_path })
-			}
-			SetLayerName { layer_path, name } => {
-				if let Some(layer) = self.layer_panel_entry_from_path(&layer_path, &render_data) {
-					// Only save the history state if the name actually changed to something different
-					if layer.name != name {
-						self.backup(responses);
-						responses.add(DocumentOperation::SetLayerName { path: layer_path, name });
-					}
-				}
 			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
@@ -1238,9 +1233,9 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) {
 		self.backup(responses);
-		self.undo(responses)
+		self.undo(responses);
 		// TODO: Consider if we should check if the document is saved
 	}
 
@@ -1257,72 +1252,62 @@ impl DocumentMessageHandler {
 		DocumentSave { document, layer_metadata }
 	}
 
-	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+	pub fn undo(&mut self, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
-		match self.document_undo_history.pop_back() {
-			Some(DocumentSave { document, layer_metadata }) => {
-				// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
-				// Also appropriately update the Properties panel if an undo action results in a layer being deleted
-				let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
+		if let Some(DocumentSave { document, layer_metadata }) = self.document_undo_history.pop_back() {
+			// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
+			// Also appropriately update the Properties panel if an undo action results in a layer being deleted
+			let prev_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
-				if prev_selected_paths != selected_paths {
-					responses.add(BroadcastEvent::SelectionChanged);
-				}
-
-				let document_save = self.replace_document(DocumentSave { document, layer_metadata });
-
-				self.document_redo_history.push_back(document_save);
-				if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-					self.document_redo_history.pop_front();
-				}
-
-				for layer in self.layer_metadata.keys() {
-					responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-				}
-
-				responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
-
-				Ok(())
+			if prev_selected_paths != selected_paths {
+				responses.add(BroadcastEvent::SelectionChanged);
 			}
-			None => Err(EditorError::NoTransactionInProgress),
+
+			let document_save = self.replace_document(DocumentSave { document, layer_metadata });
+
+			self.document_redo_history.push_back(document_save);
+			if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				self.document_redo_history.pop_front();
+			}
+
+			for layer in self.layer_metadata.keys() {
+				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
+			}
+
+			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
 
-	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Result<(), EditorError> {
+	pub fn redo(&mut self, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
 
-		match self.document_redo_history.pop_back() {
-			Some(DocumentSave { document, layer_metadata }) => {
-				// Update currently displayed layer on property panel if selection changes after redo action
-				// Also appropriately update property panel if redo action results in a layer being added
-				let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
+		if let Some(DocumentSave { document, layer_metadata }) = self.document_redo_history.pop_back() {
+			// Update currently displayed layer on property panel if selection changes after redo action
+			// Also appropriately update property panel if redo action results in a layer being added
+			let next_selected_paths: Vec<Vec<LayerId>> = layer_metadata.iter().filter_map(|(layer_id, metadata)| metadata.selected.then_some(layer_id.clone())).collect();
 
-				if next_selected_paths != selected_paths {
-					responses.add(BroadcastEvent::SelectionChanged);
-				}
-
-				let document_save = self.replace_document(DocumentSave { document, layer_metadata });
-				self.document_undo_history.push_back(document_save);
-				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-					self.document_undo_history.pop_front();
-				}
-
-				for layer in self.layer_metadata.keys() {
-					responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-				}
-
-				responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
-
-				Ok(())
+			if next_selected_paths != selected_paths {
+				responses.add(BroadcastEvent::SelectionChanged);
 			}
-			None => Err(EditorError::NoTransactionInProgress),
+
+			let document_save = self.replace_document(DocumentSave { document, layer_metadata });
+			self.document_undo_history.push_back(document_save);
+			if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				self.document_undo_history.pop_front();
+			}
+
+			for layer in self.layer_metadata.keys() {
+				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
+			}
+
+			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
 

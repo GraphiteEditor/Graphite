@@ -21,9 +21,6 @@ pub enum EditorError {
 	#[error("This document was created in an older version of the editor.\n\nBackwards compatibility is, regrettably, not present in the current alpha release.\n\nTechnical details:\n{0:?}")]
 	DocumentDeserialization(String),
 
-	#[error("A rollback was initiated but no transaction was in progress")]
-	NoTransactionInProgress,
-
 	#[error("{0}")]
 	Misc(String),
 }

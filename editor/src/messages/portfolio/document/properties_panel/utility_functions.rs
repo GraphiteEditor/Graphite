@@ -82,7 +82,7 @@ pub fn register_artwork_layer_properties(
 			},
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()))
-				.on_update(|text_input: &TextInput| PropertiesPanelMessage::ModifyName { name: text_input.value.clone() }.into())
+				.on_update(|_text_input: &TextInput| panic!("This is presumed to be dead code, but if you are seeing this crash, please file a bug report."))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			PopoverButton::new("Additional Options", "Coming soon").widget_holder(),

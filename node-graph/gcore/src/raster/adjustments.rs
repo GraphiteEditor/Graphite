@@ -90,15 +90,15 @@ pub enum BlendMode {
 	// Not supported by SVG, but we should someday support: Dissolve
 
 	// Darken group
-	Multiply,
 	Darken,
+	Multiply,
 	ColorBurn,
 	LinearBurn,
 	DarkerColor,
 
 	// Lighten group
-	Screen,
 	Lighten,
+	Screen,
 	ColorDodge,
 	LinearDodge,
 	LighterColor,
@@ -172,6 +172,7 @@ impl core::fmt::Display for BlendMode {
 		}
 	}
 }
+
 impl BlendMode {
 	/// Convert the enum to the CSS string for the blend mode.
 	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
@@ -204,6 +205,11 @@ impl BlendMode {
 				"normal"
 			}
 		}
+	}
+
+	/// Renders the blend mode CSS style declaration.
+	pub fn render(&self) -> String {
+		format!(r#" mix-blend-mode: {};"#, self.to_svg_style_name())
 	}
 
 	/// List of all the blend modes in their conventional ordering and grouping.
@@ -898,23 +904,46 @@ pub struct OpacityNode<O> {
 }
 
 #[node_macro::node_fn(OpacityNode)]
-fn image_opacity(color: Color, opacity_multiplier: f32) -> Color {
+fn opacity_node(color: Color, opacity_multiplier: f32) -> Color {
 	let opacity_multiplier = opacity_multiplier / 100.;
 	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
 }
 
 #[node_macro::node_impl(OpacityNode)]
-fn image_opacity(mut vector_data: VectorData, opacity_multiplier: f32) -> VectorData {
+fn opacity_node(mut vector_data: VectorData, opacity_multiplier: f32) -> VectorData {
 	let opacity_multiplier = opacity_multiplier / 100.;
 	vector_data.style.opacity *= opacity_multiplier;
 	vector_data
 }
 
 #[node_macro::node_impl(OpacityNode)]
-fn image_opacity(mut graphic_group: GraphicGroup, opacity_multiplier: f32) -> GraphicGroup {
+fn opacity_node(mut graphic_group: GraphicGroup, opacity_multiplier: f32) -> GraphicGroup {
 	let opacity_multiplier = opacity_multiplier / 100.;
 	graphic_group.opacity *= opacity_multiplier;
 	graphic_group
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BlendModeNode<BM> {
+	blend_mode: BM,
+}
+
+#[node_macro::node_fn(BlendModeNode)]
+fn blend_mode_node(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
+	vector_data.style.blend_mode = blend_mode;
+	vector_data
+}
+
+#[node_macro::node_impl(BlendModeNode)]
+fn blend_mode_node(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
+	graphic_group.blend_mode = blend_mode;
+	graphic_group
+}
+
+#[node_macro::node_impl(BlendModeNode)]
+fn blend_mode_node(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
+	image_frame.blend_mode = blend_mode;
+	image_frame
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -923,7 +952,7 @@ pub struct PosterizeNode<P> {
 }
 
 // Based on http://www.axiomx.com/posterize.htm
-// This algorithm is perfectly accurate.
+// This algorithm produces fully accurate output in relation to the industry standard.
 #[node_macro::node_fn(PosterizeNode)]
 fn posterize(color: Color, posterize_value: f32) -> Color {
 	let color = color.to_gamma_srgb();

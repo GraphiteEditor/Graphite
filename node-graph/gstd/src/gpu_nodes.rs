@@ -90,6 +90,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 			height: image.image.height,
 		},
 		transform: image.transform,
+		blend_mode: image.blend_mode,
 	};
 
 	// TODO: The cache should be based on the network topology not the node name
@@ -141,6 +142,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 			height: image.image.height,
 		},
 		transform: image.transform,
+		blend_mode: image.blend_mode,
 	}
 }
 
@@ -586,5 +588,6 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 			height: background.image.height,
 		},
 		transform: background.transform,
+		blend_mode: background.blend_mode,
 	}
 }

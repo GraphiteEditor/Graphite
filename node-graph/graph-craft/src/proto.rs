@@ -621,7 +621,7 @@ impl TypingContext {
 		let impls = self
 			.lookup
 			.get(&node.identifier)
-			.ok_or(format!("No implementations found for {:?}. Other implementations found {:?}", node.identifier, self.lookup))?;
+			.ok_or(format!("No implementations found for:\n\n{:?}\n\nOther implementations found:\n\n{:?}", node.identifier, self.lookup))?;
 
 		if matches!(input, Type::Generic(_)) {
 			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", input, node.identifier));
@@ -673,7 +673,7 @@ impl TypingContext {
 			[] => {
 				dbg!(&self.inferred);
 				Err(format!(
-					"No implementations found for {identifier} with \ninput: {input:?} and \nparameters: {parameters:?}.\nOther Implementations found: {:?}",
+					"No implementations found for:\n\n{identifier}\n\nwith input:\n\n{input:?}\n\nand parameters:\n\n{parameters:?}\n\nOther Implementations found:\n\n{:?}",
 					impls.keys().collect::<Vec<_>>(),
 				))
 			}

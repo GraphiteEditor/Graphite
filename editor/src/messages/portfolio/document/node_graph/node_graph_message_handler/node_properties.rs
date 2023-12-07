@@ -777,10 +777,6 @@ pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	vec![mask]
 }
 
-pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
-}
-
 pub fn color_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	vec![color_channel(document_node, node_id, 0, "Channel", true)]
 }
@@ -803,7 +799,7 @@ pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId,
 	vec![color_channel]
 }
 
-// Noise Type is commented out for now as ther is only one type of noise (White Noise).
+// Noise Type is commented out for now as there is only one type of noise (White Noise).
 // As soon as there are more types of noise, this should be uncommented.
 pub fn pixel_noise_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let width = number_widget(document_node, node_id, 0, "Width", NumberInput::default().unit("px").min(1.), true);
@@ -1025,10 +1021,18 @@ pub fn _gpu_map_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	vec![LayoutGroup::Row { widgets: map }]
 }
 
-pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
+pub fn opacity_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let gamma = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: gamma }]
+}
+
+pub fn blend_mode_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![blend_mode(document_node, node_id, 1, "Blend Mode", true)]
+}
+
+pub fn blend_mode_value_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	vec![blend_mode(document_node, node_id, 0, "Blend Mode", true)]
 }
 
 pub fn posterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1769,8 +1773,12 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
 }
 
-pub fn no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn node_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	string_properties("Node has no properties")
+}
+
+pub fn layer_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	string_properties("Layer has no properties")
 }
 
 pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1875,23 +1883,6 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	widgets
 }
 
-pub fn layer_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let name = text_widget(document_node, node_id, 1, "Name", true);
-	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
-	let visible = bool_widget(document_node, node_id, 4, "Visible", true);
-	let locked = bool_widget(document_node, node_id, 5, "Locked", true);
-	let collapsed = bool_widget(document_node, node_id, 6, "Collapsed", true);
-
-	vec![
-		LayoutGroup::Row { widgets: name },
-		blend_mode,
-		LayoutGroup::Row { widgets: opacity },
-		LayoutGroup::Row { widgets: visible },
-		LayoutGroup::Row { widgets: locked },
-		LayoutGroup::Row { widgets: collapsed },
-	]
-}
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
 	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);

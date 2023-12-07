@@ -43,6 +43,11 @@ fn return_true() -> bool {
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
+	// TODO: Rename to "name" (also rename the TODOs in the `DocumentNodeBlueprint` struct)
+	/// A name chosen by the user for this node. Empty indicates no given name, in which case the node's identifier is displayed to the user in italics.
+	#[serde(default)]
+	pub alias: String,
+	// TODO: Rename to "identifier" (also rename the TODOs in the `DocumentNodeBlueprint` struct)
 	/// An identifier used to display in the UI and to display the appropriate properties.
 	pub name: String,
 	/// The inputs to a node, which are either:
@@ -157,6 +162,7 @@ pub struct DocumentNode {
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
+			alias: Default::default(),
 			name: Default::default(),
 			inputs: Default::default(),
 			manual_composition: Default::default(),
@@ -261,6 +267,12 @@ impl DocumentNode {
 			}
 		}
 		self
+	}
+
+	pub fn is_layer(&self) -> bool {
+		// TODO: Use something more robust than checking against a string.
+		// TODO: Or, more fundamentally separate the concept of a layer from a node.
+		self.name == "Layer"
 	}
 }
 
@@ -405,9 +417,9 @@ pub struct NodeNetwork {
 	pub inputs: Vec<NodeId>,
 	pub outputs: Vec<NodeOutput>,
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// These nodes are replaced with identity nodes when flattening
+	/// These nodes are replaced with identity nodes during the graph flattening step
 	pub disabled: Vec<NodeId>,
-	/// In the case where a new node is chosen as output - what was the original
+	/// In the case when a new node is chosen as a temporary output, this stores what it used to be so it can be restored later
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
 
@@ -811,9 +823,9 @@ impl NodeNetwork {
 
 		if node.implementation != DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()) && self.disabled.contains(&id) {
 			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
-			if node.name == "Layer" {
+			if node.is_layer() {
 				// Connect layer node to the graphic group below
-				node.inputs.drain(..7);
+				node.inputs.drain(..1);
 			} else {
 				node.inputs.drain(1..);
 			}
@@ -873,8 +885,10 @@ impl NodeNetwork {
 			assert_eq!(
 				node.inputs.len(),
 				inner_network.inputs.len(),
-				"The number of inputs to the node and the inner network must be the same for {}. The node has {:?} inputs, the network has {:?} inputs.",
+				"\n\nThe number of inputs to the node and the inner network must be the same for \"{}\". The node has {} inputs, the network has {} inputs.\n\nNode inputs:\n\n{:?}\n\nNetwork inputs:\n\n{:?}\n",
 				node.name,
+				node.inputs.len(),
+				inner_network.inputs.len(),
 				node.inputs,
 				inner_network.inputs
 			);

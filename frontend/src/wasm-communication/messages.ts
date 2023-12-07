@@ -97,9 +97,13 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNode {
+	readonly isLayer!: boolean;
+
 	readonly id!: bigint;
 
-	readonly displayName!: string;
+	readonly name!: string;
+
+	readonly identifier!: string;
 
 	readonly primaryInput!: FrontendGraphInput | undefined;
 

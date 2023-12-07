@@ -15,6 +15,7 @@ pub struct VectorData {
 	pub subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>,
 	pub transform: DAffine2,
 	pub style: PathStyle,
+	// TODO: Keavon asks: what is this for? Is it dead code? It seems to only be set, never read.
 	pub mirror_angle: Vec<ManipulatorGroupId>,
 }
 
@@ -47,12 +48,12 @@ impl VectorData {
 		self.subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 	}
 
-	/// Construct some new vector data from a single subpath with an identy transform and black fill.
+	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: bezier_rs::Subpath<ManipulatorGroupId>) -> Self {
 		Self::from_subpaths(vec![subpath])
 	}
 
-	/// Construct some new vector data from subpaths with an identy transform and black fill.
+	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
 		super::VectorData { subpaths, ..Self::empty() }
 	}

@@ -269,60 +269,6 @@ def update_layer(layer, indent, layer_node_id, next_id, opacity):
 							},
 							{
 								"Network": {
-									"Concrete": {
-										"name": "alloc::string::String",
-										"size": 12,
-										"align": 4
-									}
-								}
-							},
-							{
-								"Network": {
-									"Concrete": {
-										"name": "graphene_core::raster::adjustments::BlendMode",
-										"size": 4,
-										"align": 4
-									}
-								}
-							},
-							{
-								"Network": {
-									"Concrete": {
-										"name": "f32",
-										"size": 4,
-										"align": 4
-									}
-								}
-							},
-							{
-								"Network": {
-									"Concrete": {
-										"name": "bool",
-										"size": 1,
-										"align": 1
-									}
-								}
-							},
-							{
-								"Network": {
-									"Concrete": {
-										"name": "bool",
-										"size": 1,
-										"align": 1
-									}
-								}
-							},
-							{
-								"Network": {
-									"Concrete": {
-										"name": "bool",
-										"size": 1,
-										"align": 1
-									}
-								}
-							},
-							{
-								"Network": {
 									"Fn": [
 										{
 											"Concrete": {

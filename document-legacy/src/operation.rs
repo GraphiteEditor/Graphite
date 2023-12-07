@@ -107,10 +107,6 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		visible: bool,
 	},
-	SetLayerName {
-		path: Vec<LayerId>,
-		name: String,
-	},
 	SetLayerPreserveAspect {
 		layer_path: Vec<LayerId>,
 		preserve_aspect: bool,

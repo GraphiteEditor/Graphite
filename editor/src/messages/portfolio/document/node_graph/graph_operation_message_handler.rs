@@ -52,7 +52,7 @@ impl<'a> ModifyInputsContext<'a> {
 			error!("Tried to modify root layer");
 			return None;
 		};
-		while document.network.nodes.get(&id)?.name != "Layer" {
+		while !document.network.nodes.get(&id)?.is_layer() {
 			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
 		document.layer_node = Some(id);
@@ -112,7 +112,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Locate the node output of the first sibling layer to the new layer
 		if let Some((node_id, output_index)) = self.skip_artboards(&mut output) {
 			let sibling_node = self.network.nodes.get(&node_id)?;
-			if sibling_node.name == "Layer" {
+			if sibling_node.is_layer() {
 				// There is already a layer node
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
 			} else {
@@ -125,8 +125,8 @@ impl<'a> ModifyInputsContext<'a> {
 			// Skip some layer nodes
 			for _ in 0..skip_layer_nodes {
 				if let Some(old_sibling) = &sibling_layer {
-					output = NodeOutput::new(old_sibling.node_id, 7);
-					sibling_layer = self.network.nodes.get(&old_sibling.node_id)?.inputs[7].as_node().map(|node| NodeOutput::new(node, 0));
+					output = NodeOutput::new(old_sibling.node_id, 1);
+					sibling_layer = self.network.nodes.get(&old_sibling.node_id)?.inputs[1].as_node().map(|node| NodeOutput::new(node, 0));
 					shift = IVec2::new(0, 3);
 				}
 			}
@@ -139,14 +139,14 @@ impl<'a> ModifyInputsContext<'a> {
 		// Create node
 		let layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
 		let new_id = if let Some(sibling_layer) = sibling_layer {
-			self.insert_between(new_id, sibling_layer, output, layer_node, 7, 0, shift)
+			self.insert_between(new_id, sibling_layer, output, layer_node, 1, 0, shift)
 		} else {
 			self.insert_node_before(new_id, output.node_id, output.node_output_index, layer_node, shift)
 		};
 
 		// Update the document metadata structure
 		if let Some(new_id) = new_id {
-			let parent = if self.network.nodes.get(&output_node_id).is_some_and(|node| node.name == "Layer") {
+			let parent = if self.network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer()) {
 				LayerNodeIdentifier::new(output_node_id, self.network)
 			} else {
 				LayerNodeIdentifier::ROOT
@@ -498,7 +498,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
 
-		let new_input = node.inputs[7].clone();
+		let new_input = node.inputs[1].clone();
 		let deleted_position = node.metadata.position;
 
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {

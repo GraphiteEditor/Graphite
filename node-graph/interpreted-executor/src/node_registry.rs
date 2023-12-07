@@ -79,7 +79,7 @@ macro_rules! register_node {
 }
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
-	// assign a Pin<Box<dyn Fututure<Output=T>>> type to the node, which is not what we want for now.
+	// assign a Pin<Box<dyn Future<Output=T>>> type to the node, which is not what we want for now.
 	($path:ty, input: $input:ty, output: $output:ty, params: [ $($type:ty),*]) => {
 		async_node!($path, input: $input, output: $output, fn_params: [ $(() => $type),*])
 	};
@@ -312,6 +312,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 					let empty_image = ImageFrame {
 						image: Image::new(bounds.x, bounds.y, Color::BLACK),
 						transform,
+						blend_mode: BlendMode::Normal,
 					};
 					let final_image = ClonedNode::new(empty_image).then(complete_node);
 					let final_image = FutureWrapperNode::new(final_image);
@@ -545,6 +546,9 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		raster_node!(graphene_core::raster::OpacityNode<_>, params: [f32]),
 		register_node!(graphene_core::raster::OpacityNode<_>, input: VectorData, params: [f32]),
 		register_node!(graphene_core::raster::OpacityNode<_>, input: GraphicGroup, params: [f32]),
+		register_node!(graphene_core::raster::BlendModeNode<_>, input: VectorData, params: [BlendMode]),
+		register_node!(graphene_core::raster::BlendModeNode<_>, input: GraphicGroup, params: [BlendMode]),
+		register_node!(graphene_core::raster::BlendModeNode<_>, input: ImageFrame<Color>, params: [BlendMode]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f32]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f32, f32, f32]),
 		register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
@@ -597,10 +601,10 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 					Box::pin(async move {
 						use graphene_std::raster::ImaginateNode;
-						macro_rules! instanciate_imaginate_node {
+						macro_rules! instantiate_imaginate_node {
 							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
 						}
-						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instanciate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
+						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,);
 						let any = graphene_std::any::DynAnyNode::new(node);
 						any.into_type_erased()
 					})
@@ -839,7 +843,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::text::TextGenerator<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
-		async_node!(graphene_core::ConstructLayerNode<_, _, _, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => graphene_core::GraphicElementData, () => String, () => BlendMode, () => f32,  () => bool, () => bool, () => bool, Footprint => GraphicGroup]),
+		async_node!(graphene_core::ConstructLayerNode<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => graphene_core::GraphicElementData, Footprint => GraphicGroup]),
 		register_node!(graphene_core::ToGraphicElementData, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementData, input: GraphicGroup, params: []),

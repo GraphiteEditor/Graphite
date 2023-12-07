@@ -89,15 +89,15 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 
 	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
 	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
-	let mut nwidth = size_px.x;
-	let mut nheight = size_px.y;
+	let mut new_width = size_px.x;
+	let mut new_height = size_px.y;
 
 	// Only downscale the image for now
-	let resized = if nwidth < image.width || nheight < image.height {
-		nwidth = viewport_resolution_x as u32;
-		nheight = viewport_resolution_y as u32;
-		// TODO: choose filter based on quality reqirements
-		cropped.resize_exact(nwidth, nheight, image::imageops::Triangle)
+	let resized = if new_width < image.width || new_height < image.height {
+		new_width = viewport_resolution_x as u32;
+		new_height = viewport_resolution_y as u32;
+		// TODO: choose filter based on quality requirements
+		cropped.resize_exact(new_width, new_height, image::imageops::Triangle)
 	} else {
 		cropped
 	};
@@ -105,14 +105,18 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	let buffer = buffer.into_raw();
 	let vec = bytemuck::cast_vec(buffer);
 	let image = Image {
-		width: nwidth,
-		height: nheight,
+		width: new_width,
+		height: new_height,
 		data: vec,
 	};
 	// we need to adjust the offset if we truncate the offset calculation
 
 	let new_transform = image_frame.transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	ImageFrame { image, transform: new_transform }
+	ImageFrame {
+		image,
+		transform: new_transform,
+		blend_mode: image_frame.blend_mode,
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -305,6 +309,7 @@ where
 	let mut new_background = ImageFrame {
 		image: new_background,
 		transform: transfrom,
+		blend_mode: background.blend_mode,
 	};
 
 	new_background = blend_image(background, new_background, map_fn);
@@ -417,6 +422,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	ImageFrame {
 		image: new_img,
 		transform: new_texture_to_layer_space,
+		blend_mode: image.blend_mode,
 	}
 }
 
@@ -450,7 +456,9 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
 	let image = Image::new(width, height, color);
-	ImageFrame { image, transform }
+
+	let blend_mode = BlendMode::Normal;
+	ImageFrame { image, transform, blend_mode }
 }
 
 macro_rules! generate_imaginate_node {
@@ -538,7 +546,11 @@ pub struct ImageFrameNode<P, Transform> {
 }
 #[node_macro::node_fn(ImageFrameNode<_P>)]
 fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_core::raster::ImageFrame<_P> {
-	graphene_core::raster::ImageFrame { image, transform }
+	graphene_core::raster::ImageFrame {
+		image,
+		transform,
+		blend_mode: BlendMode::Normal,
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -564,6 +576,7 @@ fn pixel_noise(width: u32, height: u32, seed: u32, noise_type: NoiseType) -> gra
 	ImageFrame::<Color> {
 		image,
 		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
+		blend_mode: BlendMode::Normal,
 	}
 }
 
@@ -608,6 +621,7 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 	ImageFrame {
 		image: Image { width, height, data },
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
+		blend_mode: BlendMode::Normal,
 	}
 }
 

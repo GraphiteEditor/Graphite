@@ -533,14 +533,7 @@ impl NodeGraphExecutor {
 						let layer = LayerNodeIdentifier::new(node_id, &document.document_network);
 						responses.add(FrontendMessage::UpdateDocumentLayerDetails {
 							data: LayerPanelEntry {
-								name: if document.metadata.is_artboard(layer) {
-									"Artboard"
-								} else if document.metadata.is_folder(layer) {
-									"Folder"
-								} else {
-									"Layer"
-								}
-								.to_string(),
+								name: document.document_network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 								tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 								visible: !document.document_network.disabled.contains(&layer.to_node()),
 								layer_type: if document.metadata.is_artboard(layer) {
