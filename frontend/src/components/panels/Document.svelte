@@ -589,6 +589,8 @@
 			.shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
+				// A precaution in case the variables above somehow fail
+				max-width: calc(32px * 3);
 
 				.tools {
 					flex: 0 1 auto;

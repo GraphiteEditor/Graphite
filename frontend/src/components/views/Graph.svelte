@@ -466,7 +466,7 @@
 		const theNodesContainer = nodesContainer;
 
 		// Find the link that the node has been dragged on top of
-		const link = $nodeGraph.links.find((link): boolean => {
+		const link = $nodeGraph.links.find((link) => {
 			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return false;
 
@@ -487,9 +487,11 @@
 
 		// If the node has been dragged on top of the link then connect it into the middle.
 		if (link) {
-			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
+			const isLayer = $nodeGraph.nodes.find((node) => node.id === selectedNodeId)?.isLayer;
+
+			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
 			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
-			editor.instance.shiftNode(selectedNodeId);
+			if (!isLayer) editor.instance.shiftNode(selectedNodeId);
 		}
 	}
 	function pointerUp(e: PointerEvent) {
