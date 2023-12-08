@@ -77,12 +77,11 @@ impl<T> TransformMut for SurfaceHandleFrame<T> {
 }
 
 // TODO: think about how to automatically clean up memory
-/*
-impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
-	fn drop(&mut self) {
-		self.application_io.destroy_surface(self.surface_id)
-	}
-}*/
+// impl<'a, Surface> Drop for SurfaceHandle<'a, Surface> {
+// 	fn drop(&mut self) {
+// 		self.application_io.destroy_surface(self.surface_id)
+// 	}
+// }
 
 pub type ResourceFuture = Pin<Box<dyn Future<Output = Result<Arc<[u8]>, ApplicationError>>>>;
 

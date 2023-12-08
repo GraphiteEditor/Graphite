@@ -482,31 +482,31 @@ impl ProtoNetwork {
 		true
 	}
 
-	/*// Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
-	pub fn topological_sort(&self) -> Vec<NodeId> {
-		let mut sorted = Vec::new();
-		let outwards_edges = self.collect_outwards_edges();
-		let mut inwards_edges = self.collect_inwards_edges();
-		let mut no_incoming_edges: Vec<_> = self.nodes.iter().map(|entry| entry.0).filter(|id| !inwards_edges.contains_key(id)).collect();
+	// // Based on https://en.wikipedia.org/wiki/Topological_sorting#Kahn's_algorithm
+	// pub fn topological_sort(&self) -> Vec<NodeId> {
+	// 	let mut sorted = Vec::new();
+	// 	let outwards_edges = self.collect_outwards_edges();
+	// 	let mut inwards_edges = self.collect_inwards_edges();
+	// 	let mut no_incoming_edges: Vec<_> = self.nodes.iter().map(|entry| entry.0).filter(|id| !inwards_edges.contains_key(id)).collect();
 
-		assert_ne!(no_incoming_edges.len(), 0, "Acyclic graphs must have at least one node with no incoming edge");
+	// 	assert_ne!(no_incoming_edges.len(), 0, "Acyclic graphs must have at least one node with no incoming edge");
 
-		while let Some(node_id) = no_incoming_edges.pop() {
-			sorted.push(node_id);
+	// 	while let Some(node_id) = no_incoming_edges.pop() {
+	// 		sorted.push(node_id);
 
-			if let Some(outwards_edges) = outwards_edges.get(&node_id) {
-				for &ref_id in outwards_edges {
-					let dependencies = inwards_edges.get_mut(&ref_id).unwrap();
-					dependencies.retain(|&id| id != node_id);
-					if dependencies.is_empty() {
-						no_incoming_edges.push(ref_id)
-					}
-				}
-			}
-		}
-		debug!("Sorted order {sorted:?}");
-		sorted
-	}*/
+	// 		if let Some(outwards_edges) = outwards_edges.get(&node_id) {
+	// 			for &ref_id in outwards_edges {
+	// 				let dependencies = inwards_edges.get_mut(&ref_id).unwrap();
+	// 				dependencies.retain(|&id| id != node_id);
+	// 				if dependencies.is_empty() {
+	// 					no_incoming_edges.push(ref_id)
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// 	debug!("Sorted order {sorted:?}");
+	// 	sorted
+	// }
 
 	/// Sort the nodes vec so it is in a topological order. This ensures that no node takes an input from a node that is found later in the list.
 	fn reorder_ids(&mut self) -> Result<(), String> {

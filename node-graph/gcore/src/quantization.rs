@@ -61,15 +61,14 @@ pub struct PackedPixel(pub u32);
 
 impl Pixel for PackedPixel {}
 
-/*
-#[inline(always)]
-fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
-	let a = quantization.a();
-	let bits = quantization.bits();
-	let b = quantization.b();
-	let value = (((a * value) * ((1 << bits) - 1) as f32) as i32 + b) as u32;
-	value.checked_shl(32 - bits - offset).unwrap_or(0)
-}*/
+// #[inline(always)]
+// fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
+// 	let a = quantization.a();
+// 	let bits = quantization.bits();
+// 	let b = quantization.b();
+// 	let value = (((a * value) * ((1 << bits) - 1) as f32) as i32 + b) as u32;
+// 	value.checked_shl(32 - bits - offset).unwrap_or(0)
+// }
 
 #[inline(always)]
 fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
@@ -87,16 +86,16 @@ fn quantize(value: f32, offset: u32, quantization: Quantization) -> u32 {
 
 	rounded_value.checked_shl(32 - bits - offset).unwrap()
 }
-/*
-#[inline(always)]
-fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
-	let a = quantization.a();
-	let bits = quantization.bits();
-	let b = quantization.b();
-	let value = (value << offset) >> (31 - bits);
-	let value = value as i32 - b;
-	(value as f32 / ((1 << bits) - 1) as f32) / a
-}*/
+
+// #[inline(always)]
+// fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {
+// 	let a = quantization.a();
+// 	let bits = quantization.bits();
+// 	let b = quantization.b();
+// 	let value = (value << offset) >> (31 - bits);
+// 	let value = value as i32 - b;
+// 	(value as f32 / ((1 << bits) - 1) as f32) / a
+// }
 
 #[inline(always)]
 fn decode(value: u32, offset: u32, quantization: Quantization) -> f32 {

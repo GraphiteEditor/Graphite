@@ -1431,43 +1431,41 @@ mod test {
 	}
 
 	// TODO: Write more tests
-	/*
-	#[test]
-	fn out_of_order_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(10, 1), NodeOutput::new(10, 0)], NodeInput::node(10, 0));
-		assert_eq!(result.outputs[0], NodeOutput::new(101, 0), "The first network output should be from a duplicated nested network");
-		assert_eq!(result.outputs[1], NodeOutput::new(10, 0), "The second network output should be from the original nested network");
-		assert!(
-			result.nodes.contains_key(&10) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
-			"Network should contain two duplicated nodes"
-		);
-		for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
-			let nested_network_node = result.nodes.get(&node_id).unwrap();
-			assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-			assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
-			let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-			assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
-			assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
-			assert_eq!(inner_network.nodes.get(&inner_id).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
-		}
-	}
-	#[test]
-	fn using_other_node_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(11, 0)], NodeInput::node(10, 1));
-		assert_eq!(result.outputs, vec![NodeOutput::new(11, 0)], "The network output should be the result node");
-		assert!(
-			result.nodes.contains_key(&11) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
-			"Network should contain a duplicated node and a result node"
-		);
-		let result_node = result.nodes.get(&11).unwrap();
-		assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
-		let nested_network_node = result.nodes.get(&101).unwrap();
-		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
-		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
-		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
-		assert_eq!(inner_network.nodes.get(&2).unwrap().name, "Identity 2", "The node should be identity 2");
-	}
-	*/
+	// #[test]
+	// fn out_of_order_duplicate() {
+	// 	let result = output_duplicate(vec![NodeOutput::new(10, 1), NodeOutput::new(10, 0)], NodeInput::node(10, 0));
+	// 	assert_eq!(result.outputs[0], NodeOutput::new(101, 0), "The first network output should be from a duplicated nested network");
+	// 	assert_eq!(result.outputs[1], NodeOutput::new(10, 0), "The second network output should be from the original nested network");
+	// 	assert!(
+	// 		result.nodes.contains_key(&10) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
+	// 		"Network should contain two duplicated nodes"
+	// 	);
+	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
+	// 		let nested_network_node = result.nodes.get(&node_id).unwrap();
+	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
+	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
+	// 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
+	// 		assert_eq!(inner_network.nodes.get(&inner_id).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
+	// 	}
+	// }
+	// #[test]
+	// fn using_other_node_duplicate() {
+	// 	let result = output_duplicate(vec![NodeOutput::new(11, 0)], NodeInput::node(10, 1));
+	// 	assert_eq!(result.outputs, vec![NodeOutput::new(11, 0)], "The network output should be the result node");
+	// 	assert!(
+	// 		result.nodes.contains_key(&11) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
+	// 		"Network should contain a duplicated node and a result node"
+	// 	);
+	// 	let result_node = result.nodes.get(&11).unwrap();
+	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
+	// 	let nested_network_node = result.nodes.get(&101).unwrap();
+	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
+	// 	assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
+	// 	assert_eq!(inner_network.nodes.get(&2).unwrap().name, "Identity 2", "The node should be identity 2");
+	// }
 }

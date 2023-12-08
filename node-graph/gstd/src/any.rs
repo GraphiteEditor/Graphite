@@ -296,13 +296,11 @@ mod test {
 	}
 
 	// TODO: Fix this test
-	/*
-	#[test]
-	pub fn dyn_input_storage_composition() {
-		// todo readd test
-		let node = <graphene_core::ops::IdNode>::new();
-		let any: DynAnyNode<Any<'_>, Any<'_>, _> = DynAnyNode::new(ValueNode::new(node));
-		any.into_type_erased();
-	}
-	*/
+	// #[test]
+	// pub fn dyn_input_storage_composition() {
+	// 	// todo readd test
+	// 	let node = <graphene_core::ops::IdNode>::new();
+	// 	let any: DynAnyNode<Any<'_>, Any<'_>, _> = DynAnyNode::new(ValueNode::new(node));
+	// 	any.into_type_erased();
+	// }
 }

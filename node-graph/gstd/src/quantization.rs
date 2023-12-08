@@ -59,37 +59,36 @@ fn generate_quantization(data: Vec<f64>, samples: usize) -> [Quantization; 4] {
 	})
 }
 
-/*
 // TODO: make this work with generic size parameters
-fn generate_quantization<const N: usize>(data: Vec<f64>, samples: usize, channels: usize) -> [Quantization; N] {
-	let mut quantizations = Vec::new();
-	let mut merged_error: Option<ErrorFunction<10>> = None;
-	let bin_size = 32;
+// fn generate_quantization<const N: usize>(data: Vec<f64>, samples: usize, channels: usize) -> [Quantization; N] {
+// 	let mut quantizations = Vec::new();
+// 	let mut merged_error: Option<ErrorFunction<10>> = None;
+// 	let bin_size = 32;
 
-	for i in 0..channels {
-		let channel_data = create_distribution(data.clone(), samples, i);
+// 	for i in 0..channels {
+// 		let channel_data = create_distribution(data.clone(), samples, i);
 
-		let fit = autoquant::calculate_error_function(&channel_data, 0, &channel_data);
-		let error: ErrorFunction<10> = autoquant::packing::ErrorFunction::new(fit.as_slice());
+// 		let fit = autoquant::calculate_error_function(&channel_data, 0, &channel_data);
+// 		let error: ErrorFunction<10> = autoquant::packing::ErrorFunction::new(fit.as_slice());
 
-		// Merge current error function with previous ones
-		merged_error = match merged_error {
-			Some(prev_error) => Some(autoquant::packing::merge_error_functions(&prev_error, &error)),
-			None => Some(error.clone()),
-		};
+// 		// Merge current error function with previous ones
+// 		merged_error = match merged_error {
+// 			Some(prev_error) => Some(autoquant::packing::merge_error_functions(&prev_error, &error)),
+// 			None => Some(error.clone()),
+// 		};
 
-		println!("Merged: {merged_error:?}");
+// 		println!("Merged: {merged_error:?}");
 
-		let bits = merged_error.as_ref().unwrap().bits.iter().map(|x| x[i]).collect::<Vec<_>>();
-		let model_fit = autoquant::models::OptimizedLin::new(channel_data, 1 << bits[bin_size]);
-		let parameters = model_fit.parameters();
-		let quantization = Quantization::new(parameters[0] as f32, parameters[1] as u32, bits[bin_size] as u32);
+// 		let bits = merged_error.as_ref().unwrap().bits.iter().map(|x| x[i]).collect::<Vec<_>>();
+// 		let model_fit = autoquant::models::OptimizedLin::new(channel_data, 1 << bits[bin_size]);
+// 		let parameters = model_fit.parameters();
+// 		let quantization = Quantization::new(parameters[0] as f32, parameters[1] as u32, bits[bin_size] as u32);
 
-		quantizations.push(quantization);
-	}
+// 		quantizations.push(quantization);
+// 	}
 
-	core::array::from_fn(|x| quantizations[x])
-}*/
+// 	core::array::from_fn(|x| quantizations[x])
+// }
 
 fn create_distribution(data: Vec<f64>, samples: usize, channel: usize) -> Vec<(f64, f64)> {
 	let data: Vec<f64> = data.chunks(4 * (data.len() / (4 * samples.min(data.len() / 4)))).map(|x| x[channel] as f64).collect();

@@ -332,17 +332,17 @@ fn render_canvas(
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
 		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}
-	/*
-	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
-	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
 
-	let image_data = web_sys::HtmlImageElement::new().unwrap();
-	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
-	*/
+	// let preamble = "data:image/svg+xml;base64,";
+	// let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+	// base64_string.push_str(preamble);
+	// base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+
+	// let image_data = web_sys::HtmlImageElement::new().unwrap();
+	// image_data.set_src(base64_string.as_str());
+	// wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+	// context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+
 	let frame = SurfaceHandleFrame {
 		surface_handle,
 		transform: glam::DAffine2::IDENTITY,

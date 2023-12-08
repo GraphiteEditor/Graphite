@@ -139,7 +139,7 @@ impl LayoutHolder for BrushTool {
 			NumberInput::new(Some(self.options.diameter))
 				.label("Diameter")
 				.min(1.)
-				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
+				.max(BRUSH_MAX_SIZE) // Anything bigger would cause the application to be unresponsive and eventually die
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
 				.widget_holder(),

@@ -358,18 +358,17 @@ impl<P: Pixel> ImageFrame<P> {
 	}
 }
 
-/* This does not work because of missing specialization
- * so we have to manually implement this for now
-impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {
-	fn from(image: Image<S>) -> Self {
-		let data = image.data.into_iter().map(|x| x.into()).collect();
-		Self {
-			data,
-			width: image.width,
-			height: image.height,
-		}
-	}
-}*/
+// // This does not work because of missing specialization so we have to manually implement this for now
+// impl<S: Into<P> + Pixel, P: Pixel> From<Image<S>> for Image<P> {
+// 	fn from(image: Image<S>) -> Self {
+// 		let data = image.data.into_iter().map(|x| x.into()).collect();
+// 		Self {
+// 			data,
+// 			width: image.width,
+// 			height: image.height,
+// 		}
+// 	}
+// }
 
 impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
 	fn from(image: ImageFrame<Color>) -> Self {

@@ -145,16 +145,16 @@ pub struct ApplyNode<O, N> {
 	pub node: N,
 	_o: PhantomData<O>,
 }
-/*
-#[node_macro::node_fn(ApplyNode)]
-fn apply<In, N>(input: In, node: &'any_input N) -> ()
-where
-	// TODO: try to allows this to return output other than ()
-	N: for<'any_input> Node<'any_input, In, Output = ()>,
-{
-	node.eval(input)
-}
-*/
+
+// #[node_macro::node_fn(ApplyNode)]
+// fn apply<In, N>(input: In, node: &'any_input N) -> ()
+// where
+// 	// TODO: try to allows this to return output other than ()
+// 	N: for<'any_input> Node<'any_input, In, Output = ()>,
+// {
+// 	node.eval(input)
+// }
+
 impl<'input, In: 'input, N: 'input, S0: 'input, O: 'input> Node<'input, In> for ApplyNode<O, S0>
 where
 	N: Node<'input, In, Output = O>,

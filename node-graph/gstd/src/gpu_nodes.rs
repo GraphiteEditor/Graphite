@@ -280,22 +280,22 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	//return ImageFrame::empty();
 	let len: usize = image.image.data.len();
 
-	/*
-	let canvas = editor_api.application_io.create_surface();
+	// let canvas = editor_api.application_io.create_surface();
 
-	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	//log::debug!("id: {surface:?}");
-	let surface_id = surface.surface_id;
+	// let surface = unsafe { executor.create_surface(canvas) }.unwrap();
+	// //log::debug!("id: {surface:?}");
+	// let surface_id = surface.surface_id;
 
-	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
+	// let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
 
-	//executor.create_render_pass(texture, surface).unwrap();
+	// //executor.create_render_pass(texture, surface).unwrap();
 
-	let frame = SurfaceFrame {
-		surface_id,
-		transform: image.transform,
-	};
-	return frame;*/
+	// let frame = SurfaceFrame {
+	// 	surface_id,
+	// 	transform: image.transform,
+	// };
+	// return frame;
+
 	log::debug!("creating buffer");
 	let width_uniform = executor.create_uniform_buffer(image.image.width).unwrap();
 	#[cfg(not(feature = "quantization"))]

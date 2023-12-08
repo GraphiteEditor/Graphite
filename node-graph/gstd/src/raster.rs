@@ -648,14 +648,13 @@ mod test {
 	#[test]
 	fn load_image() {
 		// TODO: reenable this test
-		/*
-		let image = image_node::<&str>();
 
-		let grayscale_picture = image.then(MapResultNode::new(&image));
-		let export = export_image_node();
+		// let image = image_node::<&str>();
 
-		let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
-		export.eval((picture, "test-image-1-result.png")).unwrap();
-		*/
+		// let grayscale_picture = image.then(MapResultNode::new(&image));
+		// let export = export_image_node();
+
+		// let picture = grayscale_picture.eval("test-image-1.png").expect("Failed to load image");
+		// export.eval((picture, "test-image-1-result.png")).unwrap();
 	}
 }

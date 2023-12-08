@@ -2422,27 +2422,24 @@ impl DocumentNodeBlueprint {
 			NodeImplementation::DocumentNode(network) => network.clone(),
 
 			NodeImplementation::ProtoNode(ident) => return DocumentNodeImplementation::Unresolved(ident.clone()),
-			/*
-				NodeNetwork {
-					inputs: (0..num_inputs).map(|_| 0).collect(),
-					outputs: vec![NodeOutput::new(0, 0)],
-					nodes: [(
-						0,
-						DocumentNode {
-							name: format!("{}_impl", self.name),
-							// TODO: Allow inserting nodes that contain other nodes.
-							implementation: DocumentNodeImplementation::Unresolved(ident.clone()),
-							inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
-							..Default::default()
-						},
-					)]
-					.into_iter()
-					.collect(),
-					..Default::default()
-				}
-
-			}
-			*/
+			// 	NodeNetwork {
+			// 		inputs: (0..num_inputs).map(|_| 0).collect(),
+			// 		outputs: vec![NodeOutput::new(0, 0)],
+			// 		nodes: [(
+			// 			0,
+			// 			DocumentNode {
+			// 				identifier: format!("{}_impl", self.name),
+			// 				// TODO: Allow inserting nodes that contain other nodes.
+			// 				implementation: DocumentNodeImplementation::Unresolved(ident.clone()),
+			// 				inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
+			// 				..Default::default()
+			// 			},
+			// 		)]
+			// 		.into_iter()
+			// 		.collect(),
+			// 		..Default::default()
+			// 	}
+			// }
 			NodeImplementation::Extract => return DocumentNodeImplementation::Extract,
 		};
 

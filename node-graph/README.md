@@ -40,7 +40,6 @@ DocumentNodeBlueprint {
 },
 ```
 
-
 The identifier here must be the same as that of the proto-node which will be discussed soon (usually the path to the node implementation).
 
 > [!NOTE]
