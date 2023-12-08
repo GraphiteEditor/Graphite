@@ -9,7 +9,7 @@ use crate::{DocumentError, DocumentResponse, Operation};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::transform::Footprint;
-use graphene_core::{concrete, generic, NodeIdentifier};
+use graphene_core::{concrete, generic, ProtoNodeIdentifier};
 use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::{DAffine2, DVec2};
@@ -64,13 +64,13 @@ impl Default for Document {
 							DocumentNode {
 								name: "EditorApi".to_string(),
 								inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
+								implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 								..Default::default()
 							},
 							DocumentNode {
 								name: "Create Canvas".to_string(),
 								inputs: vec![NodeInput::node(0, 0)],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+								implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 								skip_deduplication: true,
 								..Default::default()
 							},
@@ -78,7 +78,7 @@ impl Default for Document {
 								name: "Cache".to_string(),
 								manual_composition: Some(concrete!(())),
 								inputs: vec![NodeInput::node(1, 0)],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+								implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 								..Default::default()
 							},
 							DocumentNode {
@@ -88,7 +88,7 @@ impl Default for Document {
 									NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
 									NodeInput::node(2, 0),
 								],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
+								implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
 								..Default::default()
 							},
 						]

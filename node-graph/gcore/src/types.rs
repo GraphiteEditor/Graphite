@@ -66,7 +66,7 @@ macro_rules! fn_type {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct NodeIdentifier {
+pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
 
@@ -218,14 +218,14 @@ impl std::fmt::Display for Type {
 	}
 }
 
-impl From<&'static str> for NodeIdentifier {
+impl From<&'static str> for ProtoNodeIdentifier {
 	fn from(s: &'static str) -> Self {
-		NodeIdentifier { name: Cow::Borrowed(s) }
+		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
 	}
 }
 
-impl NodeIdentifier {
+impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
-		NodeIdentifier { name: Cow::Borrowed(name) }
+		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
 	}
 }

@@ -381,9 +381,9 @@ pub struct MapGpuSingleImageNode<N> {
 #[node_macro::node_fn(MapGpuSingleImageNode)]
 fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 	use graph_craft::document::*;
-	use graph_craft::NodeIdentifier;
+	use graph_craft::ProtoNodeIdentifier;
 
-	let identifier = NodeIdentifier { name: std::borrow::Cow::Owned(node) };
+	let identifier = ProtoNodeIdentifier { name: std::borrow::Cow::Owned(node) };
 
 	let network = NodeNetwork {
 		inputs: vec![0],

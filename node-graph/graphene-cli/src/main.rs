@@ -8,7 +8,7 @@ use graph_craft::{
 	document::*,
 	graphene_compiler::{Compiler, Executor},
 	imaginate_input::ImaginatePreferences,
-	NodeIdentifier,
+	ProtoNodeIdentifier,
 };
 use graphene_core::{
 	application_io::{ApplicationIo, NodeGraphUpdateSender},
@@ -164,20 +164,20 @@ fn begin_scope() -> DocumentNode {
 				DocumentNode {
 					name: "SetNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
+					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::SomeNode")),
 					..Default::default()
 				},
 				DocumentNode {
 					name: "LetNode".to_string(),
 					inputs: vec![NodeInput::node(0, 0)],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::LetNode<_>")),
+					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 					..Default::default()
 				},
 				DocumentNode {
 					name: "RefNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
 					inputs: vec![NodeInput::lambda(1, 0)],
-					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
+					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 					..Default::default()
 				},
 			]

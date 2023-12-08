@@ -26,10 +26,10 @@ pub struct DocumentNode {
 Each `DocumentNode` is of a particular type, for example the "Opacity" node type. You can define your own type of document node in `editor/src/messages/portfolio/document/node_graph/node_graph_message_handler/document_node_types.rs`. A sample document node type definition for the opacity node is shown:
 
 ```rs
-DocumentNodeBlueprint {
+DocumentNodeDefinition {
 	name: "Opacity",
 	category: "Image Adjustments",
-	identifier: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
+	implementation: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 	inputs: vec![
 		DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 		DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
@@ -136,7 +136,7 @@ The definition for the constructor of a node that applies the opacity transforma
 ```rs
 (
 	// Matches against the string defined in the document node.
-	NodeIdentifier::new("graphene_core::raster::OpacityNode<_>"),
+	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode<_>"),
 	// This function is run when converting the `ProtoNode` struct into the desired struct.
 	|args| {
 		Box::pin(async move {

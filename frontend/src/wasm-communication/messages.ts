@@ -101,9 +101,9 @@ export class FrontendNode {
 
 	readonly id!: bigint;
 
-	readonly name!: string;
+	readonly alias!: string;
 
-	readonly identifier!: string;
+	readonly name!: string;
 
 	readonly primaryInput!: FrontendGraphInput | undefined;
 

@@ -76,8 +76,8 @@ pub struct FrontendNode {
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
 	pub id: graph_craft::document::NodeId,
+	pub alias: String,
 	pub name: String,
-	pub identifier: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]
@@ -297,8 +297,8 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				is_layer: node.is_layer(),
 				id: *id,
-				name: node.alias.clone(),
-				identifier: node.name.clone(),
+				alias: node.alias.clone(),
+				name: node.name.clone(),
 				primary_input,
 				exposed_inputs,
 				primary_output,

@@ -741,7 +741,7 @@
 				</div>
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.name}>{node.name || "Layer"}</TextLabel>
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.alias}>{node.alias || "Layer"}</TextLabel>
 				</div>
 
 				<svg class="border-mask" width="0" height="0">
@@ -771,9 +771,9 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.identifier)} />
+					<IconLabel icon={nodeIcon(node.name)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.name}>{node.name || node.identifier}</TextLabel>
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.alias}>{node.alias || node.name}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}
