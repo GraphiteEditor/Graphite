@@ -205,7 +205,7 @@ impl ConstructionArgs {
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
-	pub identifier: NodeIdentifier,
+	pub identifier: ProtoNodeType,
 	pub document_node_path: Vec<NodeId>,
 	pub skip_deduplication: bool,
 	// TODO: This is a hack, figure out a proper solution
@@ -216,7 +216,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::ops::IdNode"),
+			identifier: ProtoNodeType::new("graphene_core::ops::IdNode"),
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
 			input: ProtoNodeInput::None,
 			document_node_path: vec![],
@@ -284,7 +284,7 @@ impl ProtoNode {
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeType::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
 			document_node_path: path,
@@ -397,7 +397,7 @@ impl ProtoNetwork {
 				self.nodes.push((
 					compose_node_id,
 					ProtoNode {
-						identifier: NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+						identifier: ProtoNodeType::new("graphene_core::structural::ComposeNode<_, _, _>"),
 						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
 						input,
 						document_node_path: path,
@@ -543,14 +543,14 @@ impl ProtoNetwork {
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone)]
 pub struct TypingContext {
-	lookup: Cow<'static, HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
+	lookup: Cow<'static, HashMap<ProtoNodeType, HashMap<NodeIOTypes, NodeConstructor>>>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 
 impl TypingContext {
 	/// Creates a new `TypingContext` with the given lookup table.
-	pub fn new(lookup: &'static HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
+	pub fn new(lookup: &'static HashMap<ProtoNodeType, HashMap<NodeIOTypes, NodeConstructor>>) -> Self {
 		Self {
 			lookup: Cow::Borrowed(lookup),
 			..Default::default()

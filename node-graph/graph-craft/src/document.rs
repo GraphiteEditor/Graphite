@@ -1,6 +1,6 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-use graphene_core::{GraphicGroup, NodeIdentifier, Type};
+use graphene_core::{GraphicGroup, ProtoNodeType, Type};
 
 use dyn_any::{DynAny, StaticType};
 use glam::IVec2;
@@ -358,12 +358,12 @@ impl NodeInput {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`NodeIdentifier`], or extract.
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeType`], or extract.
 pub enum DocumentNodeImplementation {
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
 	/// A protonode identifier which can be found in `node_registry.rs`.
-	Unresolved(NodeIdentifier),
+	Unresolved(ProtoNodeType),
 	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`.
 	/// The referenced node (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
@@ -371,7 +371,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode"))
+		Self::Unresolved(ProtoNodeType::new("graphene_core::ops::IdNode"))
 	}
 }
 
@@ -391,7 +391,7 @@ impl DocumentNodeImplementation {
 	}
 
 	pub const fn proto(name: &'static str) -> Self {
-		Self::Unresolved(NodeIdentifier::new(name))
+		Self::Unresolved(ProtoNodeType::new(name))
 	}
 }
 
@@ -525,7 +525,7 @@ impl NodeNetwork {
 							identifier: "MemoNode".to_string(),
 							manual_composition: Some(concrete!(())),
 							inputs: vec![NodeInput::Network(ty)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode")),
+							implementation: DocumentNodeImplementation::Unresolved(ProtoNodeType::new("graphene_core::memo::MemoNode")),
 							..Default::default()
 						},
 					),
@@ -534,7 +534,7 @@ impl NodeNetwork {
 						DocumentNode {
 							identifier: "CloneNode".to_string(),
 							inputs: vec![NodeInput::node(0, 0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
+							implementation: DocumentNodeImplementation::Unresolved(ProtoNodeType::new("graphene_core::ops::CloneNode<_>")),
 							..Default::default()
 						},
 					),
@@ -981,7 +981,7 @@ impl NodeNetwork {
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &NodeIdentifier::new("graphene_core::ops::IdNode"))
+				matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &ProtoNodeType::new("graphene_core::ops::IdNode"))
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
@@ -1113,7 +1113,7 @@ mod test {
 
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-	use graphene_core::NodeIdentifier;
+	use graphene_core::ProtoNodeType;
 
 	fn gen_node_id() -> NodeId {
 		static NODE_ID: AtomicU64 = AtomicU64::new(4);
@@ -1364,7 +1364,7 @@ mod test {
 					DocumentNode {
 						identifier: "Identity 1".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeType::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 				),
@@ -1373,7 +1373,7 @@ mod test {
 					DocumentNode {
 						identifier: "Identity 2".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeType::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 				),
@@ -1403,7 +1403,7 @@ mod test {
 					DocumentNode {
 						identifier: "Result".into(),
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeType::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 				),

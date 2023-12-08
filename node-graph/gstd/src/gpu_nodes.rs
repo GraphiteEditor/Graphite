@@ -376,9 +376,9 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 // #[node_macro::node_fn(MapGpuSingleImageNode)]
 // fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 // 	use graph_craft::document::*;
-// 	use graph_craft::NodeIdentifier;
+// 	use graph_craft::ProtoNodeType;
 
-// 	let identifier = NodeIdentifier { name: std::borrow::Cow::Owned(node) };
+// 	let identifier = ProtoNodeType { name: std::borrow::Cow::Owned(node) };
 
 // 	let network = NodeNetwork {
 // 		inputs: vec![0],

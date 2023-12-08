@@ -13,7 +13,7 @@ use graphene_core::vector::VectorData;
 use graphene_core::{application_io::SurfaceHandle, SurfaceFrame, WasmSurfaceHandleFrame};
 use graphene_core::{concrete, generic, Artboard, GraphicGroup};
 use graphene_core::{fn_type, raster::*};
-use graphene_core::{Cow, NodeIdentifier, Type};
+use graphene_core::{Cow, ProtoNodeType, Type};
 use graphene_core::{Node, NodeIO, NodeIOTypes};
 use graphene_std::any::{ComposeTypeErased, DowncastBothNode, DynAnyNode, FutureWrapperNode, IntoTypeErasedNode};
 use graphene_std::wasm_application_io::*;
@@ -55,7 +55,7 @@ macro_rules! register_node {
 	($path:ty, input: $input:ty, fn_params: [ $($arg:ty => $type:ty),*]) => {
 		vec![
 		(
-			NodeIdentifier::new(stringify!($path)),
+			ProtoNodeType::new(stringify!($path)),
 			|args| {
 				Box::pin(async move {
 				let node = construct_node!(args, $path, [$($arg => $type),*]).await;
@@ -86,7 +86,7 @@ macro_rules! async_node {
 	($path:ty, input: $input:ty, output: $output:ty, fn_params: [  $($arg:ty => $type:ty),*]) => {
 		vec![
 		(
-			NodeIdentifier::new(stringify!($path)),
+			ProtoNodeType::new(stringify!($path)),
 			|mut args| {
 				Box::pin(async move {
 				args.reverse();
@@ -122,10 +122,10 @@ macro_rules! raster_node {
 		// optimization purposes.
 		#[cfg_attr(debug_assertions, inline(never))]
 		#[cfg_attr(not(debug_assertions), inline)]
-		fn generate_triples() -> Vec<(NodeIdentifier, NodeConstructor, NodeIOTypes)> {
+		fn generate_triples() -> Vec<(ProtoNodeType, NodeConstructor, NodeIOTypes)> {
 			vec![
 			(
-				NodeIdentifier::new(stringify!($path)),
+				ProtoNodeType::new(stringify!($path)),
 				|args| {
 					Box::pin(async move {
 						let node = construct_node!(args, $path, [$(() => $type),*]).await;
@@ -140,7 +140,7 @@ macro_rules! raster_node {
 				},
 			),
 			(
-				NodeIdentifier::new(stringify!($path)),
+				ProtoNodeType::new(stringify!($path)),
 				|args| {
 					Box::pin(async move {
 						let node = construct_node!(args, $path, [$(() => $type),*]).await;
@@ -156,7 +156,7 @@ macro_rules! raster_node {
 				},
 			),
 			(
-				NodeIdentifier::new(stringify!($path)),
+				ProtoNodeType::new(stringify!($path)),
 				|args| {
 					Box::pin(async move {
 						let node = construct_node!(args, $path, [$(() => $type),*]).await;
@@ -178,11 +178,11 @@ macro_rules! raster_node {
 }
 
 //TODO: turn into hashmap
-fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
-	let node_types: Vec<Vec<(NodeIdentifier, NodeConstructor, NodeIOTypes)>> = vec![
+fn node_registry() -> HashMap<ProtoNodeType, HashMap<NodeIOTypes, NodeConstructor>> {
+	let node_types: Vec<Vec<(ProtoNodeType, NodeConstructor, NodeIOTypes)>> = vec![
 		//register_node!(graphene_core::ops::IdNode, input: Any<'_>, params: []),
 		vec![(
-			NodeIdentifier::new("graphene_core::ops::IdNode"),
+			ProtoNodeType::new("graphene_core::ops::IdNode"),
 			|_| Box::pin(async move { FutureWrapperNode::new(IdNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		)],
@@ -284,7 +284,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Color>, RedGreenBlue]),
 		register_node!(graphene_std::raster::InsertChannelNode<_, _, _, _>, input: ImageFrame<Color>, params: [ImageFrame<Luma>, RedGreenBlue]),
 		vec![(
-			NodeIdentifier::new("graphene_std::raster::CombineChannelsNode"),
+			ProtoNodeType::new("graphene_std::raster::CombineChannelsNode"),
 			|args| {
 				Box::pin(async move {
 					use graphene_core::raster::*;
@@ -380,7 +380,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		),
 		#[cfg(feature = "gpu")]
 		vec![(
-			NodeIdentifier::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
+			ProtoNodeType::new("graphene_std::executor::MapGpuSingleImageNode<_>"),
 			|args| {
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
@@ -399,7 +399,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		)],
 		#[cfg(feature = "gpu")]
 		vec![(
-			NodeIdentifier::new("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
+			ProtoNodeType::new("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
 			|args| {
 				Box::pin(async move {
 					let background: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
@@ -418,7 +418,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 		)],
 		vec![(
-			NodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
+			ProtoNodeType::new("graphene_core::structural::ComposeNode<_, _, _>"),
 			|args| {
 				Box::pin(async move {
 					let node = ComposeTypeErased::new(args[0].clone(), args[1].clone());
@@ -446,7 +446,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::raster::adjustments::ColorFillNode<_>, input: ImageFrame<Color>, params: [Color]),
 		register_node!(graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>, input: ImageFrame<Color>, params: [Color, BlendMode, f32]),
 		vec![(
-			NodeIdentifier::new("graphene_core::raster::BlendNode<_, _, _, _>"),
+			ProtoNodeType::new("graphene_core::raster::BlendNode<_, _, _, _>"),
 			|args| {
 				Box::pin(async move {
 					let image: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
@@ -478,7 +478,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			params: [RelativeAbsolute, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32, f32]
 		),
 		vec![(
-			NodeIdentifier::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
+			ProtoNodeType::new("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			|args| {
 				Box::pin(async move {
 					use graphene_core::raster::brightness_contrast::*;
@@ -508,7 +508,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		)],
 		vec![
 			(
-				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				ProtoNodeType::new("graphene_core::raster::CurvesNode<_>"),
 				|args| {
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
@@ -526,7 +526,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 			),
 			// TODO: Use channel split and merge for this instead of using LuminanceMut for the whole color.
 			(
-				NodeIdentifier::new("graphene_core::raster::CurvesNode<_>"),
+				ProtoNodeType::new("graphene_core::raster::CurvesNode<_>"),
 				|args| {
 					use graphene_core::raster::{curve::Curve, GenerateCurvesNode};
 					let curve: DowncastBothNode<(), Curve> = DowncastBothNode::new(args[0].clone());
@@ -584,7 +584,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		async_node!(graphene_core::memo::EndLetNode<_, _>, input: WasmEditorApi, output: SurfaceFrame, params: [SurfaceFrame]),
 		vec![
 			(
-				NodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
+				ProtoNodeType::new("graphene_core::memo::RefNode<_, _>"),
 				|args| {
 					Box::pin(async move {
 						let node: DowncastBothNode<Option<WasmEditorApi>, WasmEditorApi> = graphene_std::any::DowncastBothNode::new(args[0].clone());
@@ -597,7 +597,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				NodeIOTypes::new(concrete!(()), concrete!(WasmEditorApi), vec![fn_type!(Option<WasmEditorApi>, WasmEditorApi)]),
 			),
 			(
-				NodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+				ProtoNodeType::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 				|args: Vec<graph_craft::proto::SharedNodeContainer>| {
 					Box::pin(async move {
 						use graphene_std::raster::ImaginateNode;
@@ -669,7 +669,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		//register_node!(graphene_core::transform::TranformNode<_, _, _, _, _, _>, input: , output: RenderOutput, fn_params: [Footprint => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
 		vec![
 			(
-				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+				ProtoNodeType::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -691,7 +691,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 			),
 			(
-				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+				ProtoNodeType::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -720,7 +720,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 			),
 			(
-				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+				ProtoNodeType::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						args.reverse();
@@ -749,7 +749,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 				},
 			),
 			(
-				NodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
+				ProtoNodeType::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
 				|mut args| {
 					Box::pin(async move {
 						const EXPECT_MESSAGE: &str = "Not enough arguments provided to construct node";
@@ -785,7 +785,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f32, f32, u32]),
 		vec![(
-			NodeIdentifier::new("graphene_core::transform::CullNode<_>"),
+			ProtoNodeType::new("graphene_core::transform::CullNode<_>"),
 			|args| {
 				Box::pin(async move {
 					let mut args = args.clone();
@@ -806,7 +806,7 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [Artboard]),
 		register_node!(graphene_core::transform::CullNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		vec![(
-			NodeIdentifier::new("graphene_core::transform::CullNode<_>"),
+			ProtoNodeType::new("graphene_core::transform::CullNode<_>"),
 			|args| {
 				Box::pin(async move {
 					let mut args = args.clone();
@@ -850,19 +850,19 @@ fn node_registry() -> HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstruct
 		register_node!(graphene_core::ToGraphicElementData, input: Artboard, params: []),
 		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
 	];
-	let mut map: HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
+	let mut map: HashMap<ProtoNodeType, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {
 		// TODO: this is a hack to remove the newline from the node new_name
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
 		let new_name = id.name.replace('\n', " ");
-		let nid = NodeIdentifier { name: Cow::Owned(new_name) };
+		let nid = ProtoNodeType { name: Cow::Owned(new_name) };
 		map.entry(nid).or_default().insert(types.clone(), c);
 	}
 	map
 }
 
-pub static NODE_REGISTRY: Lazy<HashMap<NodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
+pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeType, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
 
 #[cfg(test)]
 mod protograph_testing {

@@ -136,7 +136,7 @@ The definition for the constructor of a node that applies the opacity transforma
 ```rs
 (
 	// Matches against the string defined in the document node.
-	NodeIdentifier::new("graphene_core::raster::OpacityNode<_>"),
+	ProtoNodeType::new("graphene_core::raster::OpacityNode<_>"),
 	// This function is run when converting the `ProtoNode` struct into the desired struct.
 	|args| {
 		Box::pin(async move {
@@ -153,7 +153,7 @@ The definition for the constructor of a node that applies the opacity transforma
 		})
 	},
 	// Defines the input, output, and parameters (where each parameter is a function taking in some input and returning another input).
-	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64))]),
+	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64)]),
 ),
 ```
 

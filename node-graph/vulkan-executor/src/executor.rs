@@ -116,7 +116,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // TODO: Fix this test
 // #[cfg(test)]
 // mod test {
-// 	use graph_craft::proto::{ConstructionArgs, NodeIdentifier, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
+// 	use graph_craft::proto::{ConstructionArgs, ProtoNodeType, ProtoNetwork, ProtoNode, ProtoNodeInput, Type};
 // 	use graph_craft::{concrete, generic};
 
 // 	fn inc_network() -> ProtoNetwork {
@@ -127,7 +127,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 				(
 // 					1,
 // 					ProtoNode {
-// 						identifier: NodeIdentifier::new("graphene_core::ops::IdNode", &[generic!("u32")]),
+// 						identifier: ProtoNodeType::new("graphene_core::ops::IdNode", &[generic!("u32")]),
 // 						input: ProtoNodeInput::Node(11),
 // 						construction_args: ConstructionArgs::Nodes(vec![]),
 // 					},
@@ -135,7 +135,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 				(
 // 					10,
 // 					ProtoNode {
-// 						identifier: NodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
+// 						identifier: ProtoNodeType::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
 // 						input: ProtoNodeInput::Network,
 // 						construction_args: ConstructionArgs::Nodes(vec![14]),
 // 					},
@@ -143,7 +143,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 				(
 // 					11,
 // 					ProtoNode {
-// 						identifier: NodeIdentifier::new("graphene_core::ops::AddNode", &[generic!("u32"), generic!("u32")]),
+// 						identifier: ProtoNodeType::new("graphene_core::ops::AddNode", &[generic!("u32"), generic!("u32")]),
 // 						input: ProtoNodeInput::Node(10),
 // 						construction_args: ConstructionArgs::Nodes(vec![]),
 // 					},
@@ -151,7 +151,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 				(
 // 					14,
 // 					ProtoNode {
-// 						identifier: NodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
+// 						identifier: ProtoNodeType::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
 // 						input: ProtoNodeInput::None,
 // 						construction_args: ConstructionArgs::Value(Box::new(3_u32)),
 // 					},
