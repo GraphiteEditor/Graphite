@@ -127,7 +127,7 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeBlueprint>> = 
 
 fn monitor_node() -> DocumentNode {
 	DocumentNode {
-		name: "Monitor".to_string(),
+		identifier: "Monitor".to_string(),
 		inputs: Vec::new(),
 		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
 		manual_composition: Some(concrete!(Footprint)),
@@ -204,7 +204,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					(
 						0,
 						DocumentNode {
-							name: "To Graphic Element".to_string(),
+							identifier: "To Graphic Element".to_string(),
 							inputs: vec![NodeInput::Network(generic!(T))],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementData"),
 							..Default::default()
@@ -221,7 +221,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					(
 						2,
 						DocumentNode {
-							name: "ConstructLayer".to_string(),
+							identifier: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
 								NodeInput::node(1, 0),
@@ -283,13 +283,13 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Load Resource".to_string(),
+						identifier: "Load Resource".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi)), NodeInput::Network(concrete!(String))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::LoadResourceNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Decode Image".to_string(),
+						identifier: "Decode Image".to_string(),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
 						..Default::default()
@@ -328,14 +328,14 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Create Canvas".to_string(),
+						identifier: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -367,27 +367,27 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(3, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Convert Image Frame".to_string(),
+						identifier: "Convert Image Frame".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, ImageFrame<SRGBA8>>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Canvas".to_string(),
+						identifier: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Draw Canvas".to_string(),
+						identifier: "Draw Canvas".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(2, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::DrawImageFrameNode<_>")),
 						..Default::default()
@@ -425,19 +425,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "SetNode".to_string(),
+						identifier: "SetNode".to_string(),
 						manual_composition: Some(concrete!(WasmEditorApi)),
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "LetNode".to_string(),
+						identifier: "LetNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "RefNode".to_string(),
+						identifier: "RefNode".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::lambda(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
@@ -500,33 +500,33 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(4, 0)],
 				nodes: [
 					DocumentNode {
-						name: "EditorApi".to_string(),
+						identifier: "EditorApi".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Canvas".to_string(),
+						identifier: "Create Canvas".to_string(),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Conversion".to_string(),
+						identifier: "Conversion".to_string(),
 						inputs: vec![NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, GraphicGroup>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "RenderNode".to_string(),
+						identifier: "RenderNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
 						..Default::default()
@@ -795,31 +795,31 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
 					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
 					DocumentNode {
-						name: "Identity".to_string(),
+						identifier: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "RedNode".to_string(),
+						identifier: "RedNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "GreenNode".to_string(),
+						identifier: "GreenNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Green), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "BlueNode".to_string(),
+						identifier: "BlueNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Blue), false)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "AlphaNode".to_string(),
+						identifier: "AlphaNode".to_string(),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
 						..Default::default()
@@ -896,19 +896,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Uniform".to_string(),
+						identifier: "Create Uniform".to_string(),
 						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UniformNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -948,19 +948,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Storage".to_string(),
+						identifier: "Create Storage".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(Vec<u8>)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::StorageNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1000,19 +1000,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Output Buffer".to_string(),
+						identifier: "Create Output Buffer".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(0, 0), NodeInput::Network(concrete!(Type))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1058,13 +1058,13 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Create Compute Pass".to_string(),
+						identifier: "Create Compute Pass".to_string(),
 						inputs: vec![
 							NodeInput::Network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>)),
 							NodeInput::node(0, 0),
@@ -1075,7 +1075,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1160,19 +1160,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Execute Compute Pipeline".to_string(),
+						identifier: "Execute Compute Pipeline".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(<WgpuExecutor as GpuExecutor>::CommandBuffer)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::ExecuteComputePipelineNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1212,19 +1212,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Read Output Buffer".to_string(),
+						identifier: "Read Output Buffer".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(Arc<ShaderInput<WgpuExecutor>>)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::ReadOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1264,13 +1264,13 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Create Gpu Surface".to_string(),
+						identifier: "Create Gpu Surface".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::CreateGpuSurfaceNode")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -1303,13 +1303,13 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(1, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Render Texture".to_string(),
+						identifier: "Render Texture".to_string(),
 						inputs: vec![
 							NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)),
 							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)),
@@ -1357,19 +1357,19 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 				outputs: vec![NodeOutput::new(2, 0)],
 				nodes: [
 					DocumentNode {
-						name: "Extract Executor".to_string(),
+						identifier: "Extract Executor".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IntoNode<_, &WgpuExecutor>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Upload Texture".to_string(),
+						identifier: "Upload Texture".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(0, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
-						name: "Cache".to_string(),
+						identifier: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(1, 0)],
 						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
@@ -2136,7 +2136,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 						..monitor_node()
 					},
 					DocumentNode {
-						name: "Transform".to_string(),
+						identifier: "Transform".to_string(),
 						inputs: vec![
 							NodeInput::node(0, 0),
 							NodeInput::Network(concrete!(DVec2)),
@@ -2343,7 +2343,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeBlueprint> = Lazy::new(|| DocumentNo
 			(
 				1,
 				DocumentNode {
-					name: "Imaginate".into(),
+					identifier: "Imaginate".into(),
 					inputs: vec![
 						NodeInput::node(0, 0),
 						NodeInput::Network(concrete!(WasmEditorApi)),
@@ -2401,8 +2401,8 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeBlueprint> = Lazy::new(|| DocumentNo
 	..Default::default()
 });
 
-pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeBlueprint> {
-	DOCUMENT_NODE_TYPES.iter().find(|node| node.identifier == name)
+pub fn resolve_document_node_type(identifier: &str) -> Option<&DocumentNodeBlueprint> {
+	DOCUMENT_NODE_TYPES.iter().find(|node| node.identifier == identifier)
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
@@ -2454,7 +2454,7 @@ impl DocumentNodeBlueprint {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 		DocumentNode {
-			name: self.identifier.to_string(),
+			identifier: self.identifier.to_string(),
 			inputs,
 			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
@@ -2510,7 +2510,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 	}
 
 	let inner_network = DocumentNode {
-		name: "Scope".to_string(),
+		identifier: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: core::iter::repeat(NodeInput::node(0, 1)).take(len).collect(),
 		..Default::default()

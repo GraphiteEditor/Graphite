@@ -95,7 +95,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
 		while let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output.node_id)?.inputs[output.node_output_index] {
 			let sibling_node = self.network.nodes.get(node_id)?;
-			if sibling_node.name != "Artboard" {
+			if sibling_node.identifier != "Artboard" {
 				return Some((*node_id, *output_index));
 			}
 			*output = NodeOutput::new(*node_id, *output_index)
@@ -299,7 +299,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Changes the inputs of a specific node
 	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let existing_node_id = self.network.primary_flow_from_node(self.layer_node).find(|(node, _)| node.name == name).map(|(_, id)| id);
+		let existing_node_id = self.network.primary_flow_from_node(self.layer_node).find(|(node, _)| node.identifier == name).map(|(_, id)| id);
 		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
@@ -322,7 +322,12 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Changes the inputs of a all of the existing instances of a node name
 	fn modify_all_node_inputs(&mut self, name: &'static str, skip_rerender: bool, mut update_input: impl FnMut(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let existing_nodes: Vec<_> = self.network.primary_flow_from_node(self.layer_node).filter(|(node, _)| node.name == name).map(|(_, id)| id).collect();
+		let existing_nodes: Vec<_> = self
+			.network
+			.primary_flow_from_node(self.layer_node)
+			.filter(|(node, _)| node.identifier == name)
+			.map(|(_, id)| id)
+			.collect();
 		for existing_node_id in existing_nodes {
 			self.modify_existing_node_inputs(existing_node_id, &mut update_input);
 		}
@@ -700,7 +705,13 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				let artboard_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.name == "Artboard").map(|(id, _)| *id).collect::<Vec<_>>();
+				let artboard_nodes = modify_inputs
+					.network
+					.nodes
+					.iter()
+					.filter(|(_, node)| node.identifier == "Artboard")
+					.map(|(id, _)| *id)
+					.collect::<Vec<_>>();
 				for id in artboard_nodes {
 					modify_inputs.delete_layer(id);
 				}

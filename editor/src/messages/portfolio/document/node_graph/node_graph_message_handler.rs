@@ -272,8 +272,8 @@ impl NodeGraphMessageHandler {
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
 			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
-			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
-				warn!("Node '{}' does not exist in library", node.name);
+			let Some(node_type) = document_node_types::resolve_document_node_type(&node.identifier) else {
+				warn!("Node '{}' does not exist in library", node.identifier);
 				continue;
 			};
 
@@ -298,7 +298,7 @@ impl NodeGraphMessageHandler {
 				is_layer: node.is_layer(),
 				id: *id,
 				name: node.alias.clone(),
-				identifier: node.name.clone(),
+				identifier: node.identifier.clone(),
 				primary_input,
 				exposed_inputs,
 				primary_output,
@@ -359,8 +359,8 @@ impl NodeGraphMessageHandler {
 					continue;
 				}
 
-				let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
-					warn!("Removing input of invalid node type '{}'", node.name);
+				let Some(node_type) = document_node_types::resolve_document_node_type(&node.identifier) else {
+					warn!("Removing input of invalid node type '{}'", node.identifier);
 					return false;
 				};
 
@@ -553,8 +553,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("Invalid node");
 					return;
 				};
-				let Some(node_type) = resolve_document_node_type(&node.name) else {
-					warn!("Node {} not in library", node.name);
+				let Some(node_type) = resolve_document_node_type(&node.identifier) else {
+					warn!("Node {} not in library", node.identifier);
 					return;
 				};
 
@@ -635,7 +635,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let mut input = node.inputs[input_index].clone();
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = new_exposed;
-				} else if let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) {
+				} else if let Some(node_type) = document_node_types::resolve_document_node_type(&node.identifier) {
 					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
 						input = NodeInput::Value {
 							tagged_value: tagged_value.clone(),
@@ -758,7 +758,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let input = NodeInput::Value { tagged_value: value, exposed: false };
 						responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 						responses.add(PropertiesPanelMessage::ResendActiveProperties);
-						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
+						if (node.identifier != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
 							if let Some(layer_path) = self.layer_path.clone() {
 								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 							} else {

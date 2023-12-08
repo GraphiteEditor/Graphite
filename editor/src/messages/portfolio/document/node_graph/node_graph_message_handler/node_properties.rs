@@ -1770,7 +1770,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 }
 
 fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
-	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
+	string_properties(format!("Node '{}' cannot be found in library", document_node.identifier))
 }
 
 pub fn node_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1788,7 +1788,7 @@ pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 
 pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
-	let name = document_node.name.clone();
+	let name = document_node.identifier.clone();
 	let layout = match super::document_node_types::resolve_document_node_type(&name) {
 		Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
 		None => unknown_node_properties(document_node),

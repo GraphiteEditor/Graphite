@@ -66,6 +66,7 @@ macro_rules! fn_type {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+// TODO: Rename to NodeTypeIdentifier
 pub struct NodeIdentifier {
 	pub name: Cow<'static, str>,
 }

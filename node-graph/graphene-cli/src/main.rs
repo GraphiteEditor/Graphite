@@ -129,7 +129,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	}
 
 	let inner_network = DocumentNode {
-		name: "Scope".to_string(),
+		identifier: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: core::iter::repeat(NodeInput::node(0, 1)).take(len).collect(),
 		..Default::default()
@@ -140,7 +140,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		begin_scope(),
 		inner_network,
 		DocumentNode {
-			name: "End Scope".to_string(),
+			identifier: "End Scope".to_string(),
 			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
 			inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
 			..Default::default()
@@ -156,25 +156,25 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 
 fn begin_scope() -> DocumentNode {
 	DocumentNode {
-		name: "Begin Scope".to_string(),
+		identifier: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
 			inputs: vec![0],
 			outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
 			nodes: [
 				DocumentNode {
-					name: "SetNode".to_string(),
+					identifier: "SetNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::SomeNode")),
 					..Default::default()
 				},
 				DocumentNode {
-					name: "LetNode".to_string(),
+					identifier: "LetNode".to_string(),
 					inputs: vec![NodeInput::node(0, 0)],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 					..Default::default()
 				},
 				DocumentNode {
-					name: "RefNode".to_string(),
+					identifier: "RefNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
 					inputs: vec![NodeInput::lambda(1, 0)],
 					implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),

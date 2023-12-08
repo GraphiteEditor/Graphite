@@ -244,18 +244,18 @@ impl<'a> NodeGraphLayer<'a> {
 	}
 
 	/// Does a node exist in the layer's primary flow
-	pub fn uses_node(&self, node_name: &str) -> bool {
-		self.primary_layer_flow().any(|(node, _id)| node.name == node_name)
+	pub fn uses_node(&self, identifier: &str) -> bool {
+		self.primary_layer_flow().any(|(node, _id)| node.identifier == identifier)
 	}
 
 	/// Node id of a node if it exists in the layer's primary flow
-	pub fn node_id(&self, node_name: &str) -> Option<NodeId> {
-		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(_node, id)| id)
+	pub fn node_id(&self, identifier: &str) -> Option<NodeId> {
+		self.primary_layer_flow().find(|(node, _id)| node.identifier == identifier).map(|(_node, id)| id)
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow
-	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
-		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(node, _id)| &node.inputs)
+	pub fn find_node_inputs(&self, identifier: &str) -> Option<&'a Vec<NodeInput>> {
+		self.primary_layer_flow().find(|(node, _id)| node.identifier == identifier).map(|(node, _id)| &node.inputs)
 	}
 
 	/// Find a specific input of a node within the layer's primary flow

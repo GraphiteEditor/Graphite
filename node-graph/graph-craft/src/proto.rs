@@ -200,14 +200,16 @@ impl ConstructionArgs {
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-/// A protonode is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
+/// A protonode is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]).
+/// It has one primary input and several secondary inputs in [`ConstructionArgs`].
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
 	pub identifier: NodeIdentifier,
 	pub document_node_path: Vec<NodeId>,
 	pub skip_deduplication: bool,
-	/// Represents a global state on which the node depends. This is a hack, TODO: figure out a proper solution
+	// TODO: This is a hack, figure out a proper solution
+	/// Represents a global state on which the node depends.
 	pub world_state_hash: u64,
 }
 
@@ -580,8 +582,8 @@ impl TypingContext {
 		let identifier = node.identifier.name.clone();
 
 		// Return the inferred type if it is already known
-		if let Some(infered) = self.inferred.get(&node_id) {
-			return Ok(infered.clone());
+		if let Some(inferred) = self.inferred.get(&node_id) {
+			return Ok(inferred.clone());
 		}
 
 		let parameters = match node.construction_args {

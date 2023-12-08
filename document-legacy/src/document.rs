@@ -55,34 +55,34 @@ impl Default for Document {
 				use graph_craft::document::{value::TaggedValue, NodeInput};
 				let mut network = NodeNetwork::default();
 				let node = graph_craft::document::DocumentNode {
-					name: "Output".into(),
+					identifier: "Output".into(),
 					inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
 					implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 						inputs: vec![3, 0],
 						outputs: vec![NodeOutput::new(3, 0)],
 						nodes: [
 							DocumentNode {
-								name: "EditorApi".to_string(),
+								identifier: "EditorApi".to_string(),
 								inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
 								..Default::default()
 							},
 							DocumentNode {
-								name: "Create Canvas".to_string(),
+								identifier: "Create Canvas".to_string(),
 								inputs: vec![NodeInput::node(0, 0)],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 								skip_deduplication: true,
 								..Default::default()
 							},
 							DocumentNode {
-								name: "Cache".to_string(),
+								identifier: "Cache".to_string(),
 								manual_composition: Some(concrete!(())),
 								inputs: vec![NodeInput::node(1, 0)],
 								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 								..Default::default()
 							},
 							DocumentNode {
-								name: "RenderNode".to_string(),
+								identifier: "RenderNode".to_string(),
 								inputs: vec![
 									NodeInput::node(0, 0),
 									NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),

@@ -10,7 +10,7 @@ The graph that is presented to users in the editor is known as the document grap
 
 ```rs
 pub struct DocumentNode {
-	pub name: String,
+	pub identifier: String,
 	pub inputs: Vec<NodeInput>,
 	pub manual_composition: Option<Type>,
 	pub has_primary_output: bool,

@@ -42,7 +42,7 @@ fn add_network() -> NodeNetwork {
 		disabled: vec![],
 		previous_outputs: None,
 		nodes: [DocumentNode {
-			name: "Blend Image".into(),
+			identifier: "Blend Image".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(
 				format!(
 					r#"graphene_core::raster::adjustments::BlendNode::new(

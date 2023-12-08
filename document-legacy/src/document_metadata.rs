@@ -259,7 +259,7 @@ impl DocumentMetadata {
 }
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
+	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.identifier == "Artboard")
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
@@ -267,7 +267,7 @@ pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 		|| network
 			.primary_flow_from_node(Some(layer.to_node()))
 			.skip(1)
-			.any(|(node, _)| node.name == "Artboard" || node.is_layer())
+			.any(|(node, _)| node.identifier == "Artboard" || node.is_layer())
 }
 
 // click targets

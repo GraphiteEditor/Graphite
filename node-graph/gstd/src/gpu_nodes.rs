@@ -94,10 +94,10 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	};
 
 	// TODO: The cache should be based on the network topology not the node name
-	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
-		self.cache.borrow().get(&node.name).unwrap().clone()
+	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.identifier) {
+		self.cache.borrow().get(&node.identifier).unwrap().clone()
 	} else {
-		let name = node.name.clone();
+		let name = node.identifier.clone();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrame::empty();
@@ -174,46 +174,45 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		outputs: vec![NodeOutput::new(3, 0)],
 		nodes: [
 			DocumentNode {
-				name: "Slice".into(),
+				identifier: "Slice".into(),
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1[(_global_index.y * i0 + _global_index.x) as usize]".into(), concrete![Color]))],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
-				name: "Quantization".into(),
+				identifier: "Quantization".into(),
 				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
-				name: "Width".into(),
+				identifier: "Width".into(),
 				inputs: vec![NodeInput::Network(concrete!(u32))],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
 				..Default::default()
 			},
-			/*DocumentNode {
-				name: "Index".into(),
-				//inputs: vec![NodeInput::Network(concrete!(UVec3))],
-				inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
-				..Default::default()
-			},*/
-				/*
-			DocumentNode {
-				name: "GetNode".into(),
-				inputs: vec![NodeInput::node(1, 0), NodeInput::node(0, 0)],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::storage::GetNode".into()),
-				..Default::default()
-			},*/
+			// DocumentNode {
+			// 	identifier: "Index".into(),
+			// 	//inputs: vec![NodeInput::Network(concrete!(UVec3))],
+			// 	inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
+			// 	implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+			// 	..Default::default()
+			// },
+			// DocumentNode {
+			// 	identifier: "GetNode".into(),
+			// 	inputs: vec![NodeInput::node(1, 0), NodeInput::node(0, 0)],
+			// 	implementation: DocumentNodeImplementation::Unresolved("graphene_core::storage::GetNode".into()),
+			// 	..Default::default()
+			// },
 			#[cfg(feature = "quantization")]
 			DocumentNode {
-				name: "Dequantize".into(),
+				identifier: "Dequantize".into(),
 				inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
 				..Default::default()
 			},
 			DocumentNode {
-				name: "MapNode".into(),
+				identifier: "MapNode".into(),
 				#[cfg(feature = "quantization")]
 				inputs: vec![NodeInput::node(3, 0)],
 				#[cfg(not(feature = "quantization"))]
@@ -223,26 +222,24 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			},
 			#[cfg(feature = "quantization")]
 			DocumentNode {
-				name: "Quantize".into(),
+				identifier: "Quantize".into(),
 				inputs: vec![NodeInput::node(4, 0), NodeInput::node(1, 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
 				..Default::default()
 			},
-			/*
-			DocumentNode {
-				name: "SaveNode".into(),
-				inputs: vec![
-					NodeInput::node(5, 0),
-					NodeInput::Inline(InlineRust::new(
-						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
-						//"|x|()".into(),
-						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
-					)),
-				],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnMutNode".into()),
-				..Default::default()
-			},
-			*/
+			// DocumentNode {
+			// 	identifier: "SaveNode".into(),
+			// 	inputs: vec![
+			// 		NodeInput::node(5, 0),
+			// 		NodeInput::Inline(InlineRust::new(
+			// 			"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
+			// 			//"|x|()".into(),
+			// 			Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
+			// 		)),
+			// 	],
+			// 	implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnMutNode".into()),
+			// 	..Default::default()
+			// },
 		]
 		.into_iter()
 		.enumerate()
@@ -354,62 +351,59 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		readback_buffer: Some(readback_buffer),
 	})
 }
-/*
-#[node_macro::node_fn(MapGpuNode)]
-async fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>, shader: &'any_input compilation_client::Shader) {
-	use graph_craft::executor::Executor;
-	let executor = NewExecutor::new().unwrap();
-	for input in shader.io.inputs.iter() {
-		let buffer = executor.create_storage_buffer(&self, data, options)
-		let buffer = executor.create_buffer(input.size).unwrap();
-		executor.write_buffer(buffer, input.data).unwrap();
-	}
-	todo!();
-	/*
-	let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();
-	let data: Vec<_> = input.into_iter().collect();
-	let result = executor.execute(Box::new(data)).unwrap();
-	let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
-	*result
-	*/
-}
 
-pub struct MapGpuSingleImageNode<N> {
-	node: N,
-}
+// #[node_macro::node_fn(MapGpuNode)]
+// async fn map_gpu(inputs: Vec<ShaderInput<<NewExecutor as GpuExecutor>::BufferHandle>>, shader: &'any_input compilation_client::Shader) {
+// 	use graph_craft::executor::Executor;
+// 	let executor = NewExecutor::new().unwrap();
+// 	for input in shader.io.inputs.iter() {
+// 		let buffer = executor.create_storage_buffer(&self, data, options)
+// 		let buffer = executor.create_buffer(input.size).unwrap();
+// 		executor.write_buffer(buffer, input.data).unwrap();
+// 	}
+// 	todo!();
+// 	// let executor: GpuExecutor = GpuExecutor::new(Context::new().await.unwrap(), shader.into(), "gpu::eval".into()).unwrap();
+// 	// let data: Vec<_> = input.into_iter().collect();
+// 	// let result = executor.execute(Box::new(data)).unwrap();
+// 	// let result = dyn_any::downcast::<Vec<_O>>(result).unwrap();
+// 	// *result
+// }
 
-#[node_macro::node_fn(MapGpuSingleImageNode)]
-fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
-	use graph_craft::document::*;
-	use graph_craft::NodeIdentifier;
+// pub struct MapGpuSingleImageNode<N> {
+// 	node: N,
+// }
 
-	let identifier = NodeIdentifier { name: std::borrow::Cow::Owned(node) };
+// #[node_macro::node_fn(MapGpuSingleImageNode)]
+// fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
+// 	use graph_craft::document::*;
+// 	use graph_craft::NodeIdentifier;
 
-	let network = NodeNetwork {
-		inputs: vec![0],
-		disabled: vec![],
-		previous_outputs: None,
-		outputs: vec![NodeOutput::new(0, 0)],
-		nodes: [(
-			0,
-			DocumentNode {
-				name: "Image Filter".into(),
-				inputs: vec![NodeInput::Network(concrete!(Color))],
-				implementation: DocumentNodeImplementation::Unresolved(identifier),
-				metadata: DocumentNodeMetadata::default(),
-				..Default::default()
-			},
-		)]
-		.into_iter()
-		.collect(),
-	};
+// 	let identifier = NodeIdentifier { name: std::borrow::Cow::Owned(node) };
 
-	let value_network = ValueNode::new(network);
-	let map_node = MapGpuNode::new(value_network);
-	let data = map_node.eval(input.data.clone());
-	Image { data, ..input }
-}
-*/
+// 	let network = NodeNetwork {
+// 		inputs: vec![0],
+// 		disabled: vec![],
+// 		previous_outputs: None,
+// 		outputs: vec![NodeOutput::new(0, 0)],
+// 		nodes: [(
+// 			0,
+// 			DocumentNode {
+// 				identifier: "Image Filter".into(),
+// 				inputs: vec![NodeInput::Network(concrete!(Color))],
+// 				implementation: DocumentNodeImplementation::Unresolved(identifier),
+// 				metadata: DocumentNodeMetadata::default(),
+// 				..Default::default()
+// 			},
+// 		)]
+// 		.into_iter()
+// 		.collect(),
+// 	};
+
+// 	let value_network = ValueNode::new(network);
+// 	let map_node = MapGpuNode::new(value_network);
+// 	let data = map_node.eval(input.data.clone());
+// 	Image { data, ..input }
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub struct BlendGpuImageNode<Background, B, O> {
@@ -435,7 +429,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		inputs: vec![],
 		outputs: vec![NodeOutput::new(0, 0)],
 		nodes: [DocumentNode {
-			name: "BlendOp".into(),
+			identifier: "BlendOp".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(
 				format!(
 					r#"graphene_core::raster::adjustments::BlendNode::new(

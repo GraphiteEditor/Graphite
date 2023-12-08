@@ -306,7 +306,7 @@ impl BrushToolData {
 
 		self.layer = Some(layer);
 		for (node, node_id) in document.network().primary_flow_from_node(Some(layer.to_node())) {
-			if node.name == "Brush" {
+			if node.identifier == "Brush" {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {
 					tagged_value: TaggedValue::BrushStrokes(strokes),
@@ -318,7 +318,7 @@ impl BrushToolData {
 				self.strokes = strokes.clone();
 
 				return Some(layer);
-			} else if node.name == "Transform" {
+			} else if node.identifier == "Transform" {
 				let upstream = document.metadata().upstream_transform(node_id);
 				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
 				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;
