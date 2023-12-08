@@ -27,7 +27,7 @@ Each `DocumentNode` is of a particular type, for example the "Opacity" node type
 
 ```rs
 DocumentNodeBlueprint {
-	name: "Opacity",
+	identifier: "Opacity",
 	category: "Image Adjustments",
 	implementation: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 	inputs: vec![

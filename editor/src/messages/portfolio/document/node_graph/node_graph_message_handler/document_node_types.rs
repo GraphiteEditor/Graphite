@@ -96,8 +96,7 @@ impl NodeImplementation {
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeBlueprint {
-	// TODO: Rename to `identifier` (also rename the TODOs in the `DocumentNode` struct)
-	pub name: &'static str,
+	pub identifier: &'static str,
 	pub category: &'static str,
 	pub implementation: NodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
@@ -110,7 +109,7 @@ pub struct DocumentNodeBlueprint {
 impl Default for DocumentNodeBlueprint {
 	fn default() -> Self {
 		Self {
-			name: Default::default(),
+			identifier: Default::default(),
 			category: Default::default(),
 			implementation: Default::default(),
 			inputs: Default::default(),
@@ -143,7 +142,7 @@ fn monitor_node() -> DocumentNode {
 fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 	vec![
 		DocumentNodeBlueprint {
-			name: "Boolean",
+			identifier: "Boolean",
 			category: "Inputs",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Bool", TaggedValue::Bool(true), false)],
@@ -152,7 +151,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Number",
+			identifier: "Number",
 			category: "Inputs",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Number", TaggedValue::F32(0.), false)],
@@ -161,7 +160,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Color",
+			identifier: "Color",
 			category: "Inputs",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Color", TaggedValue::OptionalColor(None), false)],
@@ -170,7 +169,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Identity",
+			identifier: "Identity",
 			category: "Structural",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType {
@@ -183,7 +182,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Monitor",
+			identifier: "Monitor",
 			category: "Structural",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType {
@@ -196,7 +195,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Layer",
+			identifier: "Layer",
 			category: "General",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 2],
@@ -245,7 +244,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Artboard",
+			identifier: "Artboard",
 			category: "General",
 			implementation: NodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
 			inputs: vec![
@@ -261,7 +260,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Input Frame",
+			identifier: "Input Frame",
 			category: "Ignore",
 			implementation: NodeImplementation::proto("graphene_core::ExtractImageFrame"),
 			inputs: vec![DocumentInputType {
@@ -277,7 +276,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Load Image",
+			identifier: "Load Image",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 0],
@@ -322,7 +321,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Create Canvas",
+			identifier: "Create Canvas",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -361,7 +360,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Draw Canvas",
+			identifier: "Draw Canvas",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 2],
@@ -419,7 +418,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Begin Scope",
+			identifier: "Begin Scope",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -471,7 +470,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "End Scope",
+			identifier: "End Scope",
 			category: "Ignore",
 			implementation: NodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
 			inputs: vec![
@@ -494,7 +493,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Output",
+			identifier: "Output",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![3, 0],
@@ -556,7 +555,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Image Frame",
+			identifier: "Image Frame",
 			category: "General",
 			implementation: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_, _>"),
 			inputs: vec![
@@ -568,7 +567,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Pixel Noise",
+			identifier: "Pixel Noise",
 			category: "General",
 			implementation: NodeImplementation::proto("graphene_std::raster::PixelNoiseNode<_, _, _>"),
 			inputs: vec![
@@ -582,7 +581,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Mask",
+			identifier: "Mask",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::raster::MaskImageNode<_, _, _>"),
 			inputs: vec![
@@ -594,7 +593,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Insert Channel",
+			identifier: "Insert Channel",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
 			inputs: vec![
@@ -607,7 +606,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Combine Channels",
+			identifier: "Combine Channels",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
 			inputs: vec![
@@ -624,7 +623,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Blend",
+			identifier: "Blend",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
 			inputs: vec![
@@ -638,7 +637,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Levels",
+			identifier: "Levels",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::LevelsNode<_, _, _, _, _>"),
 			inputs: vec![
@@ -678,7 +677,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Black & White",
+			identifier: "Black & White",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
@@ -728,7 +727,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Color Channel",
+			identifier: "Color Channel",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
@@ -737,7 +736,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Blend Mode Value",
+			identifier: "Blend Mode Value",
 			category: "Inputs",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
@@ -746,7 +745,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Luminance",
+			identifier: "Luminance",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 			inputs: vec![
@@ -758,7 +757,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Extract Channel",
+			identifier: "Extract Channel",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
@@ -770,7 +769,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Extract Alpha",
+			identifier: "Extract Alpha",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
@@ -778,7 +777,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Extract Opaque",
+			identifier: "Extract Opaque",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
@@ -786,7 +785,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Split Channels",
+			identifier: "Split Channels",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -844,7 +843,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Brush",
+			identifier: "Brush",
 			category: "Brush",
 			implementation: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _, _>"),
 			inputs: vec![
@@ -860,7 +859,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Extract Vector Points",
+			identifier: "Extract Vector Points",
 			category: "Brush",
 			implementation: NodeImplementation::proto("graphene_std::brush::VectorPointsNode"),
 			inputs: vec![DocumentInputType::value("VectorData", TaggedValue::VectorData(VectorData::empty()), true)],
@@ -871,7 +870,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Memoize",
+			identifier: "Memoize",
 			category: "Structural",
 			implementation: NodeImplementation::proto("graphene_core::memo::MemoNode<_, _>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
@@ -880,7 +879,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Image",
+			identifier: "Image",
 			category: "Ignore",
 			implementation: NodeImplementation::proto("graphene_core::ops::IdNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
@@ -890,7 +889,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "Uniform",
+			identifier: "Uniform",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0],
@@ -942,7 +941,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "Storage",
+			identifier: "Storage",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0],
@@ -994,7 +993,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "CreateOutputBuffer",
+			identifier: "CreateOutputBuffer",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 1, 0],
@@ -1052,7 +1051,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "CreateComputePass",
+			identifier: "CreateComputePass",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0, 1, 1],
@@ -1120,7 +1119,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "CreatePipelineLayout",
+			identifier: "CreatePipelineLayout",
 			category: "Gpu",
 			implementation: NodeImplementation::proto("gpu_executor::CreatePipelineLayoutNode<_, _, _, _>"),
 			inputs: vec![
@@ -1154,7 +1153,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "ExecuteComputePipeline",
+			identifier: "ExecuteComputePipeline",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0],
@@ -1206,7 +1205,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "ReadOutputBuffer",
+			identifier: "ReadOutputBuffer",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0],
@@ -1258,7 +1257,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "CreateGpuSurface",
+			identifier: "CreateGpuSurface",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0],
@@ -1297,7 +1296,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "RenderTexture",
+			identifier: "RenderTexture",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 1, 0],
@@ -1351,7 +1350,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "UploadTexture",
+			identifier: "UploadTexture",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![1, 0],
@@ -1403,7 +1402,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "GpuImage",
+			identifier: "GpuImage",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode<_>"),
 			inputs: vec![
@@ -1424,7 +1423,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeBlueprint {
-			name: "Blend (GPU)",
+			identifier: "Blend (GPU)",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
 			inputs: vec![
@@ -1438,7 +1437,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Extract",
+			identifier: "Extract",
 			category: "Macros",
 			implementation: NodeImplementation::Extract,
 			inputs: vec![DocumentInputType {
@@ -1451,7 +1450,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeBlueprint {
-			name: "Generate Quantization",
+			identifier: "Generate Quantization",
 			category: "Quantization",
 			implementation: NodeImplementation::proto("graphene_std::quantization::GenerateQuantizationNode<_, _>"),
 			inputs: vec![
@@ -1477,7 +1476,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeBlueprint {
-			name: "Quantize Image",
+			identifier: "Quantize Image",
 			category: "Quantization",
 			implementation: NodeImplementation::proto("graphene_core::quantization::QuantizeNode<_>"),
 			inputs: vec![
@@ -1498,7 +1497,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		#[cfg(feature = "quantization")]
 		DocumentNodeBlueprint {
-			name: "DeQuantize Image",
+			identifier: "DeQuantize Image",
 			category: "Quantization",
 			implementation: NodeImplementation::proto("graphene_core::quantization::DeQuantizeNode<_>"),
 			inputs: vec![
@@ -1518,7 +1517,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Invert RGB",
+			identifier: "Invert RGB",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::InvertRGBNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
@@ -1526,7 +1525,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Hue/Saturation",
+			identifier: "Hue/Saturation",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
 			inputs: vec![
@@ -1540,7 +1539,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Brightness/Contrast",
+			identifier: "Brightness/Contrast",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
@@ -1554,7 +1553,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Curves",
+			identifier: "Curves",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::CurvesNode<_>"),
 			inputs: vec![
@@ -1566,7 +1565,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Threshold",
+			identifier: "Threshold",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
@@ -1580,7 +1579,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Vibrance",
+			identifier: "Vibrance",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
 			inputs: vec![
@@ -1592,7 +1591,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Channel Mixer",
+			identifier: "Channel Mixer",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			inputs: vec![
@@ -1627,7 +1626,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Selective Color",
+			identifier: "Selective Color",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto(
 				"graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>",
@@ -1689,7 +1688,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Opacity",
+			identifier: "Opacity",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 			inputs: vec![
@@ -1701,7 +1700,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Blend Mode",
+			identifier: "Blend Mode",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::BlendModeNode<_>"),
 			inputs: vec![
@@ -1713,7 +1712,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Posterize",
+			identifier: "Posterize",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
@@ -1725,7 +1724,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Exposure",
+			identifier: "Exposure",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::ExposureNode<_, _, _>"),
 			inputs: vec![
@@ -1739,7 +1738,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Add",
+			identifier: "Add",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
 			inputs: vec![
@@ -1751,7 +1750,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Subtract",
+			identifier: "Subtract",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
 			inputs: vec![
@@ -1763,7 +1762,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Divide",
+			identifier: "Divide",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::DivideParameterNode<_>"),
 			inputs: vec![
@@ -1775,7 +1774,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Multiply",
+			identifier: "Multiply",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::MultiplyParameterNode<_>"),
 			inputs: vec![
@@ -1787,7 +1786,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Exponent",
+			identifier: "Exponent",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::ExponentParameterNode<_>"),
 			inputs: vec![
@@ -1799,7 +1798,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Floor",
+			identifier: "Floor",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::FloorNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1808,7 +1807,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Ceil",
+			identifier: "Ceil",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::CeilNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1817,7 +1816,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Round",
+			identifier: "Round",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::RoundNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1826,7 +1825,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Absolute Value",
+			identifier: "Absolute Value",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::AbsoluteNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1835,7 +1834,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Logarithm",
+			identifier: "Logarithm",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::LogParameterNode<_>"),
 			inputs: vec![
@@ -1847,7 +1846,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Natural Logarithm",
+			identifier: "Natural Logarithm",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::NaturalLogNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1856,7 +1855,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Sine",
+			identifier: "Sine",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::SineNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1865,7 +1864,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Cosine",
+			identifier: "Cosine",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::CosineNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1874,7 +1873,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Tangent",
+			identifier: "Tangent",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::TangentNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
@@ -1883,7 +1882,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Max",
+			identifier: "Max",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),
 			inputs: vec![
@@ -1895,7 +1894,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Min",
+			identifier: "Min",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::MinParameterNode<_>"),
 			inputs: vec![
@@ -1907,7 +1906,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Equals",
+			identifier: "Equals",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
 			inputs: vec![
@@ -1919,7 +1918,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Modulo",
+			identifier: "Modulo",
 			category: "Math",
 			implementation: NodeImplementation::proto("graphene_core::ops::ModuloParameterNode<_>"),
 			inputs: vec![
@@ -1931,7 +1930,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Log to Console",
+			identifier: "Log to Console",
 			category: "Logic",
 			implementation: NodeImplementation::proto("graphene_core::logic::LogToConsoleNode"),
 			inputs: vec![DocumentInputType::value("Input", TaggedValue::String("Not Connected to a value yet".into()), true)],
@@ -1940,7 +1939,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Or",
+			identifier: "Or",
 			category: "Logic",
 			implementation: NodeImplementation::proto("graphene_core::logic::LogicOrNode<_>"),
 			inputs: vec![
@@ -1952,7 +1951,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "And",
+			identifier: "And",
 			category: "Logic",
 			implementation: NodeImplementation::proto("graphene_core::logic::LogicAndNode<_>"),
 			inputs: vec![
@@ -1964,7 +1963,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "XOR",
+			identifier: "XOR",
 			category: "Logic",
 			implementation: NodeImplementation::proto("graphene_core::logic::LogicXorNode<_>"),
 			inputs: vec![
@@ -1976,7 +1975,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Not",
+			identifier: "Not",
 			category: "Logic",
 			implementation: NodeImplementation::proto("graphene_core::logic::LogicNotNode"),
 			inputs: vec![DocumentInputType::value("Input", TaggedValue::Bool(false), true)],
@@ -1986,7 +1985,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		(*IMAGINATE_NODE).clone(),
 		DocumentNodeBlueprint {
-			name: "Circle",
+			identifier: "Circle",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::CircleGenerator<_>"),
 			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F32(50.), false)],
@@ -1995,7 +1994,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Ellipse",
+			identifier: "Ellipse",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
 			inputs: vec![
@@ -2008,7 +2007,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Rectangle",
+			identifier: "Rectangle",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _>"),
 			inputs: vec![
@@ -2021,7 +2020,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Regular Polygon",
+			identifier: "Regular Polygon",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
 			inputs: vec![
@@ -2034,7 +2033,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Star",
+			identifier: "Star",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
 			inputs: vec![
@@ -2048,7 +2047,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Line",
+			identifier: "Line",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
 			inputs: vec![
@@ -2061,7 +2060,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Spline",
+			identifier: "Spline",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
 			inputs: vec![
@@ -2073,7 +2072,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Shape",
+			identifier: "Shape",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			inputs: vec![
@@ -2085,7 +2084,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Sample",
+			identifier: "Sample",
 			category: "Structural",
 			implementation: NodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
@@ -2094,7 +2093,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Mandelbrot",
+			identifier: "Mandelbrot",
 			category: "Generators",
 			implementation: NodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
 			manual_composition: Some(concrete!(Footprint)),
@@ -2103,7 +2102,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Cull",
+			identifier: "Cull",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::transform::CullNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
@@ -2112,7 +2111,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Text",
+			identifier: "Text",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _, _>"),
 			inputs: vec![
@@ -2126,7 +2125,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Transform",
+			identifier: "Transform",
 			category: "Transform",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![0, 1, 1, 1, 1, 1],
@@ -2171,7 +2170,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "SetTransform",
+			identifier: "SetTransform",
 			category: "Transform",
 			implementation: NodeImplementation::proto("graphene_core::transform::SetTransformNode<_>"),
 			inputs: vec![
@@ -2182,7 +2181,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Fill",
+			identifier: "Fill",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
@@ -2200,7 +2199,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Stroke",
+			identifier: "Stroke",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::SetStrokeNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
@@ -2218,7 +2217,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Repeat",
+			identifier: "Repeat",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
 			inputs: vec![
@@ -2231,7 +2230,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Bounding Box",
+			identifier: "Bounding Box",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
@@ -2240,7 +2239,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Circular Repeat",
+			identifier: "Circular Repeat",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::CircularRepeatNode<_, _, _>"),
 			inputs: vec![
@@ -2254,7 +2253,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Resample Points",
+			identifier: "Resample Points",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_>"),
 			inputs: vec![
@@ -2266,7 +2265,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Spline from Points",
+			identifier: "Spline from Points",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::SplineFromPointsNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
@@ -2275,7 +2274,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Image Segmentation",
+			identifier: "Image Segmentation",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),
 			inputs: vec![
@@ -2286,7 +2285,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Index",
+			identifier: "Index",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::IndexNode<_>"),
 			inputs: vec![
@@ -2299,7 +2298,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		},
 		// Applies the given color to each pixel of an image but maintains the alpha value
 		DocumentNodeBlueprint {
-			name: "Color Fill",
+			identifier: "Color Fill",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
 			inputs: vec![
@@ -2311,7 +2310,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 			..Default::default()
 		},
 		DocumentNodeBlueprint {
-			name: "Color Overlay",
+			identifier: "Color Overlay",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
 			inputs: vec![
@@ -2328,7 +2327,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 }
 
 pub static IMAGINATE_NODE: Lazy<DocumentNodeBlueprint> = Lazy::new(|| DocumentNodeBlueprint {
-	name: "Imaginate",
+	identifier: "Imaginate",
 	category: "Image Synthesis",
 	implementation: NodeImplementation::DocumentNode(NodeNetwork {
 		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -2403,14 +2402,14 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeBlueprint> = Lazy::new(|| DocumentNo
 });
 
 pub fn resolve_document_node_type(name: &str) -> Option<&DocumentNodeBlueprint> {
-	DOCUMENT_NODE_TYPES.iter().find(|node| node.name == name)
+	DOCUMENT_NODE_TYPES.iter().find(|node| node.identifier == name)
 }
 
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
 		.filter(|node_type| !node_type.category.eq_ignore_ascii_case("ignore"))
-		.map(|node_type| FrontendNodeType::new(node_type.name, node_type.category))
+		.map(|node_type| FrontendNodeType::new(node_type.identifier, node_type.category))
 		.collect()
 }
 
@@ -2455,7 +2454,7 @@ impl DocumentNodeBlueprint {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 		DocumentNode {
-			name: self.name.to_string(),
+			name: self.identifier.to_string(),
 			inputs,
 			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
