@@ -33,7 +33,7 @@ mod tests {
 						DocumentNode {
 							name: "Add".into(),
 							inputs: vec![NodeInput::node(0, 0)],
-							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode")),
+							implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddPairNode")),
 							..Default::default()
 						},
 					),
@@ -95,7 +95,7 @@ mod tests {
 					DocumentNode {
 						name: "id".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 				),
@@ -105,7 +105,7 @@ mod tests {
 					DocumentNode {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(0, 0), NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddParameterNode<_>")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::AddNode<_>")),
 						..Default::default()
 					},
 				),

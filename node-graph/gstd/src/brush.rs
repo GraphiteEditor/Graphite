@@ -399,7 +399,7 @@ mod test {
 	use crate::raster::*;
 
 	#[allow(unused_imports)]
-	use graphene_core::ops::{AddNode, CloneNode};
+	use graphene_core::ops::{AddPairNode, CloneNode};
 	use graphene_core::raster::*;
 	use graphene_core::structural::Then;
 	use graphene_core::transform::{Transform, TransformMut};
@@ -423,7 +423,7 @@ mod test {
 
 	#[test]
 	fn test_reduce() {
-		let reduce_node = ReduceNode::new(ClonedNode::new(0u32), ValueNode::new(AddNode));
+		let reduce_node = ReduceNode::new(ClonedNode::new(0u32), ValueNode::new(AddPairNode));
 		let sum = reduce_node.eval(vec![1, 2, 3, 4, 5].into_iter());
 		assert_eq!(sum, 15);
 	}

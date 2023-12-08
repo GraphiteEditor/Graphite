@@ -182,13 +182,13 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			DocumentNode {
 				name: "Quantization".into(),
 				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
 				name: "Width".into(),
 				inputs: vec![NodeInput::Network(concrete!(u32))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
 			/*DocumentNode {

@@ -83,7 +83,7 @@ pub enum NodeImplementation {
 
 impl Default for NodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(NodeIdentifier::new("graphene_core::ops::IdNode"))
+		Self::ProtoNode(NodeIdentifier::new("graphene_core::ops::IdentityNode"))
 	}
 }
 
@@ -146,7 +146,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Boolean",
 			category: "Inputs",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Bool", TaggedValue::Bool(true), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Boolean)],
 			properties: node_properties::boolean_properties,
@@ -155,7 +155,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Number",
 			category: "Inputs",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Number", TaggedValue::F32(0.), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
 			properties: node_properties::number_properties,
@@ -164,7 +164,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Color",
 			category: "Inputs",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Color", TaggedValue::OptionalColor(None), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
 			properties: node_properties::color_properties,
@@ -173,7 +173,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Identity",
 			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
@@ -186,7 +186,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Monitor",
 			category: "Structural",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType {
 				name: "In",
 				data_type: FrontendGraphDataType::General,
@@ -504,7 +504,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					DocumentNode {
 						name: "EditorApi".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -731,7 +731,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Color Channel",
 			category: "Image Adjustments",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::color_channel_properties,
@@ -740,7 +740,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Blend Mode Value",
 			category: "Inputs",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::blend_mode_value_properties,
@@ -799,7 +799,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -883,7 +883,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Image",
 			category: "Ignore",
-			identifier: NodeImplementation::proto("graphene_core::ops::IdNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), false)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: |_document_node, _node_id, _context| node_properties::string_properties("A bitmap image embedded in this node"),
@@ -1742,7 +1742,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Add",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::AddNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Addend", TaggedValue::F32(0.), false),
@@ -1754,7 +1754,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Subtract",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::AddParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::AddNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Subtrahend", TaggedValue::F32(0.), false),
@@ -1766,7 +1766,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Divide",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::DivideParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::DivideNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Divisor", TaggedValue::F32(0.), false),
@@ -1778,7 +1778,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Multiply",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::MultiplyParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::MultiplyNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Multiplicand", TaggedValue::F32(0.), false),
@@ -1790,7 +1790,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Exponent",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::ExponentParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::ExponentNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Power", TaggedValue::F32(0.), false),
@@ -1811,7 +1811,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Ceil",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::CeilNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::CeilingNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::node_no_properties,
@@ -1829,7 +1829,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Absolute Value",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::AbsoluteNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::AbsoluteValue"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::node_no_properties,
@@ -1838,7 +1838,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Logarithm",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::LogParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::LogarithmNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Base", TaggedValue::F32(0.), true),
@@ -1850,7 +1850,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Natural Logarithm",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::NaturalLogNode"),
+			identifier: NodeImplementation::proto("graphene_core::ops::NaturalLogarithmNode"),
 			inputs: vec![DocumentInputType::value("Primary", TaggedValue::F32(0.), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::node_no_properties,
@@ -1886,7 +1886,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Max",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::MaxParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::MaximumNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
@@ -1898,7 +1898,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Min",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::MinParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::MinimumNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
@@ -1910,7 +1910,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Equals",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::EqParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::EqualsNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Operand A", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Operand B", TaggedValue::F32(0.), true),
@@ -1922,7 +1922,7 @@ fn static_nodes() -> Vec<DocumentNodeBlueprint> {
 		DocumentNodeBlueprint {
 			name: "Modulo",
 			category: "Math",
-			identifier: NodeImplementation::proto("graphene_core::ops::ModuloParameterNode<_>"),
+			identifier: NodeImplementation::proto("graphene_core::ops::ModuloNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Modulus", TaggedValue::F32(0.), false),

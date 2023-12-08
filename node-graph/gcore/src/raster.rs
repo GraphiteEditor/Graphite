@@ -486,13 +486,13 @@ impl<'a, P: Copy> Iterator for ImageWindowIterator<'a, P> {
 }
 
 #[derive(Debug)]
-pub struct MapSndNode<First, Second, MapFn> {
+pub struct MapSecondNode<First, Second, MapFn> {
 	map_fn: MapFn,
 	_first: PhantomData<First>,
 	_second: PhantomData<Second>,
 }
 
-#[node_macro::node_fn(MapSndNode< _First, _Second>)]
+#[node_macro::node_fn(MapSecondNode< _First, _Second>)]
 fn map_snd_node<MapFn, _First, _Second>(input: (_First, _Second), map_fn: &'input MapFn) -> (_First, <MapFn as Node<'input, _Second>>::Output)
 where
 	MapFn: for<'any_input> Node<'any_input, _Second>,
@@ -658,49 +658,47 @@ mod test {
 	}
 
 	// TODO: I can't be bothered to fix this test rn
-	/*
-	#[test]
-	fn blur_node() {
-		use alloc::vec;
-		let radius = ValueNode::new(1u32).then(CloneNode::new());
-		let sigma = ValueNode::new(3f64).then(CloneNode::new());
-		let radius = ValueNode::new(1u32).then(CloneNode::new());
-		let image = ValueNode::<_>::new(Image {
-			width: 5,
-			height: 5,
-			data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
-		});
-		let image = image.then(ImageRefNode::new());
-		let window = WindowNode::new(radius, image);
-		let window: TypeNode<_, u32, ImageWindowIterator<'_>> = TypeNode::new(window);
-		let distance = ValueNode::new(DistanceNode::new());
-		let pos_to_dist = MapSndNode::new(distance);
-		let type_erased = &window as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
-		type_erased.eval(0);
-		let map_pos_to_dist = MapNode::new(ValueNode::new(pos_to_dist));
+	// #[test]
+	// fn blur_node() {
+	// 	use alloc::vec;
+	// 	let radius = ValueNode::new(1u32).then(CloneNode::new());
+	// 	let sigma = ValueNode::new(3f64).then(CloneNode::new());
+	// 	let radius = ValueNode::new(1u32).then(CloneNode::new());
+	// 	let image = ValueNode::<_>::new(Image {
+	// 		width: 5,
+	// 		height: 5,
+	// 		data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
+	// 	});
+	// 	let image = image.then(ImageRefNode::new());
+	// 	let window = WindowNode::new(radius, image);
+	// 	let window: TypeNode<_, u32, ImageWindowIterator<'_>> = TypeNode::new(window);
+	// 	let distance = ValueNode::new(DistanceNode::new());
+	// 	let pos_to_dist = MapSecondNode::new(distance);
+	// 	let type_erased = &window as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
+	// 	type_erased.eval(0);
+	// 	let map_pos_to_dist = MapNode::new(ValueNode::new(pos_to_dist));
 
-		let type_erased = &map_pos_to_dist as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
-		type_erased.eval(0);
+	// let type_erased = &map_pos_to_dist as &dyn for<'a> Node<'a, u32, Output = ImageWindowIterator<'a>>;
+	// type_erased.eval(0);
 
-		let distance = window.then(map_pos_to_dist);
-		let map_gaussian = MapSndNode::new(ValueNode(GaussianNode::new(sigma)));
-		let map_gaussian: TypeNode<_, (_, f32), (_, f32)> = TypeNode::new(map_gaussian);
-		let map_gaussian = ValueNode(map_gaussian);
-		let map_gaussian: TypeNode<_, (), &_> = TypeNode::new(map_gaussian);
-		let map_distances = MapNode::new(map_gaussian);
-		let map_distances: TypeNode<_, _, MapFnIterator<'_, '_, _, _>> = TypeNode::new(map_distances);
-		let gaussian_iter = distance.then(map_distances);
-		let avg = gaussian_iter.then(WeightedAvgNode::new());
-		let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
-		let blur_iter = MapNode::new(ValueNode::new(avg));
-		let blur = image.then(ImageIndexIterNode).then(blur_iter);
-		let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
-		let collect = CollectNode::new();
-		let vec = collect.eval(0..10);
-		assert_eq!(vec.len(), 10);
-		let _ = blur.eval(());
-		let vec = blur.then(collect);
-		let _image = vec.eval(());
-	}
-	*/
+	// 	let distance = window.then(map_pos_to_dist);
+	// 	let map_gaussian = MapSecondNode::new(ValueNode(GaussianNode::new(sigma)));
+	// 	let map_gaussian: TypeNode<_, (_, f32), (_, f32)> = TypeNode::new(map_gaussian);
+	// 	let map_gaussian = ValueNode(map_gaussian);
+	// 	let map_gaussian: TypeNode<_, (), &_> = TypeNode::new(map_gaussian);
+	// 	let map_distances = MapNode::new(map_gaussian);
+	// 	let map_distances: TypeNode<_, _, MapFnIterator<'_, '_, _, _>> = TypeNode::new(map_distances);
+	// 	let gaussian_iter = distance.then(map_distances);
+	// 	let avg = gaussian_iter.then(WeightedAvgNode::new());
+	// 	let avg: TypeNode<_, u32, Color> = TypeNode::new(avg);
+	// 	let blur_iter = MapNode::new(ValueNode::new(avg));
+	// 	let blur = image.then(ImageIndexIterNode).then(blur_iter);
+	// 	let blur: TypeNode<_, (), MapFnIterator<_, _>> = TypeNode::new(blur);
+	// 	let collect = CollectNode::new();
+	// 	let vec = collect.eval(0..10);
+	// 	assert_eq!(vec.len(), 10);
+	// 	let _ = blur.eval(());
+	// 	let vec = blur.then(collect);
+	// 	let _image = vec.eval(());
+	// }
 }

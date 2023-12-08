@@ -265,14 +265,14 @@ impl<I, O> PanicNode<I, O> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use graphene_core::{ops::AddNode, ops::IdNode};
+	use graphene_core::{ops::AddPairNode, ops::IdentityNode};
 
 	#[test]
 	#[should_panic]
 	pub fn dyn_input_invalid_eval_panic() {
-		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
+		//let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddNode::new() });
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddPairNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox;
 		let _ref_type_erased = type_erased.as_ref();
 		//let type_erased = Box::pin(dyn_any) as TypeErasedBox<'_>;
@@ -281,12 +281,12 @@ mod test {
 
 	#[test]
 	pub fn dyn_input_compose() {
-		//let add = DynAnyNode::new(AddNode::new()).into_type_erased();
+		//let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
 		//add.eval(Box::new(&("32", 32u32)));
-		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddNode::new() });
+		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddPairNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
-		let id_node = FutureWrapperNode::new(IdNode::new());
+		let id_node = FutureWrapperNode::new(IdentityNode::new());
 		let any_id = DynAnyNode::<u32, u32, _>::new(id_node);
 		let type_erased_id = Box::new(any_id) as TypeErasedBox;
 		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
@@ -296,13 +296,11 @@ mod test {
 	}
 
 	// TODO: Fix this test
-	/*
-	#[test]
-	pub fn dyn_input_storage_composition() {
-		// todo readd test
-		let node = <graphene_core::ops::IdNode>::new();
-		let any: DynAnyNode<Any<'_>, Any<'_>, _> = DynAnyNode::new(ValueNode::new(node));
-		any.into_type_erased();
-	}
-	*/
+	// #[test]
+	// pub fn dyn_input_storage_composition() {
+	// 	// todo readd test
+	// 	let node = <graphene_core::ops::IdentityNode>::new();
+	// 	let any: DynAnyNode<Any<'_>, Any<'_>, _> = DynAnyNode::new(ValueNode::new(node));
+	// 	any.into_type_erased();
+	// }
 }

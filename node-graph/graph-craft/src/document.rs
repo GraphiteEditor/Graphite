@@ -373,7 +373,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode"))
+		Self::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode"))
 	}
 }
 
@@ -468,7 +468,7 @@ impl NodeNetwork {
 				DocumentNode {
 					name: "Input Frame".into(),
 					manual_composition: Some(concrete!(u32)),
-					implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+					implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
 					metadata: DocumentNodeMetadata { position: (8, 4).into() },
 					..Default::default()
 				},
@@ -506,7 +506,7 @@ impl NodeNetwork {
 		let node = DocumentNode {
 			name: "Output".into(),
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
 			..Default::default()
 		};
 		self.push_node(node)
@@ -821,8 +821,8 @@ impl NodeNetwork {
 			return;
 		};
 
-		if node.implementation != DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()) && self.disabled.contains(&id) {
-			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into());
+		if node.implementation != DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()) && self.disabled.contains(&id) {
+			node.implementation = DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into());
 			if node.is_layer() {
 				// Connect layer node to the graphic group below
 				node.inputs.drain(..1);
@@ -941,7 +941,7 @@ impl NodeNetwork {
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::Unresolved(ident) = &node.implementation {
-			if ident.name == "graphene_core::ops::IdNode" {
+			if ident.name == "graphene_core::ops::IdentityNode" {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let input_node_id = node_id;
@@ -977,13 +977,13 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::IdNode`]s that are unnecessary.
+	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
 	pub fn remove_redundant_id_nodes(&mut self) {
 		let id_nodes = self
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &NodeIdentifier::new("graphene_core::ops::IdNode"))
+				matches!(&node.implementation, DocumentNodeImplementation::Unresolved(ident) if ident == &NodeIdentifier::new("graphene_core::ops::IdentityNode"))
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
@@ -1141,7 +1141,7 @@ mod test {
 					DocumentNode {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(0, 0)],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
 					},
 				),
@@ -1174,7 +1174,7 @@ mod test {
 					DocumentNode {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(1, 0)],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
 					},
 				),
@@ -1191,7 +1191,7 @@ mod test {
 		let id_node = DocumentNode {
 			name: "Id".into(),
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdNode".into()),
+			implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
@@ -1291,7 +1291,7 @@ mod test {
 				(
 					11,
 					ProtoNode {
-						identifier: "graphene_core::ops::AddNode".into(),
+						identifier: "graphene_core::ops::AddPairNode".into(),
 						input: ProtoNodeInput::Node(10, false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						document_node_path: vec![1, 1],
@@ -1344,7 +1344,7 @@ mod test {
 					DocumentNode {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(10, 0)],
-						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddNode".into()),
+						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
 						path: Some(vec![1, 1]),
 						..Default::default()
 					},
@@ -1366,7 +1366,7 @@ mod test {
 					DocumentNode {
 						name: "Identity 1".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 				),
@@ -1375,7 +1375,7 @@ mod test {
 					DocumentNode {
 						name: "Identity 2".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 				),
@@ -1405,7 +1405,7 @@ mod test {
 					DocumentNode {
 						name: "Result".into(),
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+						implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
 				),

@@ -536,7 +536,7 @@ def migrate(name, new_name):
 						"has_primary_output": True,
 						"implementation": {
 							"Unresolved": {
-								"name": "graphene_core::ops::IdNode"
+								"name": "graphene_core::ops::IdentityNode"
 							}
 						},
 						"metadata": {

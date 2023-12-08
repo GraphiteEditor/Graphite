@@ -214,7 +214,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: NodeIdentifier::new("graphene_core::ops::IdNode"),
+			identifier: NodeIdentifier::new("graphene_core::ops::IdentityNode"),
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
 			input: ProtoNodeInput::None,
 			document_node_path: vec![],

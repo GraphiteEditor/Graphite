@@ -77,7 +77,7 @@
                                                 ],
                                                 "implementation": {
                                                     "Unresolved": {
-                                                        "name": "graphene_core::ops::IdNode"
+                                                        "name": "graphene_core::ops::IdentityNode"
                                                     }
                                                 },
                                                 "metadata": {
@@ -482,7 +482,7 @@
                                                 ],
                                                 "implementation": {
                                                     "Unresolved": {
-                                                        "name": "graphene_core::ops::IdNode"
+                                                        "name": "graphene_core::ops::IdentityNode"
                                                     }
                                                 },
                                                 "metadata": {
@@ -1067,7 +1067,7 @@
                     ],
                     "implementation": {
                         "Unresolved": {
-                            "name": "graphene_core::ops::IdNode"
+                            "name": "graphene_core::ops::IdentityNode"
                         }
                     },
                     "metadata": {
@@ -1298,7 +1298,7 @@
                         ],
                         "implementation": {
                             "Unresolved": {
-                                "name": "graphene_core::ops::IdNode"
+                                "name": "graphene_core::ops::IdentityNode"
                             }
                         },
                         "metadata": {

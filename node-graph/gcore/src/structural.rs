@@ -175,14 +175,14 @@ impl<'input, S0: 'input, O: 'static> ApplyNode<O, S0> {
 
 #[cfg(test)]
 mod test {
-	use crate::{ops::IdNode, value::ValueNode};
+	use crate::{ops::IdentityNode, value::ValueNode};
 
 	use super::*;
 
 	#[test]
 	fn compose() {
 		let value = ValueNode::new(4u32);
-		let compose = value.then(IdNode::new());
+		let compose = value.then(IdentityNode::new());
 		assert_eq!(compose.eval(()), &4u32);
 		let type_erased = &compose as &dyn for<'i> Node<'i, (), Output = &'i u32>;
 		assert_eq!(type_erased.eval(()), &4u32);
@@ -193,7 +193,7 @@ mod test {
 		let value = ValueNode::new(5);
 
 		assert_eq!(value.eval(()), &5);
-		let id = IdNode::new();
+		let id = IdentityNode::new();
 
 		let compose = ComposeNode::new(&value, &id);
 

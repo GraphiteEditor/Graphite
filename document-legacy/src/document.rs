@@ -64,7 +64,7 @@ impl Default for Document {
 							DocumentNode {
 								name: "EditorApi".to_string(),
 								inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdNode")),
+								implementation: DocumentNodeImplementation::Unresolved(NodeIdentifier::new("graphene_core::ops::IdentityNode")),
 								..Default::default()
 							},
 							DocumentNode {
