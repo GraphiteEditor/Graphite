@@ -297,7 +297,7 @@ impl NodeGraphMessageHandler {
 			nodes.push(FrontendNode {
 				is_layer: node.is_layer(),
 				id: *id,
-				name: node.alias.clone(),
+				name: node.name.clone(),
 				identifier: node.identifier.clone(),
 				primary_input,
 				exposed_inputs,
@@ -896,7 +896,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetNameImpl { node_id, name } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.alias = name;
+						node.name = name;
 						responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 					}
 				}

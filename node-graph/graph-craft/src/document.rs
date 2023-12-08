@@ -43,10 +43,9 @@ fn return_true() -> bool {
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
-	// TODO: Rename to "name" (also rename the TODOs in the `DocumentNodeBlueprint` struct)
 	/// A name chosen by the user for this node. Empty indicates no given name, in which case the node's identifier is displayed to the user in italics.
 	#[serde(default)]
-	pub alias: String,
+	pub name: String,
 	/// An identifier used to display in the UI and to display the appropriate properties.
 	pub identifier: String,
 	/// The inputs to a node, which are either:
@@ -161,7 +160,7 @@ pub struct DocumentNode {
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
-			alias: Default::default(),
+			name: Default::default(),
 			identifier: Default::default(),
 			inputs: Default::default(),
 			manual_composition: Default::default(),
