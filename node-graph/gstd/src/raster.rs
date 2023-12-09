@@ -8,7 +8,7 @@ use graphene_core::transform::{Footprint, Transform};
 use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
 use graphene_core::value::CopiedNode;
-use graphene_core::{Color, Node};
+use graphene_core::{AlphaBlending, Color, Node};
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -115,7 +115,7 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 	ImageFrame {
 		image,
 		transform: new_transform,
-		blend_mode: image_frame.blend_mode,
+		alpha_blending: image_frame.alpha_blending,
 	}
 }
 
@@ -309,7 +309,7 @@ where
 	let mut new_background = ImageFrame {
 		image: new_background,
 		transform: transfrom,
-		blend_mode: background.blend_mode,
+		alpha_blending: background.alpha_blending,
 	};
 
 	new_background = blend_image(background, new_background, map_fn);
@@ -422,7 +422,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	ImageFrame {
 		image: new_img,
 		transform: new_texture_to_layer_space,
-		blend_mode: image.blend_mode,
+		alpha_blending: image.alpha_blending,
 	}
 }
 
@@ -457,8 +457,11 @@ fn empty_image<_P: Pixel>(transform: DAffine2, color: _P) -> ImageFrame<_P> {
 
 	let image = Image::new(width, height, color);
 
-	let blend_mode = BlendMode::Normal;
-	ImageFrame { image, transform, blend_mode }
+	ImageFrame {
+		image,
+		transform,
+		alpha_blending: AlphaBlending::default(),
+	}
 }
 
 macro_rules! generate_imaginate_node {
@@ -495,7 +498,7 @@ macro_rules! generate_imaginate_node {
 				use std::hash::Hasher;
 				let mut hasher = rustc_hash::FxHasher::default();
 				frame.image.hash(&mut hasher);
-				let hash =hasher.finish();
+				let hash = hasher.finish();
 
 				Box::pin(async move {
 					let controller: std::pin::Pin<Box<dyn std::future::Future<Output = ImaginateController>>> = controller;
@@ -505,16 +508,12 @@ macro_rules! generate_imaginate_node {
 						let image = super::imaginate::imaginate(frame.image, editor_api, controller, $($val,)*).await;
 
 						self.cache.lock().unwrap().insert(hash, image.clone());
-						return ImageFrame {
-							image,
-							..frame
-						}
+
+						return ImageFrame { image, ..frame }
 					}
 					let image = self.cache.lock().unwrap().get(&hash).cloned().unwrap_or_default();
-					ImageFrame {
-						image,
-						..frame
-					}
+
+					ImageFrame { image, ..frame }
 				})
 			}
 		}
@@ -549,7 +548,7 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 	graphene_core::raster::ImageFrame {
 		image,
 		transform,
-		blend_mode: BlendMode::Normal,
+		alpha_blending: AlphaBlending::default(),
 	}
 }
 
@@ -576,7 +575,7 @@ fn pixel_noise(width: u32, height: u32, seed: u32, noise_type: NoiseType) -> gra
 	ImageFrame::<Color> {
 		image,
 		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
-		blend_mode: BlendMode::Normal,
+		alpha_blending: AlphaBlending::default(),
 	}
 }
 
@@ -621,7 +620,7 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 	ImageFrame {
 		image: Image { width, height, data },
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
-		blend_mode: BlendMode::Normal,
+		..Default::default()
 	}
 }
 

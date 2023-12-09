@@ -356,7 +356,7 @@ async fn brush(image: ImageFrame<Color>, bounds: ImageFrame<Color>, strokes: Vec
 		let opaque_image = ImageFrame {
 			image: Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE),
 			transform: background_bounds,
-			blend_mode: BlendMode::Normal,
+			..Default::default()
 		};
 		let mut erase_restore_mask = opaque_image;
 
@@ -410,11 +410,7 @@ mod test {
 	#[test]
 	fn test_translate_node() {
 		let image = Image::new(10, 10, Color::TRANSPARENT);
-		let mut image = ImageFrame {
-			image,
-			transform: DAffine2::IDENTITY,
-			blend_mode: BlendMode::Normal,
-		};
+		let mut image = ImageFrame { image, ..Default::default() };
 		image.translate(DVec2::new(1., 2.));
 		let translate_node = TranslateNode::new(ClonedNode::new(image));
 		let image = translate_node.eval(DVec2::new(1., 2.));

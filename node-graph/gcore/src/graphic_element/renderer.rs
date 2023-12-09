@@ -223,12 +223,12 @@ impl GraphicElementRendered for GraphicGroup {
 			|attributes| {
 				attributes.push("transform", format_transform_matrix(self.transform));
 
-				if self.opacity < 1. {
-					attributes.push("opacity", self.opacity.to_string());
+				if self.alpha_blending.opacity < 1. {
+					attributes.push("opacity", self.alpha_blending.opacity.to_string());
 				}
 
-				if self.blend_mode != BlendMode::default() {
-					attributes.push("style", self.blend_mode.render());
+				if self.alpha_blending.blend_mode != BlendMode::default() {
+					attributes.push("style", self.alpha_blending.blend_mode.render());
 				}
 			},
 			|render| {
@@ -275,12 +275,12 @@ impl GraphicElementRendered for VectorData {
 				.render(render_params.view_mode, &mut attributes.0.svg_defs, multiplied_transform, layer_bounds, transformed_bounds);
 			attributes.push_val(fill_and_stroke);
 
-			if self.style.opacity < 1. {
-				attributes.push("opacity", self.style.opacity.to_string());
+			if self.alpha_blending.opacity < 1. {
+				attributes.push("opacity", self.alpha_blending.opacity.to_string());
 			}
 
-			if self.style.blend_mode != BlendMode::default() {
-				attributes.push("style", self.style.blend_mode.render());
+			if self.alpha_blending.blend_mode != BlendMode::default() {
+				attributes.push("style", self.alpha_blending.blend_mode.render());
 			}
 		});
 	}
@@ -426,8 +426,8 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
 					attributes.push("href", SvgSegment::BlobUrl(uuid));
-					if self.blend_mode != BlendMode::default() {
-						attributes.push("style", self.blend_mode.render());
+					if self.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
 				});
 				render.image_data.push((uuid, self.image.clone()))
@@ -449,8 +449,8 @@ impl GraphicElementRendered for ImageFrame<Color> {
 					attributes.push("preserveAspectRatio", "none");
 					attributes.push("transform", transform);
 					attributes.push("href", base64_string);
-					if self.blend_mode != BlendMode::default() {
-						attributes.push("style", self.blend_mode.render());
+					if self.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
 				});
 			}
@@ -493,7 +493,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			GraphicElement::VectorShape(vector_data) => vector_data.render_svg(render, render_params),
+			GraphicElement::VectorData(vector_data) => vector_data.render_svg(render, render_params),
 			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
 			GraphicElement::Text(_) => todo!("Render a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
@@ -503,7 +503,7 @@ impl GraphicElementRendered for GraphicElement {
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		match self {
-			GraphicElement::VectorShape(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
+			GraphicElement::VectorData(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
 			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
 			GraphicElement::Text(_) => todo!("Bounds of a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
@@ -513,7 +513,7 @@ impl GraphicElementRendered for GraphicElement {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			GraphicElement::VectorShape(vector_data) => vector_data.add_click_targets(click_targets),
+			GraphicElement::VectorData(vector_data) => vector_data.add_click_targets(click_targets),
 			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
 			GraphicElement::Text(_) => todo!("click target for text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
@@ -523,7 +523,7 @@ impl GraphicElementRendered for GraphicElement {
 
 	fn to_usvg_node(&self) -> usvg::Node {
 		match self {
-			GraphicElement::VectorShape(vector_data) => vector_data.to_usvg_node(),
+			GraphicElement::VectorData(vector_data) => vector_data.to_usvg_node(),
 			GraphicElement::ImageFrame(image_frame) => image_frame.to_usvg_node(),
 			GraphicElement::Text(text) => text.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),

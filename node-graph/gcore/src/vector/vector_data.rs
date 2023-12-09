@@ -1,6 +1,6 @@
 use super::style::{PathStyle, Stroke};
-use crate::uuid::ManipulatorGroupId;
 use crate::Color;
+use crate::{uuid::ManipulatorGroupId, AlphaBlending};
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};
@@ -8,13 +8,14 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 
 /// [VectorData] is passed between nodes.
-/// It contains a list of subpaths (that may be open or closed), a transform and some style information.
+/// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
 	pub subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>,
 	pub transform: DAffine2,
 	pub style: PathStyle,
+	pub alpha_blending: AlphaBlending,
 	// TODO: Keavon asks: what is this for? Is it dead code? It seems to only be set, never read.
 	pub mirror_angle: Vec<ManipulatorGroupId>,
 }
@@ -24,6 +25,7 @@ impl core::hash::Hash for VectorData {
 		self.subpaths.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
+		self.alpha_blending.hash(state);
 		self.mirror_angle.hash(state);
 	}
 }
@@ -35,6 +37,7 @@ impl VectorData {
 			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
+			alpha_blending: AlphaBlending::new(),
 			mirror_angle: Vec::new(),
 		}
 	}

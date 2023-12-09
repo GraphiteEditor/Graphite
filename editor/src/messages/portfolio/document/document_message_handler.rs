@@ -577,11 +577,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let image_frame = ImageFrame {
-					image,
-					transform: DAffine2::IDENTITY,
-					blend_mode: BlendMode::Normal,
-				};
+				let image_frame = ImageFrame { image, ..Default::default() };
 
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let layer = graph_modification_utils::new_image_layer(image_frame, generate_uuid(), self.new_layer_parent(), responses);

@@ -1,7 +1,6 @@
 //! Contains stylistic options for SVG elements.
 
 use crate::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
-use crate::raster::BlendMode;
 use crate::Color;
 
 use dyn_any::{DynAny, StaticType};
@@ -410,27 +409,18 @@ impl Default for Stroke {
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,
-	pub opacity: f32,
-	pub blend_mode: BlendMode,
 }
 
 impl core::hash::Hash for PathStyle {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.stroke.hash(state);
 		self.fill.hash(state);
-		self.opacity.to_bits().hash(state);
-		self.blend_mode.hash(state);
 	}
 }
 
 impl PathStyle {
 	pub const fn new(stroke: Option<Stroke>, fill: Fill) -> Self {
-		Self {
-			stroke,
-			fill,
-			opacity: 1.,
-			blend_mode: BlendMode::Normal,
-		}
+		Self { stroke, fill }
 	}
 
 	/// Get the current path's [Fill].

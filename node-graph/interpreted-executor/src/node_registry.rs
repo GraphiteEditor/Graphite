@@ -312,7 +312,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					let empty_image = ImageFrame {
 						image: Image::new(bounds.x, bounds.y, Color::BLACK),
 						transform,
-						blend_mode: BlendMode::Normal,
+						..Default::default()
 					};
 					let final_image = ClonedNode::new(empty_image).then(complete_node);
 					let final_image = FutureWrapperNode::new(final_image);

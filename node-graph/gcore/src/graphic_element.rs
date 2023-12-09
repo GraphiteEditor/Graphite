@@ -13,38 +13,72 @@ use glam::{DAffine2, DVec2, IVec2, UVec2};
 
 pub mod renderer;
 
+#[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AlphaBlending {
+	pub opacity: f32,
+	pub blend_mode: BlendMode,
+}
+impl Default for AlphaBlending {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+impl core::hash::Hash for AlphaBlending {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.opacity.to_bits().hash(state);
+		self.blend_mode.hash(state);
+	}
+}
+impl AlphaBlending {
+	pub const fn new() -> Self {
+		Self {
+			opacity: 1.,
+			blend_mode: BlendMode::Normal,
+		}
+	}
+}
+
 /// A list of [`GraphicElement`]s
 #[derive(Clone, Debug, PartialEq, DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GraphicGroup {
 	elements: Vec<GraphicElement>,
-	pub opacity: f32,
-	pub blend_mode: BlendMode,
 	pub transform: DAffine2,
+	pub alpha_blending: AlphaBlending,
 }
 
 impl core::hash::Hash for GraphicGroup {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.transform.to_cols_array().iter().for_each(|element| element.to_bits().hash(state));
 		self.elements.hash(state);
-		self.opacity.to_bits().hash(state);
-		self.transform.to_cols_array().iter().for_each(|element| element.to_bits().hash(state))
+		self.alpha_blending.hash(state);
 	}
 }
 
-/// Internal data for a [`GraphicElement`]. Can be [`VectorData`], [`ImageFrame`], text, or a nested [`GraphicGroup`]
+/// The possible forms of graphical content held in a Vec by the `elements` field of [`GraphicElement`].
+/// Can be another recursively nested [`GraphicGroup`], [`VectorData`], an [`ImageFrame`], text (not yet implemented), or an [`Artboard`].
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GraphicElement {
-	VectorShape(Box<VectorData>),
-	ImageFrame(ImageFrame<Color>),
-	Text(String),
+	/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
 	GraphicGroup(GraphicGroup),
+	/// A vector shape, equivalent to the SVG <path> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
+	VectorData(Box<VectorData>),
+	/// A bitmap image with a finite position and extent, equivalent to the SVG <image> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+	ImageFrame(ImageFrame<Color>),
+	// TODO: Switch from `String` to a proper formatted typography type
+	/// Text, equivalent to the SVG <text> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text
+	/// (Not yet implemented.)
+	Text(String),
+	/// The bounds for displaying a page of contained content
 	Artboard(Artboard),
 }
 
+// TODO: Can this be removed? It doesn't necessarily make that much sense to have a default when, instead, the entire GraphicElement just shouldn't exist if there's no specific content to assign it.
 impl Default for GraphicElement {
 	fn default() -> Self {
-		Self::VectorShape(Box::new(VectorData::empty()))
+		Self::VectorData(Box::new(VectorData::empty()))
 	}
 }
 
@@ -131,7 +165,7 @@ impl From<ImageFrame<Color>> for GraphicElement {
 }
 impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
-		GraphicElement::VectorShape(Box::new(vector_data))
+		GraphicElement::VectorData(Box::new(vector_data))
 	}
 }
 impl From<GraphicGroup> for GraphicElement {
@@ -173,9 +207,8 @@ where
 	fn from(value: T) -> Self {
 		Self {
 			elements: (vec![value.into()]),
-			opacity: 1.,
-			blend_mode: BlendMode::Normal,
 			transform: DAffine2::IDENTITY,
+			alpha_blending: AlphaBlending::default(),
 		}
 	}
 }
@@ -183,9 +216,8 @@ where
 impl GraphicGroup {
 	pub const EMPTY: Self = Self {
 		elements: Vec::new(),
-		opacity: 1.,
-		blend_mode: BlendMode::Normal,
 		transform: DAffine2::IDENTITY,
+		alpha_blending: AlphaBlending::new(),
 	};
 
 	pub fn to_usvg_tree(&self, resolution: UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
@@ -214,7 +246,7 @@ impl GraphicElement {
 		}
 
 		match self {
-			GraphicElement::VectorShape(vector_data) => {
+			GraphicElement::VectorData(vector_data) => {
 				use usvg::tiny_skia_path::PathBuilder;
 				let mut builder = PathBuilder::new();
 

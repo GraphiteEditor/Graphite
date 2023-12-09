@@ -1,6 +1,6 @@
 use super::discrete_srgb::float_to_srgb_u8;
 use super::{Color, ImageSlice};
-use crate::Node;
+use crate::{AlphaBlending, Node};
 use alloc::vec::Vec;
 use core::hash::{Hash, Hasher};
 use dyn_any::StaticType;
@@ -260,7 +260,7 @@ pub struct ImageFrame<P: Pixel> {
 	// positive going right and y axis positive going down, with the origin
 	// being an unspecified quantity.
 	pub transform: DAffine2,
-	pub blend_mode: BlendMode,
+	pub alpha_blending: AlphaBlending,
 }
 
 impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
@@ -312,7 +312,7 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 		Self {
 			image: Image::empty(),
 			transform: DAffine2::ZERO,
-			blend_mode: BlendMode::Normal,
+			alpha_blending: AlphaBlending::new(),
 		}
 	}
 
@@ -320,7 +320,7 @@ impl<P: Copy + Pixel> ImageFrame<P> {
 		Self {
 			image: Image::empty(),
 			transform: DAffine2::IDENTITY,
-			blend_mode: BlendMode::Normal,
+			alpha_blending: AlphaBlending::new(),
 		}
 	}
 
@@ -381,7 +381,7 @@ impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
 				height: image.image.height,
 			},
 			transform: image.transform,
-			blend_mode: BlendMode::Normal,
+			alpha_blending: image.alpha_blending,
 		}
 	}
 }
@@ -396,7 +396,7 @@ impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
 				height: image.image.height,
 			},
 			transform: image.transform,
-			blend_mode: BlendMode::Normal,
+			alpha_blending: image.alpha_blending,
 		}
 	}
 }

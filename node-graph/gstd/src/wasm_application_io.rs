@@ -279,8 +279,7 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 			width: image.width(),
 			height: image.height(),
 		},
-		transform: glam::DAffine2::IDENTITY,
-		blend_mode: graphene_core::raster::BlendMode::Normal,
+		..Default::default()
 	};
 	image
 }

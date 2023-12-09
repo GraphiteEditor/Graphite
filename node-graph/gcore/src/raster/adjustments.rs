@@ -912,14 +912,14 @@ fn opacity_node(color: Color, opacity_multiplier: f32) -> Color {
 #[node_macro::node_impl(OpacityNode)]
 fn opacity_node(mut vector_data: VectorData, opacity_multiplier: f32) -> VectorData {
 	let opacity_multiplier = opacity_multiplier / 100.;
-	vector_data.style.opacity *= opacity_multiplier;
+	vector_data.alpha_blending.opacity *= opacity_multiplier;
 	vector_data
 }
 
 #[node_macro::node_impl(OpacityNode)]
 fn opacity_node(mut graphic_group: GraphicGroup, opacity_multiplier: f32) -> GraphicGroup {
 	let opacity_multiplier = opacity_multiplier / 100.;
-	graphic_group.opacity *= opacity_multiplier;
+	graphic_group.alpha_blending.opacity *= opacity_multiplier;
 	graphic_group
 }
 
@@ -930,19 +930,19 @@ pub struct BlendModeNode<BM> {
 
 #[node_macro::node_fn(BlendModeNode)]
 fn blend_mode_node(mut vector_data: VectorData, blend_mode: BlendMode) -> VectorData {
-	vector_data.style.blend_mode = blend_mode;
+	vector_data.alpha_blending.blend_mode = blend_mode;
 	vector_data
 }
 
 #[node_macro::node_impl(BlendModeNode)]
 fn blend_mode_node(mut graphic_group: GraphicGroup, blend_mode: BlendMode) -> GraphicGroup {
-	graphic_group.blend_mode = blend_mode;
+	graphic_group.alpha_blending.blend_mode = blend_mode;
 	graphic_group
 }
 
 #[node_macro::node_impl(BlendModeNode)]
 fn blend_mode_node(mut image_frame: ImageFrame<Color>, blend_mode: BlendMode) -> ImageFrame<Color> {
-	image_frame.blend_mode = blend_mode;
+	image_frame.alpha_blending.blend_mode = blend_mode;
 	image_frame
 }
 
