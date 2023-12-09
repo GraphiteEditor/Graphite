@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports */
 /* eslint-disable max-classes-per-file */
 
 import justAPottedCactusUrl from "@graphite/../../demo-artwork/just-a-potted-cactus-v2.graphite";
