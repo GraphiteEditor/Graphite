@@ -240,7 +240,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Return an iterator up the primary flow of the layer
 	pub fn primary_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, u64)> {
-		self.node_graph.primary_flow_from_node(Some(self.layer_node))
+		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], true)
 	}
 
 	/// Does a node exist in the layer's primary flow

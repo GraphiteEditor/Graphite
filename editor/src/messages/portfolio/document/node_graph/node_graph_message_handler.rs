@@ -211,7 +211,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collate the properties panel sections for a node graph
-	pub fn collate_properties(&self, context: &mut NodePropertiesContext, sections: &mut Vec<LayoutGroup>) {
+	pub fn collate_properties(&self, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 		let mut network = context.network;
 		let document = context.document;
 
@@ -219,19 +219,49 @@ impl NodeGraphMessageHandler {
 			network = network.nodes.get(segment).and_then(|node| node.implementation.get_network()).unwrap();
 		}
 
-		// If empty, show all nodes in the network starting with the output
-		if !document.metadata.has_selected_nodes() {
-			for (document_node, node_id) in network.primary_flow().collect::<Vec<_>>().into_iter().rev() {
-				sections.push(node_properties::generate_node_properties(document_node, node_id, context));
-			}
-		}
-		// Show properties for all selected nodes
-		for node_id in document.metadata.selected_nodes() {
-			let Some(document_node) = network.nodes.get(node_id) else {
-				continue;
-			};
+		// We want:
+		// - If only nodes (no layers) are selected: display each node's properties
+		// - If one layer is selected, and zero or more of its upstream nodes: display the properties for the layer and its upstream nodes
+		// - If multiple layers are selected, or one node plus other non-upstream nodes: display nothing
 
-			sections.push(node_properties::generate_node_properties(document_node, *node_id, context));
+		// First, we filter all the selections into layers and nodes
+		let (mut layers, mut nodes) = (Vec::new(), Vec::new());
+		for node_id in document.metadata.selected_nodes() {
+			if let Some(layer_or_node) = network.nodes.get(node_id) {
+				if layer_or_node.is_layer() {
+					layers.push(*node_id);
+				} else {
+					nodes.push(*node_id);
+				}
+			};
+		}
+
+		// Next, we decide what to display based on the number of layers and nodes selected
+		match layers.len() {
+			// If no layers are selected, show properties for all selected nodes
+			0 => nodes
+				.iter()
+				.filter_map(|node_id| network.nodes.get(node_id).map(|node| node_properties::generate_node_properties(node, *node_id, context)))
+				.collect(),
+			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
+			1 => {
+				let nodes_not_upstream_of_layer = nodes
+					.into_iter()
+					.filter(|&selected_node_id| !network.is_node_upstream_of_another_by_primary_flow(layers[0], selected_node_id));
+				if nodes_not_upstream_of_layer.count() > 0 {
+					return Vec::new();
+				}
+
+				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
+				network
+					.upstream_flow_back_from_nodes(vec![layers[0]], true)
+					.enumerate()
+					.take_while(|(i, (node, _))| if *i == 0 { true } else { !node.is_layer() })
+					.map(|(_, (node, node_id))| node_properties::generate_node_properties(node, node_id, context))
+					.collect()
+			}
+			// If multiple layers and/or nodes are selected, show nothing
+			_ => Vec::new(),
 		}
 	}
 

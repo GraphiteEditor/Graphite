@@ -193,7 +193,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								active_document.network(),
 								&active_document
 									.network()
-									.all_dependencies(node)
+									.upstream_flow_back_from_nodes(vec![node], false)
 									.enumerate()
 									.map(|(index, (_, node_id))| (node_id, index as NodeId))
 									.collect(),

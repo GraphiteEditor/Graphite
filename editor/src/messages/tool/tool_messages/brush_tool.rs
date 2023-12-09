@@ -305,7 +305,7 @@ impl BrushToolData {
 		};
 
 		self.layer = Some(layer);
-		for (node, node_id) in document.network().primary_flow_from_node(Some(layer.to_node())) {
+		for (node, node_id) in document.network().upstream_flow_back_from_nodes(vec![layer.to_node()], true) {
 			if node.name == "Brush" {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {

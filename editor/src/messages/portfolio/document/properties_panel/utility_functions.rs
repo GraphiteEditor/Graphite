@@ -102,8 +102,6 @@ pub fn register_artwork_layer_properties(
 			}
 		}
 		LayerDataType::Layer(layer) => {
-			let mut properties_sections = Vec::new();
-
 			let mut context = NodePropertiesContext {
 				persistent_data,
 				document,
@@ -113,7 +111,7 @@ pub fn register_artwork_layer_properties(
 				executor,
 				network: &layer.network,
 			};
-			node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
+			let properties_sections = node_graph_message_handler.collate_properties(&mut context);
 
 			properties_sections
 		}
@@ -133,8 +131,8 @@ pub fn register_artwork_layer_properties(
 }
 
 pub fn register_document_graph_properties(mut context: NodePropertiesContext, node_graph_message_handler: &NodeGraphMessageHandler, document_name: &str) {
-	let mut properties_sections = Vec::new();
-	node_graph_message_handler.collate_properties(&mut context, &mut properties_sections);
+	let properties_sections = node_graph_message_handler.collate_properties(&mut context);
+
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			IconLabel::new("File").tooltip("Document").widget_holder(),

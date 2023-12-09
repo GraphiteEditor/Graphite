@@ -460,6 +460,7 @@ impl NodeNetwork {
 			previous_outputs: None,
 		}
 	}
+
 	/// A graph with just an input node
 	pub fn new_network() -> Self {
 		Self {
@@ -623,31 +624,18 @@ impl NodeNetwork {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
 
-	/// A iterator of all nodes connected by primary inputs.
-	///
-	/// Used for the properties panel and tools.
-	pub fn primary_flow(&self) -> impl Iterator<Item = (&DocumentNode, u64)> {
+	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, u64)> {
 		FlowIter {
-			stack: self.outputs.iter().map(|output| output.node_id).collect(),
+			stack: node_ids,
 			network: self,
-			primary: true,
+			only_follow_primary,
 		}
 	}
 
-	pub fn primary_flow_from_node(&self, id: Option<NodeId>) -> impl Iterator<Item = (&DocumentNode, u64)> {
-		FlowIter {
-			stack: id.map_or_else(|| self.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
-			network: self,
-			primary: true,
-		}
-	}
-
-	pub fn all_dependencies(&self, id: NodeId) -> impl Iterator<Item = (&DocumentNode, u64)> {
-		FlowIter {
-			stack: vec![id],
-			network: self,
-			primary: false,
-		}
+	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
+	pub fn is_node_upstream_of_another_by_primary_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
+		self.upstream_flow_back_from_nodes(vec![node], true).any(|(_, id)| id == potentially_upstream_node)
 	}
 
 	/// Check there are no cycles in the graph (this should never happen).
@@ -688,16 +676,19 @@ impl NodeNetwork {
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
-	primary: bool,
+	only_follow_primary: bool,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let node_id = self.stack.pop()?;
+
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let inputs = document_node.inputs.iter().take(if self.primary { 1 } else { usize::MAX });
-				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None });
+				let take = if self.only_follow_primary { 1 } else { usize::MAX };
+				let inputs = document_node.inputs.iter().take(take);
+
+				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
 
 				self.stack.extend(node_ids);
 

@@ -215,7 +215,7 @@ impl DocumentMetadata {
 }
 
 fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	graph.primary_flow_from_node(Some(node.inputs[0].as_node()?)).find(|(node, _)| node.is_layer())
+	graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
 }
 
 fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
@@ -259,13 +259,13 @@ impl DocumentMetadata {
 }
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.primary_flow_from_node(Some(layer.to_node())).any(|(node, _)| node.name == "Artboard")
+	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.name == "Artboard")
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
 		|| network
-			.primary_flow_from_node(Some(layer.to_node()))
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
 			.skip(1)
 			.any(|(node, _)| node.name == "Artboard" || node.is_layer())
 }
