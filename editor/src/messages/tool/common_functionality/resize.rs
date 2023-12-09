@@ -48,6 +48,10 @@ impl Resize {
 		let Some(layer) = self.layer else {
 			return None;
 		};
+		if !document.network().nodes.contains_key(&layer.to_node()) {
+			self.layer.take();
+			return None;
+		}
 
 		let mut start = self.viewport_drag_start(document);
 		let stop = self.snap_manager.snap_position(responses, document, ipp.mouse.position);

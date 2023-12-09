@@ -709,6 +709,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				modify_inputs.delete_layer(id);
+				document.load_network_structure();
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
