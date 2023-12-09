@@ -404,6 +404,7 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Viewport => parent_transform,
 			};
 			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
+			//let pivot = DAffine2::IDENTITY;
 
 			if current_transform
 				.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)

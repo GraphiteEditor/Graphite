@@ -11,6 +11,8 @@ use core::future::Future;
 use core::ops::{Deref, DerefMut};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 
+use self::renderer::GraphicElementRendered;
+
 pub mod renderer;
 
 #[derive(Copy, Clone, Debug, PartialEq, DynAny, specta::Type)]
@@ -235,6 +237,27 @@ impl GraphicGroup {
 			root_node.append(element.to_usvg_node());
 		}
 		tree
+	}
+
+	pub fn nonzero_bounding_box(&self) -> [DVec2; 2] {
+		let [bounds_min, mut bounds_max] = self.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+
+		let bounds_size = bounds_max - bounds_min;
+		if bounds_size.x < 1e-10 {
+			bounds_max.x = bounds_min.x + 1.;
+		}
+		if bounds_size.y < 1e-10 {
+			bounds_max.y = bounds_min.y + 1.;
+		}
+
+		[bounds_min, bounds_max]
+	}
+
+	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
+		let [bounds_min, bounds_max] = self.nonzero_bounding_box();
+		let bounds_size = bounds_max - bounds_min;
+
+		self.transform.transform_point2(bounds_min + bounds_size * normalized_pivot)
 	}
 }
 

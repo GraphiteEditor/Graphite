@@ -59,12 +59,20 @@ impl Transform for GraphicGroup {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		self.local_pivot(pivot)
+	}
 }
+
 impl Transform for &GraphicGroup {
 	fn transform(&self) -> DAffine2 {
 		self.transform
 	}
+	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
+		(*self).local_pivot(pivot)
+	}
 }
+
 impl TransformMut for GraphicGroup {
 	fn transform_mut(&mut self) -> &mut DAffine2 {
 		&mut self.transform
