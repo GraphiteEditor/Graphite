@@ -279,10 +279,16 @@ impl DocumentMetadata {
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets
-			.get(&layer)?
-			.iter()
-			.filter_map(|click_target| click_target.subpath.bounding_box_with_transform(transform))
+		let my_transform = self.transform_to_viewport(layer);
+		layer
+			.decendants(&self)
+			.chain([layer])
+			.filter_map(move |layer| {
+				let transform = self.transform_to_viewport(layer) * my_transform.inverse();
+				self.click_targets.get(&layer).map(|targets| targets.iter().map(move |target| (target, transform)))
+			})
+			.flatten()
+			.filter_map(|(click_target, my_transform)| click_target.subpath.bounding_box_with_transform(my_transform * transform))
 			.reduce(Quad::combine_bounds)
 	}
 
