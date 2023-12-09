@@ -28,23 +28,17 @@ fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 		colors[bin].push(pixel.to_gamma_srgb());
 	}
 
-	log::debug!("histogram: {:?}", histogram);
-
 	let shorted = histogram.iter().enumerate().filter(|(_, &count)| count > 0).map(|(i, _)| i).collect::<Vec<usize>>();
-	log::debug!("shorted: {:?}", shorted);
 
 	let mut palette = vec![];
 
 	for i in shorted.iter().take(max_size as usize) {
-		// FIXME:
 		let list = colors[*i].clone();
 
 		let mut r = 0.0;
 		let mut g = 0.0;
 		let mut b = 0.0;
 		let mut a = 0.0;
-
-		// log::debug!("list item: {:?}", list[0].rgb_hex());
 
 		for color in list.iter() {
 			r += color.r();
@@ -59,7 +53,6 @@ fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 		a /= list.len() as f32;
 
 		let color = Color::from_rgbaf32(r, g, b, a).unwrap();
-		log::debug!("color: {:?}", color.rgb_hex());
 
 		palette.push(color);
 	}
