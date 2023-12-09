@@ -22,7 +22,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 
-use graphene_core::{Color, GraphicElementData, SurfaceFrame, SurfaceId};
+use graphene_core::{Color, GraphicElement, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -263,22 +263,22 @@ impl NodeRuntime {
 				continue;
 			};
 
-			let Some(io_data) = value.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElementData>>() else {
+			let Some(io_data) = value.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() else {
 				continue;
 			};
-			let graphic_element_data = &io_data.output;
+			let graphic_element = &io_data.output;
 			use graphene_core::renderer::*;
-			let bounds = graphic_element_data.bounding_box(DAffine2::IDENTITY);
+			let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
 			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);
 			let mut render = SvgRender::new();
-			graphic_element_data.render_svg(&mut render, &render_params);
+			graphic_element.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
 			render.format_svg(min, max);
 
 			let click_targets = self.click_targets.entry(node_id).or_default();
 			click_targets.clear();
 			// Add the graphic element data's click targets to the click targets vector
-			graphic_element_data.add_click_targets(click_targets);
+			graphic_element.add_click_targets(click_targets);
 
 			let old_thumbnail = self.thumbnails.entry(node_id).or_default();
 			if *old_thumbnail != render.svg {
@@ -317,7 +317,7 @@ impl NodeRuntime {
 
 			let Some(transform) = try_downcast::<VectorData>(value.as_ref())
 				.or_else(|| try_downcast::<ImageFrame<Color>>(value.as_ref()))
-				.or_else(|| try_downcast::<GraphicElementData>(value.as_ref()))
+				.or_else(|| try_downcast::<GraphicElement>(value.as_ref()))
 			else {
 				warn!("Failed to downcast transform input");
 				continue;

@@ -1,6 +1,6 @@
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
-use crate::{vector::VectorData, Artboard, Color, GraphicElementData, GraphicGroup};
+use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 use base64::Engine;
 use bezier_rs::Subpath;
 
@@ -233,16 +233,14 @@ impl GraphicElementRendered for GraphicGroup {
 			},
 			|render| {
 				for element in self.iter() {
-					element.graphic_element_data.render_svg(render, render_params);
+					element.render_svg(render, render_params);
 				}
 			},
 		);
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.iter()
-			.filter_map(|element| element.graphic_element_data.bounding_box(transform * self.transform))
-			.reduce(Quad::combine_bounds)
+		self.iter().filter_map(|element| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
 
 	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
@@ -394,7 +392,7 @@ impl GraphicElementRendered for Artboard {
 			// Artboard contents
 			|render| {
 				for element in self.graphic_group.iter() {
-					element.graphic_element_data.render_svg(render, render_params);
+					element.render_svg(render, render_params);
 				}
 			},
 		);
@@ -492,44 +490,44 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	}
 }
 
-impl GraphicElementRendered for GraphicElementData {
+impl GraphicElementRendered for GraphicElement {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			GraphicElementData::VectorShape(vector_data) => vector_data.render_svg(render, render_params),
-			GraphicElementData::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
-			GraphicElementData::Text(_) => todo!("Render a text GraphicElementData"),
-			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
-			GraphicElementData::Artboard(artboard) => artboard.render_svg(render, render_params),
+			GraphicElement::VectorShape(vector_data) => vector_data.render_svg(render, render_params),
+			GraphicElement::ImageFrame(image_frame) => image_frame.render_svg(render, render_params),
+			GraphicElement::Text(_) => todo!("Render a text GraphicElement"),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
+			GraphicElement::Artboard(artboard) => artboard.render_svg(render, render_params),
 		}
 	}
 
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		match self {
-			GraphicElementData::VectorShape(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
-			GraphicElementData::ImageFrame(image_frame) => image_frame.bounding_box(transform),
-			GraphicElementData::Text(_) => todo!("Bounds of a text GraphicElementData"),
-			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
-			GraphicElementData::Artboard(artboard) => artboard.bounding_box(transform),
+			GraphicElement::VectorShape(vector_data) => GraphicElementRendered::bounding_box(&**vector_data, transform),
+			GraphicElement::ImageFrame(image_frame) => image_frame.bounding_box(transform),
+			GraphicElement::Text(_) => todo!("Bounds of a text GraphicElement"),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
+			GraphicElement::Artboard(artboard) => artboard.bounding_box(transform),
 		}
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			GraphicElementData::VectorShape(vector_data) => vector_data.add_click_targets(click_targets),
-			GraphicElementData::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
-			GraphicElementData::Text(_) => todo!("click target for text GraphicElementData"),
-			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
-			GraphicElementData::Artboard(artboard) => artboard.add_click_targets(click_targets),
+			GraphicElement::VectorShape(vector_data) => vector_data.add_click_targets(click_targets),
+			GraphicElement::ImageFrame(image_frame) => image_frame.add_click_targets(click_targets),
+			GraphicElement::Text(_) => todo!("click target for text GraphicElement"),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
+			GraphicElement::Artboard(artboard) => artboard.add_click_targets(click_targets),
 		}
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
 		match self {
-			GraphicElementData::VectorShape(vector_data) => vector_data.to_usvg_node(),
-			GraphicElementData::ImageFrame(image_frame) => image_frame.to_usvg_node(),
-			GraphicElementData::Text(text) => text.to_usvg_node(),
-			GraphicElementData::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
-			GraphicElementData::Artboard(artboard) => artboard.to_usvg_node(),
+			GraphicElement::VectorShape(vector_data) => vector_data.to_usvg_node(),
+			GraphicElement::ImageFrame(image_frame) => image_frame.to_usvg_node(),
+			GraphicElement::Text(text) => text.to_usvg_node(),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
+			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
 		}
 	}
 }

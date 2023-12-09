@@ -324,7 +324,7 @@ def update_layer(layer, indent, layer_node_id, next_id, opacity):
 						"has_primary_output": True,
 						"implementation": {
 							"Unresolved": {
-								"name": "graphene_core::ToGraphicElementData"
+								"name": "graphene_core::ToGraphicElementNode"
 							}
 						},
 						"metadata": {

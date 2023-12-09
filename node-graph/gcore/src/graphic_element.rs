@@ -34,7 +34,7 @@ impl core::hash::Hash for GraphicGroup {
 /// Internal data for a [`GraphicElement`]. Can be [`VectorData`], [`ImageFrame`], text, or a nested [`GraphicGroup`]
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum GraphicElementData {
+pub enum GraphicElement {
 	VectorShape(Box<VectorData>),
 	ImageFrame(ImageFrame<Color>),
 	Text(String),
@@ -42,18 +42,9 @@ pub enum GraphicElementData {
 	Artboard(Artboard),
 }
 
-// TODO: Remove this wrapper and directly use GraphicElementData
-#[derive(Clone, Debug, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct GraphicElement {
-	pub graphic_element_data: GraphicElementData,
-}
-
 impl Default for GraphicElement {
 	fn default() -> Self {
-		Self {
-			graphic_element_data: GraphicElementData::VectorShape(Box::new(VectorData::empty())),
-		}
+		Self::VectorShape(Box::new(VectorData::empty()))
 	}
 }
 
@@ -81,30 +72,28 @@ impl Artboard {
 	}
 }
 
-pub struct ConstructLayerNode<GraphicElementData, Stack> {
-	graphic_element_data: GraphicElementData,
+pub struct ConstructLayerNode<GraphicElement, Stack> {
+	graphic_element: GraphicElement,
 	stack: Stack,
 }
 
 #[node_fn(ConstructLayerNode)]
-async fn construct_layer<Data: Into<GraphicElementData>, Fut1: Future<Output = Data>, Fut2: Future<Output = GraphicGroup>>(
+async fn construct_layer<Data: Into<GraphicElement>, Fut1: Future<Output = Data>, Fut2: Future<Output = GraphicGroup>>(
 	footprint: crate::transform::Footprint,
-	graphic_element_data: impl Node<crate::transform::Footprint, Output = Fut1>,
+	graphic_element: impl Node<crate::transform::Footprint, Output = Fut1>,
 	mut stack: impl Node<crate::transform::Footprint, Output = Fut2>,
 ) -> GraphicGroup {
-	let graphic_element_data = self.graphic_element_data.eval(footprint).await;
+	let graphic_element = self.graphic_element.eval(footprint).await;
 	let mut stack = self.stack.eval(footprint).await;
-	stack.push(GraphicElement {
-		graphic_element_data: graphic_element_data.into(),
-	});
+	stack.push(graphic_element.into());
 	stack
 }
 
-pub struct ToGraphicElementData {}
+pub struct ToGraphicElementNode {}
 
-#[node_fn(ToGraphicElementData)]
-fn to_graphic_element_data<Data: Into<GraphicElementData>>(graphic_element_data: Data) -> GraphicElementData {
-	graphic_element_data.into()
+#[node_fn(ToGraphicElementNode)]
+fn to_graphic_element<Data: Into<GraphicElement>>(data: Data) -> GraphicElement {
+	data.into()
 }
 
 pub struct ConstructArtboardNode<Contents, Location, Dimensions, Background, Clip> {
@@ -135,24 +124,24 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 	}
 }
 
-impl From<ImageFrame<Color>> for GraphicElementData {
+impl From<ImageFrame<Color>> for GraphicElement {
 	fn from(image_frame: ImageFrame<Color>) -> Self {
-		GraphicElementData::ImageFrame(image_frame)
+		GraphicElement::ImageFrame(image_frame)
 	}
 }
-impl From<VectorData> for GraphicElementData {
+impl From<VectorData> for GraphicElement {
 	fn from(vector_data: VectorData) -> Self {
-		GraphicElementData::VectorShape(Box::new(vector_data))
+		GraphicElement::VectorShape(Box::new(vector_data))
 	}
 }
-impl From<GraphicGroup> for GraphicElementData {
+impl From<GraphicGroup> for GraphicElement {
 	fn from(graphic_group: GraphicGroup) -> Self {
-		GraphicElementData::GraphicGroup(graphic_group)
+		GraphicElement::GraphicGroup(graphic_group)
 	}
 }
-impl From<Artboard> for GraphicElementData {
+impl From<Artboard> for GraphicElement {
 	fn from(artboard: Artboard) -> Self {
-		GraphicElementData::Artboard(artboard)
+		GraphicElement::Artboard(artboard)
 	}
 }
 
@@ -171,7 +160,7 @@ impl DerefMut for GraphicGroup {
 /// This is a helper trait used for the Into Implementation.
 /// We can't just implement this for all for which from is implemented
 /// as that would conflict with the implementation for `Self`
-trait ToGraphicElement: Into<GraphicElementData> {}
+trait ToGraphicElement: Into<GraphicElement> {}
 
 impl ToGraphicElement for VectorData {}
 impl ToGraphicElement for ImageFrame<Color> {}
@@ -182,9 +171,8 @@ where
 	T: ToGraphicElement,
 {
 	fn from(value: T) -> Self {
-		let element = GraphicElement { graphic_element_data: value.into() };
 		Self {
-			elements: (vec![element]),
+			elements: (vec![value.into()]),
 			opacity: 1.,
 			blend_mode: BlendMode::Normal,
 			transform: DAffine2::IDENTITY,
@@ -225,8 +213,8 @@ impl GraphicElement {
 			usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 		}
 
-		match &self.graphic_element_data {
-			GraphicElementData::VectorShape(vector_data) => {
+		match self {
+			GraphicElement::VectorShape(vector_data) => {
 				use usvg::tiny_skia_path::PathBuilder;
 				let mut builder = PathBuilder::new();
 
@@ -257,7 +245,7 @@ impl GraphicElement {
 				path.stroke = Some(usvg::Stroke::default());
 				usvg::Node::new(usvg::NodeKind::Path(path))
 			}
-			GraphicElementData::ImageFrame(image_frame) => {
+			GraphicElement::ImageFrame(image_frame) => {
 				if image_frame.image.width * image_frame.image.height == 0 {
 					return usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
 				}
@@ -274,7 +262,7 @@ impl GraphicElement {
 					kind: usvg::ImageKind::PNG(png.into()),
 				}))
 			}
-			GraphicElementData::Text(text) => usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
+			GraphicElement::Text(text) => usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
 				id: String::new(),
 				transform: usvg::Transform::identity(),
 				rendering_mode: usvg::TextRendering::OptimizeSpeed,
@@ -290,7 +278,7 @@ impl GraphicElement {
 					text_flow: usvg::TextFlow::Linear,
 				}],
 			})),
-			GraphicElementData::GraphicGroup(group) => {
+			GraphicElement::GraphicGroup(group) => {
 				let group_element = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
 
 				for element in group.iter() {
@@ -299,13 +287,7 @@ impl GraphicElement {
 				group_element
 			}
 			// TODO
-			GraphicElementData::Artboard(_board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
+			GraphicElement::Artboard(_board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
 		}
-	}
-}
-
-impl core::hash::Hash for GraphicElement {
-	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.graphic_element_data.hash(state);
 	}
 }

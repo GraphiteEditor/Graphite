@@ -206,7 +206,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "To Graphic Element".to_string(),
 							inputs: vec![NodeInput::Network(generic!(T))],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementData"),
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
 							..Default::default()
 						},
 					),
@@ -2113,7 +2113,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Text",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::text::TextGenerator<_, _, _>"),
+			implementation: NodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("hello world".to_string()), false),
