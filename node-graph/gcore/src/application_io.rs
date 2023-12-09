@@ -153,6 +153,8 @@ pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
 	pub view_mode: ViewMode,
+	pub hide_artboards: bool,
+	pub for_export: bool,
 }
 
 pub struct EditorApi<'a, Io> {

@@ -1,9 +1,7 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{DocumentRenderMode, SnappingOptions, SnappingState};
+use super::utility_types::misc::{SnappingOptions, SnappingState};
 use crate::application::generate_uuid;
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
-use crate::messages::frontend::utility_types::ExportBounds;
-use crate::messages::frontend::utility_types::FileType;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
@@ -352,43 +350,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.layer_range_selection_reference = None;
 				for path in self.selected_layers_sorted() {
 					responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
-				}
-			}
-			ExportDocument {
-				file_name,
-				file_type,
-				scale_factor,
-				bounds,
-				transparent_background,
-			} => {
-				let old_artwork_transform = self.remove_document_transform();
-
-				// Calculate the bounding box of the region to be exported
-				let bounds = match bounds {
-					ExportBounds::AllArtwork => self.all_layer_bounds(&render_data),
-					ExportBounds::Selection => self.document_legacy.selected_visible_layers_bounding_box_viewport(),
-					ExportBounds::Artboard(id) => self.metadata().bounding_box_document(id),
-				}
-				.unwrap_or_default();
-				let size = bounds[1] - bounds[0];
-				let transform = (DAffine2::from_translation(bounds[0]) * DAffine2::from_scale(size)).inverse();
-
-				let document = self.render_document(size, transform, transparent_background, persistent_data, DocumentRenderMode::Root);
-
-				self.restore_document_transform(old_artwork_transform);
-
-				let file_suffix = &format!(".{file_type:?}").to_lowercase();
-				let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
-					true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
-					false => file_name + file_suffix,
-				};
-
-				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerDownloadTextFile { document, name });
-				} else {
-					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
-					responses.add(FrontendMessage::TriggerDownloadImage { svg: document, name, mime, size });
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -878,7 +839,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
 			ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.metadata().document_bounds_document_space() {
+				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds,
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
@@ -902,7 +863,6 @@ impl DocumentMessageHandler {
 			SelectAllLayers,
 			DeselectAllLayers,
 			RenderDocument,
-			ExportDocument,
 			SaveDocument,
 			SetSnapping,
 			DebugPrintDocument,
@@ -938,49 +898,6 @@ impl DocumentMessageHandler {
 	}
 	pub fn metadata(&self) -> &document_legacy::document_metadata::DocumentMetadata {
 		&self.document_legacy.metadata
-	}
-
-	/// Remove the artwork and artboard pan/tilt/zoom to render it without the user's viewport navigation, and save it to be restored at the end
-	pub(crate) fn remove_document_transform(&mut self) -> DAffine2 {
-		let old_artwork_transform = self.metadata().document_to_viewport;
-		self.document_legacy.metadata.document_to_viewport = DAffine2::IDENTITY;
-		DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-
-		old_artwork_transform
-	}
-
-	/// Transform the artwork and artboard back to their original scales
-	pub(crate) fn restore_document_transform(&mut self, old_artwork_transform: DAffine2) {
-		self.document_legacy.metadata.document_to_viewport = old_artwork_transform;
-		DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-	}
-
-	pub fn render_document(&mut self, size: DVec2, transform: DAffine2, transparent_background: bool, persistent_data: &PersistentData, render_mode: DocumentRenderMode) -> String {
-		// Render the document SVG code
-
-		let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, None);
-
-		let (artwork, outside) = match render_mode {
-			DocumentRenderMode::Root => (self.document_legacy.render_root(&render_data), None),
-			DocumentRenderMode::OnlyBelowLayerInFolder(below_layer_path) => (self.document_legacy.render_layers_below(below_layer_path, &render_data).unwrap(), None),
-			DocumentRenderMode::LayerCutout(layer_path, background) => (self.document_legacy.render_layer(layer_path, &render_data).unwrap(), Some(background)),
-		};
-		let canvas_background_color = outside.map_or_else(|| "222222".to_string(), |col| col.rgba_hex());
-		let canvas_background = match transparent_background {
-			false => format!(r##"<rect x="0" y="0" width="100%" height="100%" fill="#{canvas_background_color}" />"##),
-			true => "".into(),
-		};
-		let matrix = transform
-			.to_cols_array()
-			.iter()
-			.enumerate()
-			.fold(String::new(), |acc, (i, entry)| acc + &(entry.to_string() + if i == 5 { "" } else { "," }));
-		let svg = format!(
-			r#"<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1 1" width="{}" height="{}">{}{canvas_background}<g transform="matrix({matrix})">{artwork}</g></svg>"#,
-			size.x, size.y, "\n",
-		);
-
-		svg
 	}
 
 	pub fn serialize_document(&self) -> String {

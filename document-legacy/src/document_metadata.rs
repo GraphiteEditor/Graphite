@@ -319,8 +319,19 @@ impl DocumentMetadata {
 	}
 
 	/// Calculates the document bounds in document space
-	pub fn document_bounds_document_space(&self) -> Option<[DVec2; 2]> {
-		self.all_layers().filter_map(|layer| self.bounding_box_document(layer)).reduce(Quad::combine_bounds)
+	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.all_layers()
+			.filter(|&layer| include_artboards || self.is_artboard(layer))
+			.filter_map(|layer| self.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the selected layer bounds in document space
+	pub fn selected_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.selected_layers()
+			.filter(|&layer| include_artboards || self.is_artboard(layer))
+			.filter_map(|layer| self.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> graphene_core::vector::Subpath {

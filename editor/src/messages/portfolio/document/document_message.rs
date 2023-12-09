@@ -1,4 +1,3 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
@@ -74,13 +73,6 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 	},
 	DuplicateSelectedLayers,
-	ExportDocument {
-		file_name: String,
-		file_type: FileType,
-		scale_factor: f64,
-		bounds: ExportBounds,
-		transparent_background: bool,
-	},
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},

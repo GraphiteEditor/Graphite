@@ -90,10 +90,17 @@ impl SvgRender {
 	}
 
 	/// Wraps the SVG with `<svg><g transform="...">`, which allows for rotation
-	pub fn wrap_with_transform(&mut self, transform: DAffine2) {
+	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
 		let defs = &self.svg_defs;
+		let view_box = size
+			.map(|size| format!("viewbox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
+			.unwrap_or_default();
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><defs>{defs}</defs><g transform="{}">"#, format_transform_matrix(transform));
+		let svg_header = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" {}><defs>{defs}</defs><g transform="{}">"#,
+			view_box,
+			format_transform_matrix(transform)
+		);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>");
 	}
@@ -154,15 +161,21 @@ pub struct RenderParams {
 	pub image_render_mode: ImageRenderMode,
 	pub culling_bounds: Option<[DVec2; 2]>,
 	pub thumbnail: bool,
+	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
+	pub hide_artboards: bool,
+	/// Are we exporting? Causes the text above an artboard to be hidden.
+	pub for_export: bool,
 }
 
 impl RenderParams {
-	pub fn new(view_mode: crate::vector::style::ViewMode, image_render_mode: ImageRenderMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool) -> Self {
+	pub fn new(view_mode: crate::vector::style::ViewMode, image_render_mode: ImageRenderMode, culling_bounds: Option<[DVec2; 2]>, thumbnail: bool, hide_artboards: bool, for_export: bool) -> Self {
 		Self {
 			view_mode,
 			image_render_mode,
 			culling_bounds,
 			thumbnail,
+			hide_artboards,
+			for_export,
 		}
 	}
 }
@@ -192,7 +205,7 @@ pub trait GraphicElementRendered {
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
 	fn to_usvg_node(&self) -> usvg::Node {
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::BlobUrl, None, false);
+		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::BlobUrl, None, false, false, false);
 		self.render_svg(&mut render, &render_params);
 		render.format_svg(DVec2::ZERO, DVec2::ONE);
 		let svg = render.svg.to_string();
@@ -335,31 +348,34 @@ impl GraphicElementRendered for VectorData {
 
 impl GraphicElementRendered for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		// Background
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("class", "artboard-bg");
-			attributes.push("fill", format!("#{}", self.background.rgba_hex()));
-			attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
-			attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
-			attributes.push("width", self.dimensions.x.abs().to_string());
-			attributes.push("height", self.dimensions.y.abs().to_string());
-		});
-
-		// Label
-		render.parent_tag(
-			"text",
-			|attributes| {
-				attributes.push("class", "artboard-label");
-				attributes.push("fill", "white");
-				attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
-				attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
-				attributes.push("font-size", "14px");
-			},
-			|render| {
-				// TODO: Use the artboard's layer name
-				render.svg.push("Artboard");
-			},
-		);
+		if !render_params.hide_artboards {
+			// Background
+			render.leaf_tag("rect", |attributes| {
+				attributes.push("class", "artboard-bg");
+				attributes.push("fill", format!("#{}", self.background.rgba_hex()));
+				attributes.push("x", self.location.x.min(self.location.x + self.dimensions.x).to_string());
+				attributes.push("y", self.location.y.min(self.location.y + self.dimensions.y).to_string());
+				attributes.push("width", self.dimensions.x.abs().to_string());
+				attributes.push("height", self.dimensions.y.abs().to_string());
+			});
+		}
+		if !render_params.hide_artboards && !render_params.for_export {
+			// Label
+			render.parent_tag(
+				"text",
+				|attributes| {
+					attributes.push("class", "artboard-label");
+					attributes.push("fill", "white");
+					attributes.push("x", (self.location.x.min(self.location.x + self.dimensions.x)).to_string());
+					attributes.push("y", (self.location.y.min(self.location.y + self.dimensions.y) - 4).to_string());
+					attributes.push("font-size", "14px");
+				},
+				|render| {
+					// TODO: Use the artboard's layer name
+					render.svg.push("Artboard");
+				},
+			);
+		}
 
 		// Contents group (includes the artwork but not the background)
 		render.parent_tag(

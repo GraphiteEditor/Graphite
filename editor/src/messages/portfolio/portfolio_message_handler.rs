@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard,
 use crate::messages::portfolio::document::DocumentInputs;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
-use crate::node_graph_executor::NodeGraphExecutor;
+use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use document_legacy::layers::style::RenderData;
 use graph_craft::document::NodeId;
@@ -510,6 +510,31 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					document_id,
 				};
 				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
+			}
+			PortfolioMessage::SubmitDocumentExport {
+				file_name,
+				file_type,
+				scale_factor,
+				bounds,
+				transparent_background,
+			} => {
+				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render no existent Document");
+				let export_config = ExportConfig {
+					file_name,
+					file_type,
+					scale_factor,
+					bounds,
+					transparent_background,
+					..Default::default()
+				};
+				let result = self.executor.submit_document_export(document, export_config);
+
+				if let Err(description) = result {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Unable to export document".to_string(),
+						description,
+					});
+				}
 			}
 			PortfolioMessage::SubmitGraphRender { document_id, layer_path } => {
 				let result = self.executor.submit_node_graph_evaluation(

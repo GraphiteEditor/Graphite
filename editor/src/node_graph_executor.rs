@@ -1,13 +1,13 @@
+use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::FrontendImageData;
+use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::*;
-
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
 use document_legacy::{LayerId, Operation};
-
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -67,6 +67,16 @@ enum NodeRuntimeMessage {
 	GenerationRequest(GenerationRequest),
 	FontCacheUpdate(FontCache),
 	ImaginatePreferencesUpdate(ImaginatePreferences),
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct ExportConfig {
+	pub file_name: String,
+	pub file_type: FileType,
+	pub scale_factor: f64,
+	pub bounds: ExportBounds,
+	pub transparent_background: bool,
+	pub size: DVec2,
 }
 
 pub(crate) struct GenerationRequest {
@@ -269,7 +279,7 @@ impl NodeRuntime {
 			let graphic_element = &io_data.output;
 			use graphene_core::renderer::*;
 			let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);
-			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true);
+			let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, bounds, true, false, false);
 			let mut render = SvgRender::new();
 			graphic_element.render_svg(&mut render, &render_params);
 			let [min, max] = bounds.unwrap_or_default();
@@ -370,6 +380,7 @@ pub struct NodeGraphExecutor {
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	layer_path: Vec<LayerId>,
+	export_config: Option<ExportConfig>,
 }
 
 impl Default for NodeGraphExecutor {
@@ -502,13 +513,82 @@ impl NodeGraphExecutor {
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_core::application_io::ExportFormat::Svg,
 			view_mode: document.view_mode,
+			hide_artboards: false,
+			for_export: false,
 		};
 
 		// Execute the node graph
 		let generation_id = self.queue_execution(network, layer_path.clone(), render_config);
 
-		self.futures.insert(generation_id, ExecutionContext { layer_path });
+		self.futures.insert(generation_id, ExecutionContext { layer_path, export_config: None });
 
+		Ok(())
+	}
+
+	/// Evaluates a node graph for export
+	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
+		let network = document.network().clone();
+
+		// Calculate the bounding box of the region to be exported
+		let bounds = match export_config.bounds {
+			ExportBounds::AllArtwork => document.metadata().document_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Selection => document.metadata().selected_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
+		}
+		.ok_or_else(|| "No bounding box".to_string())?;
+		let size = bounds[1] - bounds[0];
+		let transform = DAffine2::from_translation(bounds[0]).inverse();
+
+		let render_config = RenderConfig {
+			viewport: Footprint {
+				transform,
+				resolution: (size * export_config.scale_factor).as_uvec2(),
+				..Default::default()
+			},
+			export_format: graphene_core::application_io::ExportFormat::Svg,
+			view_mode: document.view_mode,
+			hide_artboards: export_config.transparent_background,
+			for_export: true,
+		};
+		export_config.size = size;
+
+		// Execute the node graph
+		let generation_id = self.queue_execution(network, Vec::new(), render_config);
+		let execution_context = ExecutionContext {
+			layer_path: Vec::new(),
+			export_config: Some(export_config),
+		};
+		self.futures.insert(generation_id, execution_context);
+
+		Ok(())
+	}
+
+	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) = node_graph_output else {
+			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
+		};
+
+		let ExportConfig {
+			file_type,
+			file_name,
+			size,
+			scale_factor,
+			..
+		} = export_config;
+
+		let file_suffix = &format!(".{file_type:?}").to_lowercase();
+		let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
+			true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
+			false => file_name + file_suffix,
+		};
+
+		if file_type == FileType::Svg {
+			responses.add(FrontendMessage::TriggerDownloadTextFile { document: svg, name });
+		} else {
+			let mime = file_type.to_mime().to_string();
+			let size = (size * scale_factor).into();
+			responses.add(FrontendMessage::TriggerDownloadImage { svg, name, mime, size });
+		}
 		Ok(())
 	}
 
@@ -525,6 +605,13 @@ impl NodeGraphExecutor {
 					new_upstream_transforms,
 					transform,
 				}) => {
+					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
+					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+
+					if let Some(export_config) = execution_context.export_config {
+						return self.export(node_graph_output, export_config, responses);
+					}
+
 					for (&node_id, svg) in &new_thumbnails {
 						if !document.document_network.nodes.contains_key(&node_id) {
 							warn!("Missing node");
@@ -555,8 +642,6 @@ impl NodeGraphExecutor {
 					self.thumbnails = new_thumbnails;
 					document.metadata.update_transforms(new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);
-					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
-					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					responses.extend(updates);
 					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses)?;
 					responses.add(DocumentMessage::LayerChanged {
@@ -581,13 +666,13 @@ impl NodeGraphExecutor {
 
 		// Setup rendering
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, None, false);
+		let render_params = RenderParams::new(ViewMode::Normal, ImageRenderMode::BlobUrl, None, false, false, false);
 
 		// Render SVG
 		render_object.render_svg(&mut render, &render_params);
 
 		// Concatenate the defs and the SVG into one string
-		render.wrap_with_transform(transform);
+		render.wrap_with_transform(transform, None);
 		let svg = render.svg.to_string();
 
 		// Send to frontend

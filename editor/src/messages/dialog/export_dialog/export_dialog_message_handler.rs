@@ -23,7 +23,7 @@ impl MessageHandler<ExportDialogMessage, &PortfolioMessageHandler> for ExportDia
 			ExportDialogMessage::TransparentBackground(transparent_background) => self.transparent_background = transparent_background,
 			ExportDialogMessage::ExportBounds(export_area) => self.bounds = export_area,
 
-			ExportDialogMessage::Submit => responses.add_front(DocumentMessage::ExportDocument {
+			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
 				file_name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
 				file_type: self.file_type,
 				scale_factor: self.scale_factor,
