@@ -483,6 +483,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
 						let document = &document.document_legacy;
 
+						tool_data.layers_dragging.retain(|layer| document.document_network.nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -500,6 +501,7 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -610,6 +612,7 @@ impl Fsm for SelectToolFsmState {
 						let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
 						let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
 
+						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let selected = &tool_data.layers_dragging;
 						let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
@@ -636,6 +639,7 @@ impl Fsm for SelectToolFsmState {
 
 					let delta = DAffine2::from_angle(snapped_angle);
 
+					tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 					let mut selected = Selected::new(
 						&mut bounds.original_transforms,
 						&mut bounds.center_of_transformation,
@@ -815,6 +819,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(path) = tool_data.drag_box_overlay_layer.take() {
 					responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
 				};
+				tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_overlays.take() {
 					let mut selected = Selected::new(
 						&mut bounding_box_overlays.original_transforms,
