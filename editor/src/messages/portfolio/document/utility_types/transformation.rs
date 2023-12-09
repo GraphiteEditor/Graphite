@@ -33,6 +33,7 @@ impl OriginalTransforms {
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], document: &'a Document, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
+				layer_map.retain(|layer, _| selected.contains(layer));
 				for &layer in selected {
 					layer_map.entry(layer).or_insert_with(|| document.metadata.upstream_transform(layer.to_node()));
 				}

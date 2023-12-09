@@ -525,6 +525,10 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut delete_nodes = vec![id];
 		for (_node, id) in self.network.upstream_flow_back_from_nodes(vec![id], true) {
+			// Don't delete the node if other layers depend on it.
+			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
+				break;
+			}
 			if self.outwards_links.get(&id).is_some_and(|outwards| outwards.len() == 1) {
 				delete_nodes.push(id);
 			}
