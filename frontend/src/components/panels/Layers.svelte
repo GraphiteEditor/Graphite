@@ -523,7 +523,7 @@
 				left: 4px;
 				right: 4px;
 				background: var(--color-e-nearwhite);
-				margin-top: -2px;
+				margin-top: -3px;
 				height: 5px;
 				z-index: 1;
 				pointer-events: none;
