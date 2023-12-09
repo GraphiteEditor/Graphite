@@ -396,7 +396,8 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()),
+			// ToolAvailability::Available(Box::<imaginate_tool::ImaginateTool>::default()), // TODO: Fix and reenable ASAP
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterImaginateTool").tooltip("Coming Soon: Imaginate Tool - Temporarily Disabled Until Fixed (Early December 2023)")),
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip("Coming Soon: Heal Tool (J)")),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip("Coming Soon: Clone Tool (C)")),
