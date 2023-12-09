@@ -21,6 +21,8 @@ pub use graphene_core::*;
 
 pub mod image_segmentation;
 
+pub mod image_color_palette;
+
 pub mod brush;
 
 #[cfg(feature = "wasm")]

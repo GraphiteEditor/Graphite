@@ -1128,4 +1128,12 @@ mod index_node {
 			ImageFrame::empty()
 		}
 	}
+
+	#[node_macro::node_impl(IndexNode)]
+	pub fn index_node(input: Vec<Color>, index: u32) -> Option<Color> {
+		if index as usize >= input.len() {
+			warn!("Index of colors is out of range: index is {index} and length is {}", input.len());
+		}
+		input.into_iter().nth(index as usize)
+	}
 }
