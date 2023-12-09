@@ -4,10 +4,12 @@ use graphene_core::Node;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ImageColorPaletteNode;
+pub struct ImageColorPaletteNode<MaxSize> {
+	max_size: MaxSize,
+}
 
 #[node_macro::node_fn(ImageColorPaletteNode)]
-fn image_color_palette(frame: ImageFrame<Color>) -> Vec<Color> {
+fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 	const GRID: f32 = 3.0;
 
 	let bins = GRID * GRID * GRID;
@@ -33,7 +35,7 @@ fn image_color_palette(frame: ImageFrame<Color>) -> Vec<Color> {
 
 	let mut palette = vec![];
 
-	for i in shorted.iter().take(10) {
+	for i in shorted.iter().take(max_size as usize) {
 		// FIXME:
 		let list = colors[*i].clone();
 
@@ -67,14 +69,14 @@ fn image_color_palette(frame: ImageFrame<Color>) -> Vec<Color> {
 
 #[cfg(test)]
 mod test {
-	use graphene_core::raster::Image;
+	use graphene_core::{raster::Image, value::CopiedNode};
 
 	use super::*;
 
 	#[test]
 	fn test_image_color_palette() {
 		assert_eq!(
-			ImageColorPaletteNode.eval(ImageFrame {
+			ImageColorPaletteNode { max_size: CopiedNode(1u32) }.eval(ImageFrame {
 				image: Image {
 					width: 100,
 					height: 100,

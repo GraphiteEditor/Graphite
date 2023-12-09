@@ -1904,3 +1904,9 @@ pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _
 
 	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
+
+pub fn image_color_palette(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let size = number_widget(document_node, node_id, 1, "Max size", NumberInput::default().int().min(1.).max(28.), true);
+
+	vec![LayoutGroup::Row { widgets: size }]
+}

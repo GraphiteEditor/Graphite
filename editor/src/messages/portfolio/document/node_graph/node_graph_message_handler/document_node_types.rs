@@ -2326,10 +2326,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Image Color Palette",
 			category: "Image Adjustments",
-			implementation: NodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			implementation: NodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode<_>"),
+			inputs: vec![
+				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
+				DocumentInputType::value("Max size", TaggedValue::U32(10), true),
+			],
 			outputs: vec![DocumentOutputType::new("Colors", FrontendGraphDataType::Color)],
-			properties: node_properties::node_no_properties,
+			properties: node_properties::image_color_palette,
 			..Default::default()
 		},
 	]
