@@ -66,7 +66,7 @@ where
 	type Static = Image<P::Static>;
 }
 
-impl<P: Copy + Pixel> Raster for Image<P> {
+impl<P: Copy + Pixel> Bitmap for Image<P> {
 	type Pixel = P;
 	#[inline(always)]
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
@@ -82,7 +82,7 @@ impl<P: Copy + Pixel> Raster for Image<P> {
 	}
 }
 
-impl<P: Copy + Pixel> RasterMut for Image<P> {
+impl<P: Copy + Pixel> BitmapMut for Image<P> {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut P> {
 		self.data.get_mut((x + y * self.width) as usize)
 	}
@@ -278,7 +278,7 @@ impl<P: Debug + Copy + Pixel> Sample for ImageFrame<P> {
 	}
 }
 
-impl<P: Copy + Pixel> Raster for ImageFrame<P> {
+impl<P: Copy + Pixel> Bitmap for ImageFrame<P> {
 	type Pixel = P;
 
 	fn width(&self) -> u32 {
@@ -294,7 +294,7 @@ impl<P: Copy + Pixel> Raster for ImageFrame<P> {
 	}
 }
 
-impl<P: Copy + Pixel> RasterMut for ImageFrame<P> {
+impl<P: Copy + Pixel> BitmapMut for ImageFrame<P> {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 		self.image.get_pixel_mut(x, y)
 	}

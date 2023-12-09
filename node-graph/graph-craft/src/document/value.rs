@@ -352,5 +352,5 @@ impl UpcastNode {
 pub enum RenderOutput {
 	CanvasFrame(graphene_core::SurfaceFrame),
 	Svg(String),
-	Raster(Vec<u8>),
+	Image(Vec<u8>),
 }

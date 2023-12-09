@@ -742,9 +742,8 @@ pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 
 pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let output_type = context.executor.previous_output_type(context.layer_path);
-	let raster_output_type = concrete!(ImageFrame<Color>);
 	let disabled = match output_type {
-		Some(output_type) => output_type != raster_output_type,
+		Some(output_type) => output_type != concrete!(ImageFrame<Color>),
 		None => true,
 	};
 

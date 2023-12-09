@@ -56,7 +56,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "blobUrl")]
 		blob_url: String,
 	},
-	TriggerDownloadRaster {
+	TriggerDownloadImage {
 		svg: String,
 		name: String,
 		mime: String,

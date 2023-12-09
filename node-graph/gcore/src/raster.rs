@@ -222,15 +222,14 @@ impl<'i, T: Sample> Sample for &'i T {
 	}
 }
 
-// TODO: We might rename this to Bitmap at some point
-pub trait Raster {
+pub trait Bitmap {
 	type Pixel: Pixel;
 	fn width(&self) -> u32;
 	fn height(&self) -> u32;
 	fn get_pixel(&self, x: u32, y: u32) -> Option<Self::Pixel>;
 }
 
-impl<'i, T: Raster> Raster for &'i T {
+impl<'i, T: Bitmap> Bitmap for &'i T {
 	type Pixel = T::Pixel;
 
 	fn width(&self) -> u32 {
@@ -246,7 +245,7 @@ impl<'i, T: Raster> Raster for &'i T {
 	}
 }
 
-impl<'i, T: Raster> Raster for &'i mut T {
+impl<'i, T: Bitmap> Bitmap for &'i mut T {
 	type Pixel = T::Pixel;
 
 	fn width(&self) -> u32 {
@@ -262,7 +261,7 @@ impl<'i, T: Raster> Raster for &'i mut T {
 	}
 }
 
-pub trait RasterMut: Raster {
+pub trait BitmapMut: Bitmap {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel>;
 	fn set_pixel(&mut self, x: u32, y: u32, pixel: Self::Pixel) {
 		*self.get_pixel_mut(x, y).unwrap() = pixel;
@@ -277,7 +276,7 @@ pub trait RasterMut: Raster {
 	}
 }
 
-impl<'i, T: RasterMut + Raster> RasterMut for &'i mut T {
+impl<'i, T: BitmapMut + Bitmap> BitmapMut for &'i mut T {
 	fn get_pixel_mut(&mut self, x: u32, y: u32) -> Option<&mut Self::Pixel> {
 		(*self).get_pixel_mut(x, y)
 	}
@@ -567,7 +566,7 @@ impl<'a, P> Default for ImageSlice<'a, P> {
 }
 
 #[cfg(not(target_arch = "spirv"))]
-impl<P: Copy + Debug + Pixel> Raster for ImageSlice<'_, P> {
+impl<P: Copy + Debug + Pixel> Bitmap for ImageSlice<'_, P> {
 	type Pixel = P;
 	fn get_pixel(&self, x: u32, y: u32) -> Option<P> {
 		self.data.get((x + y * self.width) as usize).copied()

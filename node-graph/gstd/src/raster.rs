@@ -2,7 +2,7 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2, Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
-use graphene_core::raster::{Alpha, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, Raster, RasterMut, RedGreenBlue, Sample};
+use graphene_core::raster::{Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample};
 use graphene_core::transform::{Footprint, Transform};
 
 use crate::wasm_application_io::WasmEditorApi;
@@ -126,7 +126,7 @@ pub struct MapImageNode<P, MapFn> {
 }
 
 #[node_macro::node_fn(MapImageNode<_P>)]
-fn map_image<MapFn, _P, Img: RasterMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
+fn map_image<MapFn, _P, Img: BitmapMut<Pixel = _P>>(image: Img, map_fn: &'input MapFn) -> Img
 where
 	MapFn: for<'any_input> Node<'any_input, _P, Output = _P> + 'input,
 {
@@ -150,8 +150,8 @@ fn insert_channel_node<
 	_P: RGBMut,
 	_S: Pixel + Luminance,
 	// Input image
-	Input: RasterMut<Pixel = _P>,
-	Insertion: Raster<Pixel = _S>,
+	Input: BitmapMut<Pixel = _P>,
+	Insertion: Bitmap<Pixel = _S>,
 >(
 	mut image: Input,
 	insertion: Insertion,
@@ -200,7 +200,7 @@ fn mask_imge<
 	// mask the input image
 	_S: Luminance,
 	// Input image
-	Input: Transform + RasterMut<Pixel = _P>,
+	Input: Transform + BitmapMut<Pixel = _P>,
 	// Stencil
 	Stencil: Transform + Sample<Pixel = _S>,
 >(
@@ -316,7 +316,7 @@ where
 	blend_image(foreground, new_background, map_fn)
 }
 
-fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+fn blend_image<'input, _P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: BitmapMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
 	background: Background,
 	map_fn: &'input MapFn,
@@ -327,7 +327,7 @@ where
 	blend_image_closure(foreground, background, |a, b| map_fn.eval((a, b)))
 }
 
-pub fn blend_image_closure<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: RasterMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
+pub fn blend_image_closure<_P: Alpha + Pixel + Debug, MapFn, Frame: Sample<Pixel = _P> + Transform, Background: BitmapMut<Pixel = _P> + Transform + Sample<Pixel = _P>>(
 	foreground: Frame,
 	mut background: Background,
 	map_fn: MapFn,

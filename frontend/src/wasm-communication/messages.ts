@@ -541,7 +541,7 @@ export class TriggerDownloadBlobUrl extends JsMessage {
 	readonly blobUrl!: string;
 }
 
-export class TriggerDownloadRaster extends JsMessage {
+export class TriggerDownloadImage extends JsMessage {
 	readonly svg!: string;
 
 	readonly name!: string;
@@ -1402,7 +1402,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerCopyToClipboardBlobUrl,
 	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
-	TriggerDownloadRaster,
+	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerFontLoad,
 	TriggerGraphViewOverlay,

@@ -388,7 +388,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = (size * scale_factor).into();
-					responses.add(FrontendMessage::TriggerDownloadRaster { svg: document, name, mime, size });
+					responses.add(FrontendMessage::TriggerDownloadImage { svg: document, name, mime, size });
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {

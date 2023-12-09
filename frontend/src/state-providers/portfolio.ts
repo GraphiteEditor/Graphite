@@ -11,7 +11,7 @@ import {
 	TriggerCopyToClipboardBlobUrl,
 	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
-	TriggerDownloadRaster,
+	TriggerDownloadImage,
 	TriggerDownloadTextFile,
 	TriggerImport,
 	TriggerOpenDocument,
@@ -83,8 +83,8 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerCopyToClipboardBlobUrl, (triggerDownloadBlobUrl) => {
 		copyToClipboardFileURL(triggerDownloadBlobUrl.blobUrl);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerDownloadRaster, async (triggerRasterDownload) => {
-		const { svg, name, mime, size } = triggerRasterDownload;
+	editor.subscriptions.subscribeJsMessage(TriggerDownloadImage, async (triggerDownloadImage) => {
+		const { svg, name, mime, size } = triggerDownloadImage;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
