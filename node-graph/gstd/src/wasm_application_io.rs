@@ -2,9 +2,9 @@ use std::cell::RefCell;
 
 use core::future::Future;
 use dyn_any::StaticType;
-use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
-use graphene_core::renderer::{GraphicElementRendered, RenderParams, SvgRender};
+use graphene_core::renderer::{GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 use graphene_core::{
@@ -292,7 +292,7 @@ pub struct RenderNode<Data, Surface, Parameter> {
 
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutput {
 	data.render_svg(&mut render, &render_params);
-	render.wrap_with_transform(footprint.transform);
+	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 	RenderOutput::Svg(render.svg.to_string())
 }
 
@@ -363,7 +363,9 @@ where
 	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
 		Box::pin(async move {
 			let footprint = editor.render_config.viewport;
-			let render_params = RenderParams::new(editor.render_config.view_mode, graphene_core::renderer::ImageRenderMode::Base64, None, false);
+
+			let RenderConfig { hide_artboards, for_export, .. } = editor.render_config;
+			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 			let output_format = editor.render_config.export_format;
 			match output_format {
@@ -388,10 +390,10 @@ where
 	#[inline]
 	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
 		Box::pin(async move {
-			use graphene_core::renderer::ImageRenderMode;
-
 			let footprint = editor.render_config.viewport;
-			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false);
+
+			let RenderConfig { hide_artboards, for_export, .. } = editor.render_config;
+			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
 
 			let output_format = editor.render_config.export_format;
 			match output_format {

@@ -1,6 +1,6 @@
+use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
-
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use graph_craft::document::NodeId;
@@ -109,6 +109,13 @@ pub enum PortfolioMessage {
 		node_id: Option<NodeId>,
 		blob_url: String,
 		resolution: (f64, f64),
+	},
+	SubmitDocumentExport {
+		file_name: String,
+		file_type: FileType,
+		scale_factor: f64,
+		bounds: ExportBounds,
+		transparent_background: bool,
 	},
 	SubmitGraphRender {
 		document_id: u64,
