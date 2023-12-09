@@ -181,7 +181,7 @@
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
 					insertFolder = isGroupOrArtboard(layer.layerType) ? layer.path : layer.path.slice(0, layer.path.length - 1);
 					insertIndex = isGroupOrArtboard(layer.layerType) ? 0 : folderIndex + 1;
-					highlightFolder = isGroupOrArtboard("Folder");
+					highlightFolder = isGroupOrArtboard(layer.layerType);
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
@@ -356,7 +356,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertFolder.length * 16}px`} style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
 </LayoutCol>
@@ -523,7 +523,7 @@
 				left: 4px;
 				right: 4px;
 				background: var(--color-e-nearwhite);
-				margin-top: -2px;
+				margin-top: -3px;
 				height: 5px;
 				z-index: 1;
 				pointer-events: none;
