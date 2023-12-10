@@ -444,6 +444,8 @@ pub enum DocumentNodeImplementation {
 	Network(NodeNetwork),
 	/// A protonode identifier which can be found in `node_registry.rs`.
 	Unresolved(ProtoNodeIdentifier),
+	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Used for GPU execution. Currently this is only used by the ExtractNode.
+	/// Just like we often deal with lambdas to represent a whole group of operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the SPIR-V compiler the source code for a lambda, not the executable logic of a lambda. This is much like how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
 	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`.
 	/// The referenced node (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
