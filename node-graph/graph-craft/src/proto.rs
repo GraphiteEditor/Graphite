@@ -26,7 +26,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type SharedNodeContainer = std::rc::Rc<NodeContainer>;
 
-pub type NodeConstructor = for<'a> fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -241,9 +241,13 @@ pub enum ProtoNodeInput {
 	///
 	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not automatically executed as it would be using the default ComposeNode flow.
 	ManualComposition(Type),
-	/// the bool indicates whether to treat the node as lambda node.
+	/// The previous node where automatic composition does occur when compiled unless the lambda boolean is true.
+	/// The bool indicates whether to treat the connected node singularly as a lambda node while ignoring all nodes which feed into it from upstream.
 	/// When treating it as a lambda, only the node that is connected itself is fed as input.
-	/// Otherwise, the the entire network of which the node is the output is fed as input.
+	/// When treating it as a lambda, we use the grayscale node itself as input to apply it to our own image.
+	/// Otherwise, the entire network of which the node is the output is fed as input.
+	/// Otherwise if we are not interested in the grayscale function but rather the image
+	/// with the grayscale filter applied, we would set the lambda boolean to false.
 	Node(NodeId, bool),
 }
 
