@@ -227,6 +227,10 @@ pub trait GraphicElementRendered {
 			root: root_node.clone(),
 		}
 	}
+
+	fn contains_artboard(&self) -> bool {
+		false
+	}
 }
 
 impl GraphicElementRendered for GraphicGroup {
@@ -264,6 +268,10 @@ impl GraphicElementRendered for GraphicGroup {
 			root_node.append(element.to_usvg_node());
 		}
 		root_node
+	}
+
+	fn contains_artboard(&self) -> bool {
+		self.iter().any(|element| element.contains_artboard())
 	}
 }
 
@@ -427,6 +435,10 @@ impl GraphicElementRendered for Artboard {
 		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget { stroke_width: 0., subpath });
 	}
+
+	fn contains_artboard(&self) -> bool {
+		true
+	}
 }
 
 impl GraphicElementRendered for ImageFrame<Color> {
@@ -544,6 +556,16 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(text) => text.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
 			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
+		}
+	}
+
+	fn contains_artboard(&self) -> bool {
+		match self {
+			GraphicElement::VectorData(vector_data) => vector_data.contains_artboard(),
+			GraphicElement::ImageFrame(image_frame) => image_frame.contains_artboard(),
+			GraphicElement::Text(text) => text.contains_artboard(),
+			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
+			GraphicElement::Artboard(artboard) => artboard.contains_artboard(),
 		}
 	}
 }

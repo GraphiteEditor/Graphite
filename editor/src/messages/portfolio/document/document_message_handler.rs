@@ -296,7 +296,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				info!("{:#?}\n{:#?}", self.document_legacy, self.layer_metadata);
 			}
 			DeleteLayer { layer_path } => {
-				responses.add_front(DocumentOperation::DeleteLayer { path: layer_path.clone() });
 				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
 				responses.add_front(BroadcastEvent::ToolAbort);
 				responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path });
