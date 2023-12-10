@@ -478,44 +478,48 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.backup(responses);
 
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-				let sign = if opposite_corner { -1. } else { 1. };
+				let delta = DVec2::new(delta_x, delta_y);
 
-				for path in self.selected_layers().map(|path| path.to_vec()) {
+				for layer in self.metadata().selected_layers() {
 					// Nudge translation
-					let transform = if !ipp.keyboard.key(resize) {
-						Some(DAffine2::from_translation((delta_x, delta_y).into()))
-					}
-					// Nudge resize
-					else {
-						self.document_legacy
-							.viewport_bounding_box(&path, &render_data)
-							.ok()
-							.flatten()
-							.map(|[existing_top_left, existing_bottom_right]| {
-								let width = existing_bottom_right.x - existing_top_left.x;
-								let height = existing_bottom_right.y - existing_top_left.y;
-
-								let new_width = (width + delta_x * sign).max(1.);
-								let new_height = (height + delta_y * sign).max(1.);
-
-								let offset = DAffine2::from_translation(if opposite_corner { -existing_bottom_right } else { -existing_top_left });
-								let scale = DAffine2::from_scale((new_width / width, new_height / height).into());
-
-								offset.inverse() * scale * offset
-							})
-					};
-
-					if let Some(transform) = transform {
-						let transform_in = TransformIn::Local;
+					if !ipp.keyboard.key(resize) {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: path,
-							transform,
-							transform_in,
+							layer: layer.to_path(),
+							transform: DAffine2::from_translation(delta),
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
 					}
+					// Nudge resize
+					else if let Some([existing_top_left, existing_bottom_right]) = self.document_legacy.metadata.bounding_box_viewport(layer) {
+						let size = existing_bottom_right - existing_top_left;
+						let new_size = size + if opposite_corner { -delta } else { delta };
+						let enlargement_factor = new_size / size;
+
+						let position = existing_top_left + if opposite_corner { delta } else { DVec2::ZERO };
+						let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::splat(1.));
+						if !pivot.x.is_finite() {
+							pivot.x = 0.;
+						}
+						if !pivot.y.is_finite() {
+							pivot.y = 0.;
+						}
+
+						let scale = DAffine2::from_scale(enlargement_factor);
+						let pivot = DAffine2::from_translation(pivot);
+						let transformation = pivot * scale * pivot.inverse();
+
+						let to = self.metadata().downstream_transform_to_viewport(layer);
+						let original_transform = self.metadata().upstream_transform(layer.to_node());
+						let new = to.inverse() * transformation * to * original_transform;
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: layer.to_path(),
+							transform: new,
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+					};
 				}
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			PasteImage { image, mouse } => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
