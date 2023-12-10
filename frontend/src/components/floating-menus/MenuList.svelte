@@ -1,13 +1,14 @@
 <svelte:options accessors={true} />
 
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, tick } from "svelte";
 
 	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -29,21 +30,73 @@
 	export let virtualScrollingEntryHeight = 0;
 	export let tooltip: string | undefined = undefined;
 
+	// Keep the child references outside of the entries array so as to avoid infinite recursion.
+	let childReferences: (typeof self)[][] = [];
+	let search: string | undefined;
+	let focus: () => void | undefined;
+	let searchElement: () => HTMLInputElement | HTMLTextAreaElement | undefined;
+
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
 	// Called only when `open` is changed from outside this component
 	$: watchOpen(open);
-	$: watchRemeasureWidth(entries, drawIcon);
+	$: filteredEntries = entries.map((section) => section.filter(inSearch(search)));
+	$: watchRemeasureWidth(filteredEntries, drawIcon);
 
-	$: virtualScrollingTotalHeight = entries.length === 0 ? 0 : entries[0].length * virtualScrollingEntryHeight;
+	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
-	$: virtualScrollingEndIndex = entries.length === 0 ? 0 : Math.min(entries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
+
+	function expandChildReferences(entries: MenuListEntry[][]) {
+		entries.forEach((_, index) => {
+			if (!childReferences[index]) childReferences[index] = [];
+		});
+	}
+	$: expandChildReferences(entries);
+
+	async function startSearch(event: KeyboardEvent) {
+		if (search !== undefined || event.key.length !== 1) return;
+		// Stop shortcuts being activated
+		event.stopPropagation();
+		event.preventDefault();
+		// Open the sarch bar
+		search = "";
+		// Must wait until the dom elements have been created before focus
+		await tick();
+		focus();
+		// Forward the input
+		search = event.key;
+
+		// Allow arrow key navigation whilst in the search box
+		let element = searchElement();
+		if (element) {
+			element.onkeydown = (event) => {
+				if (["Enter", "ArrowUp", "ArrowDown"].includes(event.key)) keydown(event, false);
+			};
+		}
+	}
+
+	function inSearch(search: string | undefined): (entry: MenuListEntry) => boolean {
+		return (entry: MenuListEntry) => !search || entry.label.toLowerCase().includes(search.toLowerCase());
+	}
 
 	function watchOpen(open: boolean) {
 		highlighted = activeEntry;
 		dispatch("open", open);
+
+		search = undefined;
+	}
+
+	$: updateHighlightedWithSearch(filteredEntries);
+	// Required to keep the highlighted item centred and to find a new highlighted item if necessary
+	async function updateHighlightedWithSearch(filteredEntries: MenuListEntry[][]) {
+		if (highlighted) {
+			// Allows the scrollable area to expand if necessary
+			await tick();
+			setHighlighted(filteredEntries.flat().includes(highlighted) ? highlighted : filteredEntries.flat()[0]);
+		}
 	}
 
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
@@ -55,6 +108,10 @@
 		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 	}
 
+	function getChildReference(menuListEntry: MenuListEntry): typeof self | undefined {
+		return childReferences.flat()[filteredEntries.flat().indexOf(menuListEntry)];
+	}
+
 	function onEntryClick(menuListEntry: MenuListEntry) {
 		// Call the action if available
 		if (menuListEntry.action) menuListEntry.action();
@@ -63,8 +120,9 @@
 		dispatch("activeEntry", menuListEntry);
 
 		// Close the containing menu
-		if (menuListEntry.ref) {
-			menuListEntry.ref.open = false;
+		let childReference = getChildReference(menuListEntry);
+		if (childReference) {
+			childReference.open = false;
 			entries = entries;
 		}
 		dispatch("open", false);
@@ -74,8 +132,9 @@
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) {
-			menuListEntry.ref.open = true;
+		let childReference = getChildReference(menuListEntry);
+		if (childReference) {
+			childReference.open = true;
 			entries = entries;
 		} else dispatch("open", true);
 	}
@@ -83,8 +142,9 @@
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) return;
 
-		if (menuListEntry.ref) {
-			menuListEntry.ref.open = false;
+		let childReference = getChildReference(menuListEntry);
+		if (childReference) {
+			childReference.open = false;
 			entries = entries;
 		} else dispatch("open", false);
 	}
@@ -92,7 +152,7 @@
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
 		if (!menuListEntry.children?.length) return false;
 
-		return menuListEntry.ref?.open || false;
+		return getChildReference(menuListEntry)?.open || false;
 	}
 
 	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
@@ -101,18 +161,19 @@
 		if (interactive) highlighted = activeEntry;
 
 		const menuOpen = open;
-		const flatEntries = entries.flat().filter((entry) => !entry.disabled);
-		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && entry.ref?.open);
+		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
+		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && getChildReference(entry)?.open);
 
 		const openSubmenu = (highlightedEntry: MenuListEntry) => {
-			if (highlightedEntry.ref && highlightedEntry.children?.length) {
-				highlightedEntry.ref.open = true;
+			let childReference = getChildReference(highlightedEntry);
+			if (childReference && highlightedEntry.children?.length) {
+				childReference.open = true;
 				// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
 				// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
 				highlighted = highlighted;
 
 				// Highlight first item
-				highlightedEntry.ref.setHighlighted(highlightedEntry.children[0][0]);
+				childReference.setHighlighted(highlightedEntry.children[0][0]);
 			}
 		};
 
@@ -122,7 +183,7 @@
 			highlighted = activeEntry;
 		} else if (menuOpen && openChild >= 0) {
 			// Redirect the keyboard navigation to a submenu if one is open
-			const shouldCloseStack = flatEntries[openChild].ref?.keydown(e, true);
+			const shouldCloseStack = getChildReference(flatEntries[openChild])?.keydown(e, true);
 
 			// Highlight the menu item in the parent list that corresponds with the open submenu
 			if (e.key !== "Escape" && highlighted) setHighlighted(flatEntries[openChild]);
@@ -171,6 +232,10 @@
 			if (submenu) open = false;
 		}
 
+		startSearch(e);
+		e.stopPropagation();
+		e.preventDefault();
+
 		// By default, keep the menu stack open
 		return false;
 	}
@@ -179,6 +244,31 @@
 		highlighted = newHighlight;
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
+
+		// Scroll into view
+		let container = scroller?.div();
+		if (!container || !highlighted) return;
+		let containerBoundingRect = container.getBoundingClientRect();
+		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry === highlighted);
+
+		let selectedBoundingRect = new DOMRect();
+		if (virtualScrollingEntryHeight) {
+			// Special case for virtual scrolling
+			selectedBoundingRect.y = highlightedIndex * virtualScrollingEntryHeight - container.scrollTop + containerBoundingRect.y;
+			selectedBoundingRect.height = virtualScrollingEntryHeight;
+		} else {
+			let entries = Array.from(container.children).filter((element) => element.classList.contains("row"));
+			let element = entries[highlightedIndex - startIndex];
+			if (!element) return;
+			containerBoundingRect = element.getBoundingClientRect();
+		}
+
+		if (containerBoundingRect.y > selectedBoundingRect.y) {
+			container.scrollBy(0, selectedBoundingRect.y - containerBoundingRect.y);
+		}
+		if (containerBoundingRect.y + containerBoundingRect.height < selectedBoundingRect.y + selectedBoundingRect.height) {
+			container.scrollBy(0, selectedBoundingRect.y - (containerBoundingRect.y + containerBoundingRect.height) + selectedBoundingRect.height);
+		}
 	}
 
 	export function scrollViewTo(distanceDown: number) {
@@ -199,6 +289,9 @@
 	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
 	bind:this={self}
 >
+	{#if search !== undefined}
+		<TextInput value={search} on:value={(value) => (search = value.detail)} bind:focus bind:element={searchElement}></TextInput>
+	{/if}
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
 	<LayoutCol
@@ -211,10 +304,12 @@
 			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }} />
 		{/if}
 		{#each entries as section, sectionIndex (sectionIndex)}
-			{#if sectionIndex > 0}
+			{#if entries.slice(undefined, sectionIndex).flat().filter(inSearch(search)).length > 0 && section.filter(inSearch(search)).length > 0}
 				<Separator type="Section" direction="Vertical" />
 			{/if}
-			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + startIndex)}
+			{#each virtualScrollingEntryHeight ? section
+						.filter(inSearch(search))
+						.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section.filter(inSearch(search)) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
@@ -248,7 +343,16 @@
 
 					{#if entry.children}
 						<!-- TODO: Solve the red underline error on the bind:this below -->
-						<svelte:self on:naturalWidth open={entry.ref?.open || false} direction="TopRight" entries={entry.children} {minWidth} {drawIcon} {scrollableY} bind:this={entry.ref} />
+						<svelte:self
+							on:naturalWidth
+							open={getChildReference(entry)?.open || false}
+							direction="TopRight"
+							entries={entry.children}
+							{minWidth}
+							{drawIcon}
+							{scrollableY}
+							bind:this={childReferences[sectionIndex][entryIndex + startIndex]}
+						/>
 					{/if}
 				</LayoutRow>
 			{/each}
