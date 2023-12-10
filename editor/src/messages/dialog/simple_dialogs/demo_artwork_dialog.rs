@@ -5,16 +5,8 @@ use crate::messages::prelude::*;
 pub struct DemoArtworkDialog;
 
 const ARTWORK: [(&str, &str, &str); 2] = [
-	(
-		"Valley of Spires",
-		"ThumbnailValleyOfSpires",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/valley-of-spires-v2.graphite",
-	),
-	(
-		"Just a Potted Cactus",
-		"ThumbnailJustAPottedCactus",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/just-a-potted-cactus-v2.graphite",
-	),
+	("Valley of Spires", "ThumbnailValleyOfSpires", "demo-artwork/valley-of-spires-v2.graphite"),
+	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "demo-artwork/just-a-potted-cactus-v2.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {

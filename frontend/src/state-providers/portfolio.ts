@@ -47,10 +47,10 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
-			const url = new URL(triggerFetchAndOpenDocument.url);
+			const url = triggerFetchAndOpenDocument.url;
 			const data = await fetch(url);
 
-			const filename = url.pathname.split("/").pop() || "Untitled";
+			const filename = url.split("/").pop() || "Untitled";
 			const content = await data.text();
 
 			editor.instance.openDocumentFile(filename, content);
