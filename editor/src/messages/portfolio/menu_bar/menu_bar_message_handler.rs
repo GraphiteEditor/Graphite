@@ -254,7 +254,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 				no_active_document,
 				MenuBarEntryChildren(vec![vec![MenuBarEntry {
 					label: "Clear Artboards".into(),
-					action: MenuBarEntry::create_action(|_| GraphOperationMessage::ClearArtboards.into()),
+					action: MenuBarEntry::create_action(|_| DialogMessage::RequestComingSoonDialog { issue: None }.into()),
 					disabled: no_active_document,
 					..MenuBarEntry::default()
 				}]]),
