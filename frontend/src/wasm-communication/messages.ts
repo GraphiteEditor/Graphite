@@ -521,8 +521,8 @@ export class TriggerLoadAutoSaveDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
-export class TriggerOpenDemoArtwork extends JsMessage {
-	readonly name!: string;
+export class TriggerFetchAndOpenDocument extends JsMessage {
+	readonly url!: string;
 }
 
 export class TriggerOpenDocument extends JsMessage {}
@@ -1400,7 +1400,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
-	TriggerOpenDemoArtwork,
+	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,

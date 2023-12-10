@@ -46,7 +46,6 @@ export default defineConfig({
 			{ find: /@graphite-frontend\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "$1?raw") },
 			{ find: "@graphite-frontend", replacement: projectRootDir },
 			{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
-			{ find: "@graphite/../demo-artwork", replacement: path.resolve(projectRootDir, "..", "demo-artwork") },
 			{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
 			{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
 		],
@@ -79,7 +78,6 @@ export default defineConfig({
 			},
 		},
 	},
-	assetsInclude: ["**/*.graphite"],
 });
 
 type LicenseInfo = {

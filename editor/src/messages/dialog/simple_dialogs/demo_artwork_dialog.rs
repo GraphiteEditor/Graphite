@@ -4,7 +4,18 @@ use crate::messages::prelude::*;
 /// A dialog to let the user browse a gallery of demo artwork that can be opened.
 pub struct DemoArtworkDialog;
 
-const ARTWORK: [(&str, &str); 2] = [("Valley of Spires", "ThumbnailValleyOfSpires"), ("Just a Potted Cactus", "ThumbnailJustAPottedCactus")];
+const ARTWORK: [(&str, &str, &str); 2] = [
+	(
+		"Valley of Spires",
+		"ThumbnailValleyOfSpires",
+		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/valley-of-spires-v2.graphite",
+	),
+	(
+		"Just a Potted Cactus",
+		"ThumbnailJustAPottedCactus",
+		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/just-a-potted-cactus-v2.graphite",
+	),
+];
 
 impl DialogLayoutHolder for DemoArtworkDialog {
 	const ICON: &'static str = "Image";
@@ -21,17 +32,17 @@ impl LayoutHolder for DemoArtworkDialog {
 	fn layout(&self) -> Layout {
 		let images = ARTWORK
 			.into_iter()
-			.map(|(_, thumbnail)| ImageLabel::new(thumbnail.to_string()).width(Some("256px".into())).widget_holder())
+			.map(|(_, thumbnail, _)| ImageLabel::new(thumbnail.to_string()).width(Some("256px".into())).widget_holder())
 			.collect();
 
 		let buttons = ARTWORK
 			.into_iter()
-			.map(|(label, _)| {
+			.map(|(label, _, url)| {
 				TextButton::new(label)
 					.min_width(256)
 					.on_update(|_| {
 						DialogMessage::CloseDialogAndThen {
-							followups: vec![FrontendMessage::TriggerOpenDemoArtwork { name: label.to_string() }.into()],
+							followups: vec![FrontendMessage::TriggerFetchAndOpenDocument { url: url.to_string() }.into()],
 						}
 						.into()
 					})

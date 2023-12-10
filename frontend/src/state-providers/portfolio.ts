@@ -1,8 +1,5 @@
-/* eslint-disable no-restricted-imports */
 /* eslint-disable max-classes-per-file */
 
-import justAPottedCactusUrl from "@graphite/../../demo-artwork/just-a-potted-cactus-v2.graphite";
-import valleyOfSpiresUrl from "@graphite/../../demo-artwork/valley-of-spires-v2.graphite";
 import { writable } from "svelte/store";
 
 import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
@@ -12,7 +9,7 @@ import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
 	TriggerCopyToClipboardBlobUrl,
-	TriggerOpenDemoArtwork,
+	TriggerFetchAndOpenDocument,
 	TriggerDownloadBlobUrl,
 	TriggerDownloadImage,
 	TriggerDownloadTextFile,
@@ -24,8 +21,7 @@ import {
 	UpdateImageData,
 	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
-const demoArtwork = { "Valley of Spires": valleyOfSpiresUrl, "Just a Potted Cactus": justAPottedCactusUrl };
-console.info(demoArtwork);
+
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
 	const { subscribe, update } = writable({
@@ -49,11 +45,12 @@ export function createPortfolioState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerOpenDemoArtwork, async (triggerOpenDemoArtwork) => {
+	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
-			const data = await fetch(demoArtwork[triggerOpenDemoArtwork.name]);
+			const url = new URL(triggerFetchAndOpenDocument.url);
+			const data = await fetch(url);
 
-			const filename = triggerOpenDemoArtwork.name;
+			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();
 
 			editor.instance.openDocumentFile(filename, content);
