@@ -1,6 +1,5 @@
 use super::{resolve_document_node_type, VectorDataModification};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_artboard;
 
 use bezier_rs::Subpath;
 use document_legacy::document::Document;
