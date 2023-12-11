@@ -12,6 +12,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -697,8 +698,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
-				for path in self.selected_layers() {
-					responses.add(DocumentOperation::SetLayerBlendMode { path: path.to_vec(), blend_mode });
+				for layer in self.metadata().selected_layers() {
+					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
 				}
 			}
 			SetImageBlobUrl {
@@ -737,10 +738,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
-				let opacity = opacity.clamp(0., 1.);
+				let opacity = opacity.clamp(0., 1.) as f32;
 
-				for path in self.selected_layers().map(|path| path.to_vec()) {
-					responses.add(DocumentOperation::SetLayerOpacity { path, opacity });
+				for layer in self.metadata().selected_layers() {
+					responses.add(GraphOperationMessage::OpacitySet { layer: layer.to_path(), opacity });
 				}
 			}
 			SetOverlaysVisibility { visible } => {
@@ -1520,53 +1521,20 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, render_data: &RenderData) {
-		let mut opacity = None;
-		let mut opacity_is_mixed = false;
-
-		let mut blend_mode = None;
-		let mut blend_mode_is_mixed = false;
-
-		self.layer_metadata
-			.keys()
-			.filter_map(|path| self.layer_panel_entry_from_path(path, render_data))
-			.filter(|layer_panel_entry| layer_panel_entry.layer_metadata.selected)
-			.flat_map(|layer_panel_entry| self.document_legacy.layer(layer_panel_entry.path.as_slice()))
-			.for_each(|layer| {
-				match opacity {
-					None => opacity = Some(layer.opacity),
-					Some(opacity) => {
-						if (opacity - layer.opacity).abs() > (1. / 1_000_000.) {
-							opacity_is_mixed = true;
-						}
-					}
-				}
-
-				match blend_mode {
-					None => blend_mode = Some(layer.blend_mode),
-					Some(blend_mode) => {
-						if blend_mode != layer.blend_mode {
-							blend_mode_is_mixed = true;
-						}
-					}
-				}
-			});
-
-		if opacity_is_mixed {
-			opacity = None;
-		}
-		if blend_mode_is_mixed {
-			blend_mode = None;
-		}
+		let mut opacity = self.metadata().selected_layers().map(|layer| get_opacity(layer, &self.document_legacy).unwrap_or(100.));
+		let mut blend_mode = self.metadata().selected_layers().map(|layer| get_blend_mode(layer, &self.document_legacy).unwrap_or_default());
+		let opacity = opacity.next().filter(|&first| opacity.all(|item| (item - first).abs() < f32::EPSILON * 100.));
+		let blend_mode = blend_mode.next().filter(|&first| blend_mode.all(|item| first == item));
 
 		let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
 			.iter()
 			.map(|modes| {
 				modes
 					.iter()
-					.map(|mode| {
-						MenuListEntry::new(mode.to_string())
-							.value(mode.to_string())
-							.on_update(|_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode: *mode }.into())
+					.map(|&blend_mode| {
+						MenuListEntry::new(blend_mode.to_string())
+							.value(blend_mode.to_string())
+							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
 					})
 					.collect()
 			})
@@ -1576,15 +1544,15 @@ impl DocumentMessageHandler {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
 					.selected_index(blend_mode.map(|blend_mode| blend_mode as u32))
-					.disabled(blend_mode.is_none() && !blend_mode_is_mixed)
+					.disabled(!self.metadata().has_selected_nodes())
 					.draw_icon(false)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(opacity.map(|opacity| opacity * 100.))
+				NumberInput::new(opacity.map(|opacity| opacity as f64))
 					.label("Opacity")
 					.unit("%")
 					.display_decimal_places(2)
-					.disabled(opacity.is_none() && !opacity_is_mixed)
+					.disabled(!self.metadata().has_selected_nodes())
 					.min(0.)
 					.max(100.)
 					.range_min(Some(0.))

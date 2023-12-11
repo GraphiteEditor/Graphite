@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use document_legacy::{document::Document, document_metadata::LayerNodeIdentifier, LayerId, Operation};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
@@ -135,6 +135,24 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, document: &Document) -> Option
 		return None;
 	};
 	Some(*color)
+}
+
+/// Get the current blend mode of a layer from the closest blend mode node
+pub fn get_blend_mode(layer: LayerNodeIdentifier, document: &Document) -> Option<BlendMode> {
+	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Blend Mode")?;
+	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
+		return None;
+	};
+	Some(*blend_mode)
+}
+
+/// Get the current opacity of a layer from the closest opacity node
+pub fn get_opacity(layer: LayerNodeIdentifier, document: &Document) -> Option<f32> {
+	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Opacity")?;
+	let TaggedValue::F32(opacity) = inputs.get(1)?.as_value()? else {
+		return None;
+	};
+	Some(*opacity)
 }
 
 pub fn get_text_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
