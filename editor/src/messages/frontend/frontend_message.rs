@@ -67,7 +67,8 @@ pub enum FrontendMessage {
 		name: String,
 	},
 	TriggerFetchAndOpenDocument {
-		url: String,
+		name: String,
+		filename: String,
 	},
 	TriggerFontLoad {
 		font: Font,

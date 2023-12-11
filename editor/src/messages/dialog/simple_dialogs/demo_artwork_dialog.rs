@@ -4,17 +4,10 @@ use crate::messages::prelude::*;
 /// A dialog to let the user browse a gallery of demo artwork that can be opened.
 pub struct DemoArtworkDialog;
 
+/// `(name, thumbnail, filename)`
 const ARTWORK: [(&str, &str, &str); 2] = [
-	(
-		"Valley of Spires",
-		"ThumbnailValleyOfSpires",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/valley-of-spires-v2.graphite",
-	),
-	(
-		"Just a Potted Cactus",
-		"ThumbnailJustAPottedCactus",
-		"https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/just-a-potted-cactus-v2.graphite",
-	),
+	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires-v2.graphite"),
+	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus-v2.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {
@@ -37,12 +30,16 @@ impl LayoutHolder for DemoArtworkDialog {
 
 		let buttons = ARTWORK
 			.into_iter()
-			.map(|(label, _, url)| {
-				TextButton::new(label)
+			.map(|(name, _, filename)| {
+				TextButton::new(name)
 					.min_width(256)
 					.on_update(|_| {
 						DialogMessage::CloseDialogAndThen {
-							followups: vec![FrontendMessage::TriggerFetchAndOpenDocument { url: url.to_string() }.into()],
+							followups: vec![FrontendMessage::TriggerFetchAndOpenDocument {
+								name: name.to_string(),
+								filename: filename.to_string(),
+							}
+							.into()],
 						}
 						.into()
 					})
