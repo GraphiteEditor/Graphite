@@ -491,7 +491,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						});
 					}
 					// Nudge resize
-					else if let Some([existing_top_left, existing_bottom_right]) = self.document_legacy.metadata.bounding_box_viewport(layer) {
+					else if let Some([existing_top_left, existing_bottom_right]) = self.document_legacy.metadata.bounding_box_document(layer) {
 						let size = existing_bottom_right - existing_top_left;
 						let new_size = size + if opposite_corner { -delta } else { delta };
 						let enlargement_factor = new_size / size;
@@ -509,7 +509,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						let pivot = DAffine2::from_translation(pivot);
 						let transformation = pivot * scale * pivot.inverse();
 
-						let to = self.metadata().downstream_transform_to_viewport(layer);
+						let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 						let original_transform = self.metadata().upstream_transform(layer.to_node());
 						let new = to.inverse() * transformation * to * original_transform;
 						responses.add(GraphOperationMessage::TransformSet {
