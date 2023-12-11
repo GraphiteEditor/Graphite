@@ -56,7 +56,7 @@
 
 	function unFocusDropdownBox(e: FocusEvent) {
 		const blurTarget = (e.target as HTMLDivElement | undefined)?.closest("[data-dropdown-input]") || undefined;
-		if (blurTarget !== self?.div()) open = false;
+		if (blurTarget !== self?.div?.()) open = false;
 	}
 </script>
 

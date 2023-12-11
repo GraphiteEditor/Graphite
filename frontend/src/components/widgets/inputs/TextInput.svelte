@@ -76,6 +76,7 @@
 <style lang="scss" global>
 	.text-input {
 		flex-shrink: 0;
+
 		input {
 			text-align: left;
 		}

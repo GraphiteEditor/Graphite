@@ -20,7 +20,7 @@
 
 	onMount(() => {
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
-		const emphasizedOrFirstButton = (self?.div()?.querySelector("[data-emphasized]") || self?.div()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
 	});
 </script>

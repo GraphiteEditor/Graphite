@@ -146,7 +146,7 @@
 
 		await tick();
 
-		const query = list?.div()?.querySelector("[data-text-input]:not([disabled])");
+		const query = list?.div?.()?.querySelector("[data-text-input]:not([disabled])");
 		const textInput = (query instanceof HTMLInputElement && query) || undefined;
 		textInput?.select();
 	}

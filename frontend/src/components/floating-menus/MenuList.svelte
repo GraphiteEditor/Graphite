@@ -16,6 +16,7 @@
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
+	let searchTextInput: TextInput | undefined;
 
 	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
 
@@ -33,49 +34,63 @@
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: (typeof self)[][] = [];
 	let search: string | undefined;
-	let focus: () => void | undefined;
-	let searchElement: () => HTMLInputElement | HTMLTextAreaElement | undefined;
 
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
 	// Called only when `open` is changed from outside this component
 	$: watchOpen(open);
-	$: filteredEntries = entries.map((section) => section.filter(inSearch(search)));
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
+	$: entries.forEach((_, index) => {
+		if (!childReferences[index]) childReferences[index] = [];
+	});
+	$: watchHighlightedWithSearch(filteredEntries);
 
+	$: filteredEntries = entries.map((section) => section.filter(inSearch(search)));
 	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
 
-	function expandChildReferences(entries: MenuListEntry[][]) {
-		entries.forEach((_, index) => {
-			if (!childReferences[index]) childReferences[index] = [];
-		});
-	}
-	$: expandChildReferences(entries);
+	// Required to keep the highlighted item centered and to find a new highlighted item if necessary
+	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][]) {
+		if (highlighted) {
+			// Allows the scrollable area to expand if necessary
+			await tick();
 
+			const flattened = filteredEntries.flat();
+			setHighlighted(flattened.includes(highlighted) ? highlighted : flattened[0]);
+		}
+	}
+
+	// Detect when the user types, which creates a search box
 	async function startSearch(event: KeyboardEvent) {
 		if (search !== undefined || event.key.length !== 1) return;
+
 		// Stop shortcuts being activated
 		event.stopPropagation();
 		event.preventDefault();
-		// Open the sarch bar
+
+		// Open the search bar
 		search = "";
-		// Must wait until the dom elements have been created before focus
+
+		// Must wait until the DOM elements have been created before focusing the search box
 		await tick();
-		focus();
-		// Forward the input
+		searchTextInput?.focus();
+
+		// Forward the input's first character to the search box, which after that point the user will continue typing into directly
 		search = event.key;
 
+		// Get the search box element
+		let searchElement = searchTextInput?.element();
+		if (!searchElement) return;
+
 		// Allow arrow key navigation whilst in the search box
-		let element = searchElement();
-		if (element) {
-			element.onkeydown = (event) => {
-				if (["Enter", "ArrowUp", "ArrowDown"].includes(event.key)) keydown(event, false);
-			};
-		}
+		searchElement.onkeydown = (event) => {
+			if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+				keydown(event, false);
+			}
+		};
 	}
 
 	function inSearch(search: string | undefined): (entry: MenuListEntry) => boolean {
@@ -89,16 +104,6 @@
 		search = undefined;
 	}
 
-	$: updateHighlightedWithSearch(filteredEntries);
-	// Required to keep the highlighted item centred and to find a new highlighted item if necessary
-	async function updateHighlightedWithSearch(filteredEntries: MenuListEntry[][]) {
-		if (highlighted) {
-			// Allows the scrollable area to expand if necessary
-			await tick();
-			setHighlighted(filteredEntries.flat().includes(highlighted) ? highlighted : filteredEntries.flat()[0]);
-		}
-	}
-
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
 		self?.measureAndEmitNaturalWidth();
 	}
@@ -109,7 +114,7 @@
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): typeof self | undefined {
-		return childReferences.flat()[filteredEntries.flat().indexOf(menuListEntry)];
+		return childReferences.flat().filter((x) => x)[filteredEntries.flat().indexOf(menuListEntry)];
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
@@ -164,17 +169,21 @@
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
 		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && getChildReference(entry)?.open);
 
-		const openSubmenu = (highlightedEntry: MenuListEntry) => {
+		const openSubmenu = (highlightedEntry: MenuListEntry): boolean => {
 			let childReference = getChildReference(highlightedEntry);
-			if (childReference && highlightedEntry.children?.length) {
-				childReference.open = true;
-				// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
-				// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
-				highlighted = highlighted;
+			// No submenu to open
+			if (!childReference || !highlightedEntry.children?.length) return false;
 
-				// Highlight first item
-				childReference.setHighlighted(highlightedEntry.children[0][0]);
-			}
+			childReference.open = true;
+			// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
+			// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
+			highlighted = highlighted;
+
+			// Highlight first item
+			childReference.setHighlighted(highlightedEntry.children[0][0]);
+
+			// Submenu was opened
+			return true;
 		};
 
 		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
@@ -208,6 +217,8 @@
 
 			const newEntry = flatEntries[newIndex];
 			setHighlighted(newEntry);
+
+			e.preventDefault();
 		} else if (menuOpen && e.key === "Escape") {
 			// Close menu with escape key
 			open = false;
@@ -224,17 +235,22 @@
 
 			// Enter should close the entire menu stack
 			return true;
-		} else if (menuOpen && highlighted && e.key === "ArrowRight") {
+		} else if (menuOpen && highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
 			// Right arrow opens a submenu
-			openSubmenu(highlighted);
+			const openable = openSubmenu(highlighted);
+
+			// Prevent the right arrow from moving the search text cursor if we are opening a submenu
+			if (openable) e.preventDefault();
 		} else if (menuOpen && e.key === "ArrowLeft") {
 			// Left arrow closes a submenu
-			if (submenu) open = false;
-		}
+			if (submenu) {
+				open = false;
 
-		startSearch(e);
-		e.stopPropagation();
-		e.preventDefault();
+				e.preventDefault();
+			}
+		} else if (menuOpen && e.key !== " ") {
+			startSearch(e);
+		}
 
 		// By default, keep the menu stack open
 		return false;
@@ -246,7 +262,7 @@
 		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
 
 		// Scroll into view
-		let container = scroller?.div();
+		let container = scroller?.div?.();
 		if (!container || !highlighted) return;
 		let containerBoundingRect = container.getBoundingClientRect();
 		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry === highlighted);
@@ -272,7 +288,7 @@
 	}
 
 	export function scrollViewTo(distanceDown: number) {
-		scroller?.div()?.scrollTo(0, distanceDown);
+		scroller?.div?.()?.scrollTo(0, distanceDown);
 	}
 </script>
 
@@ -290,7 +306,7 @@
 	bind:this={self}
 >
 	{#if search !== undefined}
-		<TextInput value={search} on:value={(value) => (search = value.detail)} bind:focus bind:element={searchElement}></TextInput>
+		<TextInput value={search} on:value={(value) => (search = value.detail)} bind:this={searchTextInput}></TextInput>
 	{/if}
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
