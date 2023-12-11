@@ -713,9 +713,11 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				let artboard_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.name == "Artboard").map(|(id, _)| *id).collect::<Vec<_>>();
-				for id in artboard_nodes {
-					modify_inputs.delete_layer(id);
+				let layer_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
+				for layer in layer_nodes {
+					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.name == "Artboard") {
+						modify_inputs.delete_layer(layer);
+					}
 				}
 				document.load_network_structure();
 			}
