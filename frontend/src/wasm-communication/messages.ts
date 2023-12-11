@@ -522,7 +522,9 @@ export class TriggerLoadAutoSaveDocuments extends JsMessage {}
 export class TriggerLoadPreferences extends JsMessage {}
 
 export class TriggerFetchAndOpenDocument extends JsMessage {
-	readonly url!: string;
+	readonly name!: string;
+
+	readonly filename!: string;
 }
 
 export class TriggerOpenDocument extends JsMessage {}

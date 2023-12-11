@@ -8,6 +8,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
 import { sveltePreprocess } from "svelte-preprocess/dist/autoProcess";
 import { defineConfig } from "vite";
+import { default as viteMultipleAssets } from "vite-multiple-assets";
 
 const projectRootDir = path.resolve(__dirname);
 
@@ -40,6 +41,7 @@ export default defineConfig({
 				defaultHandler?.(warning);
 			},
 		}),
+		viteMultipleAssets(["../demo-artwork"]),
 	],
 	resolve: {
 		alias: [

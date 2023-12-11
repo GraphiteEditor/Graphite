@@ -47,15 +47,17 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
-			const url = new URL(triggerFetchAndOpenDocument.url);
+			const { name, filename } = triggerFetchAndOpenDocument;
+			const url = new URL(filename, document.location.href);
 			const data = await fetch(url);
-
-			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();
 
-			editor.instance.openDocumentFile(filename, content);
+			editor.instance.openDocumentFile(name, content);
 		} catch {
-			editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
+			setTimeout(() => {
+				editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+			}, 0);
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
