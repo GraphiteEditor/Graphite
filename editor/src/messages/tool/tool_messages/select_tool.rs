@@ -532,7 +532,6 @@ impl Fsm for SelectToolFsmState {
 
 					SelectToolFsmState::Dragging
 				} else {
-					responses.add(DocumentMessage::StartTransaction);
 					tool_data.layers_dragging = selected;
 
 					if !input.keyboard.key(add_to_selection) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
@@ -541,6 +540,8 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					if let Some(intersection) = intersection {
+						responses.add(DocumentMessage::StartTransaction);
+
 						tool_data.layer_selected_on_start = Some(intersection);
 						selected = vec![intersection];
 
@@ -780,11 +781,16 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				// For shallow select we don't update dragging layers until inside drag_start_shallowest_manipulation()
-				tool_data.layers_dragging = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network).collect();
-				responses.add_front(NodeGraphMessage::SelectedNodesSet {
-					nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
-				});
+				let new_selected: HashSet<_> = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network).collect();
+				let current_selected: HashSet<_> = document.metadata().selected_layers().collect();
+				if new_selected != current_selected {
+					tool_data.layers_dragging = new_selected.into_iter().collect();
+					responses.add(DocumentMessage::StartTransaction);
+					responses.add(NodeGraphMessage::SelectedNodesSet {
+						nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
+					});
+				}
+
 				responses.add_front(DocumentMessage::Overlays(
 					Operation::DeleteLayer {
 						path: tool_data.drag_box_overlay_layer.take().unwrap(),
