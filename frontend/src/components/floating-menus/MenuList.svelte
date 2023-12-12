@@ -33,7 +33,7 @@
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: (typeof self)[][] = [];
-	let search: string | undefined;
+	let search = "";
 
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
@@ -46,7 +46,7 @@
 	});
 	$: watchHighlightedWithSearch(filteredEntries);
 
-	$: filteredEntries = entries.map((section) => section.filter(inSearch(search)));
+	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
 	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
@@ -64,44 +64,45 @@
 	}
 
 	// Detect when the user types, which creates a search box
-	async function startSearch(event: KeyboardEvent) {
-		if (search !== undefined || event.key.length !== 1) return;
+	async function startSearch(e: KeyboardEvent) {
+		// Only accept single-character symbol inputs other than space
+		if (e.key.length !== 1 || e.key === " ") return;
 
 		// Stop shortcuts being activated
-		event.stopPropagation();
-		event.preventDefault();
-
-		// Open the search bar
-		search = "";
-
-		// Must wait until the DOM elements have been created before focusing the search box
-		await tick();
-		searchTextInput?.focus();
+		e.stopPropagation();
+		e.preventDefault();
 
 		// Forward the input's first character to the search box, which after that point the user will continue typing into directly
-		search = event.key;
+		search = e.key;
+
+		// Must wait until the DOM elements have been created (after the if condition becomes true) before the search box exists
+		await tick();
 
 		// Get the search box element
-		let searchElement = searchTextInput?.element();
-		if (!searchElement) return;
+		const searchElement = searchTextInput?.element();
+		if (!searchTextInput || !searchElement) return;
 
-		// Allow arrow key navigation whilst in the search box
-		searchElement.onkeydown = (event) => {
-			if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-				keydown(event, false);
+		// Focus the search box and move the cursor to the end
+		searchTextInput.focus();
+		searchElement.setSelectionRange(search.length, search.length);
+
+		// Continue listening for keyboard navigation even when the search box is focused
+		searchElement.onkeydown = (e) => {
+			if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+				keydown(e, false);
 			}
 		};
 	}
 
-	function inSearch(search: string | undefined): (entry: MenuListEntry) => boolean {
-		return (entry: MenuListEntry) => !search || entry.label.toLowerCase().includes(search.toLowerCase());
+	function inSearch(search: string, entry: MenuListEntry): boolean {
+		return !search || entry.label.toLowerCase().includes(search.toLowerCase());
 	}
 
 	function watchOpen(open: boolean) {
 		highlighted = activeEntry;
 		dispatch("open", open);
 
-		search = undefined;
+		search = "";
 	}
 
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
@@ -158,6 +159,23 @@
 		if (!menuListEntry.children?.length) return false;
 
 		return getChildReference(menuListEntry)?.open || false;
+	}
+
+	function includeSeparator(entries: MenuListEntry[][], section: MenuListEntry[], sectionIndex: number, search: string): boolean {
+		const elementsBeforeCurrentSection = entries
+			.slice(0, sectionIndex)
+			.flat()
+			.filter((entry) => inSearch(search, entry));
+		const entriesInCurrentSection = section.filter((entry) => inSearch(search, entry));
+
+		return elementsBeforeCurrentSection.length > 0 && entriesInCurrentSection.length > 0;
+	}
+
+	function currentEntries(section: MenuListEntry[], virtualScrollingEntryHeight: number, virtualScrollingStartIndex: number, virtualScrollingEndIndex: number, search: string) {
+		if (!virtualScrollingEntryHeight) {
+			return section.filter((entry) => inSearch(search, entry));
+		}
+		return section.filter((entry) => inSearch(search, entry)).slice(virtualScrollingStartIndex, virtualScrollingEndIndex);
 	}
 
 	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
@@ -248,7 +266,7 @@
 
 				e.preventDefault();
 			}
-		} else if (menuOpen && e.key !== " ") {
+		} else if (menuOpen && search === "") {
 			startSearch(e);
 		}
 
@@ -305,8 +323,16 @@
 	scrollableY={scrollableY && virtualScrollingEntryHeight === 0}
 	bind:this={self}
 >
-	{#if search !== undefined}
-		<TextInput value={search} on:value={(value) => (search = value.detail)} bind:this={searchTextInput}></TextInput>
+	{#if search.length > 0}
+		<TextInput
+			class="search"
+			value={search}
+			on:value={({ detail }) => {
+				search = detail;
+				console.log(detail);
+			}}
+			bind:this={searchTextInput}
+		></TextInput>
 	{/if}
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
@@ -320,12 +346,10 @@
 			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }} />
 		{/if}
 		{#each entries as section, sectionIndex (sectionIndex)}
-			{#if entries.slice(undefined, sectionIndex).flat().filter(inSearch(search)).length > 0 && section.filter(inSearch(search)).length > 0}
+			{#if includeSeparator(entries, section, sectionIndex, search)}
 				<Separator type="Section" direction="Vertical" />
 			{/if}
-			{#each virtualScrollingEntryHeight ? section
-						.filter(inSearch(search))
-						.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section.filter(inSearch(search)) as entry, entryIndex (entryIndex + startIndex)}
+			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
@@ -358,7 +382,6 @@
 					{/if}
 
 					{#if entry.children}
-						<!-- TODO: Solve the red underline error on the bind:this below -->
 						<svelte:self
 							on:naturalWidth
 							open={getChildReference(entry)?.open || false}
@@ -369,6 +392,7 @@
 							{scrollableY}
 							bind:this={childReferences[sectionIndex][entryIndex + startIndex]}
 						/>
+						<!-- TODO: Solve the red underline error on the bind:this above -->
 					{/if}
 				</LayoutRow>
 			{/each}
@@ -381,6 +405,11 @@
 
 <style lang="scss" global>
 	.menu-list {
+		.search {
+			margin: 4px;
+			margin-top: 0;
+		}
+
 		.floating-menu-container .floating-menu-content.floating-menu-content {
 			padding: 4px 0;
 
