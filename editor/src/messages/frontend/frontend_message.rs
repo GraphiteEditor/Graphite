@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuff
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
-use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;

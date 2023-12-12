@@ -634,7 +634,7 @@ impl TypingContext {
 				(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => covariant(a1, a2) && covariant(b1, b2),
 				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(t), Type::Generic(u)) => true,
+				(Type::Generic(_), Type::Generic(_)) => true,
 				(Type::Generic(_), _) => true,
 				(_, Type::Generic(_)) => true,
 				_ => false,

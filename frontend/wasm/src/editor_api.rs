@@ -2,8 +2,8 @@
 //! It serves as a thin wrapper over the editor backend API that relies
 //! on the dispatcher messaging system and more complex Rust data types.
 
-use crate::helpers::{translate_key, Error};
-use crate::{EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
+use crate::helpers::translate_key;
+use crate::{Error, EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
