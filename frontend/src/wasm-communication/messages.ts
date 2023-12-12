@@ -560,16 +560,6 @@ export class TriggerDownloadTextFile extends JsMessage {
 	readonly name!: string;
 }
 
-export class TriggerRasterizeRegionBelowLayer extends JsMessage {
-	readonly documentId!: bigint;
-
-	readonly layerPath!: BigUint64Array;
-
-	readonly svg!: string;
-
-	readonly size!: [number, number];
-}
-
 export class TriggerRefreshBoundsOfViewports extends JsMessage {}
 
 export class TriggerRevokeBlobUrl extends JsMessage {
@@ -672,8 +662,8 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 export class UpdateImageData extends JsMessage {
 	readonly documentId!: bigint;
 
-	@Type(() => ImaginateImageData)
-	readonly imageData!: ImaginateImageData[];
+	@Type(() => RenderedImageData)
+	readonly imageData!: RenderedImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -710,7 +700,7 @@ export class LayerMetadata {
 
 export type LayerType = "Folder" | "Layer" | "Artboard";
 
-export class ImaginateImageData {
+export class RenderedImageData {
 	readonly path!: BigUint64Array;
 
 	readonly nodeId!: bigint;
@@ -1415,7 +1405,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRasterizeRegionBelowLayer,
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,

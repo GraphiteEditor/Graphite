@@ -92,14 +92,6 @@ pub enum FrontendMessage {
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
-	TriggerRasterizeRegionBelowLayer {
-		#[serde(rename = "documentId")]
-		document_id: u64,
-		#[serde(rename = "layerPath")]
-		layer_path: Vec<LayerId>,
-		svg: String,
-		size: glam::DVec2,
-	},
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl {
 		url: String,
