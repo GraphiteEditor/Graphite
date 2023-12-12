@@ -10,6 +10,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
+use graphene_core::memo::IORecord;
 use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -1476,6 +1477,15 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		.executor
 		.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
 		.unwrap_or_default();
+	let image_size = context
+		.executor
+		.introspect_node_in_network(
+			context.network,
+			&imaginate_node,
+			|network| network.inputs.first().copied(),
+			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
+		)
+		.unwrap_or_default();
 
 	let resolution = {
 		use graphene_std::imaginate::pick_safe_imaginate_resolution;
@@ -1493,7 +1503,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		} = &document_node.inputs[resolution_index]
 		{
 			let dimensions_is_auto = vec2.is_none();
-			let vec2 = vec2.unwrap_or_else(|| round([transform.matrix2.x_axis, transform.matrix2.y_axis].map(DVec2::length).into()));
+			let vec2 = vec2.unwrap_or_else(|| round((image_size.0 as f64, image_size.1 as f64).into()));
 
 			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
