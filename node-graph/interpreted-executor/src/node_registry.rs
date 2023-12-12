@@ -329,6 +329,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],
 		register_node!(graphene_std::raster::EmptyImageNode<_, _>, input: DAffine2, params: [Color]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: (), output: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicGroup, fn_params: [Footprint => graphene_core::GraphicGroup]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicElement, fn_params: [Footprint => graphene_core::GraphicElement]),

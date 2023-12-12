@@ -130,7 +130,7 @@ fn monitor_node() -> DocumentNode {
 		name: "Monitor".to_string(),
 		inputs: Vec::new(),
 		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
-		manual_composition: Some(concrete!(Footprint)),
+		manual_composition: Some(generic!(T)),
 		skip_deduplication: true,
 		..Default::default()
 	}
