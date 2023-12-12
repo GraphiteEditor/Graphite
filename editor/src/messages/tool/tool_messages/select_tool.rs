@@ -4,8 +4,7 @@ use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_shape_layer;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_text_layer;
+use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
@@ -804,7 +803,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_text_layer(layer, &document.document_legacy) {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text") {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -952,10 +951,10 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 }
 
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document: &Document, responses: &mut VecDeque<Message>) {
-	if is_text_layer(layer, document) {
+	if is_layer_fed_by_node_of_name(layer, document, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_shape_layer(layer, document) {
+	} else if is_layer_fed_by_node_of_name(layer, document, "Shape") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

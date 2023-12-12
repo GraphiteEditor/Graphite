@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_artboard;
+use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
@@ -150,7 +150,10 @@ impl ArtboardToolData {
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
 
-		let mut intersections = document.document_legacy.click_xray(input.mouse.position).filter(|&layer| is_artboard(layer, &document.document_legacy));
+		let mut intersections = document
+			.document_legacy
+			.click_xray(input.mouse.position)
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Artboard"));
 
 		responses.add(BroadcastEvent::DocumentIsDirty);
 		if let Some(intersection) = intersections.next() {

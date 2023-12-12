@@ -4,7 +4,7 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayerTreeOptionsLayout } from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { LayerType, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -46,12 +46,12 @@
 	let dragInPanel = false;
 
 	// Layouts
-	let layerTreeOptionsLayout = defaultWidgetLayout();
+	let layersPanelOptionsLayout = defaultWidgetLayout();
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayerTreeOptionsLayout, (updateLayerTreeOptionsLayout) => {
-			patchWidgetLayout(layerTreeOptionsLayout, updateLayerTreeOptionsLayout);
-			layerTreeOptionsLayout = layerTreeOptionsLayout;
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelOptionsLayout, (updateLayersPanelOptionsLayout) => {
+			patchWidgetLayout(layersPanelOptionsLayout, updateLayersPanelOptionsLayout);
+			layersPanelOptionsLayout = layersPanelOptionsLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
@@ -301,7 +301,7 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="options-bar" scrollableX={true}>
-		<WidgetLayout layout={layerTreeOptionsLayout} />
+		<WidgetLayout layout={layersPanelOptionsLayout} />
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>

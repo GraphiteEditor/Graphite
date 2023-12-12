@@ -4,6 +4,7 @@ use bezier_rs::Subpath;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
+use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -22,6 +23,14 @@ pub enum GraphOperationMessage {
 	FillSet {
 		layer: LayerIdentifier,
 		fill: Fill,
+	},
+	OpacitySet {
+		layer: LayerIdentifier,
+		opacity: f32,
+	},
+	BlendModeSet {
+		layer: LayerIdentifier,
+		blend_mode: BlendMode,
 	},
 	UpdateBounds {
 		layer: LayerIdentifier,

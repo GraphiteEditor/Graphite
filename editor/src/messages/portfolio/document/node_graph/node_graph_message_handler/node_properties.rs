@@ -368,33 +368,35 @@ fn noise_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 	LayoutGroup::Row { widgets }.with_tooltip("Type of Noise")
 }
 
-//TODO Use generalized Version of this as soon as it's available
+// TODO: Use generalized version of this as soon as it's available
 fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
-		tagged_value: TaggedValue::BlendMode(mode),
+		tagged_value: TaggedValue::BlendMode(blend_mode),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let entries = BlendMode::list()
+		let entries = BlendMode::list_svg_subset()
 			.iter()
 			.map(|category| {
 				category
 					.iter()
-					.map(|mode| MenuListEntry::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*mode), node_id, index)))
+					.map(|blend_mode| MenuListEntry::new(blend_mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index)))
 					.collect()
 			})
 			.collect();
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+			DropdownInput::new(entries)
+				.selected_index(blend_mode.index_in_list_svg_subset().map(|index| index as u32))
+				.widget_holder(),
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
 }
 
-// TODO: Generalize this for all dropdowns ( also see blend_mode and channel_extration )
+// TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
 fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {

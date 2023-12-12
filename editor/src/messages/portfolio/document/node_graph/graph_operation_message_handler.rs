@@ -7,7 +7,7 @@ use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -284,7 +284,6 @@ impl<'a> ModifyInputsContext<'a> {
 		let new_input = output_node.inputs.first().cloned().filter(|input| input.as_node().is_some());
 		let node_id = generate_uuid();
 
-		output_node.metadata.position.x += 8;
 		output_node.inputs[0] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
@@ -294,6 +293,12 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut new_document_node = node_type.to_document_node_default_inputs([new_input], metadata);
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
 		self.network.nodes.insert(node_id, new_document_node);
+
+		let upstream_nodes = self.network.upstream_flow_back_from_nodes(vec![node_id], true).map(|(_, id)| id).collect::<Vec<_>>();
+		for node_id in upstream_nodes {
+			let Some(node) = self.network.nodes.get_mut(&node_id) else { continue };
+			node.metadata.position.x -= 8;
+		}
 	}
 
 	/// Changes the inputs of a specific node
@@ -364,6 +369,18 @@ impl<'a> ModifyInputsContext<'a> {
 				inputs[6] = NodeInput::value(TaggedValue::DAffine2(gradient.transform), false);
 				inputs[7] = NodeInput::value(TaggedValue::GradientPositions(gradient.positions), false);
 			}
+		});
+	}
+
+	fn opacity_set(&mut self, opacity: f32) {
+		self.modify_inputs("Opacity", false, |inputs, _node_id, _metadata| {
+			inputs[1] = NodeInput::value(TaggedValue::F32(opacity * 100.), false);
+		});
+	}
+
+	fn blend_mode_set(&mut self, blend_mode: BlendMode) {
+		self.modify_inputs("Blend Mode", false, |inputs, _node_id, _metadata| {
+			inputs[1] = NodeInput::value(TaggedValue::BlendMode(blend_mode), false);
 		});
 	}
 
@@ -564,6 +581,16 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
+			GraphOperationMessage::OpacitySet { layer, opacity } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+					modify_inputs.opacity_set(opacity);
+				}
+			}
+			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+					modify_inputs.blend_mode_set(blend_mode);
+				}
+			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
@@ -715,7 +742,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				let layer_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
-					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.name == "Artboard") {
+					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
 						modify_inputs.delete_layer(layer);
 					}
 				}

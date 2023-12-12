@@ -54,6 +54,10 @@ impl DocumentMetadata {
 		self.all_layers().filter(|layer| self.selected_nodes.contains(&layer.to_node()))
 	}
 
+	pub fn selected_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers().filter(move |layer| !self.artboards.contains(layer))
+	}
+
 	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier) -> bool {
 		self.selected_layers().any(|selected| selected == layer)
 	}
@@ -259,7 +263,7 @@ impl DocumentMetadata {
 }
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.name == "Artboard")
+	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.is_artboard())
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
@@ -267,7 +271,7 @@ pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 		|| network
 			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
 			.skip(1)
-			.any(|(node, _)| node.name == "Artboard" || node.is_layer())
+			.any(|(node, _)| node.is_artboard() || node.is_layer())
 }
 
 // click targets

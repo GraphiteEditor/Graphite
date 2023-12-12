@@ -1,7 +1,7 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_artboard;
+use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 
 /// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
 #[derive(Debug, Default, Clone)]
@@ -78,7 +78,7 @@ impl MessageHandler<DialogMessage, DialogData<'_>> for DialogMessageHandler {
 						.document_legacy
 						.metadata
 						.all_layers()
-						.filter(|&layer| is_artboard(layer, &document.document_legacy))
+						.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Artboard"))
 						.map(|layer| {
 							(
 								layer,

@@ -276,6 +276,12 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Layer"
 	}
+
+	pub fn is_artboard(&self) -> bool {
+		// TODO: Use something more robust than checking against a string.
+		// TODO: Or, more fundamentally separate the concept of a layer from a node.
+		self.name == "Artboard"
+	}
 }
 
 /// Represents the possible inputs to a node.

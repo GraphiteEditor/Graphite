@@ -1345,7 +1345,7 @@ export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
 export class UpdateGraphViewOverlayButtonLayout extends WidgetDiffUpdate {}
 
-export class UpdateLayerTreeOptionsLayout extends WidgetDiffUpdate {}
+export class UpdateLayersPanelOptionsLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
 export class UpdateMenuBarLayout extends JsMessage {
@@ -1441,7 +1441,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateGraphViewOverlayButtonLayout,
 	UpdateImageData,
 	UpdateInputHints,
-	UpdateLayerTreeOptionsLayout,
+	UpdateLayersPanelOptionsLayout,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraph,
