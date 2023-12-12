@@ -223,7 +223,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(FolderChanged { affected_folder_path: vec![] });
 				responses.add(BroadcastEvent::SelectionChanged);
 
-				self.update_layer_tree_options_bar_widgets(responses, &render_data);
+				self.update_layers_panel_options_bar_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -269,7 +269,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// Clear the options bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::WidgetLayout(Default::default()),
-					layout_target: LayoutTarget::LayerTreeOptions,
+					layout_target: LayoutTarget::LayersPanelOptions,
 				});
 			}
 			CommitTransaction => (),
@@ -450,7 +450,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
 				}
 				responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path });
-				self.update_layer_tree_options_bar_widgets(responses, &render_data);
+				self.update_layers_panel_options_bar_widgets(responses);
 			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
@@ -698,7 +698,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
-				for layer in self.metadata().selected_layers() {
+				for layer in self.metadata().selected_layers_except_artboards() {
 					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
 				}
 			}
@@ -740,7 +740,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.) as f32;
 
-				for layer in self.metadata().selected_layers() {
+				for layer in self.metadata().selected_layers_except_artboards() {
 					responses.add(GraphOperationMessage::OpacitySet { layer: layer.to_path(), opacity });
 				}
 			}
@@ -1520,13 +1520,45 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layer_tree_options_bar_widgets(&self, responses: &mut VecDeque<Message>, render_data: &RenderData) {
-		let mut opacity = self.metadata().selected_layers().map(|layer| get_opacity(layer, &self.document_legacy).unwrap_or(100.));
-		let mut blend_mode = self.metadata().selected_layers().map(|layer| get_blend_mode(layer, &self.document_legacy).unwrap_or_default());
-		let opacity = opacity.next().filter(|&first| opacity.all(|item| (item - first).abs() < f32::EPSILON * 100.));
-		let blend_mode = blend_mode.next().filter(|&first| blend_mode.all(|item| first == item));
+	pub fn update_layers_panel_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
+		let selected_layers_except_artboards = self.metadata().selected_layers_except_artboards();
 
-		let blend_mode_menu_entries = BlendMode::list_modes_in_groups()
+		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
+		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
+			(
+				get_opacity(layer, &self.document_legacy).unwrap_or(100.),
+				get_blend_mode(layer, &self.document_legacy).unwrap_or_default(),
+			)
+		});
+		let first_opacity_and_blend_mode = opacity_and_blend_mode.next();
+		let result_opacity_and_blend_mode = opacity_and_blend_mode;
+
+		// If there are no selected layers, disable the opacity and blend mode widgets.
+		let disabled = first_opacity_and_blend_mode.is_none();
+
+		// Amongst the selected layers, check if the opacities and blend modes are identical across all layers.
+		// The result is setting `option` and `blend_mode` to Some value if all their values are identical, or None if they are not.
+		// If identical, we display the value in the widget. If not, we display a dash indicating dissimilarity.
+		let (opacity, blend_mode) = first_opacity_and_blend_mode
+			.map(|(first_opacity, first_blend_mode)| {
+				let mut opacity_identical = true;
+				let mut blend_mode_identical = true;
+
+				for (opacity, blend_mode) in result_opacity_and_blend_mode {
+					if (opacity - first_opacity).abs() > (f32::EPSILON * 100.) {
+						opacity_identical = false;
+					}
+					if blend_mode != first_blend_mode {
+						blend_mode_identical = false;
+					}
+				}
+
+				(opacity_identical.then(|| first_opacity), blend_mode_identical.then(|| first_blend_mode))
+			})
+			.unwrap_or((None, None));
+
+		let blend_mode_menu_entries = BlendMode::list_svg_subset()
 			.iter()
 			.map(|modes| {
 				modes
@@ -1540,11 +1572,11 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let layer_tree_options = WidgetLayout::new(vec![LayoutGroup::Row {
+		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
-					.selected_index(blend_mode.map(|blend_mode| blend_mode as u32))
-					.disabled(!self.metadata().has_selected_nodes())
+					.selected_index(blend_mode.map(|blend_mode| blend_mode.index_in_list_svg_subset()).flatten().map(|index| index as u32))
+					.disabled(disabled)
 					.draw_icon(false)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
@@ -1552,7 +1584,7 @@ impl DocumentMessageHandler {
 					.label("Opacity")
 					.unit("%")
 					.display_decimal_places(2)
-					.disabled(!self.metadata().has_selected_nodes())
+					.disabled(disabled)
 					.min(0.)
 					.max(100.)
 					.range_min(Some(0.))
@@ -1581,8 +1613,8 @@ impl DocumentMessageHandler {
 		}]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layer_tree_options),
-			layout_target: LayoutTarget::LayerTreeOptions,
+			layout: Layout::WidgetLayout(layers_panel_options_bar),
+			layout_target: LayoutTarget::LayersPanelOptions,
 		});
 	}
 

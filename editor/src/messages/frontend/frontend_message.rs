@@ -206,7 +206,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "hintData")]
 		hint_data: HintData,
 	},
-	UpdateLayerTreeOptionsLayout {
+	UpdateLayersPanelOptionsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

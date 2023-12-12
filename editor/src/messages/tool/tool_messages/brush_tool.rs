@@ -11,38 +11,7 @@ use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
 use graphene_core::Color;
 
-const EXPOSED_BLEND_MODES: &[&[BlendMode]] = {
-	use BlendMode::*;
-	&[
-		// Basic group
-		&[Normal],
-		// Darken group
-		&[Darken, Multiply, ColorBurn, LinearBurn, DarkerColor],
-		// Lighten group
-		&[Lighten, Screen, ColorDodge, LinearDodge, LighterColor],
-		// Contrast group
-		&[Overlay, SoftLight, HardLight, VividLight, LinearLight, PinLight, HardMix],
-		// Inversion group
-		&[Difference, Exclusion, Subtract, Divide],
-		// Component group
-		&[Hue, Saturation, Color, Luminosity],
-	]
-};
-
 const BRUSH_MAX_SIZE: f64 = 5000.;
-
-fn blend_mode_dropdown_idx(target_blend_mode: BlendMode) -> Option<u32> {
-	let mut i = 0;
-	for group in EXPOSED_BLEND_MODES {
-		for &blend_mode in group.iter() {
-			if blend_mode == target_blend_mode {
-				return Some(i);
-			}
-			i += 1;
-		}
-	}
-	None
-}
 
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum DrawMode {
@@ -192,7 +161,7 @@ impl LayoutHolder for BrushTool {
 
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
-		let blend_mode_entries: Vec<Vec<_>> = EXPOSED_BLEND_MODES
+		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
 			.iter()
 			.map(|group| {
 				group
@@ -207,7 +176,7 @@ impl LayoutHolder for BrushTool {
 			.collect();
 		widgets.push(
 			DropdownInput::new(blend_mode_entries)
-				.selected_index(blend_mode_dropdown_idx(self.options.blend_mode))
+				.selected_index(self.options.blend_mode.index_in_list().map(|index| index as u32))
 				.tooltip("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
 				.disabled(self.options.draw_mode != DrawMode::Draw)
 				.widget_holder(),

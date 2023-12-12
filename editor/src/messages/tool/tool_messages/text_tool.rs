@@ -3,7 +3,7 @@ use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::COLOR_ACCENT;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
-use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_text_layer};
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::intersection::Quad;
@@ -277,7 +277,7 @@ impl TextToolData {
 		if let Some(clicked_text_layer_path) = document
 			.document_legacy
 			.click(mouse, document.network())
-			.filter(|&layer| is_text_layer(layer, &document.document_legacy))
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text"))
 		{
 			self.start_editing_layer(clicked_text_layer_path, state, document, render_data, responses);
 
@@ -417,7 +417,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_text_layer(layer, &document.document_legacy) {
+	if !is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text") {
 		return None;
 	}
 

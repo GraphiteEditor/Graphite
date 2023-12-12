@@ -27,7 +27,7 @@ pub enum LayoutTarget {
 	/// The button below the tool shelf and directly above the working colors which lets the user toggle the node graph overlaid on the canvas.
 	GraphViewOverlayButton,
 	/// Options for opacity seen at the top of the Layers panel.
-	LayerTreeOptions,
+	LayersPanelOptions,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.

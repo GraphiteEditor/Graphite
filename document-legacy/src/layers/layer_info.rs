@@ -342,13 +342,7 @@ impl Layer {
 			self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
 				let _ = self.cache.write_str(&(f.to_string() + if i == 5 { "" } else { "," }));
 			});
-			let _ = write!(
-				self.cache,
-				r#")" style="mix-blend-mode: {}; opacity: {}">{}</g>"#,
-				self.blend_mode.to_svg_style_name(),
-				self.opacity,
-				self.thumbnail_cache.as_str()
-			);
+			let _ = write!(self.cache, r#")" style="opacity: {};{}">{}</g>"#, self.opacity, self.blend_mode.render(), self.thumbnail_cache.as_str());
 
 			self.cache_dirty = false;
 		}

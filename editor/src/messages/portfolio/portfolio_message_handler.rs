@@ -680,7 +680,7 @@ impl PortfolioMessageHandler {
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
-		new_document.update_layer_tree_options_bar_widgets(responses, &render_data);
+		new_document.update_layers_panel_options_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
 

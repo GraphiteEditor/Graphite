@@ -52,42 +52,14 @@ impl core::fmt::Display for LuminanceCalculation {
 	}
 }
 
-impl BlendMode {
-	pub fn list() -> [&'static [BlendMode]; 6] {
-		[
-			// Normal group
-			&[BlendMode::Normal],
-			// Darken group
-			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn, BlendMode::LinearBurn, BlendMode::DarkerColor],
-			// Lighten group
-			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge, BlendMode::LinearDodge, BlendMode::LighterColor],
-			// Contrast group
-			&[
-				BlendMode::Overlay,
-				BlendMode::SoftLight,
-				BlendMode::HardLight,
-				BlendMode::VividLight,
-				BlendMode::LinearLight,
-				BlendMode::PinLight,
-				BlendMode::HardMix,
-			],
-			// Inversion group
-			&[BlendMode::Difference, BlendMode::Exclusion, BlendMode::Subtract, BlendMode::Divide],
-			// Component group
-			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
-		]
-	}
-}
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash)]
 #[repr(i32)] // TODO: Enable Int8 capability for SPIR-V so that we don't need this?
 pub enum BlendMode {
-	#[default]
 	// Basic group
+	#[default]
 	Normal,
-	// Not supported by SVG, but we should someday support: Dissolve
 
 	// Darken group
 	Darken,
@@ -130,6 +102,95 @@ pub enum BlendMode {
 	MultiplyAlpha,
 }
 
+impl BlendMode {
+	/// All standard blend modes ordered by group.
+	pub fn list() -> [&'static [BlendMode]; 6] {
+		use BlendMode::*;
+		[
+			// Normal group
+			&[Normal],
+			// Darken group
+			&[Darken, Multiply, ColorBurn, LinearBurn, DarkerColor],
+			// Lighten group
+			&[Lighten, Screen, ColorDodge, LinearDodge, LighterColor],
+			// Contrast group
+			&[Overlay, SoftLight, HardLight, VividLight, LinearLight, PinLight, HardMix],
+			// Inversion group
+			&[Difference, Exclusion, Subtract, Divide],
+			// Component group
+			&[Hue, Saturation, Color, Luminosity],
+		]
+	}
+
+	/// The subset of [`BlendMode::list()`] that is supported by SVG.
+	pub fn list_svg_subset() -> [&'static [BlendMode]; 6] {
+		use BlendMode::*;
+		[
+			// Normal group
+			&[Normal],
+			// Darken group
+			&[Darken, Multiply, ColorBurn],
+			// Lighten group
+			&[Lighten, Screen, ColorDodge],
+			// Contrast group
+			&[Overlay, SoftLight, HardLight],
+			// Inversion group
+			&[Difference, Exclusion],
+			// Component group
+			&[Hue, Saturation, Color, Luminosity],
+		]
+	}
+
+	pub fn index_in_list(&self) -> Option<usize> {
+		Self::list().iter().flat_map(|x| x.iter()).position(|&blend_mode| blend_mode == *self)
+	}
+
+	pub fn index_in_list_svg_subset(&self) -> Option<usize> {
+		Self::list_svg_subset().iter().flat_map(|x| x.iter()).position(|&blend_mode| blend_mode == *self)
+	}
+
+	/// Convert the enum to the CSS string for the blend mode.
+	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
+	pub fn to_svg_style_name(&self) -> Option<&'static str> {
+		match self {
+			// Normal group
+			BlendMode::Normal => Some("normal"),
+			// Darken group
+			BlendMode::Darken => Some("darken"),
+			BlendMode::Multiply => Some("multiply"),
+			BlendMode::ColorBurn => Some("color-burn"),
+			// Lighten group
+			BlendMode::Lighten => Some("lighten"),
+			BlendMode::Screen => Some("screen"),
+			BlendMode::ColorDodge => Some("color-dodge"),
+			// Contrast group
+			BlendMode::Overlay => Some("overlay"),
+			BlendMode::SoftLight => Some("soft-light"),
+			BlendMode::HardLight => Some("hard-light"),
+			// Inversion group
+			BlendMode::Difference => Some("difference"),
+			BlendMode::Exclusion => Some("exclusion"),
+			// Component group
+			BlendMode::Hue => Some("hue"),
+			BlendMode::Saturation => Some("saturation"),
+			BlendMode::Color => Some("color"),
+			BlendMode::Luminosity => Some("luminosity"),
+			_ => None,
+		}
+	}
+
+	/// Renders the blend mode CSS style declaration.
+	pub fn render(&self) -> String {
+		format!(
+			r#" mix-blend-mode: {};"#,
+			self.to_svg_style_name().unwrap_or_else(|| {
+				warn!("Unsupported blend mode {self:?}");
+				"normal"
+			})
+		)
+	}
+}
+
 impl core::fmt::Display for BlendMode {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
@@ -170,64 +231,6 @@ impl core::fmt::Display for BlendMode {
 			BlendMode::Restore => write!(f, "Restore"),
 			BlendMode::MultiplyAlpha => write!(f, "Multiply Alpha"),
 		}
-	}
-}
-
-impl BlendMode {
-	/// Convert the enum to the CSS string for the blend mode.
-	/// [Read more](https://developer.mozilla.org/en-US/docs/Web/CSS/blend-mode#values)
-	pub fn to_svg_style_name(&self) -> &'static str {
-		match self {
-			// Normal group
-			BlendMode::Normal => "normal",
-			// Darken group
-			BlendMode::Darken => "darken",
-			BlendMode::Multiply => "multiply",
-			BlendMode::ColorBurn => "color-burn",
-			// Lighten group
-			BlendMode::Lighten => "lighten",
-			BlendMode::Screen => "screen",
-			BlendMode::ColorDodge => "color-dodge",
-			// Contrast group
-			BlendMode::Overlay => "overlay",
-			BlendMode::SoftLight => "soft-light",
-			BlendMode::HardLight => "hard-light",
-			// Inversion group
-			BlendMode::Difference => "difference",
-			BlendMode::Exclusion => "exclusion",
-			// Component group
-			BlendMode::Hue => "hue",
-			BlendMode::Saturation => "saturation",
-			BlendMode::Color => "color",
-			BlendMode::Luminosity => "luminosity",
-			_ => {
-				warn!("Unsupported blend mode {self:?}");
-				"normal"
-			}
-		}
-	}
-
-	/// Renders the blend mode CSS style declaration.
-	pub fn render(&self) -> String {
-		format!(r#" mix-blend-mode: {};"#, self.to_svg_style_name())
-	}
-
-	/// List of all the blend modes in their conventional ordering and grouping.
-	pub fn list_modes_in_groups() -> [&'static [BlendMode]; 6] {
-		[
-			// Normal group
-			&[BlendMode::Normal],
-			// Darken group
-			&[BlendMode::Darken, BlendMode::Multiply, BlendMode::ColorBurn],
-			// Lighten group
-			&[BlendMode::Lighten, BlendMode::Screen, BlendMode::ColorDodge],
-			// Contrast group
-			&[BlendMode::Overlay, BlendMode::SoftLight, BlendMode::HardLight],
-			// Inversion group
-			&[BlendMode::Difference, BlendMode::Exclusion],
-			// Component group
-			&[BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity],
-		]
 	}
 }
 

@@ -371,16 +371,19 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		});
 	}
+
 	fn opacity_set(&mut self, opacity: f32) {
 		self.modify_inputs("Opacity", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::F32(opacity * 100.), false);
 		});
 	}
+
 	fn blend_mode_set(&mut self, blend_mode: BlendMode) {
 		self.modify_inputs("Blend Mode", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::BlendMode(blend_mode), false);
 		});
 	}
+
 	fn stroke_set(&mut self, stroke: Stroke) {
 		self.modify_inputs("Stroke", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::OptionalColor(stroke.color), false);
@@ -739,7 +742,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				let layer_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
-					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.name == "Artboard") {
+					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
 						modify_inputs.delete_layer(layer);
 					}
 				}

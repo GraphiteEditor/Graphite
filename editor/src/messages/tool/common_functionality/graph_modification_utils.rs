@@ -98,7 +98,7 @@ pub fn get_mirror_handles(layer: LayerNodeIdentifier, document: &Document) -> Op
 	}
 }
 
-/// Get the current gradient of a layer from the closest fill node
+/// Get the current gradient of a layer from the closest Fill node
 pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<Gradient> {
 	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Fill")?;
 	let TaggedValue::FillType(FillType::Gradient) = inputs.get(1)?.as_value()? else {
@@ -128,7 +128,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document: &Document) -> Option<G
 	})
 }
 
-/// Get the current fill of a layer from the closest fill node
+/// Get the current fill of a layer from the closest Fill node
 pub fn get_fill_color(layer: LayerNodeIdentifier, document: &Document) -> Option<Color> {
 	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Fill")?;
 	let TaggedValue::Color(color) = inputs.get(2)?.as_value()? else {
@@ -137,7 +137,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, document: &Document) -> Option
 	Some(*color)
 }
 
-/// Get the current blend mode of a layer from the closest blend mode node
+/// Get the current blend mode of a layer from the closest Blend Mode node
 pub fn get_blend_mode(layer: LayerNodeIdentifier, document: &Document) -> Option<BlendMode> {
 	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Blend Mode")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
@@ -146,7 +146,13 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, document: &Document) -> Option
 	Some(*blend_mode)
 }
 
-/// Get the current opacity of a layer from the closest opacity node
+/// Get the current opacity of a layer from the closest Opacity node.
+/// This may differ from the actual opacity contained within the data type reaching this layer, because that actual opacity may be:
+/// - Multiplied with additional opacity nodes earlier in the chain
+/// - Set by an Opacity node with an exposed parameter value driven by another node
+/// - Already factored into the pixel alpha channel of an image
+/// - The default value of 100% if no Opacity node is present, but this function returns None in that case
+/// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, document: &Document) -> Option<f32> {
 	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Opacity")?;
 	let TaggedValue::F32(opacity) = inputs.get(1)?.as_value()? else {
@@ -155,14 +161,15 @@ pub fn get_opacity(layer: LayerNodeIdentifier, document: &Document) -> Option<f3
 	Some(*opacity)
 }
 
-pub fn get_text_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, document)?.node_id("Text")
-}
 pub fn get_fill_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, document)?.node_id("Fill")
 }
 
-/// Gets properties from the text node
+pub fn get_text_id(layer: LayerNodeIdentifier, document: &Document) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, document)?.node_id("Text")
+}
+
+/// Gets properties from the Text node
 pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&String, &Font, f64)> {
 	let inputs = NodeGraphLayer::new(layer, document)?.find_node_inputs("Text")?;
 	let NodeInput::Value {
@@ -192,19 +199,9 @@ pub fn get_text(layer: LayerNodeIdentifier, document: &Document) -> Option<(&Str
 	Some((text, font, font_size))
 }
 
-/// Is a specified layer an artboard?
-pub fn is_artboard(layer: LayerNodeIdentifier, document: &Document) -> bool {
-	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Artboard"))
-}
-
-/// Is a specified layer a shape?
-pub fn is_shape_layer(layer: LayerNodeIdentifier, document: &Document) -> bool {
-	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Shape"))
-}
-
-/// Is a specified layer text?
-pub fn is_text_layer(layer: LayerNodeIdentifier, document: &Document) -> bool {
-	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.uses_node("Text"))
+/// Checks if a specified layer uses an upstream node matching the given name.
+pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document: &Document, node_name: &str) -> bool {
+	NodeGraphLayer::new(layer, document).is_some_and(|layer| layer.find_node_inputs(node_name).is_some())
 }
 
 /// Convert subpaths to an iterator of manipulator groups
@@ -261,19 +258,18 @@ impl<'a> NodeGraphLayer<'a> {
 		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], true)
 	}
 
-	/// Does a node exist in the layer's primary flow
-	pub fn uses_node(&self, node_name: &str) -> bool {
-		self.primary_layer_flow().any(|(node, _id)| node.name == node_name)
-	}
-
 	/// Node id of a node if it exists in the layer's primary flow
 	pub fn node_id(&self, node_name: &str) -> Option<NodeId> {
 		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(_node, id)| id)
 	}
 
-	/// Find all of the inputs of a specific node within the layer's primary flow
+	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
-		self.primary_layer_flow().find(|(node, _id)| node.name == node_name).map(|(node, _id)| &node.inputs)
+		self.primary_layer_flow()
+			.skip(1)
+			.take_while(|(node, _)| !node.is_layer())
+			.find(|(node, _)| node.name == node_name)
+			.map(|(node, _id)| &node.inputs)
 	}
 
 	/// Find a specific input of a node within the layer's primary flow
