@@ -18,7 +18,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
 use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
@@ -44,7 +44,8 @@ pub struct DocumentMessageHandler {
 	pub version: String,
 	#[serde(default)]
 	pub commit_hash: String,
-
+	#[serde(default)]
+	pub collapsed_folders: Vec<LayerNodeIdentifier>,
 	pub document_mode: DocumentMode,
 	pub view_mode: ViewMode,
 	#[serde(skip)]
@@ -52,7 +53,6 @@ pub struct DocumentMessageHandler {
 	pub overlays_visible: bool,
 	#[serde(default = "return_true")]
 	pub rulers_visible: bool,
-
 	#[serde(skip)]
 	pub document_undo_history: VecDeque<DocumentSave>,
 	#[serde(skip)]
@@ -60,12 +60,10 @@ pub struct DocumentMessageHandler {
 	/// Don't allow aborting transactions whilst undoing to avoid #559
 	#[serde(skip)]
 	undo_in_progress: bool,
-
 	#[serde(with = "vectorize_layer_metadata")]
 	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
-
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
@@ -84,20 +82,17 @@ impl Default for DocumentMessageHandler {
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
-
+			collapsed_folders: Vec::new(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			snapping_state: SnappingState::default(),
 			overlays_visible: true,
 			rulers_visible: true,
-
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
 			undo_in_progress: false,
-
 			layer_metadata: vec![(vec![], LayerMetadata::new(true))].into_iter().collect(),
 			layer_range_selection_reference: None,
-
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
@@ -199,13 +194,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						document: &mut self.document_legacy,
 						document_id,
 						document_name: self.name.as_str(),
+						collapsed_folders: &mut self.collapsed_folders,
 						input: ipp,
 						graph_view_overlay_open,
 					},
 				);
 			}
 			#[remain::unsorted]
-			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.node_graph_handler)),
+			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.document_legacy, &mut self.collapsed_folders, &mut self.node_graph_handler)),
 
 			// Messages
 			AbortTransaction => {
@@ -388,7 +384,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				let layer = self.document_legacy.layer(layer_path).expect("Clearing Layer image for invalid layer");
 				let previous_blob_url = match &layer.data {
-					LayerDataType::Layer(layer) => layer.as_blob_url(),
+					LegacyLayerType::Layer(layer) => layer.as_blob_url(),
 					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
 				};
 
@@ -715,7 +711,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				// Revoke the old blob URL
 				match &layer.data {
-					LayerDataType::Layer(layer) => {
+					LegacyLayerType::Layer(layer) => {
 						if let Some(url) = layer.as_blob_url() {
 							responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
 						}
@@ -785,10 +781,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			StartTransaction => self.backup(responses),
 			ToggleLayerExpansion { layer } => {
 				let layer = LayerNodeIdentifier::new(layer, self.network());
-				if self.document_legacy.collapsed_folders.contains(&layer) {
-					self.document_legacy.collapsed_folders.retain(|&collapsed_layer| collapsed_layer != layer);
+				if self.collapsed_folders.contains(&layer) {
+					self.collapsed_folders.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
-					self.document_legacy.collapsed_folders.push(layer);
+					self.collapsed_folders.push(layer);
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -900,6 +896,7 @@ impl DocumentMessageHandler {
 	pub fn network(&self) -> &NodeNetwork {
 		&self.document_legacy.document_network
 	}
+
 	pub fn metadata(&self) -> &document_legacy::document_metadata::DocumentMetadata {
 		&self.document_legacy.metadata
 	}
@@ -1013,7 +1010,7 @@ impl DocumentMessageHandler {
 		for layer_node in folder.children(self.metadata()) {
 			data.push(layer_node.to_node());
 			space += 1;
-			if layer_node.has_children(self.metadata()) && !self.document_legacy.collapsed_folders.contains(&layer_node) {
+			if layer_node.has_children(self.metadata()) && !self.collapsed_folders.contains(&layer_node) {
 				path.push(layer_node.to_node());
 
 				// TODO: Skip if folder is not expanded.

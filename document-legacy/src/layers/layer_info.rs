@@ -1,6 +1,6 @@
-use super::folder_layer::FolderLayer;
-use super::layer_layer::LayerLayer;
-use super::shape_layer::ShapeLayer;
+use super::folder_layer::FolderLegacyLayer;
+use super::layer_layer::LayerLegacyLayer;
+use super::shape_layer::ShapeLegacyLayer;
 use super::style::{PathStyle, RenderData};
 use crate::intersection::Quad;
 use crate::DocumentError;
@@ -17,29 +17,35 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 /// Represents different types of layers.
-pub enum LayerDataType {
-	/// A layer that wraps a [FolderLayer] struct.
-	Folder(FolderLayer),
-	/// A layer that wraps a [ShapeLayer] struct. Still used by the overlays system, but will be removed in the future.
-	Shape(ShapeLayer),
-	/// A layer that wraps an [LayerLayer] struct.
-	Layer(LayerLayer),
+pub enum LegacyLayerType {
+	/// A layer that wraps a [FolderLegacyLayer] struct.
+	Folder(FolderLegacyLayer),
+	/// A layer that wraps a [ShapeLegacyLayer] struct. Still used by the overlays system, but will be removed in the future.
+	Shape(ShapeLegacyLayer),
+	/// A layer that wraps an [LayerLegacyLayer] struct.
+	Layer(LayerLegacyLayer),
 }
 
-impl LayerDataType {
+impl Default for LegacyLayerType {
+	fn default() -> Self {
+		LegacyLayerType::Folder(FolderLegacyLayer::default())
+	}
+}
+
+impl LegacyLayerType {
 	pub fn inner(&self) -> &dyn LayerData {
 		match self {
-			LayerDataType::Shape(shape) => shape,
-			LayerDataType::Folder(folder) => folder,
-			LayerDataType::Layer(layer) => layer,
+			LegacyLayerType::Shape(shape) => shape,
+			LegacyLayerType::Folder(folder) => folder,
+			LegacyLayerType::Layer(layer) => layer,
 		}
 	}
 
 	pub fn inner_mut(&mut self) -> &mut dyn LayerData {
 		match self {
-			LayerDataType::Shape(shape) => shape,
-			LayerDataType::Folder(folder) => folder,
-			LayerDataType::Layer(layer) => layer,
+			LegacyLayerType::Shape(shape) => shape,
+			LegacyLayerType::Folder(folder) => folder,
+			LegacyLayerType::Layer(layer) => layer,
 		}
 	}
 }
@@ -63,9 +69,9 @@ impl fmt::Display for LayerDataTypeDiscriminant {
 	}
 }
 
-impl From<&LayerDataType> for LayerDataTypeDiscriminant {
-	fn from(data: &LayerDataType) -> Self {
-		use LayerDataType::*;
+impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
+	fn from(data: &LegacyLayerType) -> Self {
+		use LegacyLayerType::*;
 
 		match data {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
@@ -77,23 +83,23 @@ impl From<&LayerDataType> for LayerDataTypeDiscriminant {
 
 // ** CONVERSIONS **
 
-impl<'a> TryFrom<&'a mut Layer> for &'a mut Subpath {
+impl<'a> TryFrom<&'a mut LegacyLayer> for &'a mut Subpath {
 	type Error = &'static str;
 	/// Convert a mutable layer into a mutable [Subpath].
-	fn try_from(layer: &'a mut Layer) -> Result<&'a mut Subpath, Self::Error> {
+	fn try_from(layer: &'a mut LegacyLayer) -> Result<&'a mut Subpath, Self::Error> {
 		match &mut layer.data {
-			LayerDataType::Shape(layer) => Ok(&mut layer.shape),
+			LegacyLayerType::Shape(layer) => Ok(&mut layer.shape),
 			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }
 
-impl<'a> TryFrom<&'a Layer> for &'a Subpath {
+impl<'a> TryFrom<&'a LegacyLayer> for &'a Subpath {
 	type Error = &'static str;
 	/// Convert a reference to a layer into a reference of a [Subpath].
-	fn try_from(layer: &'a Layer) -> Result<&'a Subpath, Self::Error> {
+	fn try_from(layer: &'a LegacyLayer) -> Result<&'a Subpath, Self::Error> {
 		match &layer.data {
-			LayerDataType::Shape(layer) => Ok(&layer.shape),
+			LegacyLayerType::Shape(layer) => Ok(&layer.shape),
 			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
@@ -105,12 +111,12 @@ pub trait LayerData {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
 	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use std::collections::HashMap;
 	///
-	/// let mut shape = ShapeLayer::rectangle(PathStyle::new(None, Fill::None));
+	/// let mut shape = ShapeLegacyLayer::rectangle(PathStyle::new(None, Fill::None));
 	/// let mut svg = String::new();
 	///
 	/// // Render the shape without any transforms, in normal view mode
@@ -130,14 +136,14 @@ pub trait LayerData {
 	/// Determine the layers within this layer that intersect a given quad.
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
 	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use graphite_document_legacy::intersection::Quad;
 	/// # use glam::f64::{DAffine2, DVec2};
 	/// # use std::collections::HashMap;
 	///
-	/// let mut shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
+	/// let mut shape = ShapeLegacyLayer::ellipse(PathStyle::new(None, Fill::None));
 	/// let shape_id = 42;
 	/// let mut svg = String::new();
 	///
@@ -156,12 +162,12 @@ pub trait LayerData {
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
 	/// # Example
 	/// ```no_run
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, RenderData};
 	/// # use graphite_document_legacy::layers::layer_info::LayerData;
 	/// # use glam::f64::{DAffine2, DVec2};
 	/// # use std::collections::HashMap;
-	/// let shape = ShapeLayer::ellipse(PathStyle::new(None, Fill::None));
+	/// let shape = ShapeLegacyLayer::ellipse(PathStyle::new(None, Fill::None));
 	///
 	/// // Calculate the bounding box without applying any transformations.
 	/// // (The identity transform maps every vector to itself.)
@@ -175,7 +181,7 @@ pub trait LayerData {
 	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]>;
 }
 
-impl LayerData for LayerDataType {
+impl LayerData for LegacyLayerType {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
 		self.inner_mut().render(svg, svg_defs, transforms, render_data)
 	}
@@ -203,13 +209,13 @@ fn return_true() -> bool {
 }
 
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
-pub struct Layer {
+pub struct LegacyLayer {
 	/// Whether the layer is currently visible or hidden.
 	pub visible: bool,
 	/// The user-given name of the layer.
 	pub name: Option<String>,
 	/// The type of layer, such as folder or shape.
-	pub data: LayerDataType,
+	pub data: LegacyLayerType,
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
@@ -237,8 +243,27 @@ pub struct Layer {
 	pub opacity: f64,
 }
 
-impl Layer {
-	pub fn new(data: LayerDataType, transform: [f64; 6]) -> Self {
+impl Default for LegacyLayer {
+	fn default() -> Self {
+		Self {
+			visible: Default::default(),
+			name: Default::default(),
+			data: Default::default(),
+			transform: Default::default(),
+			preserve_aspect: Default::default(),
+			pivot: Default::default(),
+			thumbnail_cache: Default::default(),
+			cache: Default::default(),
+			svg_defs_cache: Default::default(),
+			cache_dirty: Default::default(),
+			blend_mode: Default::default(),
+			opacity: Default::default(),
+		}
+	}
+}
+
+impl LegacyLayer {
+	pub fn new(data: LegacyLayerType, transform: [f64; 6]) -> Self {
 		Self {
 			visible: true,
 			name: None,
@@ -256,7 +281,7 @@ impl Layer {
 	}
 
 	/// Gets a child layer of this layer, by a path. If the layer with id 1 is inside a folder with id 0, the path will be [0, 1].
-	pub fn child(&self, path: &[LayerId]) -> Option<&Layer> {
+	pub fn child(&self, path: &[LayerId]) -> Option<&LegacyLayer> {
 		let mut layer = self;
 		for id in path {
 			layer = layer.as_folder().ok()?.layer(*id)?;
@@ -265,7 +290,7 @@ impl Layer {
 	}
 
 	/// Gets a child layer of this layer, by a path. If the layer with id 1 is inside a folder with id 0, the path will be [0, 1].
-	pub fn child_mut(&mut self, path: &[LayerId]) -> Option<&mut Layer> {
+	pub fn child_mut(&mut self, path: &[LayerId]) -> Option<&mut LegacyLayer> {
 		let mut layer = self;
 		for id in path {
 			layer = layer.as_folder_mut().ok()?.layer_mut(*id)?;
@@ -275,23 +300,23 @@ impl Layer {
 
 	/// Iterate over the layers encapsulated by this layer.
 	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
-	/// If the [Layer type](Layer::data) wraps a [Folder](LayerDataType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
+	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::layer_info::Layer;
 	/// # use graphite_document_legacy::layers::style::PathStyle;
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
-	/// let mut root_folder = FolderLayer::default();
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
+	/// let mut root_folder = FolderLegacyLayer::default();
 	///
 	/// // Add a shape to the root folder
-	/// let child_1: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	/// let child_1: Layer = ShapeLegacyLayer::rectangle(PathStyle::default()).into();
 	/// root_folder.add_layer(child_1.clone(), None, -1);
 	///
 	/// // Add a folder containing another shape to the root layer
-	/// let mut child_folder = FolderLayer::default();
-	/// let grandchild: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	/// let mut child_folder = FolderLegacyLayer::default();
+	/// let grandchild: Layer = ShapeLegacyLayer::rectangle(PathStyle::default()).into();
 	/// child_folder.add_layer(grandchild.clone(), None, -1);
 	/// let child_2: Layer = child_folder.into();
 	/// root_folder.add_layer(child_2.clone(), None, -1);
@@ -371,14 +396,14 @@ impl Layer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::layer_info::Layer;
 	/// # use graphite_document_legacy::layers::style::{PathStyle, RenderData};
 	/// # use glam::DVec2;
 	/// # use glam::f64::DAffine2;
 	/// # use std::collections::HashMap;
 	/// // Create a rectangle with the default dimensions, from `(0|0)` to `(1|1)`
-	/// let layer: Layer = ShapeLayer::rectangle(PathStyle::default()).into();
+	/// let layer: Layer = ShapeLegacyLayer::rectangle(PathStyle::default()).into();
 	///
 	/// // Apply the Identity transform, which leaves the points unchanged
 	/// let transform = DAffine2::IDENTITY;
@@ -430,79 +455,79 @@ impl Layer {
 	}
 
 	/// Get a mutable reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
-	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLayer, DocumentError> {
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
+	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLegacyLayer, DocumentError> {
 		match &mut self.data {
-			LayerDataType::Folder(f) => Ok(f),
+			LegacyLayerType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotFolder),
 		}
 	}
 
 	pub fn as_vector_data(&self) -> Option<&VectorData> {
 		match &self.data {
-			LayerDataType::Layer(layer) => layer.as_vector_data(),
+			LegacyLayerType::Layer(layer) => layer.as_vector_data(),
 			_ => None,
 		}
 	}
 
 	pub fn as_subpath_mut(&mut self) -> Option<&mut Subpath> {
 		match &mut self.data {
-			LayerDataType::Shape(s) => Some(&mut s.shape),
+			LegacyLayerType::Shape(s) => Some(&mut s.shape),
 			_ => None,
 		}
 	}
 
 	/// Get a reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Folder`.
-	pub fn as_folder(&self) -> Result<&FolderLayer, DocumentError> {
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
+	pub fn as_folder(&self) -> Result<&FolderLegacyLayer, DocumentError> {
 		match &self.data {
-			LayerDataType::Folder(f) => Ok(f),
+			LegacyLayerType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotFolder),
 		}
 	}
 
 	/// Get a mutable reference to the NodeNetwork
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Layer`.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Layer`.
 	pub fn as_layer_network_mut(&mut self) -> Result<&mut graph_craft::document::NodeNetwork, DocumentError> {
 		match &mut self.data {
-			LayerDataType::Layer(layer) => Ok(&mut layer.network),
+			LegacyLayerType::Layer(layer) => Ok(&mut layer.network),
 			_ => Err(DocumentError::NotLayer),
 		}
 	}
 
 	/// Get a reference to the NodeNetwork
-	/// This operation will fail if the [Layer type](Layer::data) is not `LayerDataType::Layer`.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Layer`.
 	pub fn as_layer_network(&self) -> Result<&graph_craft::document::NodeNetwork, DocumentError> {
 		match &self.data {
-			LayerDataType::Layer(layer) => Ok(&layer.network),
+			LegacyLayerType::Layer(layer) => Ok(&layer.network),
 			_ => Err(DocumentError::NotLayer),
 		}
 	}
 
-	pub fn as_layer(&self) -> Result<&LayerLayer, DocumentError> {
+	pub fn as_layer(&self) -> Result<&LayerLegacyLayer, DocumentError> {
 		match &self.data {
-			LayerDataType::Layer(layer) => Ok(layer),
+			LegacyLayerType::Layer(layer) => Ok(layer),
 			_ => Err(DocumentError::NotLayer),
 		}
 	}
 
 	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
 		match &self.data {
-			LayerDataType::Shape(shape) => Ok(&shape.style),
-			LayerDataType::Layer(layer) => layer.as_vector_data().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
+			LegacyLayerType::Shape(shape) => Ok(&shape.style),
+			LegacyLayerType::Layer(layer) => layer.as_vector_data().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
 			_ => Err(DocumentError::NotShape),
 		}
 	}
 
 	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
 		match &mut self.data {
-			LayerDataType::Shape(s) => Ok(&mut s.style),
+			LegacyLayerType::Shape(s) => Ok(&mut s.style),
 			_ => Err(DocumentError::NotShape),
 		}
 	}
 }
 
-impl Clone for Layer {
+impl Clone for LegacyLayer {
 	fn clone(&self) -> Self {
 		Self {
 			visible: self.visible,
@@ -521,20 +546,20 @@ impl Clone for Layer {
 	}
 }
 
-impl From<FolderLayer> for Layer {
-	fn from(from: FolderLayer) -> Layer {
-		Layer::new(LayerDataType::Folder(from), DAffine2::IDENTITY.to_cols_array())
+impl From<FolderLegacyLayer> for LegacyLayer {
+	fn from(from: FolderLegacyLayer) -> LegacyLayer {
+		LegacyLayer::new(LegacyLayerType::Folder(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 
-impl From<ShapeLayer> for Layer {
-	fn from(from: ShapeLayer) -> Layer {
-		Layer::new(LayerDataType::Shape(from), DAffine2::IDENTITY.to_cols_array())
+impl From<ShapeLegacyLayer> for LegacyLayer {
+	fn from(from: ShapeLegacyLayer) -> LegacyLayer {
+		LegacyLayer::new(LegacyLayerType::Shape(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 
-impl<'a> IntoIterator for &'a Layer {
-	type Item = &'a Layer;
+impl<'a> IntoIterator for &'a LegacyLayer {
+	type Item = &'a LegacyLayer;
 	type IntoIter = LayerIter<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -546,16 +571,16 @@ impl<'a> IntoIterator for &'a Layer {
 /// See [Layer::iter] for more information.
 #[derive(Debug, Default)]
 pub struct LayerIter<'a> {
-	pub stack: Vec<&'a Layer>,
+	pub stack: Vec<&'a LegacyLayer>,
 }
 
 impl<'a> Iterator for LayerIter<'a> {
-	type Item = &'a Layer;
+	type Item = &'a LegacyLayer;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.stack.pop() {
 			Some(layer) => {
-				if let LayerDataType::Folder(folder) = &layer.data {
+				if let LegacyLayerType::Folder(folder) = &layer.data {
 					let layers = folder.layers();
 					self.stack.extend(layers);
 				};

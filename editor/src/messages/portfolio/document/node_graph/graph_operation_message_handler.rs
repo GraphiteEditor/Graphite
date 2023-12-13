@@ -571,8 +571,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 }
 
-impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
-	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, (document, node_graph): (&mut Document, &mut NodeGraphMessageHandler)) {
+impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
+	fn process_message(
+		&mut self,
+		message: GraphOperationMessage,
+		responses: &mut VecDeque<Message>,
+		(document, collapsed_folders, node_graph): (&mut Document, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler),
+	) {
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
@@ -652,7 +657,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -705,14 +710,14 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 				}
 
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -726,7 +731,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&[id], document, node_graph, responses) {
@@ -736,7 +741,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
 				modify_inputs.delete_layer(id);
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
@@ -746,7 +751,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 						modify_inputs.delete_layer(layer);
 					}
 				}
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 			}
 		}
 	}
@@ -754,4 +759,9 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut NodeGraphMessage
 	fn actions(&self) -> ActionList {
 		actions!(GraphOperationMessage; )
 	}
+}
+
+pub fn load_network_structure(document: &mut Document, collapsed_folders: &mut Vec<LayerNodeIdentifier>) {
+	document.metadata.load_structure(&document.document_network);
+	collapsed_folders.retain(|&layer| document.metadata.layer_exists(layer));
 }

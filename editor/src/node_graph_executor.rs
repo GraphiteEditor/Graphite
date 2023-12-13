@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, L
 use crate::messages::prelude::*;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::{LayerDataType, LayerDataTypeDiscriminant};
+use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
 use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
@@ -499,7 +499,7 @@ impl NodeGraphExecutor {
 			let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 
 			let layer_layer = match &layer.data {
-				LayerDataType::Layer(layer) => Ok(layer),
+				LegacyLayerType::Layer(layer) => Ok(layer),
 				_ => Err("Invalid layer type".to_string()),
 			}?;
 			layer_layer.network.clone()
@@ -595,7 +595,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentLegacy, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentLegacy, collapsed_folders: &mut Vec<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
 			match response {
@@ -634,7 +634,7 @@ impl NodeGraphExecutor {
 									LayerDataTypeDiscriminant::Layer
 								},
 								layer_metadata: LayerMetadata {
-									expanded: layer.has_children(&document.metadata) && !document.collapsed_folders.contains(&layer),
+									expanded: layer.has_children(&document.metadata) && !collapsed_folders.contains(&layer),
 									selected: document.metadata.selected_layers_contains(layer),
 								},
 								path: vec![node_id],

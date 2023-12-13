@@ -1,4 +1,4 @@
-use crate::layers::layer_info::Layer;
+use crate::layers::layer_info::LegacyLayer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
@@ -48,7 +48,7 @@ pub enum Operation {
 		new_name: String,
 	},
 	InsertLayer {
-		layer: Box<Layer>,
+		layer: Box<LegacyLayer>,
 		destination_path: Vec<LayerId>,
 		insert_index: isize,
 		duplicating: bool,
