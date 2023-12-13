@@ -623,9 +623,6 @@ impl TypingContext {
 			.get(&node.identifier)
 			.ok_or(format!("No implementations found for:\n\n{:?}\n\nOther implementations found:\n\n{:?}", node.identifier, self.lookup))?;
 
-		if matches!(input, Type::Generic(_)) {
-			return Err(format!("Generic types are not supported as inputs yet {:?} occurred in {:?}", input, node.identifier));
-		}
 		if parameters.iter().any(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
@@ -636,8 +633,9 @@ impl TypingContext {
 			match (from, to) {
 				(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
 				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => covariant(a1, a2) && covariant(b1, b2),
-				// TODO: relax this requirement when allowing generic types as inputs
-				(Type::Generic(_), _) => false,
+				// TODO: Add proper generic counting which is not based on the name
+				(Type::Generic(_), Type::Generic(_)) => true,
+				(Type::Generic(_), _) => true,
 				(_, Type::Generic(_)) => true,
 				_ => false,
 			}

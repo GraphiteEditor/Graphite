@@ -4,7 +4,7 @@ import { writable } from "svelte/store";
 
 import { copyToClipboardFileURL } from "@graphite/io-managers/clipboard";
 import { downloadFileText, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { extractPixelData, imageToPNG, rasterizeSVG, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+import { extractPixelData, imageToPNG, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendDocumentDetails,
@@ -15,7 +15,6 @@ import {
 	TriggerDownloadTextFile,
 	TriggerImport,
 	TriggerOpenDocument,
-	TriggerRasterizeRegionBelowLayer,
 	TriggerRevokeBlobUrl,
 	UpdateActiveDocument,
 	UpdateImageData,
@@ -115,23 +114,6 @@ export function createPortfolioState(editor: Editor) {
 
 			editor.instance.setImageBlobURL(updateImageData.documentId, element.path, element.nodeId, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
 		});
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerRasterizeRegionBelowLayer, async (triggerRasterizeRegionBelowLayer) => {
-		const { documentId, layerPath, svg, size } = triggerRasterizeRegionBelowLayer;
-
-		// Rasterize the SVG to an image file
-		try {
-			if (size[0] >= 1 && size[1] >= 1) {
-				const imageData = (await rasterizeSVGCanvas(svg, size[0], size[1])).getContext("2d")?.getImageData(0, 0, size[0], size[1]);
-				if (!imageData) return;
-
-				editor.instance.renderGraphUsingRasterizedRegionBelowLayer(documentId, layerPath, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-		} catch (e) {
-			// getImageData may throw an exception if the resolution is too high
-			// eslint-disable-next-line no-console
-			console.error("Failed to rasterize the SVG canvas in JS to be sent back to Rust:", e);
-		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

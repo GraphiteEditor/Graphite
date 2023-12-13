@@ -447,7 +447,10 @@ impl NodeGraphExecutor {
 		};
 		let introspection_node = find_node(wrapped_network)?;
 		let introspection = self.introspect_node(&[node_path, &[introspection_node]].concat())?;
-		let downcasted: &T = <dyn std::any::Any>::downcast_ref(introspection.as_ref())?;
+		let Some(downcasted): Option<&T> = <dyn std::any::Any>::downcast_ref(introspection.as_ref()) else {
+			log::warn!("Failed to downcast type for introspection");
+			return None;
+		};
 		Some(extract_data(downcasted))
 	}
 

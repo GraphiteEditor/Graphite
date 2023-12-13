@@ -45,7 +45,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IORecord<I, O> {
 	pub input: I,
 	pub output: O,

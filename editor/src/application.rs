@@ -96,12 +96,8 @@ r#"
 			responses.push(res);
 		}
 		let responses = responses.pop().unwrap();
-		let trigger_message = responses[responses.len() - 2].clone();
-		if let FrontendMessage::TriggerRasterizeRegionBelowLayer { size, .. } = trigger_message {
-			assert!(size.x > 0. && size.y > 0.);
-		} else {
-			panic!();
-		}
+		// let trigger_message = responses[responses.len() - 2].clone();
+
 		println!("responses: {responses:#?}");
 	}
 }
