@@ -1,10 +1,12 @@
 pub use self::document_node_types::*;
+use super::load_network_structure;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::GraphIdentifier;
 
 use document_legacy::document::Document;
+use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
@@ -453,15 +455,20 @@ pub struct NodeGraphHandlerData<'a> {
 	pub document: &'a mut Document,
 	pub document_id: u64,
 	pub document_name: &'a str,
+	pub collapsed_folders: &'a mut Vec<LayerNodeIdentifier>,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 }
 
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
-		let document = data.document;
-		let document_id = data.document_id;
-		let graph_view_overlay_open = data.graph_view_overlay_open;
+		let NodeGraphHandlerData {
+			document,
+			document_id,
+			collapsed_folders,
+			graph_view_overlay_open,
+			..
+		} = data;
 		match message {
 			// TODO: automatically remove broadcast messages.
 			NodeGraphMessage::Init => {
@@ -469,7 +476,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
-				document.load_network_structure();
+				load_network_structure(document, collapsed_folders);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
@@ -811,7 +818,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
 						*node_input = input;
 						if structure_changed {
-							document.load_network_structure();
+							load_network_structure(document, collapsed_folders);
 						}
 					}
 				}

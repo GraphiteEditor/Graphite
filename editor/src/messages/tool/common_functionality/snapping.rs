@@ -7,7 +7,7 @@ use crate::consts::{
 use crate::messages::prelude::*;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::Layer;
+use document_legacy::layers::layer_info::LegacyLayer;
 use document_legacy::layers::style::{self, Stroke};
 use document_legacy::{LayerId, Operation};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -262,7 +262,7 @@ impl SnapManager {
 		&mut self,
 		document_message_handler: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
-		layer: &Layer,
+		layer: &LegacyLayer,
 		path: &[LayerId],
 		include_handles: bool,
 		ignore_points: &[ManipulatorPointInfo],

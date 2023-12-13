@@ -1,6 +1,6 @@
 use crate::consts::F64PRECISE;
 use crate::intersection::{intersections, line_curve_intersections, valid_t, Intersect, Origin};
-use crate::layers::shape_layer::ShapeLayer;
+use crate::layers::shape_layer::ShapeLegacyLayer;
 use crate::layers::style::PathStyle;
 
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveExtrema, PathEl, PathSeg, Point, QuadBez, Rect};
@@ -395,7 +395,7 @@ impl PathGraph {
 		cycles
 	}
 
-	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> ShapeLayer {
+	pub fn get_shape(&self, cycle: &Cycle, style: &PathStyle) -> ShapeLegacyLayer {
 		let mut curve = Vec::new();
 		let vertices = cycle.vertices();
 		for index in 1..vertices.len() {
@@ -403,7 +403,7 @@ impl PathGraph {
 			concat_paths(&mut curve, &self.edge(vertices[index - 1].0, vertices[index].0, vertices[index].1).unwrap().curve);
 		}
 		curve.push(PathEl::ClosePath);
-		ShapeLayer::new(BezPath::from_vec(curve).iter().into(), style.clone())
+		ShapeLegacyLayer::new(BezPath::from_vec(curve).iter().into(), style.clone())
 	}
 }
 
@@ -471,7 +471,7 @@ pub fn subdivide_path_seg(p: &PathSeg, t_values: &mut [f64]) -> Vec<Option<PathS
 	sub_segments
 }
 
-pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLayer>>) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Vec<RefCell<ShapeLegacyLayer>>) -> Result<Vec<ShapeLegacyLayer>, BooleanOperationError> {
 	if select == BooleanOperation::SubtractFront {
 		select = BooleanOperation::SubtractBack;
 		let temp_len = shapes.len();
@@ -537,7 +537,7 @@ pub fn composite_boolean_operation(mut select: BooleanOperation, shapes: &mut Ve
 
 // TODO: check if shapes are filled
 // TODO: Bug: shape with at least two subpaths and comprised of many unions sometimes has erroneous movetos embedded in edges
-pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLayer, beta: &mut ShapeLayer) -> Result<Vec<ShapeLayer>, BooleanOperationError> {
+pub fn boolean_operation(mut select: BooleanOperation, alpha: &mut ShapeLegacyLayer, beta: &mut ShapeLegacyLayer) -> Result<Vec<ShapeLegacyLayer>, BooleanOperationError> {
 	if alpha.shape.manipulator_groups().is_empty() || beta.shape.manipulator_groups().is_empty() {
 		return Err(BooleanOperationError::InvalidSelection);
 	}
@@ -685,7 +685,7 @@ pub fn bounding_box(curve: &BezPath) -> Rect {
 		.unwrap()
 }
 
-fn collect_shapes<'a, F, G>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: G) -> Result<Vec<ShapeLayer>, BooleanOperationError>
+fn collect_shapes<'a, F, G>(graph: &PathGraph, cycles: &mut Vec<Cycle>, predicate: F, style: G) -> Result<Vec<ShapeLegacyLayer>, BooleanOperationError>
 where
 	F: Fn(Direction) -> bool,
 	G: Fn(Direction) -> &'a PathStyle,

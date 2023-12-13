@@ -1,11 +1,12 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::intersection::Quad;
-use crate::layers::folder_layer::FolderLayer;
-use crate::layers::layer_info::{Layer, LayerData, LayerDataType, LayerDataTypeDiscriminant};
-use crate::layers::layer_layer::{CachedOutputData, LayerLayer};
-use crate::layers::shape_layer::ShapeLayer;
+use crate::layers::folder_layer::FolderLegacyLayer;
+use crate::layers::layer_info::{LayerData, LayerDataTypeDiscriminant, LegacyLayer, LegacyLayerType};
+use crate::layers::layer_layer::{CachedOutputData, LayerLegacyLayer};
+use crate::layers::shape_layer::ShapeLegacyLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
+
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::transform::Footprint;
@@ -26,16 +27,15 @@ pub type LayerId = u64;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Document {
-	/// The root layer, usually a [FolderLayer](layers::folder_layer::FolderLayer) that contains all other [Layers](layers::layer_info::Layer).
-	pub root: Layer,
+	#[serde(default)]
+	pub document_network: NodeNetwork,
+	/// The root layer, usually a [FolderLegacyLayer](layers::folder_layer::FolderLegacyLayer) that contains all other [LegacyLayers](layers::layer_info::LegacyLayer).
+	#[serde(skip)]
+	pub root: LegacyLayer,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
 	pub state_identifier: DefaultHasher,
-	#[serde(default)]
-	pub document_network: NodeNetwork,
-	#[serde(default)]
-	pub collapsed_folders: Vec<LayerNodeIdentifier>,
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
 }
@@ -49,7 +49,7 @@ impl PartialEq for Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()),
+			root: LegacyLayer::new(LegacyLayerType::Folder(FolderLegacyLayer::default()), DAffine2::IDENTITY.to_cols_array()),
 			state_identifier: DefaultHasher::new(),
 			document_network: {
 				use graph_craft::document::{value::TaggedValue, NodeInput};
@@ -105,7 +105,6 @@ impl Default for Document {
 				network
 			},
 			metadata: Default::default(),
-			collapsed_folders: Vec::new(),
 		}
 	}
 }
@@ -117,11 +116,6 @@ impl Document {
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.metadata.selected_layers().filter(|&layer| self.layer_visible(layer))
-	}
-
-	pub fn load_network_structure(&mut self) {
-		self.metadata.load_structure(&self.document_network);
-		self.collapsed_folders.retain(|&layer| self.metadata.layer_exists(layer));
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad
@@ -181,7 +175,7 @@ impl Document {
 
 		// Note: it is bad practice to directly clone and modify the document structure, this is a temporary hack until this whole system is replaced by the node graph
 		let mut temp_subset_folder = self.layer_mut(parent_folder_path).ok()?.clone();
-		if let LayerDataType::Folder(ref mut folder) = temp_subset_folder.data {
+		if let LegacyLayerType::Folder(ref mut folder) = temp_subset_folder.data {
 			// Remove the upper layers to leave behind the lower subset for rendering
 			let count_of_layers_below = folder.layer_ids.iter().position(|id| id == layer_id_to_render_below).unwrap();
 			folder.layer_ids.truncate(count_of_layers_below);
@@ -235,7 +229,7 @@ impl Document {
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
-	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&FolderLayer, DocumentError> {
+	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&FolderLegacyLayer, DocumentError> {
 		let mut root = &self.root;
 		for id in path.as_ref() {
 			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
@@ -246,7 +240,7 @@ impl Document {
 	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
 	/// or if the requested layer is not of type folder.
 	/// If you manually edit the folder you have to set the cache_dirty flag yourself.
-	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut FolderLayer, DocumentError> {
+	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut FolderLegacyLayer, DocumentError> {
 		let mut root = &mut self.root;
 		for id in path {
 			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
@@ -255,7 +249,7 @@ impl Document {
 	}
 
 	/// Returns a reference to the layer or folder at the path.
-	pub fn layer(&self, path: &[LayerId]) -> Result<&Layer, DocumentError> {
+	pub fn layer(&self, path: &[LayerId]) -> Result<&LegacyLayer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&self.root);
 		}
@@ -264,7 +258,7 @@ impl Document {
 	}
 
 	/// Returns a mutable reference to the layer or folder at the path.
-	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut Layer, DocumentError> {
+	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut LegacyLayer, DocumentError> {
 		if path.is_empty() {
 			return Ok(&mut self.root);
 		}
@@ -290,7 +284,7 @@ impl Document {
 		let common_prefix_of_path = self.common_layer_path_prefix(layers);
 
 		Ok(match self.layer(common_prefix_of_path)?.data {
-			LayerDataType::Folder(_) => common_prefix_of_path,
+			LegacyLayerType::Folder(_) => common_prefix_of_path,
 			_ => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
 		})
 	}
@@ -402,7 +396,7 @@ impl Document {
 	}
 
 	/// Replaces the layer at the specified `path` with `layer`.
-	pub fn set_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<(), DocumentError> {
+	pub fn set_layer(&mut self, path: &[LayerId], layer: LegacyLayer, insert_index: isize) -> Result<(), DocumentError> {
 		let mut folder = self.root.as_folder_mut()?;
 		let mut layer_id = None;
 		if let Ok((path, id)) = split_path(path) {
@@ -419,9 +413,9 @@ impl Document {
 	}
 
 	/// Visit each layer recursively, marks all children as dirty
-	pub fn mark_children_as_dirty(layer: &mut Layer) -> bool {
+	pub fn mark_children_as_dirty(layer: &mut LegacyLayer) -> bool {
 		match layer.data {
-			LayerDataType::Folder(ref mut folder) => {
+			LegacyLayerType::Folder(ref mut folder) => {
 				for sub_layer in folder.layers_mut() {
 					if Document::mark_children_as_dirty(sub_layer) {
 						layer.cache_dirty = true;
@@ -436,7 +430,7 @@ impl Document {
 	/// Adds a new layer to the folder specified by `path`.
 	/// Passing a negative `insert_index` indexes relative to the end.
 	/// -1 is equivalent to adding the layer to the top.
-	pub fn add_layer(&mut self, path: &[LayerId], layer: Layer, insert_index: isize) -> Result<LayerId, DocumentError> {
+	pub fn add_layer(&mut self, path: &[LayerId], layer: LegacyLayer, insert_index: isize) -> Result<LayerId, DocumentError> {
 		let folder = self.folder_mut(path)?;
 		folder.add_layer(layer, None, insert_index).ok_or(DocumentError::IndexOutOfBounds)
 	}
@@ -592,7 +586,7 @@ impl Document {
 
 		let responses = match operation {
 			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::ellipse(style)), transform);
+				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::ellipse(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -608,7 +602,7 @@ impl Document {
 				Some(responses)
 			}
 			Operation::AddRect { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::rectangle(style)), transform);
+				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::rectangle(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -624,7 +618,7 @@ impl Document {
 				Some(responses)
 			}
 			Operation::AddLine { path, insert_index, transform, style } => {
-				let layer = Layer::new(LayerDataType::Shape(ShapeLayer::line(style)), transform);
+				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::line(style)), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -646,7 +640,7 @@ impl Document {
 				transform,
 				network,
 			} => {
-				let layer = Layer::new(LayerDataType::Layer(LayerLayer { network, ..Default::default() }), transform);
+				let layer = LegacyLayer::new(LegacyLayerType::Layer(LayerLegacyLayer { network, ..Default::default() }), transform);
 
 				self.set_layer(&path, layer, insert_index)?;
 
@@ -674,8 +668,8 @@ impl Document {
 				style,
 				subpath,
 			} => {
-				let shape = ShapeLayer::new(subpath, style);
-				self.set_layer(&path, Layer::new(LayerDataType::Shape(shape), transform), insert_index)?;
+				let shape = ShapeLegacyLayer::new(subpath, style);
+				self.set_layer(&path, LegacyLayer::new(LegacyLayerType::Shape(shape), transform), insert_index)?;
 				Some(vec![DocumentChanged, CreatedLayer { path, is_selected: true }])
 			}
 			Operation::AddPolyline {
@@ -686,7 +680,7 @@ impl Document {
 				style,
 			} => {
 				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(&path, Layer::new(LayerDataType::Shape(ShapeLayer::poly_line(points, style)), transform), insert_index)?;
+				self.set_layer(&path, LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::poly_line(points, style)), transform), insert_index)?;
 
 				let mut responses = vec![
 					DocumentChanged,
@@ -700,11 +694,11 @@ impl Document {
 				Some(responses)
 			}
 			Operation::DeleteLayer { path } => {
-				fn aggregate_deletions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
+				fn aggregate_deletions(folder: &FolderLegacyLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
 						responses.push(DocumentResponse::DeletedLayer { path: path.clone() });
-						if let LayerDataType::Folder(f) = &layer.data {
+						if let LegacyLayerType::Folder(f) = &layer.data {
 							aggregate_deletions(f, path, responses);
 						}
 						path.pop();
@@ -753,7 +747,7 @@ impl Document {
 				self.mark_as_dirty(&destination_path)?;
 
 				// Recursively iterate through each layer in a folder and add it to the responses vector
-				fn aggregate_insertions(folder: &FolderLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>, duplicating: bool) {
+				fn aggregate_insertions(folder: &FolderLegacyLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>, duplicating: bool) {
 					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
 						path.push(*id);
 
@@ -761,7 +755,7 @@ impl Document {
 							path: path.clone(),
 							is_selected: !duplicating,
 						});
-						if let LayerDataType::Folder(f) = &layer.data {
+						if let LegacyLayerType::Folder(f) = &layer.data {
 							aggregate_insertions(f, path, responses, duplicating);
 						}
 
@@ -811,7 +805,7 @@ impl Document {
 				let mut indices: Vec<usize> = (0..duplicated_layers.len()).collect();
 				indices.sort_by_key(|&i| duplicated_layers[i].len());
 				duplicated_layers.sort_by_key(|a| a.len());
-				let duplicate_layer_objects_sorted: Vec<&Layer> = indices.iter().map(|&i| &duplicated_layers_objects[i]).collect();
+				let duplicate_layer_objects_sorted: Vec<&LegacyLayer> = indices.iter().map(|&i| &duplicated_layers_objects[i]).collect();
 
 				let folder = self.folder_mut(folder_path)?;
 
@@ -857,7 +851,7 @@ impl Document {
 
 							// Clear the new folder's layer_ids and layers because they contain the layer_ids/layers of the layer were duplicated
 							if self.is_folder(duplicate_layer) {
-								let updated_layer_as_folder: &mut FolderLayer = updated_layer.as_folder_mut()?;
+								let updated_layer_as_folder: &mut FolderLegacyLayer = updated_layer.as_folder_mut()?;
 								updated_layer_as_folder.layer_ids = vec![];
 								updated_layer_as_folder.layers = vec![];
 								updated_layer_as_folder.generate_new_folder_ids()
@@ -898,7 +892,11 @@ impl Document {
 				Some(vec![LayerChanged { path }])
 			}
 			Operation::CreateFolder { path, insert_index } => {
-				self.set_layer(&path, Layer::new(LayerDataType::Folder(FolderLayer::default()), DAffine2::IDENTITY.to_cols_array()), insert_index)?;
+				self.set_layer(
+					&path,
+					LegacyLayer::new(LegacyLayerType::Folder(FolderLegacyLayer::default()), DAffine2::IDENTITY.to_cols_array()),
+					insert_index,
+				)?;
 				self.mark_as_dirty(&path)?;
 
 				let mut responses = vec![
@@ -928,7 +926,7 @@ impl Document {
 			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
 				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{layer_path:?}'"));
 
-				let LayerDataType::Layer(layer) = &mut layer.data else {
+				let LegacyLayerType::Layer(layer) = &mut layer.data else {
 					panic!("Incorrectly trying to set the image blob URL for a layer that is not a 'Layer' layer type");
 				};
 
@@ -940,7 +938,7 @@ impl Document {
 			Operation::ClearBlobURL { path } => {
 				let layer = self.layer_mut(&path).expect("Clearing node graph image for invalid layer");
 				match &mut layer.data {
-					LayerDataType::Layer(layer) => {
+					LegacyLayerType::Layer(layer) => {
 						if matches!(layer.cached_output_data, CachedOutputData::BlobURL(_)) {
 							layer.cached_output_data = CachedOutputData::None;
 						}
@@ -965,25 +963,25 @@ impl Document {
 			Operation::SetShapePath { path, subpath } => {
 				self.mark_as_dirty(&path)?;
 
-				if let LayerDataType::Shape(shape) = &mut self.layer_mut(&path)?.data {
+				if let LegacyLayerType::Shape(shape) = &mut self.layer_mut(&path)?.data {
 					shape.shape = subpath;
 				}
 				Some(vec![DocumentChanged, LayerChanged { path }])
 			}
 			Operation::SetVectorData { path, vector_data } => {
-				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
 					layer.cached_output_data = CachedOutputData::VectorPath(Box::new(vector_data));
 				}
 				Some(Vec::new())
 			}
 			Operation::SetSurface { path, surface_id } => {
-				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
 					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
 				}
 				Some(Vec::new())
 			}
 			Operation::SetSvg { path, svg } => {
-				if let LayerDataType::Layer(layer) = &mut self.layer_mut(&path)?.data {
+				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
 					layer.cached_output_data = CachedOutputData::Svg(svg);
 				}
 				Some(Vec::new())
@@ -1046,7 +1044,7 @@ impl Document {
 			Operation::SetLayerStyle { path, style } => {
 				let layer = self.layer_mut(&path)?;
 				match &mut layer.data {
-					LayerDataType::Shape(s) => s.style = style,
+					LegacyLayerType::Shape(s) => s.style = style,
 					_ => return Err(DocumentError::NotShape),
 				}
 				self.mark_as_dirty(&path)?;
@@ -1083,7 +1081,7 @@ fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
 	responses
 }
 
-pub fn pick_layer_safe_imaginate_resolution(layer: &Layer, render_data: &RenderData) -> (u64, u64) {
+pub fn pick_layer_safe_imaginate_resolution(layer: &LegacyLayer, render_data: &RenderData) -> (u64, u64) {
 	let layer_bounds = layer.bounding_transform(render_data);
 	let layer_bounds_size = (layer_bounds.transform_vector2((1., 0.).into()).length(), layer_bounds.transform_vector2((0., 1.).into()).length());
 

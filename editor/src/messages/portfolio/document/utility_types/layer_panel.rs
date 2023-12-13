@@ -1,4 +1,4 @@
-use document_legacy::layers::layer_info::{Layer, LayerData, LayerDataTypeDiscriminant};
+use document_legacy::layers::layer_info::{LayerData, LayerDataTypeDiscriminant, LegacyLayer};
 use document_legacy::layers::style::RenderData;
 use document_legacy::LayerId;
 
@@ -60,7 +60,7 @@ pub struct LayerPanelEntry {
 impl LayerPanelEntry {
 	// TODO: Deprecate this because it's using document-legacy layer data which is no longer linked to data from the node graph,
 	// TODO: so this doesn't feed `name` (that's fed elsewhere) or `visible` (that's broken entirely), etc.
-	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &Layer, path: Vec<LayerId>, render_data: &RenderData) -> Self {
+	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &LegacyLayer, path: Vec<LayerId>, render_data: &RenderData) -> Self {
 		let name = layer.name.clone().unwrap_or_else(|| String::from(""));
 
 		let mut tooltip = name.clone();

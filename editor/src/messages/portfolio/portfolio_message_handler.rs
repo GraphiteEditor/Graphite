@@ -719,8 +719,10 @@ impl PortfolioMessageHandler {
 			return;
 		};
 
-		self.executor.poll_node_graph_evaluation(&mut active_document.document_legacy, responses).unwrap_or_else(|e| {
-			log::error!("Error while evaluating node graph: {e}");
-		});
+		self.executor
+			.poll_node_graph_evaluation(&mut active_document.document_legacy, &mut active_document.collapsed_folders, responses)
+			.unwrap_or_else(|e| {
+				log::error!("Error while evaluating node graph: {e}");
+			});
 	}
 }

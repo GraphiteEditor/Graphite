@@ -16,7 +16,7 @@ use std::fmt::Write;
 /// [`<g>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g)
 /// group that the transformation matrix is applied to.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
-pub struct ShapeLayer {
+pub struct ShapeLegacyLayer {
 	/// The geometry of the layer.
 	pub shape: Subpath,
 	/// The visual style of the shape.
@@ -25,7 +25,7 @@ pub struct ShapeLayer {
 	pub render_index: i32,
 }
 
-impl LayerData for ShapeLayer {
+impl LayerData for ShapeLegacyLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let mut subpath = self.shape.clone();
 
@@ -76,8 +76,8 @@ impl LayerData for ShapeLayer {
 	}
 }
 
-impl ShapeLayer {
-	/// Construct a new [ShapeLayer] with the specified [Subpath] and [PathStyle]
+impl ShapeLegacyLayer {
+	/// Construct a new [ShapeLegacyLayer] with the specified [Subpath] and [PathStyle]
 	pub fn new(shape: Subpath, style: PathStyle) -> Self {
 		Self { shape, style, render_index: 1 }
 	}

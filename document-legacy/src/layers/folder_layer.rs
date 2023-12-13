@@ -1,4 +1,4 @@
-use super::layer_info::{Layer, LayerData, LayerDataType};
+use super::layer_info::{LayerData, LegacyLayer, LegacyLayerType};
 use super::style::RenderData;
 use crate::intersection::Quad;
 use crate::{DocumentError, LayerId};
@@ -9,19 +9,18 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 
 /// A layer that encapsulates other layers, including potentially more folders.
-/// The contained layers are rendered in the same order they are
-/// stored in the [layers](FolderLayer::layers) field.
+/// The contained layers are rendered in the same order they are stored.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
-pub struct FolderLayer {
+pub struct FolderLegacyLayer {
 	/// The ID that will be assigned to the next layer that is added to the folder
 	next_assignment_id: LayerId,
 	/// The IDs of the [Layer]s contained within the Folder
 	pub layer_ids: Vec<LayerId>,
 	/// The [Layer]s contained in the folder
-	pub layers: Vec<Layer>,
+	pub layers: Vec<LegacyLayer>,
 }
 
-impl LayerData for FolderLayer {
+impl LayerData for FolderLegacyLayer {
 	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
 		let mut any_child_requires_redraw = false;
 		for layer in &mut self.layers {
@@ -48,7 +47,7 @@ impl LayerData for FolderLayer {
 	}
 }
 
-impl FolderLayer {
+impl FolderLegacyLayer {
 	/// When a insertion ID is provided, try to insert the layer with the given ID.
 	/// If that ID is already used, return `None`.
 	/// When no insertion ID is provided, search for the next free ID and insert it with that.
@@ -56,20 +55,20 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
 	/// # use graphite_document_legacy::layers::style::PathStyle;
-	/// # use graphite_document_legacy::layers::layer_info::LayerDataType;
-	/// let mut folder = FolderLayer::default();
+	/// # use graphite_document_legacy::layers::layer_info::LegacyLayerType;
+	/// let mut folder = FolderLegacyLayer::default();
 	///
 	/// // Create two layers to be added to the folder
-	/// let mut shape_layer = ShapeLayer::rectangle(PathStyle::default());
-	/// let mut folder_layer = FolderLayer::default();
+	/// let mut shape_layer = ShapeLegacyLayer::rectangle(PathStyle::default());
+	/// let mut folder_layer = FolderLegacyLayer::default();
 	///
 	/// folder.add_layer(shape_layer.into(), None, -1);
 	/// folder.add_layer(folder_layer.into(), Some(123), 0);
 	/// ```
-	pub fn add_layer(&mut self, layer: Layer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
+	pub fn add_layer(&mut self, layer: LegacyLayer, id: Option<LayerId>, insert_index: isize) -> Option<LayerId> {
 		let mut insert_index = insert_index as i128;
 
 		// Bounds check for the insert index
@@ -104,14 +103,14 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
-	/// let mut folder = FolderLayer::default();
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
+	/// let mut folder = FolderLegacyLayer::default();
 	///
 	/// // Try to remove a layer that does not exist
 	/// assert!(folder.remove_layer(123).is_err());
 	///
 	/// // Add another folder to the folder
-	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	/// folder.add_layer(FolderLegacyLayer::default().into(), Some(123), -1);
 	///
 	/// // Try to remove that folder again
 	/// assert!(folder.remove_layer(123).is_ok());
@@ -130,21 +129,21 @@ impl FolderLayer {
 	}
 
 	/// Get references to all the [Layer]s in the folder.
-	pub fn layers(&self) -> &[Layer] {
+	pub fn layers(&self) -> &[LegacyLayer] {
 		self.layers.as_slice()
 	}
 
 	/// Get mutable references to all the [Layer]s in the folder.
-	pub fn layers_mut(&mut self) -> &mut [Layer] {
+	pub fn layers_mut(&mut self) -> &mut [LegacyLayer] {
 		self.layers.as_mut_slice()
 	}
 
-	pub fn layer(&self, id: LayerId) -> Option<&Layer> {
+	pub fn layer(&self, id: LayerId) -> Option<&LegacyLayer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&self.layers[pos])
 	}
 
-	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut Layer> {
+	pub fn layer_mut(&mut self, id: LayerId) -> Option<&mut LegacyLayer> {
 		let pos = self.position_of_layer(id).ok()?;
 		Some(&mut self.layers[pos])
 	}
@@ -157,14 +156,14 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
-	/// let mut folder = FolderLayer::default();
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
+	/// let mut folder = FolderLegacyLayer::default();
 	///
 	/// // Search for an id that does not exist
 	/// assert!(!folder.folder_contains(123));
 	///
 	/// // Add layer with the id "123" to the folder
-	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	/// folder.add_layer(FolderLegacyLayer::default().into(), Some(123), -1);
 	///
 	/// // Search for the id "123"
 	/// assert!(folder.folder_contains(123));
@@ -178,15 +177,15 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
-	/// let mut folder = FolderLayer::default();
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
+	/// let mut folder = FolderLegacyLayer::default();
 	///
 	/// // Search for an id that does not exist
 	/// assert!(folder.position_of_layer(123).is_err());
 	///
 	/// // Add layer with the id "123" to the folder
-	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
-	/// folder.add_layer(FolderLayer::default().into(), Some(42), -1);
+	/// folder.add_layer(FolderLegacyLayer::default().into(), Some(123), -1);
+	/// folder.add_layer(FolderLegacyLayer::default().into(), Some(42), -1);
 	///
 	/// assert_eq!(folder.position_of_layer(123), Ok(0));
 	/// assert_eq!(folder.position_of_layer(42), Ok(1));
@@ -201,26 +200,27 @@ impl FolderLayer {
 	///
 	/// # Example
 	/// ```
-	/// # use graphite_document_legacy::layers::folder_layer::FolderLayer;
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLayer;
+	/// # use graphite_document_legacy::layers::folder_layer::FolderLegacyLayer;
+	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
 	/// # use graphite_document_legacy::layers::style::PathStyle;
-	/// let mut folder = FolderLayer::default();
+	/// let mut folder = FolderLegacyLayer::default();
 	///
 	/// // Search for an id that does not exist
 	/// assert!(folder.folder(132).is_none());
 	///
 	/// // add a folder and search for it
-	/// folder.add_layer(FolderLayer::default().into(), Some(123), -1);
+	/// folder.add_layer(FolderLegacyLayer::default().into(), Some(123), -1);
 	/// assert!(folder.folder(123).is_some());
 	///
 	/// // add a non-folder layer and search for it
-	/// folder.add_layer(ShapeLayer::rectangle(PathStyle::default()).into(), Some(42), -1);
+	/// folder.add_layer(ShapeLegacyLayer::rectangle(PathStyle::default()).into(), Some(42), -1);
 	/// assert!(folder.folder(42).is_none());
 	/// ```
-	pub fn folder(&self, id: LayerId) -> Option<&FolderLayer> {
+	pub fn folder(&self, id: LayerId) -> Option<&FolderLegacyLayer> {
 		match self.layer(id) {
-			Some(Layer {
-				data: LayerDataType::Folder(folder), ..
+			Some(LegacyLayer {
+				data: LegacyLayerType::Folder(folder),
+				..
 			}) => Some(folder),
 			_ => None,
 		}
@@ -229,11 +229,12 @@ impl FolderLayer {
 	/// Tries to get a mutable reference to folder with the given `id`.
 	/// This operation will return `None` if either no layer with `id` exists
 	/// in the folder or the layer with matching ID is not a folder.
-	/// See the [FolderLayer::folder] method for a usage example.
-	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLayer> {
+	/// See the [FolderLegacyLayer::folder] method for a usage example.
+	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLegacyLayer> {
 		match self.layer_mut(id) {
-			Some(Layer {
-				data: LayerDataType::Folder(folder), ..
+			Some(LegacyLayer {
+				data: LegacyLayerType::Folder(folder),
+				..
 			}) => Some(folder),
 			_ => None,
 		}

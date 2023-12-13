@@ -7,7 +7,7 @@ use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document;
-use document_legacy::layers::layer_info::{Layer, LayerDataType};
+use document_legacy::layers::layer_info::{LegacyLayer, LegacyLayerType};
 use document_legacy::layers::style::{Fill, Gradient, GradientType, LineCap, LineJoin, RenderData, Stroke, ViewMode};
 use graphene_core::raster::color::Color;
 
@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value: f64, render_data: &RenderData) -> [f64; 6] {
+pub fn apply_transform_operation(layer: &LegacyLayer, transform_op: TransformOp, value: f64, render_data: &RenderData) -> [f64; 6] {
 	let transformation = match transform_op {
 		TransformOp::X => DAffine2::update_x,
 		TransformOp::Y => DAffine2::update_y,
@@ -67,7 +67,7 @@ pub fn apply_transform_operation(layer: &Layer, transform_op: TransformOp, value
 pub fn register_artwork_layer_properties(
 	document: &Document,
 	layer_path: Vec<document_legacy::LayerId>,
-	layer: &Layer,
+	layer: &LegacyLayer,
 	responses: &mut VecDeque<Message>,
 	persistent_data: &PersistentData,
 	node_graph_message_handler: &NodeGraphMessageHandler,
@@ -76,9 +76,9 @@ pub fn register_artwork_layer_properties(
 	let options_bar = vec![LayoutGroup::Row {
 		widgets: vec![
 			match &layer.data {
-				LayerDataType::Folder(_) => IconLabel::new("Folder").tooltip("Folder").widget_holder(),
-				LayerDataType::Shape(_) => IconLabel::new("NodeShape").tooltip("Shape").widget_holder(),
-				LayerDataType::Layer(_) => IconLabel::new("Layer").tooltip("Layer").widget_holder(),
+				LegacyLayerType::Folder(_) => IconLabel::new("Folder").tooltip("Folder").widget_holder(),
+				LegacyLayerType::Shape(_) => IconLabel::new("NodeShape").tooltip("Shape").widget_holder(),
+				LegacyLayerType::Layer(_) => IconLabel::new("Layer").tooltip("Layer").widget_holder(),
 			},
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()))
@@ -90,7 +90,7 @@ pub fn register_artwork_layer_properties(
 	}];
 
 	let properties_body = match &layer.data {
-		LayerDataType::Shape(shape) => {
+		LegacyLayerType::Shape(shape) => {
 			if let Some(fill_layout) = node_section_fill(shape.style.fill()) {
 				vec![
 					node_section_transform(layer, persistent_data),
@@ -101,7 +101,7 @@ pub fn register_artwork_layer_properties(
 				vec![node_section_transform(layer, persistent_data), node_section_stroke(&shape.style.stroke().unwrap_or_default())]
 			}
 		}
-		LayerDataType::Layer(layer) => {
+		LegacyLayerType::Layer(layer) => {
 			let mut context = NodePropertiesContext {
 				persistent_data,
 				document,
@@ -115,7 +115,7 @@ pub fn register_artwork_layer_properties(
 
 			properties_sections
 		}
-		LayerDataType::Folder(_) => {
+		LegacyLayerType::Folder(_) => {
 			vec![node_section_transform(layer, persistent_data)]
 		}
 	};
@@ -155,7 +155,7 @@ pub fn register_document_graph_properties(mut context: NodePropertiesContext, no
 	});
 }
 
-fn node_section_transform(layer: &Layer, persistent_data: &PersistentData) -> LayoutGroup {
+fn node_section_transform(layer: &LegacyLayer, persistent_data: &PersistentData) -> LayoutGroup {
 	let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::default(), None);
 	let pivot = layer.transform.transform_vector2(layer.layerspace_pivot(&render_data));
 	LayoutGroup::Section {
