@@ -13,9 +13,13 @@ js = ["/fundraising.js"]
 
 **Safeguard the sustainable, independent future of Graphite.**
 
-Your monthly support (or one-off contribution) will help provide the resources needed to grow Graphite into the ultimate 2D creative tool.
+Your monthly support (or one-off contribution) helps provide the resources needed to grow Graphite into the ultimate 2D creative tool.
 
 <a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">&hearts; Give now</a>
+
+<br />
+
+(Additionally, boosting the [Graphite Discord server](https://discord.graphite.rs) is helpful if you already have spare Nitro boosts!)
 
 </div>
 </section>

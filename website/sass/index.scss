@@ -105,7 +105,7 @@
 //
 // ▛ COMMUNITY ▜
 #community {
-	background-color: var(--color-lime);
+	background-color: var(--color-mustard);
 
 	#newsletter {
 		#newsletter-success {
@@ -253,6 +253,32 @@
 }
 // ▙ COMMUNITY ▟
 
+// ▛ PROCEDURALISM ▜
+#proceduralism .section {
+	align-items: center;
+}
+// ▙ PROCEDURALISM ▟
+
+// ▛ DISCIPLINES ▜
+#disciplines .section {
+	align-items: center;
+
+	.informational-group .informational {
+		margin-top: 40px;
+	}
+}
+// ▙ DISCIPLINES ▟
+
+// ▛ FUNDRAISING ▜
+#fundraising {
+	background-color: var(--color-cove);
+
+	.graphic {
+		max-width: 400px;
+	}
+}
+// ▙ FUNDRAISING ▟
+
 // ▛ VECTOR ART ▜
 #vector-art {
 	.section {
@@ -353,33 +379,6 @@
 }
 // ▙ IMAGINATE ▟
 
-// ▛ FUNDRAISING ▜
-#fundraising {
-	background-color: var(--color-seaside);
-	color: rgba(0, 0, 0, 0.9);
-
-	.graphic {
-		max-width: 400px;
-	}
-}
-// ▙ FUNDRAISING ▟
-
-// ▛ PROCEDURALISM ▜
-#proceduralism .section {
-	align-items: center;
-}
-// ▙ PROCEDURALISM ▟
-
-// ▛ DISCIPLINES ▜
-#disciplines .section {
-	align-items: center;
-
-	.informational-group .informational {
-		margin-top: 40px;
-	}
-}
-// ▙ DISCIPLINES ▟
-
 // ▛ DEMO VIDEO ▜
 #demo-video {
 	max-width: 1000px;
@@ -388,7 +387,10 @@
 
 // ▛ GET INVOLVED ▜
 #get-involved-box {
-	background-color: var(--color-lemon);
-	background-blend-mode: color-burn;
+	background-color: var(--color-sage);
+
+	.graphic img {
+		mix-blend-mode: hard-light;
+	}
 }
 // ▙ GET INVOLVED ▟

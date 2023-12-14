@@ -8,14 +8,14 @@
 	// Web: save on format
 	"[javascript][typescript][svelte]": {
 		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
+			"source.fixAll.eslint": "explicit"
 		},
 		"editor.formatOnSave": true,
 		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
 	},
 	"[scss]": {
 		"editor.codeActionsOnSave": {
-			"source.fixAll.eslint": true
+			"source.fixAll.eslint": "explicit"
 		},
 		"editor.formatOnSave": true,
 		// Configured in `.prettierrc`

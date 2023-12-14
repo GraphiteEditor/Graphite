@@ -10,7 +10,7 @@ css = ["/features.css"]
 
 # Graphite features
 
-The current version of Graphite provides tools for vector art and graphic design conforming to the ubiquitous SVG format. It also supports some experimental, rudimentary raster editing that is improving rapidly. This page covers where the project is at and where it's heading next.
+The current alpha version of Graphite provides tools for vector art and graphic design conforming to the ubiquitous SVG format. It also supports some experimental, rudimentary raster editing that is evolving with each release. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—non-destructive editing and procedural design workflow which is unique for a vector editor. This page explains where the project is at and where it's heading next.
 
 </div>
 </section>
@@ -21,7 +21,7 @@ The current version of Graphite provides tools for vector art and graphic design
 
 <div class="section">
 
-## Layers & nodes: hybrid compositing<br /><span style="white-space: nowrap; background: var(--color-flamingo); color: white; font-size: 0.5em; padding: 0.2em 0.4em">work-in-progress</span>
+## Layers & nodes: hybrid compositing
 
 Graphite combines the best ideas from multiple categories of digital content creation software to redefine the workflows of 2D graphics editing. It is influenced by the core editing experience of traditional layer-based raster and vector apps, the nondestructive approaches of VFX compositing programs used by film studios, and the boundless creative possibilities of procedural production tools daily-driven by the 3D industry.
 
@@ -32,7 +32,7 @@ The hybrid workflow of Graphite offers a classic tool-centric, layer-based editi
 </div>
 <div class="section">
 
-## Raster & vector: sharp at all sizes<br /><span style="white-space: nowrap; background: var(--color-flamingo); color: white; font-size: 0.5em; padding: 0.2em 0.4em">work-in-progress</span>
+## Raster & vector: sharp at all sizes <span class="status-flag">not fully implemented yet</span>
 
 Digital 2D art commonly takes two forms. Raster artwork is made out of pixels which means it can look like anything imaginable, but it becomes blurry or pixelated when upscaling to a higher resolution. Vector artwork is made out of curved shapes which is perfect for some art styles but limiting to others. The magic of vector is that its mathematically-described curves can be enlarged to any size and remain crisp.
 
@@ -84,7 +84,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 <div class="roadmap">
 	<div class="informational-group features">
 		<!-- Pre-Alpha -->
-		<div class="informational complete heading" title="Development Complete">
+		<div class="informational complete heading" title="Began February 2021" data-year="2021">
 			<h3>— Pre-Alpha —</h3>
 		</div>
 		<div class="informational complete" title="Development Complete">
@@ -92,7 +92,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Editor systems; basic vector art tools</span>
 		</div>
 		<!-- Alpha Milestone 1 -->
-		<div class="informational complete heading" title="Development Complete">
+		<div class="informational complete heading" title="Began February 2022" data-year="2022">
 			<h3>— Alpha Milestone 1 —</h3>
 		</div>
 		<div class="informational complete" title="Development Complete">
@@ -100,7 +100,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Better tools; node graph prototyping</span>
 		</div>
 		<!-- Alpha Milestone 2 -->
-		<div class="informational ongoing heading" title="Development Ongoing">
+		<div class="informational ongoing heading" title="Began February 2023" data-year="2023">
 			<h3>— Alpha Milestone 2 —</h3>
 		</div>
 		<div class="informational complete" title="Development Complete">
@@ -128,12 +128,20 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>New viewport overlays system</span>
 		</div>
 		<div class="informational">
+			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Snapping between layers</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Desktop app with built-in AI models</span>
 		</div>
 		<!-- Alpha Milestone 3 -->
-		<div class="informational heading">
+		<div class="informational heading" title="Expected to begin February 2024" data-year="2024">
 			<h3>— Alpha Milestone 3 —</h3>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Rust-based vector renderer</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 22" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -142,10 +150,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Custom subgraph nodes</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Outliner panel: node graph tree view</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -160,24 +164,20 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Imported SVG file editing</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Rust-based vector renderer</span>
-		</div>
-		<div class="informational">
 			<img class="atlas" style="--atlas-index: 42" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Timeline and renderer for animation</span>
 		</div>
 		<!-- Alpha Milestone 4 -->
-		<div class="informational heading">
+		<div class="informational heading" title="Expected to begin February 2025" data-year="2025">
 			<h3>— Alpha Milestone 4 —</h3>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Outliner panel: node graph tree view</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 20" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Imported RAW photo processing</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Grid system and improved snapping</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 29" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />

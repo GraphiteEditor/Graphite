@@ -66,19 +66,19 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
@@ -103,10 +103,10 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress node graph raster editing pipeline. Some UI concepts and raster nodes shown here are not implemented yet.
+				Design mockup for the work-in-progress raster editing pipeline. Some nodes shown here are not implemented yet, but will be soon!
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress viewport raster editing workflow. Some features shown here are not implemented yet.
+				Design mockup for the work-in-progress raster editing workflow. Some viewport features shown here are not implemented yet, but will be soon!
 			</p>
 		</div>
 	</div>
@@ -125,11 +125,11 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 <div class="informational-group features">
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Vector editing</span>
+		<span>Vector graphics editing</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Node graph image effects</span>
+		<span>Node-based layers</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
@@ -141,7 +141,7 @@ js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
 	</div>
 </div>
 
-Graphite is a lightweight vector graphics editor that runs in your browser. Its node-based compositor lets you apply image effects and co-create art with generative AI.
+Graphite is a lightweight vector graphics editor that runs offline in your browser (no sign up required) and offers the unique feature of a node-driven procedural vector workflow.
 
 </div>
 <div class="section">
@@ -249,165 +249,13 @@ You'll receive your first newsletter email with the next major Graphite news.
 </section>
 <!-- ▙ COMMUNITY ▟ -->
 <!--                 -->
-<!-- ▛ VECTOR ART ▜ -->
-<section id="vector-art">
-<div class="section">
-
-# Art takes shape
-
-Make vector art out of shapes ranging from simple geometric primitives to complex Bézier curves.
-
-Style your shapes with strokes, fills, and gradients. Mix your layers with blend modes. Then export as SVG.
-
-<div class="video-background">
-	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
-		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
-	</video>
-</div>
-<div class="demo-artwork">
-	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
-		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
-	</a>
-	<p>
-		<span class="balance-text">
-			<em>Just a Potted Cactus</em>
-		</span>
-		<br />
-		<span class="balance-text">
-			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to explore it yourself.
-		</span>
-	</p>
-</div>
-
-</div>
-</section>
-<!-- ▙ VECTOR ART ▟ -->
-<!--                 -->
-<!-- ▛ IMAGINATE ▜ -->
-<section id="imaginate">
-
-<div class="section">
-
-<h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
-
-**Imaginate** is a node powered by <a href="https://en.wikipedia.org/wiki/Stable_Diffusion" target="_blank">Stable Diffusion</a> that makes AI-assisted art creation an easy, nondestructive process.
-<!-- [Learn how](/learn/node-graph/imaginate) it works. -->
-
-</div>
-<div class="diptych">
-
-<div class="section">
-
-<h2 class="balance-text">Make it stylish</h2>
-
-**Magically reimagine your vector drawings** in a fresh new style. Just place an Imaginate frame over your layers and describe how it should end up looking.
-
-<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
-	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector illustration of a light bulb" />
-	</div>
-	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/light-bulb-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Watercolor painting of a light bulb" />
-	</div>
-	<div class="slide-bar">
-		<div class="arrows">
-			<div></div>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-		</div>
-	</div>
-</div>
-
-<blockquote class="balance-text require-polyfill"><strong>Watercolor painting</strong> of a light bulb gleaming with an exclamation mark inside</blockquote>
-
-</div>
-<div class="section">
-
-## Work fast, be sloppy
-
-**Doodle a rough draft** without stressing over the details. Let Imaginate add the finishing touches to your artistic vision. Iterate with more passes until you're happy.
-
-<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
-	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
-	</div>
-	<div class="crop-container">
-		<img src="https://static.graphite.rs/content/index/california-poppies-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
-	</div>
-	<div class="slide-bar">
-		<div class="arrows">
-			<div></div>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-		</div>
-	</div>
-</div>
-
-<blockquote class="balance-text require-polyfill"><strong>Botanical illustration</strong> of California poppies wrapped around a circle</blockquote>
-
-</div>
-
-</div>
-
-</section>
-<!-- ▙ IMAGINATE ▟ -->
-<!--                 -->
-<!-- ▛ FUNDRAISING ▜ -->
-<section id="fundraising" class="feature-box">
-<div class="box">
-<div>
-
-<div class="section">
-
-# Support the mission
-
-<p class="balance-text">
-You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
-Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
-</p>
-
-<!-- ### Summer 2023 fundraising goal:
-
-<div class="fundraising loading" data-fundraising>
-	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
-		<div class="fundraising-bar-progress"></div>
-	</div>
-	<div class="goal-metrics">
-		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
-		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
-	</div>
-</div>
-
-[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration. -->
-
-<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
-
-</div>
-
-<!-- <div class="graphic">
-	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
-</div> -->
-
-</div>
-</div>
-</section>
-<!-- ▙ FUNDRAISING ▟ -->
-<!--                   -->
 <!-- ▛ PROCEDURALISM ▜ -->
 <section id="proceduralism">
 <div class="section">
 
 # Powerful proceduralism
 
-The data-driven approach to design affords unique capabilities that are presently in-development.
+Graphite's data-driven approach to graphic design affords some unique capabilities (while in alpha, these remain a work in progress):
 
 <div class="informational-group features four-wide">
 	<div class="informational">
@@ -471,13 +319,173 @@ Stop jumping between programs. Planned features will make Graphite a first-class
 </section>
 <!-- ▙ DISCIPLINES ▟ -->
 <!--                  -->
-<!-- ▛ DEMO VIDEO ▜ -->
-<section id="demo-video">
-	<div class="section">
-		<div class="video-embed aspect-16x9">
-			<img data-video-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
+<!-- ▛ FUNDRAISING ▜ -->
+<section id="fundraising" class="feature-box">
+<div class="box">
+<div>
+
+<div class="section">
+
+# Support the mission
+
+<p class="balance-text">
+You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
+Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
+</p>
+
+<!-- ### Summer 2023 fundraising goal:
+
+<div class="fundraising loading" data-fundraising>
+	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
+		<div class="fundraising-bar-progress"></div>
+	</div>
+	<div class="goal-metrics">
+		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
+		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
+	</div>
+</div>
+
+[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration. -->
+
+<a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
+
+</div>
+
+<!-- <div class="graphic">
+	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
+</div> -->
+
+</div>
+</div>
+</section>
+<!-- ▙ FUNDRAISING ▟ -->
+<!--                 -->
+<!-- ▛ VECTOR ART ▜ -->
+<section id="vector-art">
+<div class="section">
+
+# Art takes shape
+
+Make vector art out of shapes ranging from simple geometric primitives to complex Bézier curves.
+
+Style your shapes with strokes, fills, and gradients. Mix your layers with blend modes. Then export as SVG.
+
+<div class="video-background">
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
+	</video>
+</div>
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">
+		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
+	</a>
+	<p>
+		<span class="balance-text">
+			<em>Just a Potted Cactus</em>
+		</span>
+		<br />
+		<span class="balance-text">
+			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to explore it yourself.
+		</span>
+	</p>
+</div>
+
+</div>
+</section>
+<!-- ▙ VECTOR ART ▟ -->
+<!--                   -->
+<!-- ▛ IMAGINATE ▜ -->
+<section id="imaginate">
+
+<div class="section">
+
+<h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
+
+**Imaginate** is a node powered by <a href="https://en.wikipedia.org/wiki/Stable_Diffusion" target="_blank">Stable Diffusion</a> that makes AI-assisted art creation an easy, nondestructive process.
+<!-- [Learn how](/learn/node-graph/imaginate) it works. -->
+
+</div>
+<div class="diptych">
+
+<div class="section">
+
+<h2 class="balance-text">Add a touch of style</h2>
+
+**Magically reimagine your vector drawings** in a fresh new style. Just place an Imaginate node between your layers and describe how it should end up looking.
+
+<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
+	<div class="crop-container">
+		<img src="https://static.graphite.rs/content/index/light-bulb-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector illustration of a light bulb" />
+	</div>
+	<div class="crop-container">
+		<img src="https://static.graphite.rs/content/index/light-bulb-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Watercolor painting of a light bulb" />
+	</div>
+	<div class="slide-bar">
+		<div class="arrows">
+			<div></div>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
+				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
+			</svg>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
+				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
+			</svg>
 		</div>
 	</div>
+</div>
+
+<blockquote class="balance-text require-polyfill"><strong>Watercolor painting</strong> of a light bulb gleaming with an exclamation mark inside</blockquote>
+
+</div>
+<div class="section">
+
+## Work fast and sloppy
+
+**Doodle a rough draft** without stressing over the details. Let Imaginate add the finishing touches to your artistic vision. Iterate with more passes until you're happy.
+
+<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
+	<div class="crop-container">
+		<img src="https://static.graphite.rs/content/index/california-poppies-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
+	</div>
+	<div class="crop-container">
+		<img src="https://static.graphite.rs/content/index/california-poppies-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
+	</div>
+	<div class="slide-bar">
+		<div class="arrows">
+			<div></div>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
+				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
+			</svg>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
+				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
+			</svg>
+		</div>
+	</div>
+</div>
+
+<blockquote class="balance-text require-polyfill"><strong>Botanical illustration</strong> of California poppies wrapped around a circle</blockquote>
+
+</div>
+
+</div>
+
+</section>
+<!-- ▙ IMAGINATE ▟ -->
+<!--                 -->
+<!-- ▛ DEMO VIDEO ▜ -->
+<section id="demo-video">
+
+<div class="section">
+
+Watch this timelapse showing the process of mixing traditional vector art (tracing a physical sketch and colorizing it, first two minutes) with using Imaginate to generate a background (last 45 seconds).
+
+<div class="video-embed aspect-16x9">
+	<img data-video-embed="JgJvAHQLnXA" src="https://static.graphite.rs/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
+</div>
+
+(Recorded in an older version of Graphite from early 2023.)
+
+</div>
+
 </section>
 <!-- ▙ DEMO VIDEO ▟ -->
 <!--                   -->
@@ -490,7 +498,7 @@ Stop jumping between programs. Planned features will make Graphite a first-class
 
 # Get involved
 
-<p class="balance-text">The Graphite project could not exist without its community. Building its ambitious and versatile feature set will require contributions from developers, designers, technical experts, creative professionals, and eagle-eyed bug hunters. Help build the future of digital art.</p>
+<p class="balance-text">The Graphite project could not exist without its community. Building its ambitious and versatile feature set will require contributions from artists, designers, developers, technical experts, and eagle-eyed bug hunters. Help build the future of digital art.</p>
 
 <a href="/volunteer" class="button arrow">Volunteer</a>
 
