@@ -5,7 +5,7 @@ page_template = "book.html"
 
 [extra]
 order = 2 # Chapter number
-js = ["/video-embed.js"]
+js = ["video-embed.js"]
 +++
 
 <div class="video-embed aspect-16x9">

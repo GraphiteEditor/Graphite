@@ -340,9 +340,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 				true,
 				MenuBarEntryChildren(vec![
 					vec![MenuBarEntry {
-						label: "About Graphite".into(),
+						label: "About Graphite…".into(),
 						icon: Some("GraphiteLogo".into()),
 						action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
+						..MenuBarEntry::default()
+					}],
+					vec![MenuBarEntry {
+						label: "User Manual".into(),
+						action: MenuBarEntry::create_action(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://graphite.rs/learn/".into(),
+							}
+							.into()
+						}),
 						..MenuBarEntry::default()
 					}],
 					vec![

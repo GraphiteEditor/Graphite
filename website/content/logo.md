@@ -2,13 +2,15 @@
 title = "Graphite logo"
 
 [extra]
-css = ["/logo.css"]
+css = ["logo.css"]
 +++
 
 <section class="reading-material">
 <div class="section">
 
 # Graphite logo
+
+<article>
 
 Graphite's logo is represented by the end of a pencil protruding from a hexagon and drawing a sketch mark.
 
@@ -32,6 +34,8 @@ If in doubt, please <a href="/contact">get in touch</a> by email to request clar
 ## Download
 
 Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-kit.zip) or a specific version in PNG or SVG format below.
+
+</article>
 
 </div>
 </section>

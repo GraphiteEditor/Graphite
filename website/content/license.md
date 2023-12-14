@@ -7,6 +7,8 @@ title = "Graphite license"
 
 # Graphite license
 
+<article>
+
 Graphite is open source software built by the community. The application is free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
 
 The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is provided under the Apache 2.0 license posted below, unless otherwise noted within the repository.
@@ -191,6 +193,8 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 	of your accepting any such warranty or additional liability.
 
 END OF TERMS AND CONDITIONS
+
+</article>
 
 </div>
 </section>

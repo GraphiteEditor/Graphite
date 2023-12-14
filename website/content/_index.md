@@ -3,8 +3,8 @@ title = "Web-based vector graphics editor and design tool"
 template = "section.html"
 
 [extra]
-css = ["/index.css"]
-js = ["/image-interaction.js", "/fundraising.js", "/video-embed.js"]
+css = ["index.css"]
+js = ["image-interaction.js", "video-embed.js"]
 +++
 
 <!-- ▛ LOGO ▜ -->
@@ -333,7 +333,9 @@ You can help realize Graphite's ambitious vision of building the ultimate 2D cre
 Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
 </p>
 
-<!-- ### Summer 2023 fundraising goal:
+<!-- [Re-include the import for `"fundraising.js"` when re-enabling this.]
+
+### Summer 2023 fundraising goal:
 
 <div class="fundraising loading" data-fundraising>
 	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
