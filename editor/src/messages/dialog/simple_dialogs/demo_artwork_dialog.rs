@@ -6,8 +6,8 @@ pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
 const ARTWORK: [(&str, &str, &str); 2] = [
-	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires-v2.graphite"),
-	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus-v2.graphite"),
+	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
+	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {

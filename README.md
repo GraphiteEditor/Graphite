@@ -18,7 +18,7 @@ Launch the latest alpha release of the [Graphite editor](https://editor.graphite
 
 ⭐ Please remember to star this project here on GitHub! ⭐
 
-[![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires__2.png)](https://editor.graphite.rs/#demo/valley-of-spires)
+[![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.png)](https://editor.graphite.rs/#demo/valley-of-spires)
 
 *[Click here](https://editor.graphite.rs/#demo/valley-of-spires) to open this artwork and explore it yourself.*
 

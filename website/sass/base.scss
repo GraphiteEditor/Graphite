@@ -12,11 +12,11 @@
 	--color-lemon: #efe2b2;
 	--color-ale: #cd8f7a;
 	--color-flamingo: #d2697c;
-	--color-seaside: #a5d5c8;
-	--color-cove: #60b3ae;
+	--color-seaside: #b0d6cb;
+	--color-seaside-rgb: 176, 214, 203;
+	--color-cove: #83c0b9;
 	--color-storm: #627088;
-	--color-sage: #739c7e;
-	--color-seaside-rgb: 165, 213, 200;
+	--color-sage: #91b99a;
 
 	--font-size-intro-heading: calc(var(--font-size-heading-h1) * 1.25);
 	--font-size-intro-body: 22px;
@@ -841,8 +841,8 @@ hr,
 
 	@media screen and (max-width: 1000px) {
 		&.feature-box.feature-box {
-			margin-left: -40px;
-			margin-right: -40px;
+			margin-left: calc(-1 * var(--page-edge-padding));
+			margin-right: calc(-1 * var(--page-edge-padding));
 		}
 	}
 
