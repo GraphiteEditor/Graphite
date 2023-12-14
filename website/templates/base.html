@@ -8,6 +8,7 @@
 	{% block rss %}
 	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path = 'blog/rss.xml', trailing_slash = false) }}">
 	{% endblock %}
+	<link rel="preconnect" href="https://rsms.me/">
 	<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +17,7 @@
 	<link rel="stylesheet" href="/syntax-highlighting.css">
 	{% if this and this.extra.css %}
 	{% for css in this.extra.css %}
-	<link rel="stylesheet" href="{{ css | safe }}">
+	<link rel="stylesheet" href="/{{ css | safe }}">
 	{% endfor %}
 	{% endif %}
 	{% block head %}{% endblock head %}
@@ -60,7 +61,7 @@
 						</a>
 					</div>
 					<div class="right">
-						<!-- <a href="/learn">Learn</a> -->
+						<a href="/learn">Learn</a>
 						<a href="/features">Features</a>
 						<a href="/about">About</a>
 						<a href="/blog">Blog</a>

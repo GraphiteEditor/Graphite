@@ -26,6 +26,10 @@
 		width: 800px;
 		flex: 1 2 100%;
 
+		article {
+			width: 100%;
+		}
+
 		.prev-next {
 			display: flex;
 			justify-content: space-between;
@@ -39,6 +43,11 @@
 				
 				svg {
 					fill: var(--color-navy);
+					flex: 0 0 auto;
+				}
+
+				&:last-of-type {
+					text-align: right;
 				}
 			}
 		}
@@ -159,9 +168,6 @@
 
 		li {
 			margin-top: 0.5em;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			overflow: hidden;
 			
 			a {
 				color: var(--color-walnut);
@@ -186,6 +192,12 @@
 			li.active,
 			li.active a {
 				color: var(--color-ale);
+			}
+
+			ul a {
+				display: block;
+				padding-left: 1em;
+				text-indent: -1em;
 			}
 		}
 
@@ -218,19 +230,19 @@
 
 			ul {
 				margin-top: 0;
-				text-indent: 1em;
+				margin-left: 1em;
 
 				ul {
-					text-indent: 2em;
+					margin-left: 2em;
 
 					ul {
-						text-indent: 3em;
+						margin-left: 3em;
 
 						ul {
-							text-indent: 4em;
+							margin-left: 4em;
 	
 							ul {
-								text-indent: 5em;
+								margin-left: 5em;
 							}
 						}
 					}

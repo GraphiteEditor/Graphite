@@ -2,7 +2,7 @@
 title = "Graphite features"
 
 [extra]
-css = ["/features.css"]
+css = ["features.css"]
 +++
 
 <section>
