@@ -2,7 +2,7 @@ use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Default, Copy)]
 /// A quad defined by four vertices.
-pub struct Quad([DVec2; 4]);
+pub struct Quad(pub [DVec2; 4]);
 
 impl Quad {
 	/// Create a zero sized quad at the point

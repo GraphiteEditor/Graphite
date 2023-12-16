@@ -298,7 +298,6 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
-				overlay_context.rect();
 				let selected = tool_data.selected_gradient.as_ref();
 
 				for layer in document.document_legacy.selected_visible_layers() {

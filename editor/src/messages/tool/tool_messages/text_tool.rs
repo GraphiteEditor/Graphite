@@ -2,15 +2,15 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::COLOR_ACCENT;
+use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
-
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::intersection::Quad;
 use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
 use document_legacy::LayerId;
 use document_legacy::Operation;
 use graph_craft::document::value::TaggedValue;
+use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font};
 use graphene_core::Color;
 
@@ -50,6 +50,8 @@ pub enum TextToolMessage {
 	DocumentIsDirty,
 	#[remain::unsorted]
 	WorkingColorChanged,
+	#[remain::unsorted]
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	CommitText,
@@ -194,7 +196,7 @@ impl ToolTransition for TextTool {
 			tool_abort: Some(TextToolMessage::Abort.into()),
 			selection_changed: Some(TextToolMessage::DocumentIsDirty.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
-			..Default::default()
+			overlay_provider: Some(|overlay_context| TextToolMessage::Overlays(overlay_context).into()),
 		}
 	}
 }
@@ -318,29 +320,8 @@ impl TextToolData {
 			// Removing old text as editable
 			self.set_editing(false, render_data, document, responses);
 
-			resize_overlays(&mut self.overlays, responses, 0);
-
 			TextToolFsmState::Ready
 		}
-	}
-
-	pub fn update_bounds_overlay(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, responses: &mut VecDeque<Message>) -> Option<()> {
-		resize_overlays(&mut self.overlays, responses, 1);
-
-		let editing_text = self.editing_text.as_ref()?;
-		let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(data));
-		let far = graphene_core::text::bounding_box(&self.new_text, buzz_face, editing_text.font_size, None);
-		let quad = Quad::from_box([DVec2::ZERO, far]);
-
-		let transformed_quad = document.metadata().transform_to_viewport(self.layer) * quad;
-		let bounds = transformed_quad.bounding_box();
-
-		let operation = Operation::SetLayerTransformInViewport {
-			path: self.overlays[0].clone(),
-			transform: transform_from_box(bounds[0], bounds[1]),
-		};
-		responses.add(DocumentMessage::Overlays(operation.into()));
-		Some(())
 	}
 
 	fn get_bounds(&self, text: &str, render_data: &RenderData) -> Option<[DVec2; 2]> {
@@ -360,53 +341,6 @@ impl TextToolData {
 
 		Some(())
 	}
-}
-
-fn transform_from_box(pos1: DVec2, pos2: DVec2) -> [f64; 6] {
-	DAffine2::from_scale_angle_translation((pos2 - pos1).round(), 0., pos1.round() - DVec2::splat(0.5)).to_cols_array()
-}
-
-fn resize_overlays(overlays: &mut Vec<Vec<LayerId>>, responses: &mut VecDeque<Message>, newlen: usize) {
-	while overlays.len() > newlen {
-		let operation = Operation::DeleteLayer { path: overlays.pop().unwrap() };
-		responses.add(DocumentMessage::Overlays(operation.into()));
-	}
-	while overlays.len() < newlen {
-		let path = vec![generate_uuid()];
-		overlays.push(path.clone());
-
-		let operation = Operation::AddRect {
-			path,
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
-			insert_index: -1,
-		};
-		responses.add(DocumentMessage::Overlays(operation.into()));
-	}
-}
-
-fn update_overlays(document: &DocumentMessageHandler, tool_data: &mut TextToolData, responses: &mut VecDeque<Message>, render_data: &RenderData) {
-	let get_bounds = |layer: LayerNodeIdentifier, document: &DocumentMessageHandler, render_data: &RenderData| {
-		let (text, font, font_size) = graph_modification_utils::get_text(layer, &document.document_legacy)?;
-		let buzz_face = render_data.font_cache.get(font).map(|data| load_face(data));
-		let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
-		let quad = Quad::from_box([DVec2::ZERO, far]);
-		let multiplied = document.metadata().transform_to_viewport(layer) * quad;
-		Some(multiplied.bounding_box())
-	};
-	let bounds = document.metadata().selected_layers().filter_map(|layer| get_bounds(layer, document, render_data));
-	let bounds = bounds.collect::<Vec<_>>();
-
-	let new_len = bounds.len();
-
-	for (bounds, overlay_path) in bounds.iter().zip(&tool_data.overlays) {
-		let operation = Operation::SetLayerTransformInViewport {
-			path: overlay_path.to_vec(),
-			transform: transform_from_box(bounds[0], bounds[1]),
-		};
-		responses.add(DocumentMessage::Overlays(operation.into()));
-	}
-	resize_overlays(&mut tool_data.overlays, responses, new_len);
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -441,17 +375,35 @@ impl Fsm for TextToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(TextToolFsmState::Editing, TextToolMessage::DocumentIsDirty) => {
+			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
 					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
-				tool_data.update_bounds_overlay(document, render_data, responses);
+				if let Some(editing_text) = tool_data.editing_text.as_ref() {
+					let buzz_face = render_data.font_cache.get(&editing_text.font).map(|data| load_face(data));
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.font_size, None);
+					if far.x != 0. && far.y != 0. {
+						let quad = Quad::from_box([DVec2::ZERO, far]);
+						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
+						overlay_context.quad(transformed_quad);
+					}
+				}
+
 				TextToolFsmState::Editing
 			}
-			(state, TextToolMessage::DocumentIsDirty) => {
-				update_overlays(document, tool_data, responses, render_data);
+			(_, TextToolMessage::Overlays(mut overlay_context)) => {
+				for layer in document.metadata().selected_layers() {
+					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.document_legacy) else {
+						continue;
+					};
+					let buzz_face = render_data.font_cache.get(font).map(|data| load_face(data));
+					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
+					let quad = Quad::from_box([DVec2::ZERO, far]);
+					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
+					overlay_context.quad(multiplied);
+				}
 
-				state
+				self
 			}
 			(state, TextToolMessage::Interact) => {
 				tool_data.editing_text = Some(EditingText {
@@ -478,8 +430,6 @@ impl Fsm for TextToolFsmState {
 					tool_data.set_editing(false, render_data, document, responses);
 				}
 
-				resize_overlays(&mut tool_data.overlays, responses, 0);
-
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::CommitText) => {
@@ -498,13 +448,11 @@ impl Fsm for TextToolFsmState {
 
 				tool_data.set_editing(false, render_data, document, responses);
 
-				resize_overlays(&mut tool_data.overlays, responses, 0);
-
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
 				tool_data.new_text = new_text;
-				tool_data.update_bounds_overlay(document, render_data, responses);
+				responses.add(OverlaysMessage::Render);
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {

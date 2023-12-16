@@ -5,6 +5,7 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::layers::style::{RenderData, ViewMode};
 use glam::DVec2;
+use graphene_core::renderer::Quad;
 use wasm_bindgen::JsCast;
 
 #[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -23,14 +24,20 @@ impl OverlayContext {
 		format!("#{}", COLOR_ACCENT.rgb_hex())
 	}
 
-	pub fn rect(&mut self) {
-		self.render_context.fill_rect(10., 10., 20., 40.);
+	pub fn quad(&mut self, quad: Quad) {
+		self.render_context.begin_path();
+		self.render_context.move_to(quad.0[3].x.round(), quad.0[3].y.round());
+		for i in 0..4 {
+			self.render_context.line_to(quad.0[i].x.round(), quad.0[i].y.round());
+		}
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(&Self::accent_hex()));
+		self.render_context.stroke();
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2) {
 		self.render_context.begin_path();
-		self.render_context.move_to(start.x, start.y);
-		self.render_context.line_to(end.x, end.y);
+		self.render_context.move_to(start.x.round(), start.y.round());
+		self.render_context.line_to(end.x.round(), end.y.round());
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(&Self::accent_hex()));
 		self.render_context.stroke();
 	}
