@@ -2,10 +2,10 @@
 use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
-use crate::messages::tool::common_functionality::path_outline::*;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -62,6 +62,8 @@ pub enum SelectToolMessage {
 	DocumentIsDirty,
 	#[remain::unsorted]
 	SelectionChanged,
+	#[remain::unsorted]
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	DragStart {
@@ -241,6 +243,7 @@ impl ToolTransition for SelectTool {
 			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
 			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
+			overlay_provider: Some(|overlay_context| SelectToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -267,8 +270,7 @@ struct SelectToolData {
 	has_dragged: bool,
 	not_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	drag_box_overlay_layer: Option<Vec<LayerId>>,
-	path_outlines: PathOutline,
-	bounding_box_overlays: Option<BoundingBoxOverlays>,
+	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot: Pivot,
@@ -387,30 +389,37 @@ impl Fsm for SelectToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(_, SelectToolMessage::DocumentIsDirty | SelectToolMessage::SelectionChanged) => {
+			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				let selected_layers_count = document.metadata().selected_layers().count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
-				tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses);
-				tool_data.path_outlines.intersect_test_hovered(input, document, responses);
+				// Outline selected layers
+				for layer in document.document_legacy.selected_visible_layers() {
+					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+				}
 
-				match (document.document_legacy.selected_visible_layers_bounding_box_viewport(), tool_data.bounding_box_overlays.take()) {
-					(None, Some(bounding_box_overlays)) => bounding_box_overlays.delete(responses),
-					(Some(bounds), paths) => {
-						let mut bounding_box_overlays = paths.unwrap_or_else(|| BoundingBoxOverlays::new(responses));
+				// Get the layer the user is hovering over
+				let click = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network);
+				let not_selected_click = click.filter(|&hovered_layer| !document.metadata().selected_layers_contains(hovered_layer));
+				if let Some(layer) = not_selected_click {
+					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+				}
 
-						bounding_box_overlays.bounds = bounds;
-						bounding_box_overlays.transform = DAffine2::IDENTITY;
+				// Update bounds
+				if let Some(bounds) = document.document_legacy.selected_visible_layers_bounding_box_viewport() {
+					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
-						bounding_box_overlays.transform(responses);
+					bounding_box_manager.bounds = bounds;
+					bounding_box_manager.transform = DAffine2::IDENTITY;
 
-						tool_data.bounding_box_overlays = Some(bounding_box_overlays);
-					}
-					(_, _) => {}
-				};
+					bounding_box_manager.render_overlays(&mut overlay_context);
+				} else {
+					tool_data.bounding_box_manager.take();
+				}
 
-				tool_data.pivot.update_pivot(document, responses);
+				// Update pivot
+				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
 				self
 			}
@@ -426,12 +435,10 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::Ready, SelectToolMessage::DragStart { add_to_selection, select_deepest: _ }) => {
-				tool_data.path_outlines.clear_hovered(responses);
-
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
-				let dragging_bounds = tool_data.bounding_box_overlays.as_mut().and_then(|bounding_box| {
+				let dragging_bounds = tool_data.bounding_box_manager.as_mut().and_then(|bounding_box| {
 					let edges = bounding_box.check_selected_edges(input.mouse.position);
 
 					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
@@ -444,7 +451,7 @@ impl Fsm for SelectToolFsmState {
 				});
 
 				let rotating_bounds = tool_data
-					.bounding_box_overlays
+					.bounding_box_manager
 					.as_ref()
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
@@ -479,7 +486,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging = selected;
 
-					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						let document = &document.document_legacy;
 
 						tool_data.layers_dragging.retain(|layer| document.document_network.nodes.contains_key(&layer.to_node()));
@@ -499,7 +506,7 @@ impl Fsm for SelectToolFsmState {
 				} else if rotating_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
-					if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
@@ -601,7 +608,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Dragging
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center, axis_align) = (input.keyboard.key(center), input.keyboard.key(axis_align));
 
@@ -622,7 +629,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::ResizingBounds
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { snap_angle, .. }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let angle = {
 						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
 						let end_offset = input.mouse.position - bounds.center_of_transformation;
@@ -675,7 +682,7 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::DrawingBox
 			}
 			(SelectToolFsmState::Ready, SelectToolMessage::PointerMove { .. }) => {
-				let mut cursor = tool_data.bounding_box_overlays.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 				// Dragging the pivot overrules the other operations
 				if tool_data.pivot.is_over(input.mouse.position) {
@@ -683,11 +690,12 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Generate the select outline (but not if the user is going to use the bound overlays)
-				if cursor == MouseCursorIcon::Default {
-					tool_data.path_outlines.intersect_test_hovered(input, document, responses);
-				} else {
-					tool_data.path_outlines.clear_hovered(responses);
-				}
+				responses.add(OverlaysMessage::Render);
+				// if cursor == MouseCursorIcon::Default {
+				// 	tool_data.path_outlines.intersect_test_hovered(input, document, responses);
+				// } else {
+				// 	tool_data.path_outlines.clear_hovered(responses);
+				// }
 
 				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
@@ -748,7 +756,7 @@ impl Fsm for SelectToolFsmState {
 
 				tool_data.snap_manager.cleanup(responses);
 
-				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
@@ -761,7 +769,7 @@ impl Fsm for SelectToolFsmState {
 				};
 				responses.add(response);
 
-				if let Some(bounds) = &mut tool_data.bounding_box_overlays {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
 
@@ -814,9 +822,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::Undo);
-
-				tool_data.path_outlines.clear_selected(responses);
-				tool_data.pivot.clear_overlays(responses);
+				responses.add(OverlaysMessage::Render);
 
 				SelectToolFsmState::Ready
 			}
@@ -825,7 +831,7 @@ impl Fsm for SelectToolFsmState {
 					responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
 				};
 				tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
-				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_overlays.take() {
+				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_manager.take() {
 					let mut selected = Selected::new(
 						&mut bounding_box_overlays.original_transforms,
 						&mut bounding_box_overlays.opposite_pivot,
@@ -837,13 +843,9 @@ impl Fsm for SelectToolFsmState {
 					);
 
 					selected.revert_operation();
-
-					bounding_box_overlays.delete(responses);
 				}
 
-				tool_data.path_outlines.clear_hovered(responses);
-				tool_data.path_outlines.clear_selected(responses);
-				tool_data.pivot.clear_overlays(responses);
+				responses.add(OverlaysMessage::Render);
 
 				tool_data.snap_manager.cleanup(responses);
 				SelectToolFsmState::Ready

@@ -1,6 +1,5 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
-use crate::messages::tool::common_functionality::path_outline::PathOutline;
 use crate::messages::tool::common_functionality::resize::Resize;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
@@ -96,7 +95,6 @@ enum ImaginateToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct ImaginateToolData {
 	data: Resize,
-	path_outlines: PathOutline,
 }
 
 impl Fsm for ImaginateToolFsmState {
@@ -118,14 +116,11 @@ impl Fsm for ImaginateToolFsmState {
 		};
 		match (self, event) {
 			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
-				tool_data.path_outlines.clear_selected(responses);
 				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, render_data);
 
 				self
 			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
-				tool_data.path_outlines.clear_selected(responses);
-
 				shape_data.start(responses, document, input, render_data);
 				responses.add(DocumentMessage::StartTransaction);
 				shape_data.layer = Some(LayerNodeIdentifier::new(generate_uuid(), document.network()));
@@ -193,15 +188,10 @@ impl Fsm for ImaginateToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				shape_data.cleanup(responses);
-				tool_data.path_outlines.clear_selected(responses);
 
 				ImaginateToolFsmState::Ready
 			}
-			(_, ImaginateToolMessage::Abort) => {
-				tool_data.path_outlines.clear_selected(responses);
-
-				ImaginateToolFsmState::Ready
-			}
+			(_, ImaginateToolMessage::Abort) => ImaginateToolFsmState::Ready,
 			_ => self,
 		}
 	}

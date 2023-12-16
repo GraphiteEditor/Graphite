@@ -1,14 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::COLOR_ACCENT;
 use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::{self, Fill, RenderData, Stroke};
+use document_legacy::layers::style::{Fill, RenderData};
 use document_legacy::LayerId;
-use document_legacy::Operation;
 use graph_craft::document::value::TaggedValue;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font};

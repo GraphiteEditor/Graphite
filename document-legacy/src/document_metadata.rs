@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::transform::Footprint;
+use graphene_core::uuid::ManipulatorGroupId;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -338,11 +339,10 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> graphene_core::vector::Subpath {
-		let Some(click_targets) = self.click_targets.get(&layer) else {
-			return graphene_core::vector::Subpath::new();
-		};
-		graphene_core::vector::Subpath::from_bezier_rs(click_targets.iter().map(|click_target| &click_target.subpath))
+	pub fn layer_outline<'a>(&'a self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &'a bezier_rs::Subpath<ManipulatorGroupId>> {
+		static EMPTY: Vec<ClickTarget> = Vec::new();
+		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
+		click_targets.iter().map(|click_target| &click_target.subpath)
 	}
 }
 
