@@ -99,6 +99,7 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 				})
 			}
 
+			#[cfg(target_arch = "wasm32")]
 			OverlaysMessage::Render => {
 				let canvas = self.canvas.get_or_insert_with(create_canvas);
 
@@ -119,6 +120,10 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 						}));
 					}
 				}
+			}
+			#[cfg(not(target_arch = "wasm32"))]
+			OverlaysMessage::Render => {
+				warn!("Cannot render overlays on non wasm targets.");
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);
