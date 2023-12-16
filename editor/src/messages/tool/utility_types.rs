@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGrou
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::overlays::OverlayProvider;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -174,6 +175,7 @@ pub struct EventToMessageMap {
 	pub selection_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
+	pub overlay_provider: Option<OverlayProvider>,
 }
 
 pub trait ToolTransition {
@@ -195,6 +197,9 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
+			responses.add(OverlaysMessage::AddProvider(overlay_provider));
+		}
 	}
 
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
@@ -213,6 +218,9 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
+			responses.add(OverlaysMessage::RemoveProvider(overlay_provider));
+		}
 	}
 }
 

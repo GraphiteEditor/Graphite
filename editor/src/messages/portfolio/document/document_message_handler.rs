@@ -572,6 +572,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(FrontendMessage::UpdateDocumentArtwork {
 					svg: self.document_legacy.render_root(&render_data),
 				});
+				responses.add(OverlaysMessage::Render);
 			}
 			RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale();

@@ -188,6 +188,7 @@ impl ToolTransition for PenTool {
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
+			..Default::default()
 		}
 	}
 }

@@ -701,7 +701,9 @@
 						position: relative;
 						overflow: hidden;
 
-						svg {
+						svg,
+						canvas {
+							top: 0;
 							position: absolute;
 							// Fallback values if JS hasn't set these to integers yet
 							width: 100%;
