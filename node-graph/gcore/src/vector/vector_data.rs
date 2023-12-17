@@ -102,6 +102,10 @@ impl VectorData {
 	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
 		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
+
+	pub fn cloned_subpaths(&self) -> Vec<bezier_rs::Subpath<ManipulatorGroupId>> {
+		self.subpaths.clone()
+	}
 }
 
 impl Default for VectorData {

@@ -309,6 +309,14 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	(first_widgets, second_widgets)
 }
 
+fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+
+	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
+
+	widgets
+}
+
 fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, number_props: NumberInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
@@ -2105,6 +2113,12 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 	let count = number_widget(document_node, node_id, 3, "Count", NumberInput::default().min(1.), true);
 
 	vec![LayoutGroup::Row { widgets: angle_offset }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: count }]
+}
+
+pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let instance = vector_widget(document_node, node_id, 1, "Spacing", true);
+
+	vec![LayoutGroup::Row { widgets: instance }]
 }
 
 pub fn resample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
