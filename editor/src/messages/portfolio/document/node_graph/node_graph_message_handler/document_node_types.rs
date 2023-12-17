@@ -2236,19 +2236,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Repeat",
-			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
-			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Direction", TaggedValue::DVec2((100., 0.).into()), false),
-				DocumentInputType::value("Count", TaggedValue::U32(10), false),
-			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::repeat_properties,
-			..Default::default()
-		},
-		DocumentNodeDefinition {
 			name: "Bounding Box",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
@@ -2258,17 +2245,42 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Repeat",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Direction", TaggedValue::DVec2((100., 0.).into()), false),
+				DocumentInputType::value("Count", TaggedValue::U32(10), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::repeat_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Circular Repeat",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::CircularRepeatNode<_, _, _>"),
 			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Angle Offset", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Radius", TaggedValue::F32(5.), false),
 				DocumentInputType::value("Count", TaggedValue::U32(10), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::circular_repeat_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Copy to Points",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_>"),
+			inputs: vec![
+				DocumentInputType::value("Points", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::copy_to_points_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2284,9 +2296,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Spline from Points",
+			name: "Splines from Points",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::SplineFromPointsNode"),
+			implementation: NodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_no_properties,

@@ -110,23 +110,18 @@ pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
 
 #[node_macro::node_fn(CircularRepeatNode)]
 fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f32, radius: f32, count: u32) -> VectorData {
-	// repeat the vector data
-	let VectorData { subpaths, transform, .. } = &vector_data;
-
-	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(subpaths.len() * count as usize);
+	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(vector_data.subpaths.len() * count as usize);
 
 	let bounding_box = vector_data.bounding_box().unwrap();
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
-	//let inverse = transform.inverse();
-	//let radius_transform = DAffine2::from_translation(DVec2::new(0., radius as f64));
 	let base_transform = DVec2::new(0., radius as f64) - center;
 
 	for i in 0..count {
 		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians() as f64;
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		for mut subpath in subpaths.clone() {
+		for mut subpath in vector_data.subpaths.clone() {
 			subpath.apply_transform(transform);
 			new_subpaths.push(subpath);
 		}
@@ -146,6 +141,37 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 		vector_data.transform.transform_point2(bounding_box[0]),
 		vector_data.transform.transform_point2(bounding_box[1]),
 	)])
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CopyToPoints<Instance> {
+	instance: Instance,
+}
+
+#[node_macro::node_fn(CopyToPoints)]
+fn copy_to_points(points: VectorData, instance: VectorData) -> VectorData {
+	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
+
+	let instance_bounding_box = instance.bounding_box().unwrap_or_default();
+	let instance_center = DAffine2::from_translation(-0.5 * (instance_bounding_box[0] + instance_bounding_box[1]));
+
+	let mut instanced_subpaths: Vec<Subpath<_>> = Vec::new();
+	for point in points_list {
+		let transform = DAffine2::from_translation(point) * instance_center;
+
+		for mut subpath in instance.subpaths.clone() {
+			subpath.apply_transform(transform);
+			instanced_subpaths.push(subpath);
+		}
+	}
+
+	VectorData {
+		subpaths: instanced_subpaths,
+		transform: DAffine2::IDENTITY,
+		style: instance.style,
+		alpha_blending: instance.alpha_blending,
+		mirror_angle: instance.mirror_angle,
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -175,10 +201,10 @@ fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SplineFromPointsNode {}
+pub struct SplinesFromPointsNode {}
 
-#[node_macro::node_fn(SplineFromPointsNode)]
-fn spline_from_points(mut vector_data: VectorData) -> VectorData {
+#[node_macro::node_fn(SplinesFromPointsNode)]
+fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
 		*subpath = Subpath::new_cubic_spline(subpath.anchors());
 	}
