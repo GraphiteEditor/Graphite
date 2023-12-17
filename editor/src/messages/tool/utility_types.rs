@@ -1,5 +1,4 @@
 #![allow(clippy::too_many_arguments)]
-use super::common_functionality::overlay_renderer::OverlayRenderer;
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
@@ -24,7 +23,6 @@ pub struct ToolActionHandlerData<'a> {
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub render_data: &'a RenderData<'a>,
-	pub shape_overlay: &'a mut OverlayRenderer,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 }
@@ -35,7 +33,6 @@ impl<'a> ToolActionHandlerData<'a> {
 		global_tool_data: &'a DocumentToolData,
 		input: &'a InputPreprocessorMessageHandler,
 		render_data: &'a RenderData<'a>,
-		shape_overlay: &'a mut OverlayRenderer,
 		shape_editor: &'a mut ShapeState,
 		node_graph: &'a NodeGraphExecutor,
 	) -> Self {
@@ -45,7 +42,6 @@ impl<'a> ToolActionHandlerData<'a> {
 			global_tool_data,
 			input,
 			render_data,
-			shape_overlay,
 			shape_editor,
 			node_graph,
 		}

@@ -1,14 +1,8 @@
-use crate::application::generate_uuid;
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
-
-use document_legacy::layers::style::{self, Fill, Stroke};
-use document_legacy::LayerId;
-use document_legacy::Operation;
-use graphene_core::raster::color::Color;
 
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
@@ -151,49 +145,6 @@ impl SelectedEdges {
 	}
 }
 
-/// Create a viewport relative bounding box overlay with no transform handles
-pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
-	let path = vec![generate_uuid()];
-
-	let operation = Operation::AddRect {
-		path: path.clone(),
-		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
-		insert_index: -1,
-	};
-	responses.add(DocumentMessage::Overlays(operation.into()));
-
-	path
-}
-
-/// Update the location of a bounding box with no handles
-pub fn update_bounding_box(pos1: DVec2, pos2: DVec2, layer: &Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-	if let Some(path) = layer.as_ref().cloned() {
-		let transform = transform_from_box(pos1, pos2, DAffine2::IDENTITY).to_cols_array();
-		let operation = Operation::SetLayerTransformInViewport { path, transform };
-		responses.add_front(DocumentMessage::Overlays(operation.into()));
-	}
-}
-
-/// Removes the bounding box overlay with no transform handles
-pub fn remove_bounding_box(layer_path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-	if let Some(path) = layer_path {
-		let operation = Operation::DeleteLayer { path };
-		responses.add(DocumentMessage::Overlays(operation.into()));
-	}
-}
-
-/// Converts a bounding box to a rounded transform (with translation and scale)
-pub fn transform_from_box(pos1: DVec2, pos2: DVec2, transform: DAffine2) -> DAffine2 {
-	let inverse = transform.inverse();
-	transform
-		* DAffine2::from_scale_angle_translation(
-			inverse.transform_vector2(transform.transform_vector2(pos2 - pos1).round()),
-			0.,
-			inverse.transform_point2(transform.transform_point2(pos1).round() - DVec2::splat(0.5)),
-		)
-}
-
 /// Aligns the mouse position to the closest axis
 pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
 	if axis_align {
@@ -210,8 +161,6 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
-	pub bounding_boxdddddddddddddddddd: Vec<LayerId>,
-	pub transform_handlesdddddddddddd: [Vec<LayerId>; 8],
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
@@ -242,7 +191,7 @@ impl BoundingBoxManager {
 		overlay_context.quad(self.transform.inverse() * Quad::from_box(self.bounds));
 
 		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(position);
+			overlay_context.square(position, false);
 		}
 	}
 

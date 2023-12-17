@@ -1,9 +1,11 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
+use crate::messages::tool::common_functionality::overlay_renderer::path_overlays;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
@@ -43,13 +45,13 @@ pub enum PenToolMessage {
 	#[remain::unsorted]
 	CanvasTransformed,
 	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
 	SelectionChanged,
 	#[remain::unsorted]
 	WorkingColorChanged,
+	#[remain::unsorted]
+	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	Confirm,
@@ -184,10 +186,10 @@ impl ToolTransition for PenTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			canvas_transformed: Some(PenToolMessage::CanvasTransformed.into()),
-			document_dirty: Some(PenToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
+			overlay_provider: Some(|overlay_context| PenToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -543,7 +545,6 @@ impl Fsm for PenToolFsmState {
 			input,
 			render_data,
 			shape_editor,
-			shape_overlay,
 			..
 		} = tool_action_data;
 
@@ -570,24 +571,13 @@ impl Fsm for PenToolFsmState {
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
 				self
 			}
-			(_, PenToolMessage::DocumentIsDirty) => {
-				// When the document has moved / needs to be redraw, re-render the overlays
-				// TODO the overlay system should probably receive this message instead of the tool
-				for layer in document.metadata().selected_layers() {
-					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
-				}
+			(_, PenToolMessage::SelectionChanged) => {
+				responses.add(OverlaysMessage::Render);
 				self
 			}
-			(_, PenToolMessage::SelectionChanged) => {
-				// Set the previously selected layers to invisible
-				for layer in document.metadata().all_layers() {
-					shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
-				}
+			(_, PenToolMessage::Overlays(mut overlay_context)) => {
+				path_overlays(document, shape_editor, &mut overlay_context);
 
-				// Redraw the overlays of the newly selected layers
-				for layer in document.metadata().selected_layers() {
-					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
-				}
 				self
 			}
 			(_, PenToolMessage::WorkingColorChanged) => {
@@ -661,8 +651,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
-				// Clean up overlays
-				shape_overlay.clear_all_overlays(responses);
+				responses.add(OverlaysMessage::Render);
 
 				self
 			}

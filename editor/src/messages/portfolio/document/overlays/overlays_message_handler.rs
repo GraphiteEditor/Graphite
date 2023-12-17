@@ -48,7 +48,9 @@ impl OverlayContext {
 	pub fn handle(&mut self, position: DVec2, selected: bool) {
 		self.render_context.begin_path();
 		let position = position.round();
-		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context
+			.arc(position.x + 0.5, position.y + 0.5, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.)
+			.expect("draw circle");
 
 		let fill = if selected { Self::accent_hex() } else { "white".to_string() };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(&fill));
@@ -57,12 +59,13 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn square(&mut self, position: DVec2) {
+	pub fn square(&mut self, position: DVec2, selected: bool) {
 		self.render_context.begin_path();
 		let corner = position - DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE) / 2.;
 		self.render_context
 			.rect(corner.x.round(), corner.y.round(), MANIPULATOR_GROUP_MARKER_SIZE, MANIPULATOR_GROUP_MARKER_SIZE);
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str("white"));
+		let fill = if selected { Self::accent_hex() } else { "white".to_string() };
+		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(&fill));
 		self.render_context.fill();
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(&Self::accent_hex()));
 		self.render_context.stroke();
@@ -70,14 +73,14 @@ impl OverlayContext {
 
 	pub fn pivot(&mut self, pivot: DVec2) {
 		self.render_context.begin_path();
-		self.render_context.arc(pivot.x, pivot.y, PIVOT_OUTER / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(pivot.x + 0.5, pivot.y + 0.5, PIVOT_OUTER / 2., 0., PI * 2.).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(&"white"));
 		self.render_context.fill();
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(&Self::accent_hex()));
 		self.render_context.stroke();
 
 		self.render_context.begin_path();
-		self.render_context.arc(pivot.x - 0.5, pivot.y - 0.5, PIVOT_INNER / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(pivot.x, pivot.y, PIVOT_INNER / 2., 0., PI * 2.).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(&Self::accent_hex()));
 		self.render_context.fill();
 	}

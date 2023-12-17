@@ -217,7 +217,6 @@ pub struct EditingText {
 #[derive(Clone, Debug, Default)]
 struct TextToolData {
 	layer: LayerNodeIdentifier,
-	overlays: Vec<Vec<LayerId>>,
 	editing_text: Option<EditingText>,
 	new_text: String,
 }

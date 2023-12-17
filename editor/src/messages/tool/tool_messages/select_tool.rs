@@ -11,8 +11,6 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
-use document_legacy::Operation;
 use graphene_core::renderer::Quad;
 
 use std::fmt;
