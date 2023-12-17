@@ -269,7 +269,6 @@ struct SelectToolData {
 	select_single_layer: Option<LayerNodeIdentifier>,
 	has_dragged: bool,
 	not_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
-	drag_box_overlay_layer: Option<Vec<LayerId>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
@@ -421,6 +420,11 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
+				// Update dragging box
+				if self == Self::DrawingBox {
+					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
+				}
+
 				self
 			}
 			(_, SelectToolMessage::EditLayer) => {
@@ -563,7 +567,6 @@ impl Fsm for SelectToolFsmState {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
 						}
-						tool_data.drag_box_overlay_layer = Some(add_bounding_box(responses));
 						SelectToolFsmState::DrawingBox
 					}
 				};
@@ -671,14 +674,8 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
+				responses.add(OverlaysMessage::Render);
 
-				responses.add_front(DocumentMessage::Overlays(
-					Operation::SetLayerTransformInViewport {
-						path: tool_data.drag_box_overlay_layer.clone().unwrap(),
-						transform: transform_from_box(tool_data.drag_start, tool_data.drag_current, DAffine2::IDENTITY).to_cols_array(),
-					}
-					.into(),
-				));
 				SelectToolFsmState::DrawingBox
 			}
 			(SelectToolFsmState::Ready, SelectToolMessage::PointerMove { .. }) => {
@@ -689,13 +686,8 @@ impl Fsm for SelectToolFsmState {
 					cursor = MouseCursorIcon::Move;
 				}
 
-				// Generate the select outline (but not if the user is going to use the bound overlays)
+				// Generate the hover outline
 				responses.add(OverlaysMessage::Render);
-				// if cursor == MouseCursorIcon::Default {
-				// 	tool_data.path_outlines.intersect_test_hovered(input, document, responses);
-				// } else {
-				// 	tool_data.path_outlines.clear_hovered(responses);
-				// }
 
 				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
@@ -797,13 +789,8 @@ impl Fsm for SelectToolFsmState {
 						nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 					});
 				}
+				responses.add(OverlaysMessage::Render);
 
-				responses.add_front(DocumentMessage::Overlays(
-					Operation::DeleteLayer {
-						path: tool_data.drag_box_overlay_layer.take().unwrap(),
-					}
-					.into(),
-				));
 				SelectToolFsmState::Ready
 			}
 			(SelectToolFsmState::Ready, SelectToolMessage::Enter) => {
@@ -827,9 +814,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready
 			}
 			(_, SelectToolMessage::Abort) => {
-				if let Some(path) = tool_data.drag_box_overlay_layer.take() {
-					responses.add_front(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()))
-				};
 				tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_manager.take() {
 					let mut selected = Selected::new(

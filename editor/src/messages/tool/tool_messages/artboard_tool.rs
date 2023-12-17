@@ -331,7 +331,7 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.original_transforms.clear();
 				}
 
-				responses.add(BroadcastEvent::DocumentIsDirty);
+				responses.add(OverlaysMessage::Render);
 
 				ArtboardToolFsmState::Ready
 			}
@@ -372,6 +372,7 @@ impl Fsm for ArtboardToolFsmState {
 				});
 
 				tool_data.snap_manager.cleanup(responses);
+				responses.add(OverlaysMessage::Render);
 				ArtboardToolFsmState::Ready
 			}
 			_ => self,
