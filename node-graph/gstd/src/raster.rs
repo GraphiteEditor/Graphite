@@ -1,23 +1,26 @@
+use crate::wasm_application_io::WasmEditorApi;
+
 use dyn_any::{DynAny, StaticType};
-use glam::{DAffine2, DVec2, Vec2};
 use graph_craft::imaginate_input::{ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use graph_craft::proto::DynFuture;
-use graphene_core::raster::{Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel, RGBMut, RedGreenBlue, Sample};
-use graphene_core::transform::{Footprint, Transform};
-
-use crate::wasm_application_io::WasmEditorApi;
 use graphene_core::raster::bbox::{AxisAlignedBbox, Bbox};
+use graphene_core::raster::{
+	Alpha, Bitmap, BitmapMut, BlendMode, BlendNode, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, Image, ImageFrame, Linear, LinearChannel, Luminance, NoiseType, Pixel,
+	RGBMut, RedGreenBlue, Sample,
+};
+use graphene_core::transform::{Footprint, Transform};
 use graphene_core::value::CopiedNode;
 use graphene_core::{AlphaBlending, Color, Node};
 
+use fastnoise_lite;
+use glam::{DAffine2, DVec2, UVec2, Vec2};
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::Path;
-
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -192,7 +195,7 @@ pub struct MaskImageNode<P, S, Stencil> {
 }
 
 #[node_macro::node_fn(MaskImageNode<_P, _S>)]
-fn mask_imge<
+fn mask_image<
 	// _P is the color of the input image. It must have an alpha channel because that is going to
 	// be modified by the mask
 	_P: Copy + Alpha,
@@ -405,7 +408,7 @@ fn extend_image_to_bounds_node(image: ImageFrame<Color>, bounds: DAffine2) -> Im
 	let new_end = bounds_in_image_space.end.ceil().max(orig_image_scale);
 	let new_scale = new_end - new_start;
 
-	// Copy over original image into embiggened image.
+	// Copy over original image into enlarged image.
 	let mut new_img = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
 	let offset_in_new_image = (-new_start).as_uvec2();
 	for y in 0..image.image.height {
@@ -553,25 +556,155 @@ fn image_frame<_P: Pixel>(image: Image<_P>, transform: DAffine2) -> graphene_cor
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PixelNoiseNode<Height, Seed, NoiseType> {
-	height: Height,
+pub struct NoisePatternNode<
+	Dimensions,
+	Seed,
+	Scale,
+	NoiseType,
+	DomainWarpType,
+	DomainWarpAmplitude,
+	FractalType,
+	FractalOctaves,
+	FractalLacunarity,
+	FractalGain,
+	FractalWeightedStrength,
+	FractalPingPongStrength,
+	CellularDistanceFunction,
+	CellularReturnType,
+	CellularJitter,
+> {
+	dimensions: Dimensions,
 	seed: Seed,
+	scale: Scale,
 	noise_type: NoiseType,
+	domain_warp_type: DomainWarpType,
+	domain_warp_amplitude: DomainWarpAmplitude,
+	fractal_type: FractalType,
+	fractal_octaves: FractalOctaves,
+	fractal_lacunarity: FractalLacunarity,
+	fractal_gain: FractalGain,
+	fractal_weighted_strength: FractalWeightedStrength,
+	fractal_ping_pong_strength: FractalPingPongStrength,
+	cellular_distance_function: CellularDistanceFunction,
+	cellular_return_type: CellularReturnType,
+	cellular_jitter: CellularJitter,
 }
 
-#[node_macro::node_fn(PixelNoiseNode)]
-fn pixel_noise(width: u32, height: u32, seed: u32, noise_type: NoiseType) -> graphene_core::raster::ImageFrame<Color> {
-	let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
+#[allow(clippy::too_many_arguments)]
+#[node_macro::node_fn(NoisePatternNode)]
+fn noise_pattern(
+	_no_primary_input: (),
+	dimensions: UVec2,
+	seed: u32,
+	scale: f32,
+	noise_type: NoiseType,
+	domain_warp_type: DomainWarpType,
+	domain_warp_amplitude: f32,
+	fractal_type: FractalType,
+	fractal_octaves: u32,
+	fractal_lacunarity: f32,
+	fractal_gain: f32,
+	fractal_weighted_strength: f32,
+	fractal_ping_pong_strength: f32,
+	cellular_distance_function: CellularDistanceFunction,
+	cellular_return_type: CellularReturnType,
+	cellular_jitter: f32,
+) -> graphene_core::raster::ImageFrame<Color> {
+	// All
+	let [width, height] = dimensions.to_array();
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
+	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
+	noise.set_frequency(Some(scale / 1000.));
+
+	// Domain Warp
+	let domain_warp_type = match domain_warp_type {
+		DomainWarpType::None => None,
+		DomainWarpType::OpenSimplex2 => Some(fastnoise_lite::DomainWarpType::OpenSimplex2),
+		DomainWarpType::OpenSimplex2Reduced => Some(fastnoise_lite::DomainWarpType::OpenSimplex2Reduced),
+		DomainWarpType::BasicGrid => Some(fastnoise_lite::DomainWarpType::BasicGrid),
+	};
+	let domain_warp_active = domain_warp_type.is_some();
+	noise.set_domain_warp_type(domain_warp_type);
+	noise.set_domain_warp_amp(Some(domain_warp_amplitude));
+
+	// Fractal
+	let noise_type = match noise_type {
+		NoiseType::Perlin => fastnoise_lite::NoiseType::Perlin,
+		NoiseType::OpenSimplex2 => fastnoise_lite::NoiseType::OpenSimplex2,
+		NoiseType::OpenSimplex2S => fastnoise_lite::NoiseType::OpenSimplex2S,
+		NoiseType::Cellular => fastnoise_lite::NoiseType::Cellular,
+		NoiseType::ValueCubic => fastnoise_lite::NoiseType::ValueCubic,
+		NoiseType::Value => fastnoise_lite::NoiseType::Value,
+		NoiseType::WhiteNoise => {
+			let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
+
+			for y in 0..height {
+				for x in 0..width {
+					let pixel = image.get_pixel_mut(x, y).unwrap();
+					let luminance = rng.gen_range(0.0..1.) as f32;
+					*pixel = Color::from_luminance(luminance);
+				}
+			}
+
+			return ImageFrame::<Color> {
+				image,
+				transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),
+				alpha_blending: AlphaBlending::default(),
+			};
+		}
+	};
+	noise.set_noise_type(Some(noise_type));
+	let fractal_type = match fractal_type {
+		FractalType::None => fastnoise_lite::FractalType::None,
+		FractalType::FBm => fastnoise_lite::FractalType::FBm,
+		FractalType::Ridged => fastnoise_lite::FractalType::Ridged,
+		FractalType::PingPong => fastnoise_lite::FractalType::PingPong,
+		FractalType::DomainWarpProgressive => fastnoise_lite::FractalType::DomainWarpProgressive,
+		FractalType::DomainWarpIndependent => fastnoise_lite::FractalType::DomainWarpIndependent,
+	};
+	noise.set_fractal_type(Some(fractal_type));
+	noise.set_fractal_octaves(Some(fractal_octaves as i32));
+	noise.set_fractal_lacunarity(Some(fractal_lacunarity));
+	noise.set_fractal_gain(Some(fractal_gain));
+	noise.set_fractal_weighted_strength(Some(fractal_weighted_strength));
+	noise.set_fractal_ping_pong_strength(Some(fractal_ping_pong_strength));
+
+	// Cellular
+	let cellular_distance_function = match cellular_distance_function {
+		CellularDistanceFunction::Euclidean => fastnoise_lite::CellularDistanceFunction::Euclidean,
+		CellularDistanceFunction::EuclideanSq => fastnoise_lite::CellularDistanceFunction::EuclideanSq,
+		CellularDistanceFunction::Manhattan => fastnoise_lite::CellularDistanceFunction::Manhattan,
+		CellularDistanceFunction::Hybrid => fastnoise_lite::CellularDistanceFunction::Hybrid,
+	};
+	let cellular_return_type = match cellular_return_type {
+		CellularReturnType::CellValue => fastnoise_lite::CellularReturnType::CellValue,
+		CellularReturnType::Nearest => fastnoise_lite::CellularReturnType::Distance,
+		CellularReturnType::NextNearest => fastnoise_lite::CellularReturnType::Distance2,
+		CellularReturnType::Average => fastnoise_lite::CellularReturnType::Distance2Add,
+		CellularReturnType::Difference => fastnoise_lite::CellularReturnType::Distance2Sub,
+		CellularReturnType::Product => fastnoise_lite::CellularReturnType::Distance2Mul,
+		CellularReturnType::Division => fastnoise_lite::CellularReturnType::Distance2Div,
+	};
+	noise.set_cellular_distance_function(Some(cellular_distance_function));
+	noise.set_cellular_return_type(Some(cellular_return_type));
+	noise.set_cellular_jitter(Some(cellular_jitter));
+
+	// Calculate the noise for every pixel
 	for y in 0..height {
 		for x in 0..width {
 			let pixel = image.get_pixel_mut(x, y).unwrap();
-			let luminance = match noise_type {
-				NoiseType::WhiteNoise => rng.gen_range(0.0..1.0) as f32,
-			};
+
+			let (mut x, mut y) = (x as f32, y as f32);
+			if domain_warp_active && domain_warp_amplitude > 0. {
+				(x, y) = noise.domain_warp_2d(x, y);
+			}
+
+			let luminance = (noise.get_noise_2d(x, y) + 1.) * 0.5;
 			*pixel = Color::from_luminance(luminance);
 		}
 	}
+
+	// Return the coherent noise image
 	ImageFrame::<Color> {
 		image,
 		transform: DAffine2::from_scale(DVec2::new(width as f64, height as f64)),

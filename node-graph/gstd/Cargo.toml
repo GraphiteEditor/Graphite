@@ -27,6 +27,7 @@ resvg = ["dep:resvg"]
 wayland = []
 
 [dependencies]
+fastnoise-lite = { workspace = true }
 rand = { workspace = true, features = [
 	"alloc",
 	"small_rng",

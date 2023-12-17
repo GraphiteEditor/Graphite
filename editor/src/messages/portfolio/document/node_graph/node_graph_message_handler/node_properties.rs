@@ -11,11 +11,13 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::memo::IORecord;
-use graphene_core::raster::{BlendMode, Color, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice,
+};
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
-use glam::{DVec2, IVec2};
+use glam::{DVec2, IVec2, UVec2};
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -129,57 +131,84 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	widgets
 }
 
-fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
+fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
 
 	assist(&mut widgets);
 
 	if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(vec2),
+		tagged_value: TaggedValue::DVec2(dvec2),
 		exposed: false,
 	} = document_node.inputs[index]
 	{
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(vec2.x))
+			NumberInput::new(Some(dvec2.x))
 				.label(x)
 				.unit(unit)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.min(min.unwrap_or(-((1u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), vec2.y)), node_id, index))
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(vec2.y))
+			NumberInput::new(Some(dvec2.y))
 				.label(y)
 				.unit(unit)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.min(min.unwrap_or(-((1u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(vec2.x, input.value.unwrap())), node_id, index))
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
 				.widget_holder(),
 		]);
 	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::IVec2(vec2),
+		tagged_value: TaggedValue::IVec2(ivec2),
 		exposed: false,
 	} = document_node.inputs[index]
 	{
-		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, vec2.y));
-		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(vec2.x, input.value.unwrap() as i32));
+		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, ivec2.y));
+		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(ivec2.x, input.value.unwrap() as i32));
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(vec2.x as f64))
+			NumberInput::new(Some(ivec2.x as f64))
 				.int()
 				.label(x)
 				.unit(unit)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.min(min.unwrap_or(-((1u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(vec2.y as f64))
+			NumberInput::new(Some(ivec2.y as f64))
 				.int()
 				.label(y)
 				.unit(unit)
-				.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
+				.min(min.unwrap_or(-((1u64 << std::f64::MANTISSA_DIGITS) as f64)))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.on_update(update_value(update_y, node_id, index))
+				.widget_holder(),
+		]);
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::UVec2(uvec2),
+		exposed: false,
+	} = document_node.inputs[index]
+	{
+		let update_x = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(input.value.unwrap() as u32, uvec2.y));
+		let update_y = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(uvec2.x, input.value.unwrap() as u32));
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			NumberInput::new(Some(uvec2.x as f64))
+				.int()
+				.label(x)
+				.unit(unit)
+				.min(min.unwrap_or(0.))
+				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.on_update(update_value(update_x, node_id, index))
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(uvec2.y as f64))
+				.int()
+				.label(y)
+				.unit(unit)
+				.min(min.unwrap_or(0.))
 				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
 				.widget_holder(),
@@ -323,7 +352,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-//TODO Use generalized Version of this as soon as it's available
+//TODO Generalize this instead of using a separate function per dropdown menu enum
 fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -346,30 +375,117 @@ fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name:
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-//TODO Use generalized Version of this as soon as it's available
+// TODO Generalize this instead of using a separate function per dropdown menu enum
 fn noise_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
-		tagged_value: TaggedValue::NoiseType(calculation),
+		tagged_value: TaggedValue::NoiseType(noise_type),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let calculation_modes = NoiseType::list();
-		let mut entries = Vec::with_capacity(calculation_modes.len());
-		for method in calculation_modes {
-			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::NoiseType(method), node_id, index)));
-		}
-		let entries = vec![entries];
+		let entries = NoiseType::list()
+			.iter()
+			.map(|noise_type| MenuListEntry::new(noise_type.to_string()).on_update(update_value(move |_| TaggedValue::NoiseType(*noise_type), node_id, index)))
+			.collect();
 
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
+			DropdownInput::new(vec![entries]).selected_index(Some(noise_type as u32)).widget_holder(),
 		]);
 	}
-	LayoutGroup::Row { widgets }.with_tooltip("Type of Noise")
+	LayoutGroup::Row { widgets }.with_tooltip("Style of noise pattern")
 }
 
-// TODO: Use generalized version of this as soon as it's available
+// TODO Generalize this instead of using a separate function per dropdown menu enum
+fn fractal_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::FractalType(fractal_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = FractalType::list()
+			.iter()
+			.map(|fractal_type| MenuListEntry::new(fractal_type.to_string()).on_update(update_value(move |_| TaggedValue::FractalType(*fractal_type), node_id, index)))
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![entries]).selected_index(Some(fractal_type as u32)).disabled(disabled).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Style of layered levels of the noise pattern")
+}
+
+// TODO Generalize this instead of using a separate function per dropdown menu enum
+fn cellular_distance_function(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::CellularDistanceFunction(cellular_distance_function),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = CellularDistanceFunction::list()
+			.iter()
+			.map(|cellular_distance_function| {
+				MenuListEntry::new(cellular_distance_function.to_string()).on_update(update_value(move |_| TaggedValue::CellularDistanceFunction(*cellular_distance_function), node_id, index))
+			})
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![entries])
+				.selected_index(Some(cellular_distance_function as u32))
+				.disabled(disabled)
+				.widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Distance function used by the cellular noise")
+}
+
+// TODO Generalize this instead of using a separate function per dropdown menu enum
+fn cellular_return_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::CellularReturnType(cellular_return_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = CellularReturnType::list()
+			.iter()
+			.map(|cellular_return_type| MenuListEntry::new(cellular_return_type.to_string()).on_update(update_value(move |_| TaggedValue::CellularReturnType(*cellular_return_type), node_id, index)))
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![entries]).selected_index(Some(cellular_return_type as u32)).disabled(disabled).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Return type of the cellular noise")
+}
+
+// TODO Generalize this instead of using a separate function per dropdown menu enum
+fn domain_warp_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::DomainWarpType(domain_warp_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = DomainWarpType::list()
+			.iter()
+			.map(|domain_warp_type| MenuListEntry::new(domain_warp_type.to_string()).on_update(update_value(move |_| TaggedValue::DomainWarpType(*domain_warp_type), node_id, index)))
+			.collect();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(vec![entries]).selected_index(Some(domain_warp_type as u32)).disabled(disabled).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Type of domain warp")
+}
+
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -803,17 +919,158 @@ pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId,
 
 // Noise Type is commented out for now as there is only one type of noise (White Noise).
 // As soon as there are more types of noise, this should be uncommented.
-pub fn pixel_noise_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let width = number_widget(document_node, node_id, 0, "Width", NumberInput::default().unit("px").min(1.), true);
-	let height = number_widget(document_node, node_id, 1, "Height", NumberInput::default().unit("px").min(1.), true);
-	let seed = number_widget(document_node, node_id, 2, "Seed", NumberInput::default().min(0.), true);
-	let _noise_type = noise_type(document_node, node_id, 3, "Noise Type", true);
+pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	// Get the current values of the inputs of interest so they can set whether certain inputs are disabled based on various conditions.
+	let current_noise_type = match &document_node.inputs[4] {
+		NodeInput::Value {
+			tagged_value: TaggedValue::NoiseType(noise_type),
+			..
+		} => Some(*noise_type),
+		_ => None,
+	};
+	let current_domain_warp_type = match &document_node.inputs[5] {
+		NodeInput::Value {
+			tagged_value: TaggedValue::DomainWarpType(domain_warp_type),
+			..
+		} => Some(*domain_warp_type),
+		_ => None,
+	};
+	let current_fractal_type = match &document_node.inputs[7] {
+		NodeInput::Value {
+			tagged_value: TaggedValue::FractalType(fractal_type),
+			..
+		} => Some(*fractal_type),
+		_ => None,
+	};
+	let fractal_active = current_fractal_type != Some(FractalType::None);
+	let coherent_noise_active = current_noise_type != Some(NoiseType::WhiteNoise);
+	let cellular_noise_active = current_noise_type == Some(NoiseType::Cellular);
+	let ping_pong_active = current_fractal_type == Some(FractalType::PingPong);
+	let domain_warp_active = current_domain_warp_type != Some(DomainWarpType::None);
+	let domain_warp_only_fractal_type_wrongly_active =
+		!domain_warp_active && (current_fractal_type == Some(FractalType::DomainWarpIndependent) || current_fractal_type == Some(FractalType::DomainWarpProgressive));
+
+	// All
+	let dimensions = vec2_widget(document_node, node_id, 1, "Dimensions", "W", "H", "px", Some(1.), add_blank_assist);
+	let seed = number_widget(document_node, node_id, 2, "Seed", NumberInput::default().min(0.).is_integer(true), true);
+	let scale = number_widget(document_node, node_id, 3, "Scale", NumberInput::default().min(0.).disabled(!coherent_noise_active), true);
+	let noise_type_row = noise_type(document_node, node_id, 4, "Noise Type", true);
+
+	// Domain Warp
+	let domain_warp_type_row = domain_warp_type(document_node, node_id, 5, "Domain Warp Type", true, !coherent_noise_active);
+	let domain_warp_amplitude = number_widget(
+		document_node,
+		node_id,
+		6,
+		"Domain Warp Amplitude",
+		NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
+		true,
+	);
+
+	// Fractal
+	let fractal_type_row = fractal_type(document_node, node_id, 7, "Fractal Type", true, !coherent_noise_active);
+	let fractal_octaves = number_widget(
+		document_node,
+		node_id,
+		8,
+		"Fractal Octaves",
+		NumberInput::default()
+			.mode_range()
+			.min(1.)
+			.max(10.)
+			.range_max(Some(4.))
+			.is_integer(true)
+			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+		true,
+	);
+	let fractal_lacunarity = number_widget(
+		document_node,
+		node_id,
+		9,
+		"Fractal Lacunarity",
+		NumberInput::default()
+			.mode_range()
+			.min(0.)
+			.range_max(Some(10.))
+			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+		true,
+	);
+	let fractal_gain = number_widget(
+		document_node,
+		node_id,
+		10,
+		"Fractal Gain",
+		NumberInput::default()
+			.mode_range()
+			.min(0.)
+			.range_max(Some(10.))
+			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+		true,
+	);
+	let fractal_weighted_strength = number_widget(
+		document_node,
+		node_id,
+		11,
+		"Fractal Weighted Strength",
+		NumberInput::default()
+			.mode_range()
+			.min(0.)
+			.max(1.) // Defined for the 0-1 range
+			.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+		true,
+	);
+	let fractal_ping_pong_strength = number_widget(
+		document_node,
+		node_id,
+		12,
+		"Fractal Ping Pong Strength",
+		NumberInput::default()
+			.mode_range()
+			.min(0.)
+			.range_max(Some(10.))
+			.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+		true,
+	);
+
+	// Cellular
+	let cellular_distance_function_row = cellular_distance_function(document_node, node_id, 13, "Cellular Distance Function", true, !coherent_noise_active || !cellular_noise_active);
+	let cellular_return_type = cellular_return_type(document_node, node_id, 14, "Cellular Return Type", true, !coherent_noise_active || !cellular_noise_active);
+	let cellular_jitter = number_widget(
+		document_node,
+		node_id,
+		15,
+		"Cellular Jitter",
+		NumberInput::default()
+			.mode_range()
+			.range_min(Some(0.))
+			.range_max(Some(1.))
+			.disabled(!coherent_noise_active || !cellular_noise_active),
+		true,
+	);
 
 	vec![
-		LayoutGroup::Row { widgets: width },
-		LayoutGroup::Row { widgets: height },
+		// All
+		dimensions,
 		LayoutGroup::Row { widgets: seed },
-		//_noise_type
+		LayoutGroup::Row { widgets: scale },
+		noise_type_row,
+		LayoutGroup::Row { widgets: Vec::new() },
+		// Domain Warp
+		domain_warp_type_row,
+		LayoutGroup::Row { widgets: domain_warp_amplitude },
+		LayoutGroup::Row { widgets: Vec::new() },
+		// Fractal
+		fractal_type_row,
+		LayoutGroup::Row { widgets: fractal_octaves },
+		LayoutGroup::Row { widgets: fractal_lacunarity },
+		LayoutGroup::Row { widgets: fractal_gain },
+		LayoutGroup::Row { widgets: fractal_weighted_strength },
+		LayoutGroup::Row { widgets: fractal_ping_pong_strength },
+		LayoutGroup::Row { widgets: Vec::new() },
+		// Cellular
+		cellular_distance_function_row,
+		cellular_return_type,
+		LayoutGroup::Row { widgets: cellular_jitter },
 	]
 }
 
@@ -1163,7 +1420,7 @@ pub fn star_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn line_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", add_blank_assist);
+	let operand = |name: &str, index| vec2_widget(document_node, node_id, index, name, "X", "Y", "px", None, add_blank_assist);
 	vec![operand("Start", 1), operand("End", 2)]
 }
 pub fn spline_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1195,7 +1452,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			add_blank_assist(widgets);
 		}
 	};
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", translation_assist);
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, translation_assist);
 
 	let rotation = {
 		let index = 2;
@@ -1226,7 +1483,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		LayoutGroup::Row { widgets }
 	};
 
-	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", add_blank_assist);
+	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", None, add_blank_assist);
 
 	let vector_data = start_widgets(document_node, node_id, 0, "Data", FrontendGraphDataType::Vector, false);
 	let vector_data = LayoutGroup::Row { widgets: vector_data };
@@ -1836,7 +2093,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 }
 
 pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", add_blank_assist);
+	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", None, add_blank_assist);
 	let count = number_widget(document_node, node_id, 2, "Count", NumberInput::default().min(1.), true);
 
 	vec![direction, LayoutGroup::Row { widgets: count }]
@@ -1895,8 +2152,8 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", add_blank_assist);
+	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", None, add_blank_assist);
 	let background = color_widget(document_node, node_id, 3, "Background", ColorButton::default().allow_none(false), true);
 	let clip = LayoutGroup::Row {
 		widgets: bool_widget(document_node, node_id, 4, "Clip", true),

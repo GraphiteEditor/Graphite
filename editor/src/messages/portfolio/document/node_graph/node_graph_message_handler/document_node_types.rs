@@ -11,7 +11,10 @@ use graph_craft::ProtoNodeIdentifier;
 #[cfg(feature = "gpu")]
 use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
-use graphene_core::raster::{BlendMode, Color, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice};
+use graphene_core::raster::{
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute,
+	SelectiveColorChoice,
+};
 use graphene_core::text::Font;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
@@ -567,17 +570,33 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Pixel Noise",
+			name: "Noise Pattern",
 			category: "General",
-			implementation: NodeImplementation::proto("graphene_std::raster::PixelNoiseNode<_, _, _>"),
+			implementation: NodeImplementation::proto("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			inputs: vec![
-				DocumentInputType::value("Width", TaggedValue::U32(100), false),
-				DocumentInputType::value("Height", TaggedValue::U32(100), false),
+				DocumentInputType::value("None", TaggedValue::None, false),
+				// All
+				DocumentInputType::value("Dimensions", TaggedValue::UVec2((512, 512).into()), false),
 				DocumentInputType::value("Seed", TaggedValue::U32(0), false),
-				DocumentInputType::value("Noise Type", TaggedValue::NoiseType(NoiseType::WhiteNoise), false),
+				DocumentInputType::value("Scale", TaggedValue::F32(10.), false),
+				DocumentInputType::value("Noise Type", TaggedValue::NoiseType(NoiseType::Perlin), false),
+				// Domain Warp
+				DocumentInputType::value("Domain Warp Type", TaggedValue::DomainWarpType(DomainWarpType::None), false),
+				DocumentInputType::value("Domain Warp Amplitude", TaggedValue::F32(100.), false),
+				// Fractal
+				DocumentInputType::value("Fractal Type", TaggedValue::FractalType(FractalType::None), false),
+				DocumentInputType::value("Fractal Octaves", TaggedValue::U32(3), false),
+				DocumentInputType::value("Fractal Lacunarity", TaggedValue::F32(2.), false),
+				DocumentInputType::value("Fractal Gain", TaggedValue::F32(0.5), false),
+				DocumentInputType::value("Fractal Weighted Strength", TaggedValue::F32(0.), false), // 0-1 range
+				DocumentInputType::value("Fractal Ping Pong Strength", TaggedValue::F32(2.), false),
+				// Cellular
+				DocumentInputType::value("Cellular Distance Function", TaggedValue::CellularDistanceFunction(CellularDistanceFunction::Euclidean), false),
+				DocumentInputType::value("Cellular Return Type", TaggedValue::CellularReturnType(CellularReturnType::Nearest), false),
+				DocumentInputType::value("Cellular Jitter", TaggedValue::F32(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			properties: node_properties::pixel_noise_properties,
+			properties: node_properties::noise_pattern_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
