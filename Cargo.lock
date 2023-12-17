@@ -1462,6 +1462,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastnoise-lite"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea2b3d9ffd3c9e98a5fc12f58ac3f7c48943dac14c6638e96db09ac77880fa9a"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2218,6 +2227,7 @@ dependencies = [
  "bytemuck",
  "compilation-client",
  "dyn-any",
+ "fastnoise-lite",
  "futures",
  "glam",
  "gpu-compiler-bin-wrapper",
