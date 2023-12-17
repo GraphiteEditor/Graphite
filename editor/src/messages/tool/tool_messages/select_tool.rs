@@ -404,11 +404,22 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Update bounds
-				if let Some(bounds) = document.document_legacy.selected_visible_layers_bounding_box_viewport() {
+				let transform = document.document_legacy.selected_visible_layers().next().map(|layer| document.metadata().transform_to_viewport(layer));
+				let transform = transform.unwrap_or(DAffine2::IDENTITY);
+				let bounds = document
+					.document_legacy
+					.selected_visible_layers()
+					.filter_map(|layer| {
+						document
+							.metadata()
+							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+					})
+					.reduce(graphene_core::renderer::Quad::combine_bounds);
+				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
 					bounding_box_manager.bounds = bounds;
-					bounding_box_manager.transform = DAffine2::IDENTITY;
+					bounding_box_manager.transform = transform;
 
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
@@ -490,6 +501,7 @@ impl Fsm for SelectToolFsmState {
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						let document = &document.document_legacy;
+						bounds.origional_bound_transform = bounds.transform;
 
 						tool_data.layers_dragging.retain(|layer| document.document_network.nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
@@ -617,14 +629,17 @@ impl Fsm for SelectToolFsmState {
 
 						let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-						let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, center, bounds.center_of_transformation, axis_align);
-						let (delta, mut _pivot) = movement.bounds_to_scale_transform(position, size);
+						let (position, size) = movement.new_size(snapped_mouse_position, bounds.origional_bound_transform, center, bounds.center_of_transformation, axis_align);
+						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
+
+						let pivot_transform = DAffine2::from_translation(pivot);
+						let transformation = pivot_transform * delta * pivot_transform.inverse();
 
 						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut _pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
-						selected.update_transforms(delta);
+						selected.apply_transformation(bounds.origional_bound_transform * transformation * bounds.origional_bound_transform.inverse());
 					}
 				}
 				SelectToolFsmState::ResizingBounds

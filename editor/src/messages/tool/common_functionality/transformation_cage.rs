@@ -163,6 +163,7 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
+	pub origional_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
