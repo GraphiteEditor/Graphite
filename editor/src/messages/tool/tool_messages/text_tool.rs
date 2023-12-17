@@ -6,7 +6,6 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::{Fill, RenderData};
-use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font};

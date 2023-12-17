@@ -171,7 +171,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
-				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, persistent_data, ipp));
+				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, ipp));
 			}
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
@@ -744,8 +744,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
 				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::ClearAllOverlays);
-				responses.add(OverlaysMessage::Rerender);
+				responses.add(OverlaysMessage::Render);
 			}
 			SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;

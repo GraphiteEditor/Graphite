@@ -654,7 +654,7 @@ impl NodeGraphExecutor {
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(DocumentMessage::DirtyRenderDocument);
-					responses.add(DocumentMessage::Overlays(OverlaysMessage::Rerender));
+					responses.add(OverlaysMessage::Render);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::ResendActiveProperties))

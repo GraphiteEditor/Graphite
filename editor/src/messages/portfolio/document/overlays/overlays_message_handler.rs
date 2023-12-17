@@ -1,11 +1,8 @@
 use crate::consts::{COLOR_ACCENT, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_INNER, PIVOT_OUTER};
 use crate::messages::portfolio::document::overlays::overlays_message::OverlayProvider;
-use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use core::f64::consts::PI;
-use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::layers::style::{RenderData, ViewMode};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -123,8 +120,6 @@ impl OverlayContext {
 
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
-	pub overlays_document: DocumentLegacy,
-
 	pub overlay_providers: HashSet<OverlayProvider>,
 	pub canvas: Option<web_sys::HtmlCanvasElement>,
 	pub render_context: Option<web_sys::CanvasRenderingContext2d>,
@@ -134,6 +129,9 @@ fn create_canvas() -> web_sys::HtmlCanvasElement {
 	let window = web_sys::window().expect("global `window` should exist");
 	let document = window.document().expect("document should exist");
 	let parent = document.query_selector("div.viewport").ok().flatten().expect("viewport element should exist");
+	if let Some(canvas) = parent.query_selector("canvas").ok().flatten() {
+		return canvas.dyn_into().expect("downcast canvas");
+	}
 	let canvas: web_sys::HtmlCanvasElement = document.create_element("canvas").ok().expect("create canvas").dyn_into().ok().expect("is canvas");
 	parent.append_child(canvas.dyn_ref().expect("canvas is node")).ok().expect("adding canvas");
 	canvas
@@ -144,32 +142,9 @@ fn create_render_context() -> web_sys::CanvasRenderingContext2d {
 	context.dyn_into().expect("context should be a canvas rendering context")
 }
 
-impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
-	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, (overlays_visible, persistent_data, ipp): (bool, &PersistentData, &InputPreprocessorMessageHandler)) {
+impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
+	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, (overlays_visible, ipp): (bool, &InputPreprocessorMessageHandler)) {
 		match message {
-			// Sub-messages
-			OverlaysMessage::DispatchOperation(operation) => match self.overlays_document.handle_operation(*operation) {
-				Ok(_) => responses.add(OverlaysMessage::Rerender),
-				Err(e) => error!("OverlaysError: {e:?}"),
-			},
-
-			// Messages
-			OverlaysMessage::ClearAllOverlays => {
-				self.overlays_document = DocumentLegacy::default();
-			}
-			OverlaysMessage::Rerender =>
-			// Render overlays
-			{
-				responses.add(FrontendMessage::UpdateDocumentOverlays {
-					svg: if overlays_visible {
-						let render_data = RenderData::new(&persistent_data.font_cache, ViewMode::Normal, Some(ipp.document_bounds()));
-						self.overlays_document.render_root(&render_data)
-					} else {
-						String::from("")
-					},
-				})
-			}
-
 			#[cfg(target_arch = "wasm32")]
 			OverlaysMessage::Render => {
 				let canvas = self.canvas.get_or_insert_with(create_canvas);
@@ -194,7 +169,7 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Render => {
-				warn!("Cannot render overlays on non wasm targets.");
+				warn!("Cannot render overlays on non wasm targets {overlays_visible} {ipp:?}.");
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);
@@ -205,9 +180,5 @@ impl MessageHandler<OverlaysMessage, (bool, &PersistentData, &InputPreprocessorM
 		}
 	}
 
-	fn actions(&self) -> ActionList {
-		actions!(OverlaysMessageDiscriminant;
-			ClearAllOverlays,
-		)
-	}
+	advertise_actions!(OverlaysMessage;);
 }
