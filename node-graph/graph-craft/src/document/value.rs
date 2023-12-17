@@ -9,7 +9,7 @@ use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
-pub use glam::{DAffine2, DVec2};
+pub use glam::{DAffine2, DVec2, UVec2};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -23,6 +23,7 @@ pub enum TaggedValue {
 	F32(f32),
 	F64(f64),
 	Bool(bool),
+	UVec2(UVec2),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
@@ -45,6 +46,10 @@ pub enum TaggedValue {
 	VecDVec2(Vec<DVec2>),
 	RedGreenBlue(graphene_core::raster::RedGreenBlue),
 	NoiseType(graphene_core::raster::NoiseType),
+	FractalType(graphene_core::raster::FractalType),
+	CellularDistanceFunction(graphene_core::raster::CellularDistanceFunction),
+	CellularReturnType(graphene_core::raster::CellularReturnType),
+	DomainWarpType(graphene_core::raster::DomainWarpType),
 	RelativeAbsolute(graphene_core::raster::RelativeAbsolute),
 	SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice),
 	LineCap(graphene_core::vector::style::LineCap),
@@ -76,70 +81,75 @@ impl Hash for TaggedValue {
 		core::mem::discriminant(self).hash(state);
 		match self {
 			Self::None => {}
-			Self::String(s) => s.hash(state),
-			Self::U32(u) => u.hash(state),
-			Self::F32(f) => f.to_bits().hash(state),
-			Self::F64(f) => f.to_bits().hash(state),
-			Self::Bool(b) => b.hash(state),
-			Self::DVec2(v) => v.to_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::String(x) => x.hash(state),
+			Self::U32(x) => x.hash(state),
+			Self::F32(x) => x.to_bits().hash(state),
+			Self::F64(x) => x.to_bits().hash(state),
+			Self::Bool(x) => x.hash(state),
+			Self::UVec2(x) => x.to_array().iter().for_each(|x| x.hash(state)),
+			Self::DVec2(x) => x.to_array().iter().for_each(|x| x.to_bits().hash(state)),
 			Self::OptionalDVec2(None) => 0.hash(state),
-			Self::OptionalDVec2(Some(v)) => {
+			Self::OptionalDVec2(Some(x)) => {
 				1.hash(state);
-				Self::DVec2(*v).hash(state)
+				Self::DVec2(*x).hash(state)
 			}
-			Self::DAffine2(m) => m.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
-			Self::Image(i) => i.hash(state),
-			Self::ImaginateCache(i) => i.hash(state),
-			Self::Color(c) => c.hash(state),
-			Self::Subpaths(s) => s.iter().for_each(|subpath| subpath.hash(state)),
-			Self::RcSubpath(s) => s.hash(state),
-			Self::BlendMode(b) => b.hash(state),
-			Self::LuminanceCalculation(l) => l.hash(state),
-			Self::ImaginateSamplingMethod(m) => m.hash(state),
-			Self::ImaginateMaskStartingFill(f) => f.hash(state),
-			Self::ImaginateController(s) => s.hash(state),
-			Self::LayerPath(p) => p.hash(state),
-			Self::ImageFrame(i) => i.hash(state),
-			Self::VectorData(vector_data) => vector_data.hash(state),
-			Self::Fill(fill) => fill.hash(state),
-			Self::Stroke(stroke) => stroke.hash(state),
-			Self::VecF32(vec_f32) => vec_f32.iter().for_each(|val| val.to_bits().hash(state)),
-			Self::VecDVec2(vec_dvec2) => vec_dvec2.iter().for_each(|val| val.to_array().iter().for_each(|x| x.to_bits().hash(state))),
-			Self::RedGreenBlue(red_green_blue) => red_green_blue.hash(state),
-			Self::NoiseType(noise_type) => noise_type.hash(state),
-			Self::RelativeAbsolute(relative_absolute) => relative_absolute.hash(state),
-			Self::SelectiveColorChoice(selective_color_choice) => selective_color_choice.hash(state),
-			Self::LineCap(line_cap) => line_cap.hash(state),
-			Self::LineJoin(line_join) => line_join.hash(state),
-			Self::FillType(fill_type) => fill_type.hash(state),
-			Self::GradientType(gradient_type) => gradient_type.hash(state),
-			Self::GradientPositions(gradient_positions) => {
-				gradient_positions.len().hash(state);
-				for (position, color) in gradient_positions {
+			Self::DAffine2(x) => x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::Image(x) => x.hash(state),
+			Self::ImaginateCache(x) => x.hash(state),
+			Self::Color(x) => x.hash(state),
+			Self::Subpaths(x) => x.iter().for_each(|subpath| subpath.hash(state)),
+			Self::RcSubpath(x) => x.hash(state),
+			Self::BlendMode(x) => x.hash(state),
+			Self::LuminanceCalculation(x) => x.hash(state),
+			Self::ImaginateSamplingMethod(x) => x.hash(state),
+			Self::ImaginateMaskStartingFill(x) => x.hash(state),
+			Self::ImaginateController(x) => x.hash(state),
+			Self::LayerPath(x) => x.hash(state),
+			Self::ImageFrame(x) => x.hash(state),
+			Self::VectorData(x) => x.hash(state),
+			Self::Fill(x) => x.hash(state),
+			Self::Stroke(x) => x.hash(state),
+			Self::VecF32(x) => x.iter().for_each(|val| val.to_bits().hash(state)),
+			Self::VecDVec2(x) => x.iter().for_each(|val| val.to_array().iter().for_each(|x| x.to_bits().hash(state))),
+			Self::RedGreenBlue(x) => x.hash(state),
+			Self::NoiseType(x) => x.hash(state),
+			Self::FractalType(x) => x.hash(state),
+			Self::CellularDistanceFunction(x) => x.hash(state),
+			Self::CellularReturnType(x) => x.hash(state),
+			Self::DomainWarpType(x) => x.hash(state),
+			Self::RelativeAbsolute(x) => x.hash(state),
+			Self::SelectiveColorChoice(x) => x.hash(state),
+			Self::LineCap(x) => x.hash(state),
+			Self::LineJoin(x) => x.hash(state),
+			Self::FillType(x) => x.hash(state),
+			Self::GradientType(x) => x.hash(state),
+			Self::GradientPositions(x) => {
+				x.len().hash(state);
+				for (position, color) in x {
 					position.to_bits().hash(state);
 					color.hash(state);
 				}
 			}
-			Self::Quantization(quantized_image) => quantized_image.hash(state),
-			Self::OptionalColor(color) => color.hash(state),
-			Self::ManipulatorGroupIds(mirror) => mirror.hash(state),
-			Self::Font(font) => font.hash(state),
-			Self::BrushStrokes(brush_strokes) => brush_strokes.hash(state),
-			Self::BrushCache(brush_cache) => brush_cache.hash(state),
-			Self::Segments(segments) => {
-				for segment in segments {
+			Self::Quantization(x) => x.hash(state),
+			Self::OptionalColor(x) => x.hash(state),
+			Self::ManipulatorGroupIds(x) => x.hash(state),
+			Self::Font(x) => x.hash(state),
+			Self::BrushStrokes(x) => x.hash(state),
+			Self::BrushCache(x) => x.hash(state),
+			Self::Segments(x) => {
+				for segment in x {
 					segment.hash(state)
 				}
 			}
-			Self::DocumentNode(document_node) => document_node.hash(state),
-			Self::GraphicGroup(graphic_group) => graphic_group.hash(state),
-			Self::Artboard(artboard) => artboard.hash(state),
-			Self::Curve(curve) => curve.hash(state),
-			Self::IVec2(v) => v.hash(state),
-			Self::SurfaceFrame(surface_id) => surface_id.hash(state),
-			Self::Footprint(footprint) => footprint.hash(state),
-			Self::RenderOutput(render_output) => render_output.hash(state),
-			Self::Palette(palette) => palette.hash(state),
+			Self::DocumentNode(x) => x.hash(state),
+			Self::GraphicGroup(x) => x.hash(state),
+			Self::Artboard(x) => x.hash(state),
+			Self::Curve(x) => x.hash(state),
+			Self::IVec2(x) => x.hash(state),
+			Self::SurfaceFrame(x) => x.hash(state),
+			Self::Footprint(x) => x.hash(state),
+			Self::RenderOutput(x) => x.hash(state),
+			Self::Palette(x) => x.hash(state),
 		}
 	}
 }
@@ -154,6 +164,7 @@ impl<'a> TaggedValue {
 			TaggedValue::F32(x) => Box::new(x),
 			TaggedValue::F64(x) => Box::new(x),
 			TaggedValue::Bool(x) => Box::new(x),
+			TaggedValue::UVec2(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
 			TaggedValue::DAffine2(x) => Box::new(x),
@@ -176,6 +187,10 @@ impl<'a> TaggedValue {
 			TaggedValue::VecDVec2(x) => Box::new(x),
 			TaggedValue::RedGreenBlue(x) => Box::new(x),
 			TaggedValue::NoiseType(x) => Box::new(x),
+			TaggedValue::FractalType(x) => Box::new(x),
+			TaggedValue::CellularDistanceFunction(x) => Box::new(x),
+			TaggedValue::CellularReturnType(x) => Box::new(x),
+			TaggedValue::DomainWarpType(x) => Box::new(x),
 			TaggedValue::RelativeAbsolute(x) => Box::new(x),
 			TaggedValue::SelectiveColorChoice(x) => Box::new(x),
 			TaggedValue::LineCap(x) => Box::new(x),
@@ -210,8 +225,8 @@ impl<'a> TaggedValue {
 			TaggedValue::F32(x) => x.to_string() + "_f32",
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
-			TaggedValue::BlendMode(blend_mode) => "BlendMode::".to_string() + &blend_mode.to_string(),
-			TaggedValue::Color(color) => format!("Color {color:?}"),
+			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
+			TaggedValue::Color(x) => format!("Color {x:?}"),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -224,6 +239,7 @@ impl<'a> TaggedValue {
 			TaggedValue::F32(_) => concrete!(f32),
 			TaggedValue::F64(_) => concrete!(f64),
 			TaggedValue::Bool(_) => concrete!(bool),
+			TaggedValue::UVec2(_) => concrete!(UVec2),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
@@ -246,6 +262,10 @@ impl<'a> TaggedValue {
 			TaggedValue::VecDVec2(_) => concrete!(Vec<DVec2>),
 			TaggedValue::RedGreenBlue(_) => concrete!(graphene_core::raster::RedGreenBlue),
 			TaggedValue::NoiseType(_) => concrete!(graphene_core::raster::NoiseType),
+			TaggedValue::FractalType(_) => concrete!(graphene_core::raster::FractalType),
+			TaggedValue::CellularDistanceFunction(_) => concrete!(graphene_core::raster::CellularDistanceFunction),
+			TaggedValue::CellularReturnType(_) => concrete!(graphene_core::raster::CellularReturnType),
+			TaggedValue::DomainWarpType(_) => concrete!(graphene_core::raster::DomainWarpType),
 			TaggedValue::RelativeAbsolute(_) => concrete!(graphene_core::raster::RelativeAbsolute),
 			TaggedValue::SelectiveColorChoice(_) => concrete!(graphene_core::raster::SelectiveColorChoice),
 			TaggedValue::LineCap(_) => concrete!(graphene_core::vector::style::LineCap),
@@ -283,6 +303,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<f32>() => Ok(TaggedValue::F32(*downcast(input).unwrap())),
 			x if x == TypeId::of::<f64>() => Ok(TaggedValue::F64(*downcast(input).unwrap())),
 			x if x == TypeId::of::<bool>() => Ok(TaggedValue::Bool(*downcast(input).unwrap())),
+			x if x == TypeId::of::<UVec2>() => Ok(TaggedValue::UVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<DVec2>() => Ok(TaggedValue::DVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<DVec2>>() => Ok(TaggedValue::OptionalDVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => Ok(TaggedValue::Image(*downcast(input).unwrap())),
@@ -305,6 +326,10 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<Vec<DVec2>>() => Ok(TaggedValue::VecDVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::RedGreenBlue>() => Ok(TaggedValue::RedGreenBlue(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::NoiseType>() => Ok(TaggedValue::NoiseType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::FractalType>() => Ok(TaggedValue::FractalType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::CellularDistanceFunction>() => Ok(TaggedValue::CellularDistanceFunction(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::CellularReturnType>() => Ok(TaggedValue::CellularReturnType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::raster::DomainWarpType>() => Ok(TaggedValue::DomainWarpType(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::RelativeAbsolute>() => Ok(TaggedValue::RelativeAbsolute(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::SelectiveColorChoice>() => Ok(TaggedValue::SelectiveColorChoice(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::style::LineCap>() => Ok(TaggedValue::LineCap(*downcast(input).unwrap())),

@@ -61,6 +61,7 @@ quote = "1.0"
 axum = "0.6"
 chrono = "^0.4.23"
 ron = "0.8"
+fastnoise-lite = "1.1.0"
 wgpu-types = "0.17"
 wgpu = "0.17"
 wasm-bindgen-futures = { version = "0.4.36" }

@@ -26,7 +26,7 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 use wgpu_executor::WgpuExecutor;
 
 use dyn_any::StaticType;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -655,7 +655,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
-		register_node!(graphene_std::raster::PixelNoiseNode<_, _, _>, input: u32, params: [u32, u32, NoiseType]),
+		register_node!(graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>, input: (), params: [UVec2, u32, f32, NoiseType, DomainWarpType, f32, FractalType, u32, f32, f32, f32, f32, CellularDistanceFunction, CellularReturnType, f32]),
 		#[cfg(feature = "quantization")]
 		register_node!(graphene_std::quantization::GenerateQuantizationNode<_, _>, input: ImageFrame<Color>, params: [u32, u32]),
 		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),

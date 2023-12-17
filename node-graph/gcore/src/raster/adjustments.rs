@@ -611,20 +611,178 @@ impl core::fmt::Display for RedGreenBlue {
 #[cfg_attr(feature = "std", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
 pub enum NoiseType {
+	Perlin,
+	OpenSimplex2,
+	OpenSimplex2S,
+	Cellular,
+	ValueCubic,
+	Value,
 	WhiteNoise,
 }
 
 impl core::fmt::Display for NoiseType {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
+			NoiseType::Perlin => write!(f, "Perlin"),
+			NoiseType::OpenSimplex2 => write!(f, "OpenSimplex2"),
+			NoiseType::OpenSimplex2S => write!(f, "OpenSimplex2S"),
+			NoiseType::Cellular => write!(f, "Cellular"),
+			NoiseType::ValueCubic => write!(f, "Value Cubic"),
+			NoiseType::Value => write!(f, "Value"),
 			NoiseType::WhiteNoise => write!(f, "White Noise"),
 		}
 	}
 }
 
 impl NoiseType {
-	pub fn list() -> [NoiseType; 1] {
-		[NoiseType::WhiteNoise]
+	pub fn list() -> &'static [NoiseType; 7] {
+		&[
+			NoiseType::Perlin,
+			NoiseType::OpenSimplex2,
+			NoiseType::OpenSimplex2S,
+			NoiseType::Cellular,
+			NoiseType::ValueCubic,
+			NoiseType::Value,
+			NoiseType::WhiteNoise,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum FractalType {
+	None,
+	FBm,
+	Ridged,
+	PingPong,
+	DomainWarpProgressive,
+	DomainWarpIndependent,
+}
+
+impl core::fmt::Display for FractalType {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			FractalType::None => write!(f, "None"),
+			FractalType::FBm => write!(f, "Fractional Brownian Motion"),
+			FractalType::Ridged => write!(f, "Ridged"),
+			FractalType::PingPong => write!(f, "Ping Pong"),
+			FractalType::DomainWarpProgressive => write!(f, "Progressive (Domain Warp Only)"),
+			FractalType::DomainWarpIndependent => write!(f, "Independent (Domain Warp Only)"),
+		}
+	}
+}
+
+impl FractalType {
+	pub fn list() -> &'static [FractalType; 6] {
+		&[
+			FractalType::None,
+			FractalType::FBm,
+			FractalType::Ridged,
+			FractalType::PingPong,
+			FractalType::DomainWarpProgressive,
+			FractalType::DomainWarpIndependent,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum CellularDistanceFunction {
+	Euclidean,
+	EuclideanSq,
+	Manhattan,
+	Hybrid,
+}
+
+impl core::fmt::Display for CellularDistanceFunction {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			CellularDistanceFunction::Euclidean => write!(f, "Euclidean"),
+			CellularDistanceFunction::EuclideanSq => write!(f, "Euclidean Squared (Faster)"),
+			CellularDistanceFunction::Manhattan => write!(f, "Manhattan"),
+			CellularDistanceFunction::Hybrid => write!(f, "Hybrid"),
+		}
+	}
+}
+
+impl CellularDistanceFunction {
+	pub fn list() -> &'static [CellularDistanceFunction; 4] {
+		&[
+			CellularDistanceFunction::Euclidean,
+			CellularDistanceFunction::EuclideanSq,
+			CellularDistanceFunction::Manhattan,
+			CellularDistanceFunction::Hybrid,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum CellularReturnType {
+	CellValue,
+	Nearest,
+	NextNearest,
+	Average,
+	Difference,
+	Product,
+	Division,
+}
+
+impl core::fmt::Display for CellularReturnType {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			CellularReturnType::CellValue => write!(f, "Cell Value"),
+			CellularReturnType::Nearest => write!(f, "Nearest (F1)"),
+			CellularReturnType::NextNearest => write!(f, "Next Nearest (F2)"),
+			CellularReturnType::Average => write!(f, "Average (F1 / 2 + F2 / 2)"),
+			CellularReturnType::Difference => write!(f, "Difference (F2 - F1)"),
+			CellularReturnType::Product => write!(f, "Product (F2 * F1 / 2)"),
+			CellularReturnType::Division => write!(f, "Division (F1 / F2)"),
+		}
+	}
+}
+
+impl CellularReturnType {
+	pub fn list() -> &'static [CellularReturnType; 7] {
+		&[
+			CellularReturnType::CellValue,
+			CellularReturnType::Nearest,
+			CellularReturnType::NextNearest,
+			CellularReturnType::Average,
+			CellularReturnType::Difference,
+			CellularReturnType::Product,
+			CellularReturnType::Division,
+		]
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum DomainWarpType {
+	None,
+	OpenSimplex2,
+	OpenSimplex2Reduced,
+	BasicGrid,
+}
+
+impl core::fmt::Display for DomainWarpType {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			DomainWarpType::None => write!(f, "None"),
+			DomainWarpType::OpenSimplex2 => write!(f, "OpenSimplex2"),
+			DomainWarpType::OpenSimplex2Reduced => write!(f, "OpenSimplex2 Reduced"),
+			DomainWarpType::BasicGrid => write!(f, "Basic Grid"),
+		}
+	}
+}
+
+impl DomainWarpType {
+	pub fn list() -> &'static [DomainWarpType; 4] {
+		&[DomainWarpType::None, DomainWarpType::OpenSimplex2, DomainWarpType::OpenSimplex2Reduced, DomainWarpType::BasicGrid]
 	}
 }
 

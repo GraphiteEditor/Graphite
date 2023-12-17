@@ -84,7 +84,7 @@
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(mode === "Range" ? { "--progress-factor": (rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin) } : {}),
+		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 
 	// Keep track of the Ctrl key being held down.
@@ -129,7 +129,7 @@
 
 	// Called internally to update the value indirectly by informing the parent component of the new value,
 	// so it can update the prop for this component, finally yielding the value change.
-	function updateValue(newValue: number | undefined) {
+	function updateValue(newValue: number | undefined): number | undefined {
 		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
 		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
@@ -138,6 +138,8 @@
 			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
 			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
 
+			if (isInteger) newValueValidated = Math.round(newValueValidated);
+
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
 		}
@@ -145,6 +147,9 @@
 		text = displayText(newValueValidated);
 
 		if (newValue !== undefined) dispatch("value", newValueValidated);
+
+		// For any caller that needs to know what the value was changed to, we return it here
+		return newValueValidated;
 	}
 
 	// ================
@@ -185,7 +190,10 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		let newValue = evaluateMathExpression(text);
+		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
+		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
+
+		let newValue = evaluateMathExpression(textWithLeadingZeroes);
 		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
 		updateValue(newValue);
 
@@ -321,9 +329,12 @@
 				cumulativeDragDelta += dragDelta;
 
 				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey || isInteger ? Math.round(combined) : combined;
+				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
 
-				updateValue(combineSnapped);
+				const newValue = updateValue(combineSnapped);
+
+				// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+				if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
 			}
 			ignoredFirstMovement = true;
 		};
