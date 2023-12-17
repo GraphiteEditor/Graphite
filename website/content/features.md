@@ -108,10 +108,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Basic brush tool</span>
 		</div>
 		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Resolution-agnostic raster rendering</span>
-		</div>
-		<div class="informational complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Graph-based layer stacks</span>
 		</div>
@@ -119,13 +115,17 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Fully graph-driven documents</span>
 		</div>
+		<div class="informational complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>New viewport overlays system</span>
+		</div>
+		<div class="informational ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+		<span>Resolution-agnostic raster rendering</span>
+		</div>
 		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>WebGPU accelerated rendering</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>New viewport overlays system</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
