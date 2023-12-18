@@ -2,7 +2,6 @@ use super::utility_types::TransformOp;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::style::{Fill, Stroke};
 use document_legacy::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -17,9 +16,7 @@ pub enum PropertiesPanelMessage {
 	ClearSelection,
 	Deactivate,
 	Init,
-	ModifyFill { fill: Fill },
 	ModifyPreserveAspect { preserve_aspect: bool },
-	ModifyStroke { stroke: Stroke },
 	ModifyTransform { value: f64, transform_op: TransformOp },
 	ResendActiveProperties,
 	SetActiveLayers { paths: Vec<Vec<LayerId>> },

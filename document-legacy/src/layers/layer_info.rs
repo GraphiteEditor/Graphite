@@ -1,14 +1,12 @@
 use super::folder_layer::FolderLegacyLayer;
 use super::layer_layer::LayerLegacyLayer;
-use super::shape_layer::ShapeLegacyLayer;
-use super::style::{PathStyle, RenderData};
+use super::style::RenderData;
 use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
 
 use graphene_core::raster::BlendMode;
 use graphene_core::vector::VectorData;
-use graphene_std::vector::subpath::Subpath;
 
 use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
@@ -20,8 +18,6 @@ use std::fmt::Write;
 pub enum LegacyLayerType {
 	/// A layer that wraps a [FolderLegacyLayer] struct.
 	Folder(FolderLegacyLayer),
-	/// A layer that wraps a [ShapeLegacyLayer] struct. Still used by the overlays system, but will be removed in the future.
-	Shape(ShapeLegacyLayer),
 	/// A layer that wraps an [LayerLegacyLayer] struct.
 	Layer(LayerLegacyLayer),
 }
@@ -35,7 +31,6 @@ impl Default for LegacyLayerType {
 impl LegacyLayerType {
 	pub fn inner(&self) -> &dyn LayerData {
 		match self {
-			LegacyLayerType::Shape(shape) => shape,
 			LegacyLayerType::Folder(folder) => folder,
 			LegacyLayerType::Layer(layer) => layer,
 		}
@@ -43,7 +38,6 @@ impl LegacyLayerType {
 
 	pub fn inner_mut(&mut self) -> &mut dyn LayerData {
 		match self {
-			LegacyLayerType::Shape(shape) => shape,
 			LegacyLayerType::Folder(folder) => folder,
 			LegacyLayerType::Layer(layer) => layer,
 		}
@@ -53,18 +47,14 @@ impl LegacyLayerType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, specta::Type)]
 pub enum LayerDataTypeDiscriminant {
 	Folder,
-	Shape,
 	Layer,
-	Artboard,
 }
 
 impl fmt::Display for LayerDataTypeDiscriminant {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			LayerDataTypeDiscriminant::Folder => write!(f, "Folder"),
-			LayerDataTypeDiscriminant::Shape => write!(f, "Shape"),
 			LayerDataTypeDiscriminant::Layer => write!(f, "Layer"),
-			LayerDataTypeDiscriminant::Artboard => write!(f, "Artboard"),
 		}
 	}
 }
@@ -75,32 +65,7 @@ impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
 
 		match data {
 			Folder(_) => LayerDataTypeDiscriminant::Folder,
-			Shape(_) => LayerDataTypeDiscriminant::Shape,
 			Layer(_) => LayerDataTypeDiscriminant::Layer,
-		}
-	}
-}
-
-// ** CONVERSIONS **
-
-impl<'a> TryFrom<&'a mut LegacyLayer> for &'a mut Subpath {
-	type Error = &'static str;
-	/// Convert a mutable layer into a mutable [Subpath].
-	fn try_from(layer: &'a mut LegacyLayer) -> Result<&'a mut Subpath, Self::Error> {
-		match &mut layer.data {
-			LegacyLayerType::Shape(layer) => Ok(&mut layer.shape),
-			_ => Err("Did not find any shape data in the layer"),
-		}
-	}
-}
-
-impl<'a> TryFrom<&'a LegacyLayer> for &'a Subpath {
-	type Error = &'static str;
-	/// Convert a reference to a layer into a reference of a [Subpath].
-	fn try_from(layer: &'a LegacyLayer) -> Result<&'a Subpath, Self::Error> {
-		match &layer.data {
-			LegacyLayerType::Shape(layer) => Ok(&layer.shape),
-			_ => Err("Did not find any shape data in the layer"),
 		}
 	}
 }
@@ -208,7 +173,7 @@ fn return_true() -> bool {
 	true
 }
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct LegacyLayer {
 	/// Whether the layer is currently visible or hidden.
 	pub visible: bool,
@@ -241,25 +206,6 @@ pub struct LegacyLayer {
 	pub blend_mode: BlendMode,
 	/// The opacity, in the range of 0 to 1.
 	pub opacity: f64,
-}
-
-impl Default for LegacyLayer {
-	fn default() -> Self {
-		Self {
-			visible: Default::default(),
-			name: Default::default(),
-			data: Default::default(),
-			transform: Default::default(),
-			preserve_aspect: Default::default(),
-			pivot: Default::default(),
-			thumbnail_cache: Default::default(),
-			cache: Default::default(),
-			svg_defs_cache: Default::default(),
-			cache_dirty: Default::default(),
-			blend_mode: Default::default(),
-			opacity: Default::default(),
-		}
-	}
 }
 
 impl LegacyLayer {
@@ -470,13 +416,6 @@ impl LegacyLayer {
 		}
 	}
 
-	pub fn as_subpath_mut(&mut self) -> Option<&mut Subpath> {
-		match &mut self.data {
-			LegacyLayerType::Shape(s) => Some(&mut s.shape),
-			_ => None,
-		}
-	}
-
 	/// Get a reference to the Folder wrapped by the layer.
 	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
 	pub fn as_folder(&self) -> Result<&FolderLegacyLayer, DocumentError> {
@@ -510,21 +449,6 @@ impl LegacyLayer {
 			_ => Err(DocumentError::NotLayer),
 		}
 	}
-
-	pub fn style(&self) -> Result<&PathStyle, DocumentError> {
-		match &self.data {
-			LegacyLayerType::Shape(shape) => Ok(&shape.style),
-			LegacyLayerType::Layer(layer) => layer.as_vector_data().map(|vector| &vector.style).ok_or(DocumentError::NotShape),
-			_ => Err(DocumentError::NotShape),
-		}
-	}
-
-	pub fn style_mut(&mut self) -> Result<&mut PathStyle, DocumentError> {
-		match &mut self.data {
-			LegacyLayerType::Shape(s) => Ok(&mut s.style),
-			_ => Err(DocumentError::NotShape),
-		}
-	}
 }
 
 impl Clone for LegacyLayer {
@@ -549,12 +473,6 @@ impl Clone for LegacyLayer {
 impl From<FolderLegacyLayer> for LegacyLayer {
 	fn from(from: FolderLegacyLayer) -> LegacyLayer {
 		LegacyLayer::new(LegacyLayerType::Folder(from), DAffine2::IDENTITY.to_cols_array())
-	}
-}
-
-impl From<ShapeLegacyLayer> for LegacyLayer {
-	fn from(from: ShapeLegacyLayer) -> LegacyLayer {
-		LegacyLayer::new(LegacyLayerType::Shape(from), DAffine2::IDENTITY.to_cols_array())
 	}
 }
 

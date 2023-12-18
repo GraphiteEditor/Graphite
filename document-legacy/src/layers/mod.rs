@@ -3,7 +3,6 @@
 //! Layers allow the user to mutate part of the document while leaving the rest unchanged.
 //! There are currently these different types of layers:
 //! * [Folder layers](folder_layer::FolderLegacyLayer), which encapsulate sub-layers
-//! * [Shape layers](shape_layer::ShapeLegacyLayer), which contain generic SVG [`<path>`](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path)s (deprecated but still used by the overlays system).
 //! * [Layer layers](layer_layer::LayerLegacyLayer), which contain a node graph layer
 //!
 //! Refer to the module-level documentation for detailed information on each layer.
@@ -20,9 +19,6 @@ pub mod folder_layer;
 pub mod layer_info;
 /// Contains the [LayerLegacyLayer](nodegraph_layer::LayerLegacyLayer) type that contains a node graph.
 pub mod layer_layer;
-// TODO: Remove shape layers after rewriting the overlay system
-/// Contains the [ShapeLegacyLayer](shape_layer::ShapeLegacyLayer) type, a generic SVG element defined using Bezier paths.
-pub mod shape_layer;
 
 mod render_data;
 pub use render_data::RenderData;

@@ -90,14 +90,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let layer_path = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				self.create_document_operation(Operation::SetLayerPreserveAspect { layer_path, preserve_aspect }, true, responses);
 			}
-			ModifyFill { fill } => {
-				let path = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				self.create_document_operation(Operation::SetLayerFill { path, fill }, true, responses);
-			}
-			ModifyStroke { stroke } => {
-				let path = self.active_selection.clone().expect("Received update for properties panel with no active layer");
-				self.create_document_operation(Operation::SetLayerStroke { path, stroke }, true, responses);
-			}
 			SetPivot { new_position } => {
 				let layer = self.active_selection.clone().expect("Received update for properties panel with no active layer");
 				let position: Option<glam::DVec2> = new_position.into();

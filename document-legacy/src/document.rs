@@ -829,18 +829,6 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetLayerStroke { path, stroke } => {
-				let layer = self.layer_mut(&path)?;
-				layer.style_mut()?.set_stroke(stroke);
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerFill { path, fill } => {
-				let layer = self.layer_mut(&path)?;
-				layer.style_mut()?.set_fill(fill);
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
 		};
 		Ok(responses)
 	}

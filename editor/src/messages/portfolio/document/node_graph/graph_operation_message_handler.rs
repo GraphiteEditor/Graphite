@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use document_legacy::document::Document;
 use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use document_legacy::{LayerId, Operation};
+use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
@@ -582,8 +582,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
 					modify_inputs.fill_set(fill);
-				} else {
-					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -604,8 +602,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
-				} else {
-					responses.add(Operation::SetLayerStroke { path: layer, stroke });
 				}
 			}
 			GraphOperationMessage::TransformChange {

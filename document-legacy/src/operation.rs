@@ -1,5 +1,4 @@
 use crate::layers::layer_info::LegacyLayer;
-use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -56,14 +55,6 @@ pub enum Operation {
 	SetLayerPreserveAspect {
 		layer_path: Vec<LayerId>,
 		preserve_aspect: bool,
-	},
-	SetLayerFill {
-		path: Vec<LayerId>,
-		fill: style::Fill,
-	},
-	SetLayerStroke {
-		path: Vec<LayerId>,
-		stroke: Stroke,
 	},
 }
 
