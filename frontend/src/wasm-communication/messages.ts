@@ -449,18 +449,6 @@ export class UpdateDocumentArtwork extends JsMessage {
 	readonly svg!: string;
 }
 
-export class UpdateDocumentOverlays extends JsMessage {
-	readonly svg!: string;
-}
-
-export class UpdateDocumentArtboards extends JsMessage {
-	readonly svg!: string;
-}
-
-export class UpdateDocumentNodeRender extends JsMessage {
-	readonly svg!: string;
-}
-
 export class UpdateDocumentScrollbars extends JsMessage {
 	@TupleToVec2
 	readonly position!: XY;
@@ -1416,14 +1404,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
-	UpdateDocumentArtboards,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
 	UpdateDocumentModeLayout,
-	UpdateDocumentNodeRender,
-	UpdateDocumentOverlays,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,

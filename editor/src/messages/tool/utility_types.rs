@@ -1,5 +1,5 @@
 #![allow(clippy::too_many_arguments)]
-use super::common_functionality::overlay_renderer::OverlayRenderer;
+
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGrou
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
@@ -23,7 +24,6 @@ pub struct ToolActionHandlerData<'a> {
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub render_data: &'a RenderData<'a>,
-	pub shape_overlay: &'a mut OverlayRenderer,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 }
@@ -34,7 +34,6 @@ impl<'a> ToolActionHandlerData<'a> {
 		global_tool_data: &'a DocumentToolData,
 		input: &'a InputPreprocessorMessageHandler,
 		render_data: &'a RenderData<'a>,
-		shape_overlay: &'a mut OverlayRenderer,
 		shape_editor: &'a mut ShapeState,
 		node_graph: &'a NodeGraphExecutor,
 	) -> Self {
@@ -44,7 +43,6 @@ impl<'a> ToolActionHandlerData<'a> {
 			global_tool_data,
 			input,
 			render_data,
-			shape_overlay,
 			shape_editor,
 			node_graph,
 		}
@@ -174,6 +172,7 @@ pub struct EventToMessageMap {
 	pub selection_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
+	pub overlay_provider: Option<OverlayProvider>,
 }
 
 pub trait ToolTransition {
@@ -195,6 +194,9 @@ pub trait ToolTransition {
 		subscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
+			responses.add(OverlaysMessage::AddProvider(overlay_provider));
+		}
 	}
 
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
@@ -213,6 +215,9 @@ pub trait ToolTransition {
 		unsubscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
+			responses.add(OverlaysMessage::RemoveProvider(overlay_provider));
+		}
 	}
 }
 

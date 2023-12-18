@@ -1,4 +1,3 @@
-use super::common_functionality::overlay_renderer::OverlayRenderer;
 use super::common_functionality::shape_editor::ShapeState;
 use super::utility_types::{tool_message_to_tool_type, ToolActionHandlerData, ToolFsmState};
 use crate::application::generate_uuid;
@@ -15,7 +14,6 @@ use graphene_core::raster::color::Color;
 pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
-	pub shape_overlay: OverlayRenderer,
 	pub shape_editor: ShapeState,
 }
 
@@ -92,7 +90,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							render_data: &render_data,
-							shape_overlay: &mut self.shape_overlay,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 						};
@@ -175,7 +172,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 					global_tool_data: &self.tool_state.document_tool_data,
 					input,
 					render_data: &render_data,
-					shape_overlay: &mut self.shape_overlay,
 					shape_editor: &mut self.shape_editor,
 					node_graph,
 				};
@@ -246,7 +242,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							render_data: &render_data,
-							shape_overlay: &mut self.shape_overlay,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 						};

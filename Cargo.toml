@@ -87,8 +87,8 @@ num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",
 ] }
 js-sys = { version = "0.3.55" }
-usvg = "0.35.0"
 web-sys = { version = "0.3.55" }
+usvg = "0.35.0"
 spirv = "0.2.0"
 fern = { version = "0.6", features = ["colored"] }
 
