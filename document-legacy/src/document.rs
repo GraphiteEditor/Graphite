@@ -1,9 +1,7 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
-use crate::intersection::Quad;
 use crate::layers::folder_layer::FolderLegacyLayer;
 use crate::layers::layer_info::{LayerData, LayerDataTypeDiscriminant, LegacyLayer, LegacyLayerType};
 use crate::layers::layer_layer::{CachedOutputData, LayerLegacyLayer};
-use crate::layers::shape_layer::ShapeLegacyLayer;
 use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
@@ -213,18 +211,6 @@ impl Document {
 
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
-	}
-
-	/// Checks whether each layer under `path` intersects with the provided `quad` and adds all intersection layers as paths to `intersections`.
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
-		self.layer(path).unwrap().intersects_quad(quad, path, intersections, render_data);
-	}
-
-	/// Checks whether each layer under the root path intersects with the provided `quad` and returns the paths to all intersecting layers.
-	pub fn intersects_quad_root(&self, quad: Quad, render_data: &RenderData) -> Vec<Vec<LayerId>> {
-		let mut intersections = Vec::new();
-		self.intersects_quad(quad, &mut vec![], &mut intersections, render_data);
-		intersections
 	}
 
 	/// Returns a reference to the requested folder. Fails if the path does not exist,
@@ -585,54 +571,6 @@ impl Document {
 		operation.pseudo_hash().hash(&mut self.state_identifier);
 
 		let responses = match operation {
-			Operation::AddEllipse { path, insert_index, transform, style } => {
-				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::ellipse(style)), transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
-			Operation::AddRect { path, insert_index, transform, style } => {
-				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::rectangle(style)), transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
-			Operation::AddLine { path, insert_index, transform, style } => {
-				let layer = LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::line(style)), transform);
-
-				self.set_layer(&path, layer, insert_index)?;
-
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
 			// TODO: Remove
 			Operation::AddFrame {
 				path,
@@ -660,60 +598,6 @@ impl Document {
 					layer.preserve_aspect = preserve_aspect;
 				}
 				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
-			Operation::AddShape {
-				path,
-				transform,
-				insert_index,
-				style,
-				subpath,
-			} => {
-				let shape = ShapeLegacyLayer::new(subpath, style);
-				self.set_layer(&path, LegacyLayer::new(LegacyLayerType::Shape(shape), transform), insert_index)?;
-				Some(vec![DocumentChanged, CreatedLayer { path, is_selected: true }])
-			}
-			Operation::AddPolyline {
-				path,
-				insert_index,
-				points,
-				transform,
-				style,
-			} => {
-				let points: Vec<glam::DVec2> = points.iter().map(|&it| it.into()).collect();
-				self.set_layer(&path, LegacyLayer::new(LegacyLayerType::Shape(ShapeLegacyLayer::poly_line(points, style)), transform), insert_index)?;
-
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
-			Operation::DeleteLayer { path } => {
-				fn aggregate_deletions(folder: &FolderLegacyLayer, path: &mut Vec<LayerId>, responses: &mut Vec<DocumentResponse>) {
-					for (id, layer) in folder.layer_ids.iter().zip(folder.layers()) {
-						path.push(*id);
-						responses.push(DocumentResponse::DeletedLayer { path: path.clone() });
-						if let LegacyLayerType::Folder(f) = &layer.data {
-							aggregate_deletions(f, path, responses);
-						}
-						path.pop();
-					}
-				}
-				let mut responses = Vec::new();
-				if let Ok(folder) = self.folder(&path) {
-					aggregate_deletions(folder, &mut path.clone(), &mut responses)
-				};
-				self.delete(&path)?;
-
-				let (folder, _) = split_path(path.as_slice()).unwrap_or((&[], 0));
-				responses.extend([DocumentChanged, DeletedLayer { path: path.clone() }, FolderChanged { path: folder.to_vec() }]);
-				responses.extend(update_thumbnails_upstream(folder));
-				Some(responses)
 			}
 			Operation::InsertLayer {
 				destination_path,
@@ -891,38 +775,6 @@ impl Document {
 				self.layer_mut(&path)?.name = Some(name);
 				Some(vec![LayerChanged { path }])
 			}
-			Operation::CreateFolder { path, insert_index } => {
-				self.set_layer(
-					&path,
-					LegacyLayer::new(LegacyLayerType::Folder(FolderLegacyLayer::default()), DAffine2::IDENTITY.to_cols_array()),
-					insert_index,
-				)?;
-				self.mark_as_dirty(&path)?;
-
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
-			Operation::TransformLayer { path, transform } => {
-				let layer = self.layer_mut(&path).unwrap();
-				let transform = DAffine2::from_cols_array(&transform) * layer.transform;
-				layer.transform = transform;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::TransformLayerInViewport { path, transform } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				self.apply_transform_relative_to_viewport(&path, transform)?;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
 			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
 				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{layer_path:?}'"));
 
@@ -948,57 +800,11 @@ impl Document {
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
-			Operation::SetPivot { layer_path, pivot } => {
-				let layer = self.layer_mut(&layer_path).expect("Setting pivot for invalid layer");
-				layer.pivot = pivot.into();
-				self.mark_as_dirty(&layer_path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
-			}
-			Operation::SetLayerTransformInViewport { path, transform } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				self.set_transform_relative_to_viewport(&path, transform)?;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetShapePath { path, subpath } => {
-				self.mark_as_dirty(&path)?;
-
-				if let LegacyLayerType::Shape(shape) = &mut self.layer_mut(&path)?.data {
-					shape.shape = subpath;
-				}
-				Some(vec![DocumentChanged, LayerChanged { path }])
-			}
-			Operation::SetVectorData { path, vector_data } => {
-				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
-					layer.cached_output_data = CachedOutputData::VectorPath(Box::new(vector_data));
-				}
-				Some(Vec::new())
-			}
 			Operation::SetSurface { path, surface_id } => {
 				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
 					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
 				}
 				Some(Vec::new())
-			}
-			Operation::SetSvg { path, svg } => {
-				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
-					layer.cached_output_data = CachedOutputData::Svg(svg);
-				}
-				Some(Vec::new())
-			}
-			Operation::TransformLayerInScope { path, transform, scope } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				let scope = DAffine2::from_cols_array(&scope);
-				self.transform_relative_to_scope(&path, Some(scope), transform)?;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerTransformInScope { path, transform, scope } => {
-				let transform = DAffine2::from_cols_array(&transform);
-				let scope = DAffine2::from_cols_array(&scope);
-				self.set_transform_relative_to_scope(&path, Some(scope), transform)?;
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerScaleAroundPivot { path, new_scale } => {
 				let layer = self.layer_mut(&path)?;
@@ -1022,33 +828,6 @@ impl Document {
 				layer.transform = transform;
 				self.mark_as_dirty(&path)?;
 				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerVisibility { path, visible } => {
-				self.mark_as_dirty(&path)?;
-				let layer = self.layer_mut(&path)?;
-				layer.visible = visible;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerBlendMode { path, blend_mode } => {
-				self.mark_as_dirty(&path)?;
-				self.layer_mut(&path)?.blend_mode = blend_mode;
-
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerOpacity { path, opacity } => {
-				self.mark_as_dirty(&path)?;
-				self.layer_mut(&path)?.opacity = opacity;
-
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetLayerStyle { path, style } => {
-				let layer = self.layer_mut(&path)?;
-				match &mut layer.data {
-					LegacyLayerType::Shape(s) => s.style = style,
-					_ => return Err(DocumentError::NotShape),
-				}
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerStroke { path, stroke } => {
 				let layer = self.layer_mut(&path)?;

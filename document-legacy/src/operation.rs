@@ -2,19 +2,14 @@ use crate::layers::layer_info::LegacyLayer;
 use crate::layers::style::{self, Stroke};
 use crate::LayerId;
 
-use graphene_core::raster::BlendMode;
-use graphene_std::vector::subpath::Subpath;
-
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-// TODO: Rename all instances of `path` to `layer_path`
 /// Operations that can be performed to mutate the document.
 pub enum Operation {
-	// TODO: Remove
 	AddFrame {
 		path: Vec<LayerId>,
 		insert_index: isize,
@@ -33,13 +28,6 @@ pub enum Operation {
 	ClearBlobURL {
 		path: Vec<LayerId>,
 	},
-	SetPivot {
-		layer_path: Vec<LayerId>,
-		pivot: (f64, f64),
-	},
-	DeleteLayer {
-		path: Vec<LayerId>,
-	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
 	},
@@ -53,47 +41,9 @@ pub enum Operation {
 		insert_index: isize,
 		duplicating: bool,
 	},
-	CreateFolder {
-		path: Vec<LayerId>,
-		insert_index: isize,
-	},
-	TransformLayer {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-	},
-	TransformLayerInViewport {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-	},
-	SetLayerTransformInViewport {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-	},
-	SetShapePath {
-		path: Vec<LayerId>,
-		subpath: Subpath,
-	},
-	SetVectorData {
-		path: Vec<LayerId>,
-		vector_data: graphene_core::vector::VectorData,
-	},
 	SetSurface {
 		path: Vec<LayerId>,
 		surface_id: graphene_core::SurfaceId,
-	},
-	SetSvg {
-		path: Vec<LayerId>,
-		svg: String,
-	},
-	TransformLayerInScope {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		scope: [f64; 6],
-	},
-	SetLayerTransformInScope {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
-		scope: [f64; 6],
 	},
 	SetLayerScaleAroundPivot {
 		path: Vec<LayerId>,
@@ -103,21 +53,9 @@ pub enum Operation {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
 	},
-	SetLayerVisibility {
-		path: Vec<LayerId>,
-		visible: bool,
-	},
 	SetLayerPreserveAspect {
 		layer_path: Vec<LayerId>,
 		preserve_aspect: bool,
-	},
-	SetLayerBlendMode {
-		path: Vec<LayerId>,
-		blend_mode: BlendMode,
-	},
-	SetLayerOpacity {
-		path: Vec<LayerId>,
-		opacity: f64,
 	},
 	SetLayerFill {
 		path: Vec<LayerId>,
@@ -126,44 +64,6 @@ pub enum Operation {
 	SetLayerStroke {
 		path: Vec<LayerId>,
 		stroke: Stroke,
-	},
-
-	// The following are used only by the legacy overlays system
-	AddEllipse {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddRect {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddLine {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-	},
-	AddPolyline {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		points: Vec<(f64, f64)>,
-	},
-	AddShape {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		style: style::PathStyle,
-		subpath: Subpath,
-	},
-	SetLayerStyle {
-		path: Vec<LayerId>,
-		style: style::PathStyle,
 	},
 }
 
