@@ -565,7 +565,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
-			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
 				// responses.add(FrontendMessage::UpdateDocumentArtwork {
 				// 	svg: self.document_legacy.render_root(&render_data),

@@ -5,7 +5,7 @@ use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use document_legacy::{layers::layer_info::LayerDataTypeDiscriminant, Operation};
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
@@ -1775,13 +1775,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Rescale", 24)
 					.tooltip("Set the layer dimensions to this resolution")
-					.on_update(move |_| {
-						Operation::SetLayerScaleAroundPivot {
-							path: layer_path.clone(),
-							new_scale: vec2.into(),
-						}
-						.into()
-					})
+					.on_update(move |_| DialogMessage::RequestComingSoonDialog { issue: None }.into())
 					.widget_holder(),
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				CheckboxInput::new(!dimensions_is_auto || transform_not_connected)

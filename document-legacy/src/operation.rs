@@ -7,14 +7,8 @@ use std::hash::{Hash, Hasher};
 
 #[repr(C)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-/// Operations that can be performed to mutate the document.
+/// Operations that can be performed to mutate the legacy document (soon to be fully removed).
 pub enum Operation {
-	AddFrame {
-		path: Vec<LayerId>,
-		insert_index: isize,
-		transform: [f64; 6],
-		network: graph_craft::document::NodeNetwork,
-	},
 	/// Sets a blob URL as the image source for an Image or Imaginate layer type.
 	/// **Be sure to call `FrontendMessage::TriggerRevokeBlobUrl` together with this.**
 	SetLayerBlobUrl {
@@ -27,12 +21,18 @@ pub enum Operation {
 	ClearBlobURL {
 		path: Vec<LayerId>,
 	},
+	AddFrame {
+		path: Vec<LayerId>,
+		insert_index: isize,
+		transform: [f64; 6],
+		network: graph_craft::document::NodeNetwork,
+	},
+	SetSurface {
+		path: Vec<LayerId>,
+		surface_id: graphene_core::SurfaceId,
+	},
 	DuplicateLayer {
 		path: Vec<LayerId>,
-	},
-	RenameLayer {
-		layer_path: Vec<LayerId>,
-		new_name: String,
 	},
 	InsertLayer {
 		layer: Box<LegacyLayer>,
@@ -40,21 +40,9 @@ pub enum Operation {
 		insert_index: isize,
 		duplicating: bool,
 	},
-	SetSurface {
-		path: Vec<LayerId>,
-		surface_id: graphene_core::SurfaceId,
-	},
-	SetLayerScaleAroundPivot {
-		path: Vec<LayerId>,
-		new_scale: (f64, f64),
-	},
 	SetLayerTransform {
 		path: Vec<LayerId>,
 		transform: [f64; 6],
-	},
-	SetLayerPreserveAspect {
-		layer_path: Vec<LayerId>,
-		preserve_aspect: bool,
 	},
 }
 

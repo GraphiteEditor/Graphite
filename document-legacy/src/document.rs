@@ -593,12 +593,6 @@ impl Document {
 
 				Some(responses)
 			}
-			Operation::SetLayerPreserveAspect { layer_path, preserve_aspect } => {
-				if let Ok(layer) = self.layer_mut(&layer_path) {
-					layer.preserve_aspect = preserve_aspect;
-				}
-				Some(vec![LayerChanged { path: layer_path.clone() }])
-			}
 			Operation::InsertLayer {
 				destination_path,
 				layer,
@@ -771,10 +765,6 @@ impl Document {
 					return Err(DocumentError::IndexOutOfBounds);
 				}
 			}
-			Operation::RenameLayer { layer_path: path, new_name: name } => {
-				self.layer_mut(&path)?.name = Some(name);
-				Some(vec![LayerChanged { path }])
-			}
 			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
 				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{layer_path:?}'"));
 
@@ -805,22 +795,6 @@ impl Document {
 					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
 				}
 				Some(Vec::new())
-			}
-			Operation::SetLayerScaleAroundPivot { path, new_scale } => {
-				let layer = self.layer_mut(&path)?;
-
-				let matrix = layer.transform.to_cols_array();
-				let old_scale = (matrix[0], matrix[3]);
-
-				let scale_factor = DVec2::from(new_scale) / DVec2::from(old_scale);
-
-				let offset = DAffine2::from_translation(-layer.pivot);
-				let scale = DAffine2::from_scale(scale_factor);
-				let offset_back = DAffine2::from_translation(layer.pivot);
-				layer.transform = layer.transform * offset_back * scale * offset;
-
-				self.mark_as_dirty(&path)?;
-				Some([vec![DocumentChanged], update_thumbnails_upstream(&path)].concat())
 			}
 			Operation::SetLayerTransform { path, transform } => {
 				let transform = DAffine2::from_cols_array(&transform);

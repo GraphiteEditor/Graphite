@@ -116,10 +116,6 @@ pub enum DocumentMessage {
 	RenameDocument {
 		new_name: String,
 	},
-	RenameLayer {
-		layer_path: Vec<LayerId>,
-		new_name: String,
-	},
 	RenderDocument,
 	RenderRulers,
 	RenderScrollbars,
