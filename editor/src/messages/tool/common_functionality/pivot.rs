@@ -1,14 +1,15 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
+use super::graph_modification_utils;
 use crate::consts::PIVOT_OUTER;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
+
 use document_legacy::document_metadata::LayerNodeIdentifier;
+
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-
-use super::graph_modification_utils;
 
 #[derive(Clone, Debug)]
 pub struct Pivot {

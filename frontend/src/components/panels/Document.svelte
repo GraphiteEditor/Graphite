@@ -13,14 +13,11 @@
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
 		TriggerViewportResize,
-		UpdateDocumentArtboards,
 		UpdateDocumentArtwork,
-		UpdateDocumentOverlays,
 		UpdateDocumentRulers,
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
 		UpdateMouseCursor,
-		UpdateDocumentNodeRender,
 		isWidgetSpanRow,
 	} from "@graphite/wasm-communication/messages";
 
@@ -62,9 +59,6 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
-	let nodeRenderSvg = "";
-	let artboardSvg = "";
-	let overlaysSvg = "";
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -160,7 +154,12 @@
 
 	// Update rendered SVGs
 	export async function updateDocumentArtwork(svg: string) {
-		artworkSvg = svg;
+		// TODO: Sort this out so we're either sending only the SVG inner contents from the backend or not setting the width/height attributes here
+		// TODO: (but preserving the rounding-up-to-the-next-even-number to prevent antialiasing).
+		artworkSvg = svg
+			.trim()
+			.replace(/<svg[^>]*>/, "")
+			.slice(0, -"</svg>".length);
 		rasterizedCanvas = undefined;
 
 		await tick();
@@ -175,20 +174,6 @@
 			const canvas = (window as any).imageCanvases[canvasName];
 			placeholder.replaceWith(canvas);
 		});
-	}
-
-	export function updateDocumentOverlays(svg: string) {
-		overlaysSvg = svg;
-	}
-
-	export function updateDocumentArtboards(svg: string) {
-		artboardSvg = svg;
-		rasterizedCanvas = undefined;
-	}
-
-	export function updateDocumentNodeRender(svg: string) {
-		nodeRenderSvg = svg;
-		rasterizedCanvas = undefined;
 	}
 
 	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
@@ -211,7 +196,7 @@
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
 		const svg = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artboardSvg}${nodeRenderSvg}</svg>
+			<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
 			`.trim();
 
 		if (!rasterizedCanvas) {
@@ -370,21 +355,6 @@
 
 			updateDocumentArtwork(data.svg);
 		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentOverlays, async (data) => {
-			await tick();
-
-			updateDocumentOverlays(data.svg);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtboards, async (data) => {
-			await tick();
-
-			updateDocumentArtboards(data.svg);
-		});
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentNodeRender, async (data) => {
-			await tick();
-
-			updateDocumentNodeRender(data.svg);
-		});
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
@@ -509,22 +479,14 @@
 					{/if}
 					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} on:dragover={(e) => e.preventDefault()} on:drop={(e) => pasteFile(e)} bind:this={viewport} data-viewport>
 						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							{@html artboardSvg}
-						</svg>
-						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							{@html nodeRenderSvg}
-						</svg>
-						<svg class="artwork" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 							{@html artworkSvg}
 						</svg>
-						<svg class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							{@html overlaysSvg}
-						</svg>
-						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
 							{/if}
 						</div>
+						<canvas class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas></canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />
@@ -701,20 +663,16 @@
 						position: relative;
 						overflow: hidden;
 
-						svg,
-						canvas {
-							top: 0;
+						.artwork,
+						.text-input,
+						.overlays {
 							position: absolute;
+							top: 0;
 							// Fallback values if JS hasn't set these to integers yet
 							width: 100%;
 							height: 100%;
 							// Allows dev tools to select the artwork without being blocked by the SVG containers
 							pointer-events: none;
-
-							canvas {
-								width: 100%;
-								height: 100%;
-							}
 
 							// Prevent inheritance from reaching the child elements
 							> * {

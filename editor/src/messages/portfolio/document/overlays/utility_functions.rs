@@ -1,10 +1,28 @@
+use super::utility_types::OverlayContext;
 use crate::consts::HIDE_HANDLE_DISTANCE;
-use crate::messages::portfolio::document::overlays::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_groups, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
-use glam::DVec2;
+
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
+
+use glam::DVec2;
+use wasm_bindgen::JsCast;
+
+pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
+	let window = web_sys::window()?;
+	let document = window.document()?;
+	let canvas = document.query_selector("[data-overlays-canvas]").ok().flatten()?;
+	canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok()
+}
+
+pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
+	let create_context = || {
+		let context = overlay_canvas_element()?.get_context("2d").ok().flatten()?;
+		context.dyn_into().ok()
+	};
+	create_context().expect("Failed to get canvas context")
+}
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	for layer in document.metadata().selected_layers() {

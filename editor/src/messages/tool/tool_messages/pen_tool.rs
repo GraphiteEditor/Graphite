@@ -1,11 +1,11 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
-use crate::messages::tool::common_functionality::overlay_renderer::path_overlays;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
@@ -572,7 +572,7 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::SelectionChanged) => {
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
@@ -651,7 +651,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::Ready
 			}
 			(_, PenToolMessage::Abort) => {
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				self
 			}

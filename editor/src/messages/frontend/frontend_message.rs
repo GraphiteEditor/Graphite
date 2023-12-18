@@ -128,9 +128,6 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
-	UpdateDocumentArtboards {
-		svg: String,
-	},
 	UpdateDocumentArtwork {
 		svg: String,
 	},
@@ -154,12 +151,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
-	},
-	UpdateDocumentNodeRender {
-		svg: String,
-	},
-	UpdateDocumentOverlays {
-		svg: String,
 	},
 	UpdateDocumentRulers {
 		origin: (f64, f64),

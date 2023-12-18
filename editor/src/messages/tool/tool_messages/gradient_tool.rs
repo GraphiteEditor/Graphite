@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
@@ -306,7 +306,7 @@ impl Fsm for GradientToolFsmState {
 					let dragging = selected.filter(|selected| selected.layer == layer).map(|selected| selected.dragging);
 
 					let Gradient { start, end, positions, .. } = gradient;
-					let [start, end] = [transform.transform_point2(start), transform.transform_point2(end)];
+					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
 					overlay_context.line(start, end);
 					overlay_context.handle(start, dragging == Some(GradientDragTarget::Start));
@@ -504,7 +504,7 @@ impl Fsm for GradientToolFsmState {
 
 			(_, GradientToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				GradientToolFsmState::Ready
 			}

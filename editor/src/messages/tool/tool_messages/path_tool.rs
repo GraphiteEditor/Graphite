@@ -1,16 +1,17 @@
-use std::vec;
-
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
-use crate::messages::tool::common_functionality::overlay_renderer::path_overlays;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
+
+use std::vec;
 
 #[derive(Default)]
 pub struct PathTool {
@@ -224,7 +225,7 @@ impl PathToolData {
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift) {
 			self.start_dragging_point(selected_points, input, document, responses);
-			responses.add(OverlaysMessage::Render);
+			responses.add(OverlaysMessage::Draw);
 
 			PathToolFsmState::Dragging
 		}
@@ -321,7 +322,7 @@ impl Fsm for PathToolFsmState {
 				let target_layers = document.metadata().selected_layers().collect();
 				shape_editor.set_selected_layers(target_layers);
 
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				// This can happen in any state (which is why we return self)
@@ -346,7 +347,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::DrawingBox
 			}
@@ -366,7 +367,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 				}
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
 			}
@@ -380,7 +381,7 @@ impl Fsm for PathToolFsmState {
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 				}
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
@@ -400,7 +401,7 @@ impl Fsm for PathToolFsmState {
 					if clicked_selected {
 						shape_editor.deselect_all();
 						shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false);
-						responses.add(OverlaysMessage::Render);
+						responses.add(OverlaysMessage::Draw);
 					}
 				}
 
@@ -429,7 +430,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Abort) => {
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
 			}
@@ -441,7 +442,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::SelectAllPoints) => {
 				shape_editor.select_all_points(&document.document_legacy);
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {

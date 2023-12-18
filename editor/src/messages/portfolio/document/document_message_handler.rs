@@ -569,10 +569,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
-				responses.add(FrontendMessage::UpdateDocumentArtwork {
-					svg: self.document_legacy.render_root(&render_data),
-				});
-				responses.add(OverlaysMessage::Render);
+				// responses.add(FrontendMessage::UpdateDocumentArtwork {
+				// 	svg: self.document_legacy.render_root(&render_data),
+				// });
+				responses.add(OverlaysMessage::Draw);
 			}
 			RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale();
@@ -744,7 +744,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
 				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 			}
 			SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;

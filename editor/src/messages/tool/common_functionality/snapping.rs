@@ -1,11 +1,13 @@
 use super::shape_editor::ManipulatorPointInfo;
 use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
 use crate::messages::prelude::*;
+
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::LegacyLayer;
 use document_legacy::LayerId;
-use glam::DVec2;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
+
+use glam::DVec2;
 
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
@@ -54,7 +56,7 @@ impl SnapManager {
 				false,
 			)
 		};
-		responses.add(OverlaysMessage::Render);
+		responses.add(OverlaysMessage::Draw);
 
 		clamped_closest_distance
 	}
@@ -185,7 +187,7 @@ impl SnapManager {
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
 		self.bound_targets = None;
 		self.point_targets = None;
-		responses.add(OverlaysMessage::Render);
+		responses.add(OverlaysMessage::Draw);
 	}
 }
 

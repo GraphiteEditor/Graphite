@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::broadcast_event::BroadcastEvent;
@@ -7,7 +8,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGrou
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::overlays::OverlayProvider;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 

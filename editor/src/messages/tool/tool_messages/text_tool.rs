@@ -1,9 +1,11 @@
 #![allow(clippy::too_many_arguments)]
+
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
+
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::style::{Fill, RenderData};
 use graph_craft::document::value::TaggedValue;
@@ -448,7 +450,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
 				tool_data.new_text = new_text;
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {

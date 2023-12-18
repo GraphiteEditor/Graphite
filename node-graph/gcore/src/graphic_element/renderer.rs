@@ -1,15 +1,15 @@
+mod quad;
+
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
-use base64::Engine;
-use bezier_rs::Subpath;
-
 pub use quad::Quad;
 
+use bezier_rs::Subpath;
+
+use base64::Engine;
 use glam::{DAffine2, DVec2};
 use usvg::TreeParsing;
-
-mod quad;
 
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
@@ -83,7 +83,7 @@ impl SvgRender {
 		self.svg.push("\t".repeat(self.indent));
 	}
 
-	/// Add an outer `<svg />` tag with a `viewBox` and the `<defs />`
+	/// Add an outer `<svg>...</svg>` tag with a `viewBox` and the `<defs />`
 	pub fn format_svg(&mut self, bounds_min: DVec2, bounds_max: DVec2) {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
@@ -93,7 +93,7 @@ impl SvgRender {
 		self.svg.push("</svg>");
 	}
 
-	/// Wraps the SVG with `<svg><g transform="...">`, which allows for rotation
+	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation
 	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
 		let defs = &self.svg_defs;
 		let view_box = size

@@ -1,18 +1,18 @@
-use std::cell::RefCell;
-
-use core::future::Future;
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
+use graphene_core::raster::{color::SRGBA8, ImageFrame};
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
-use graphene_core::{
-	raster::{color::SRGBA8, ImageFrame},
-	Node,
-};
+use graphene_core::Node;
+#[cfg(feature = "wgpu")]
+use wgpu_executor::WgpuExecutor;
+
+use core::future::Future;
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -25,8 +25,6 @@ use wasm_bindgen::{Clamped, JsCast};
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-#[cfg(feature = "wgpu")]
-use wgpu_executor::WgpuExecutor;
 
 pub struct Canvas(CanvasRenderingContext2d);
 
@@ -293,7 +291,6 @@ pub struct RenderNode<Data, Surface, Parameter> {
 fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_params: RenderParams, footprint: Footprint) -> RenderOutput {
 	if !data.contains_artboard() && !render_params.hide_artboards {
 		render.leaf_tag("rect", |attributes| {
-			attributes.push("x", "0");
 			attributes.push("x", "0");
 			attributes.push("y", "0");
 			attributes.push("width", footprint.resolution.x.to_string());

@@ -4,6 +4,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
+
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::renderer::Quad;

@@ -51,12 +51,13 @@ wasm-bindgen-futures = { workspace = true, optional = true }
 document-legacy = { workspace = true }
 # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 once_cell = "1.13.0"
-web-sys = {version = "0.3", features = [
+web-sys = { workspace = true, features = [
 	"Document",
 	"Element",
 	"HtmlCanvasElement",
 	"CanvasRenderingContext2d",
-]}
+] }
+
 
 [dev-dependencies]
 env_logger = "0.10"

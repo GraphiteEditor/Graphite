@@ -1,14 +1,16 @@
 #![allow(clippy::too_many_arguments)]
+
 use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
+
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::renderer::Quad;
@@ -501,7 +503,7 @@ impl Fsm for SelectToolFsmState {
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						let document = &document.document_legacy;
-						bounds.origional_bound_transform = bounds.transform;
+						bounds.original_bound_transform = bounds.transform;
 
 						tool_data.layers_dragging.retain(|layer| document.document_network.nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
@@ -629,7 +631,7 @@ impl Fsm for SelectToolFsmState {
 
 						let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
-						let (position, size) = movement.new_size(snapped_mouse_position, bounds.origional_bound_transform, center, bounds.center_of_transformation, axis_align);
+						let (position, size) = movement.new_size(snapped_mouse_position, bounds.original_bound_transform, center, bounds.center_of_transformation, axis_align);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 						let pivot_transform = DAffine2::from_translation(pivot);
@@ -639,7 +641,7 @@ impl Fsm for SelectToolFsmState {
 						let selected = &tool_data.layers_dragging;
 						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
 
-						selected.apply_transformation(bounds.origional_bound_transform * transformation * bounds.origional_bound_transform.inverse());
+						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 					}
 				}
 				SelectToolFsmState::ResizingBounds
@@ -687,7 +689,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				SelectToolFsmState::DrawingBox
 			}
@@ -700,7 +702,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Generate the hover outline
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
@@ -802,7 +804,7 @@ impl Fsm for SelectToolFsmState {
 						nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 					});
 				}
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				SelectToolFsmState::Ready
 			}
@@ -822,7 +824,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(DocumentMessage::Undo);
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				SelectToolFsmState::Ready
 			}
@@ -842,7 +844,7 @@ impl Fsm for SelectToolFsmState {
 					selected.revert_operation();
 				}
 
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				tool_data.snap_manager.cleanup(responses);
 				SelectToolFsmState::Ready

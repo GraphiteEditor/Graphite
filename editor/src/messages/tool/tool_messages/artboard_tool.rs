@@ -1,12 +1,13 @@
 use super::tool_prelude::*;
+use crate::application::generate_uuid;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::{application::generate_uuid, messages::portfolio::document::overlays::OverlayContext};
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-
 use document_legacy::layers::RenderData;
+
 use glam::{IVec2, Vec2Swizzles};
 
 #[derive(Default)]
@@ -331,7 +332,7 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.original_transforms.clear();
 				}
 
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				ArtboardToolFsmState::Ready
 			}
@@ -341,7 +342,7 @@ impl Fsm for ArtboardToolFsmState {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
 				}
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 
 				ArtboardToolFsmState::Ready
 			}
@@ -372,7 +373,7 @@ impl Fsm for ArtboardToolFsmState {
 				});
 
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(OverlaysMessage::Render);
+				responses.add(OverlaysMessage::Draw);
 				ArtboardToolFsmState::Ready
 			}
 			_ => self,

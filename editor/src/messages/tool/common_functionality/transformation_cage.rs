@@ -1,11 +1,12 @@
 use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::portfolio::document::overlays::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 
-use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
+
+use glam::{DAffine2, DVec2};
 
 /// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
@@ -163,7 +164,7 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
-	pub origional_bound_transform: DAffine2,
+	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
