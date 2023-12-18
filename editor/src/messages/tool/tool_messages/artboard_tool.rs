@@ -151,7 +151,7 @@ impl ArtboardToolData {
 		} else {
 			self.selected_artboard = None;
 
-			responses.add(PropertiesPanelMessage::ClearSelection);
+			responses.add(PropertiesPanelMessage::Clear);
 
 			false
 		}
@@ -367,11 +367,6 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::Abort) => {
-				// Register properties when switching back to other tools
-				responses.add(PropertiesPanelMessage::SetActiveLayers {
-					paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-				});
-
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 				ArtboardToolFsmState::Ready

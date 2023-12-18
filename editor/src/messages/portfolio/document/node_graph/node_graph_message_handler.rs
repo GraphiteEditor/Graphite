@@ -271,7 +271,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn send_graph(network: &NodeNetwork, layer_path: &Option<Vec<LayerId>>, graph_view_overlay_open: bool, responses: &mut VecDeque<Message>) {
-		responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		responses.add(PropertiesPanelMessage::Refresh);
 
 		if !graph_view_overlay_open {
 			return;
@@ -489,7 +489,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::CloseNodeGraph => {}
 			NodeGraphMessage::ConnectNodesByLink {
 				output_node,
 				output_node_connector_index,
@@ -687,7 +686,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let should_rerender = network.connected_to_output(node_id);
 				responses.add(NodeGraphMessage::SendGraph { should_rerender });
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::InsertNode { node_id, document_node } => {
 				if let Some(network) = document.document_network.nested_network_mut(&self.network) {
@@ -706,19 +705,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
-			}
-			NodeGraphMessage::OpenNodeGraph { layer_path } => {
-				self.layer_path = Some(layer_path);
-
-				if let Some(network) = document.document_network.nested_network(&self.network) {
-					responses.add(document.metadata.clear_selected_nodes());
-
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
-
-					let node_types = document_node_types::collect_node_types();
-					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
-				}
-				self.update_selected(document, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = document.document_network.nested_network(&self.network) else {
@@ -776,7 +762,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
 				responses.add(document.metadata.set_selected_nodes(nodes));
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
@@ -797,7 +783,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 						let input = NodeInput::Value { tagged_value: value, exposed: false };
 						responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
-						responses.add(PropertiesPanelMessage::ResendActiveProperties);
+						responses.add(PropertiesPanelMessage::Refresh);
 						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
 							if let Some(layer_path) = self.layer_path.clone() {
 								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });

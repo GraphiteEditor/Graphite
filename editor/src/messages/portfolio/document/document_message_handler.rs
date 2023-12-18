@@ -295,7 +295,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DeleteLayer { layer_path } => {
 				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
 				responses.add_front(BroadcastEvent::ToolAbort);
-				responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path });
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
@@ -445,7 +444,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
 				}
-				responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path });
 				self.update_layers_panel_options_bar_widgets(responses);
 			}
 			MoveSelectedLayersTo { parent, insert_index } => {

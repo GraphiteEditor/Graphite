@@ -315,7 +315,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		self.node_graph.network.clear();
-		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		self.responses.add(PropertiesPanelMessage::Refresh);
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
@@ -340,7 +340,7 @@ impl<'a> ModifyInputsContext<'a> {
 			self.modify_existing_node_inputs(existing_node_id, &mut update_input);
 		}
 
-		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		self.responses.add(PropertiesPanelMessage::Refresh);
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {

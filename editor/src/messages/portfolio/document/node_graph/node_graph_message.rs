@@ -10,7 +10,6 @@ pub enum NodeGraphMessage {
 	// Messages
 	Init,
 	SelectedNodesUpdated,
-	CloseNodeGraph,
 	ConnectNodesByLink {
 		output_node: u64,
 		output_node_connector_index: usize,
@@ -56,9 +55,6 @@ pub enum NodeGraphMessage {
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,
-	},
-	OpenNodeGraph {
-		layer_path: Vec<document_legacy::LayerId>,
 	},
 	PasteNodes {
 		serialized_nodes: String,
