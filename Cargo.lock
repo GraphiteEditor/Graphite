@@ -2326,6 +2326,7 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "wgpu-executor",
 ]
 

@@ -4,6 +4,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
+
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::renderer::Quad;
@@ -400,11 +401,8 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2) {
+	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
-			let pivot = DAffine2::from_translation(*self.pivot);
-			let transformation = pivot * delta * pivot.inverse();
-
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_ancestors in self.document.metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
@@ -416,6 +414,12 @@ impl<'a> Selected<'a> {
 			}
 			self.responses.add(BroadcastEvent::DocumentIsDirty);
 		}
+	}
+
+	pub fn update_transforms(&mut self, delta: DAffine2) {
+		let pivot = DAffine2::from_translation(*self.pivot);
+		let transformation = pivot * delta * pivot.inverse();
+		self.apply_transformation(transformation);
 	}
 
 	pub fn revert_operation(&mut self) {

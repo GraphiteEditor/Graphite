@@ -1,17 +1,17 @@
-use std::vec;
-
 use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
-use crate::messages::tool::common_functionality::overlay_renderer::OverlayRenderer;
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use crate::messages::tool::common_functionality::transformation_cage::{add_bounding_box, remove_bounding_box, update_bounding_box};
 
 use document_legacy::document::Document;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
+use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
+
+use std::vec;
 
 #[derive(Default)]
 pub struct PathTool {
@@ -27,7 +27,7 @@ pub enum PathToolMessage {
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
-	DocumentIsDirty,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	SelectionChanged,
 
@@ -182,9 +182,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 impl ToolTransition for PathTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: Some(PathToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(PathToolMessage::Abort.into()),
 			selection_changed: Some(PathToolMessage::SelectionChanged.into()),
+			overlay_provider: Some(|overlay_context| PathToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
 	}
@@ -205,34 +205,18 @@ struct PathToolData {
 	previous_mouse_position: DVec2,
 	alt_debounce: bool,
 	opposing_handle_lengths: Option<OpposingHandleLengths>,
-	drag_box_overlay_layer: Option<Vec<LayerId>>,
 	/// Describes information about the selected point(s), if any, across one or multiple shapes and manipulator point types (anchor or handle).
 	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
 	selection_status: SelectionStatus,
 }
 
 impl PathToolData {
-	fn refresh_overlays(&mut self, document: &DocumentMessageHandler, shape_editor: &mut ShapeState, shape_overlay: &mut OverlayRenderer, responses: &mut VecDeque<Message>) {
-		// Set the previously selected layers to invisible
-		for layer in document.metadata().all_layers() {
-			shape_overlay.layer_overlay_visibility(&document.document_legacy, layer, false, responses);
-		}
-
-		// Render the new overlays
-		for &layer in shape_editor.selected_shape_state.keys() {
-			shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
-		}
-
-		self.opposing_handle_lengths = None;
-	}
-
 	fn mouse_down(
 		&mut self,
 		shift: bool,
 		shape_editor: &mut ShapeState,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
-		shape_overlay: &mut OverlayRenderer,
 		responses: &mut VecDeque<Message>,
 	) -> PathToolFsmState {
 		self.opposing_handle_lengths = None;
@@ -241,7 +225,7 @@ impl PathToolData {
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift) {
 			self.start_dragging_point(selected_points, input, document, responses);
-			self.refresh_overlays(document, shape_editor, shape_overlay, responses);
+			responses.add(OverlaysMessage::Draw);
 
 			PathToolFsmState::Dragging
 		}
@@ -261,7 +245,6 @@ impl PathToolData {
 			// Start drawing a box
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
-			self.drag_box_overlay_layer = Some(add_bounding_box(responses));
 
 			PathToolFsmState::DrawingBox
 		}
@@ -328,13 +311,7 @@ impl Fsm for PathToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
-			document,
-			input,
-			shape_editor,
-			shape_overlay,
-			..
-		} = tool_action_data;
+		let ToolActionHandlerData { document, input, shape_editor, .. } = tool_action_data;
 		let ToolMessage::Path(event) = event else {
 			return self;
 		};
@@ -345,17 +322,17 @@ impl Fsm for PathToolFsmState {
 				let target_layers = document.metadata().selected_layers().collect();
 				shape_editor.set_selected_layers(target_layers);
 
-				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+				responses.add(OverlaysMessage::Draw);
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				// This can happen in any state (which is why we return self)
 				self
 			}
-			(_, PathToolMessage::DocumentIsDirty) => {
-				// When the document has moved / needs to be redraw, re-render the overlays
-				// TODO the overlay system should probably receive this message instead of the tool
-				for layer in document.metadata().selected_layers() {
-					shape_overlay.render_subpath_overlays(&shape_editor.selected_shape_state, &document.document_legacy, layer, responses);
+			(_, PathToolMessage::Overlays(mut overlay_context)) => {
+				path_overlays(document, shape_editor, &mut overlay_context);
+
+				if self == Self::DrawingBox {
+					overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]))
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -366,11 +343,11 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStart { add_to_selection }) => {
 				let shift = input.keyboard.get(add_to_selection as usize);
 
-				tool_data.mouse_down(shift, shape_editor, document, input, shape_overlay, responses)
+				tool_data.mouse_down(shift, shape_editor, document, input, responses)
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
-				update_bounding_box(tool_data.drag_start_pos, input.mouse.position, &tool_data.drag_box_overlay_layer, responses);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::DrawingBox
 			}
@@ -389,9 +366,8 @@ impl Fsm for PathToolFsmState {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
-					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-				};
-				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
+				}
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
 			}
@@ -404,11 +380,10 @@ impl Fsm for PathToolFsmState {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
-					tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
-				};
-				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
-
+				}
+				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
+
 				PathToolFsmState::Ready
 			}
 
@@ -426,7 +401,7 @@ impl Fsm for PathToolFsmState {
 					if clicked_selected {
 						shape_editor.deselect_all();
 						shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false);
-						tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+						responses.add(OverlaysMessage::Draw);
 					}
 				}
 
@@ -455,9 +430,7 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			(_, PathToolMessage::Abort) => {
-				// TODO Tell overlay manager to remove the overlays
-				shape_overlay.clear_all_overlays(responses);
-				remove_bounding_box(tool_data.drag_box_overlay_layer.take(), responses);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
 			}
@@ -469,7 +442,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::SelectAllPoints) => {
 				shape_editor.select_all_points(&document.document_legacy);
-				tool_data.refresh_overlays(document, shape_editor, shape_overlay, responses);
+				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {

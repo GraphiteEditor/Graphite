@@ -1,18 +1,15 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
-use crate::application::generate_uuid;
-use crate::consts::{COLOR_ACCENT, PIVOT_INNER, PIVOT_OUTER, PIVOT_OUTER_OUTLINE_THICKNESS};
+use super::graph_modification_utils;
+use crate::consts::PIVOT_OUTER;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style;
-use document_legacy::{LayerId, Operation};
 
 use glam::{DAffine2, DVec2};
 use std::collections::VecDeque;
-
-use super::graph_modification_utils;
 
 #[derive(Clone, Debug)]
 pub struct Pivot {
@@ -22,8 +19,6 @@ pub struct Pivot {
 	transform_from_normalized: DAffine2,
 	/// The viewspace pivot position (if applicable)
 	pivot: Option<DVec2>,
-	/// A reference to the previous overlays so we can destroy them
-	pivot_overlay_circles: Option<[Vec<LayerId>; 2]>,
 	/// The old pivot position in the GUI, used to reduce refreshes of the document bar
 	old_pivot_position: PivotPosition,
 }
@@ -34,7 +29,6 @@ impl Default for Pivot {
 			normalized_pivot: DVec2::splat(0.5),
 			transform_from_normalized: Default::default(),
 			pivot: Default::default(),
-			pivot_overlay_circles: Default::default(),
 			old_pivot_position: PivotPosition::Center,
 		}
 	}
@@ -87,59 +81,11 @@ impl Pivot {
 		}
 	}
 
-	pub fn clear_overlays(&mut self, responses: &mut VecDeque<Message>) {
-		if let Some(overlays) = self.pivot_overlay_circles.take() {
-			for path in overlays {
-				responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path }.into()));
-			}
-		}
-	}
-
-	fn redraw_pivot(&mut self, responses: &mut VecDeque<Message>) {
-		self.clear_overlays(responses);
-
-		let pivot = match self.pivot {
-			Some(pivot) => pivot,
-			None => return,
-		};
-
-		let layer_paths = [vec![generate_uuid()], vec![generate_uuid()]];
-		responses.add(DocumentMessage::Overlays(
-			Operation::AddEllipse {
-				path: layer_paths[0].clone(),
-				transform: DAffine2::IDENTITY.to_cols_array(),
-				style: style::PathStyle::new(
-					Some(style::Stroke::new(Some(COLOR_ACCENT), PIVOT_OUTER_OUTLINE_THICKNESS)),
-					style::Fill::Solid(graphene_core::raster::color::Color::WHITE),
-				),
-				insert_index: -1,
-			}
-			.into(),
-		));
-		responses.add(DocumentMessage::Overlays(
-			Operation::AddEllipse {
-				path: layer_paths[1].clone(),
-				transform: DAffine2::IDENTITY.to_cols_array(),
-				style: style::PathStyle::new(None, style::Fill::Solid(COLOR_ACCENT)),
-				insert_index: -1,
-			}
-			.into(),
-		));
-
-		self.pivot_overlay_circles = Some(layer_paths.clone());
-		let [outer, inner] = layer_paths;
-
-		let pivot_diameter_without_outline = PIVOT_OUTER - PIVOT_OUTER_OUTLINE_THICKNESS;
-		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(pivot_diameter_without_outline), 0., pivot - DVec2::splat(pivot_diameter_without_outline / 2.)).to_cols_array();
-		responses.add(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: outer, transform }.into()));
-
-		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(PIVOT_INNER), 0., pivot - DVec2::splat(PIVOT_INNER / 2.)).to_cols_array();
-		responses.add(DocumentMessage::Overlays(Operation::TransformLayerInViewport { path: inner, transform }.into()));
-	}
-
-	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		self.recalculate_pivot(document);
-		self.redraw_pivot(responses);
+		if let Some(pivot) = self.pivot {
+			overlay_context.pivot(pivot);
+		}
 	}
 
 	/// Answers if the pivot widget has changed (so we should refresh the tool bar at the top of the canvas).

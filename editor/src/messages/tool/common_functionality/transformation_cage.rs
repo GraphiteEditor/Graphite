@@ -1,13 +1,10 @@
-use crate::application::generate_uuid;
-use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_ACCENT, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_DRAG_ANGLE};
+use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::style::{self, Fill, Stroke};
-use document_legacy::LayerId;
-use document_legacy::Operation;
-use graphene_core::raster::color::Color;
+use graphene_core::renderer::Quad;
 
 use glam::{DAffine2, DVec2};
 
@@ -149,71 +146,6 @@ impl SelectedEdges {
 	}
 }
 
-/// Create a viewport relative bounding box overlay with no transform handles
-pub fn add_bounding_box(responses: &mut VecDeque<Message>) -> Vec<LayerId> {
-	let path = vec![generate_uuid()];
-
-	let operation = Operation::AddRect {
-		path: path.clone(),
-		transform: DAffine2::ZERO.to_cols_array(),
-		style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 1.0)), Fill::None),
-		insert_index: -1,
-	};
-	responses.add(DocumentMessage::Overlays(operation.into()));
-
-	path
-}
-
-/// Update the location of a bounding box with no handles
-pub fn update_bounding_box(pos1: DVec2, pos2: DVec2, layer: &Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-	if let Some(path) = layer.as_ref().cloned() {
-		let transform = transform_from_box(pos1, pos2, DAffine2::IDENTITY).to_cols_array();
-		let operation = Operation::SetLayerTransformInViewport { path, transform };
-		responses.add_front(DocumentMessage::Overlays(operation.into()));
-	}
-}
-
-/// Removes the bounding box overlay with no transform handles
-pub fn remove_bounding_box(layer_path: Option<Vec<LayerId>>, responses: &mut VecDeque<Message>) {
-	if let Some(path) = layer_path {
-		let operation = Operation::DeleteLayer { path };
-		responses.add(DocumentMessage::Overlays(operation.into()));
-	}
-}
-
-/// Add the transform handle overlay
-fn add_transform_handles(responses: &mut VecDeque<Message>) -> [Vec<LayerId>; 8] {
-	const EMPTY_VEC: Vec<LayerId> = Vec::new();
-	let mut transform_handle_paths = [EMPTY_VEC; 8];
-
-	for item in &mut transform_handle_paths {
-		let current_path = vec![generate_uuid()];
-
-		let operation = Operation::AddRect {
-			path: current_path.clone(),
-			transform: DAffine2::ZERO.to_cols_array(),
-			style: style::PathStyle::new(Some(Stroke::new(Some(COLOR_ACCENT), 2.0)), Fill::solid(Color::WHITE)),
-			insert_index: -1,
-		};
-		responses.add(DocumentMessage::Overlays(operation.into()));
-
-		*item = current_path;
-	}
-
-	transform_handle_paths
-}
-
-/// Converts a bounding box to a rounded transform (with translation and scale)
-pub fn transform_from_box(pos1: DVec2, pos2: DVec2, transform: DAffine2) -> DAffine2 {
-	let inverse = transform.inverse();
-	transform
-		* DAffine2::from_scale_angle_translation(
-			inverse.transform_vector2(transform.transform_vector2(pos2 - pos1).round()),
-			0.,
-			inverse.transform_point2(transform.transform_point2(pos1).round() - DVec2::splat(0.5)),
-		)
-}
-
 /// Aligns the mouse position to the closest axis
 pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2 {
 	if axis_align {
@@ -229,27 +161,17 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
-pub struct BoundingBoxOverlays {
-	pub bounding_box: Vec<LayerId>,
-	pub transform_handles: [Vec<LayerId>; 8],
+pub struct BoundingBoxManager {
 	pub bounds: [DVec2; 2],
 	pub transform: DAffine2,
+	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
 	pub center_of_transformation: DVec2,
 }
 
-impl BoundingBoxOverlays {
-	#[must_use]
-	pub fn new(responses: &mut VecDeque<Message>) -> Self {
-		Self {
-			bounding_box: add_bounding_box(responses),
-			transform_handles: add_transform_handles(responses),
-			..Default::default()
-		}
-	}
-
+impl BoundingBoxManager {
 	/// Calculates the transformed handle positions based on the bounding box and the transform
 	pub fn evaluate_transform_handle_positions(&self) -> [DVec2; 8] {
 		let (left, top): (f64, f64) = self.bounds[0].into();
@@ -267,20 +189,11 @@ impl BoundingBoxOverlays {
 	}
 
 	/// Update the position of the bounding box and transform handles
-	pub fn transform(&mut self, responses: &mut VecDeque<Message>) {
-		let transform = transform_from_box(self.bounds[0], self.bounds[1], self.transform).to_cols_array();
-		let path = self.bounding_box.clone();
-		responses.add(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()));
+	pub fn render_overlays(&mut self, overlay_context: &mut OverlayContext) {
+		overlay_context.quad(self.transform * Quad::from_box(self.bounds));
 
-		// Helps push values that end in approximately half, plus or minus some floating point imprecision, towards the same side of the round() function
-		const BIAS: f64 = 0.0001;
-
-		for (position, path) in self.evaluate_transform_handle_positions().into_iter().zip(&self.transform_handles) {
-			let scale = DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE);
-			let translation = (position - (scale / 2.) - 0.5 + BIAS).round();
-			let transform = DAffine2::from_scale_angle_translation(scale, 0., translation).to_cols_array();
-			let path = path.clone();
-			responses.add(DocumentMessage::Overlays(Operation::SetLayerTransformInViewport { path, transform }.into()));
+		for position in self.evaluate_transform_handle_positions() {
+			overlay_context.square(position, false);
 		}
 	}
 
@@ -354,15 +267,5 @@ impl BoundingBoxOverlays {
 		} else {
 			MouseCursorIcon::Default
 		}
-	}
-
-	/// Removes the overlays
-	pub fn delete(self, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::Overlays(Operation::DeleteLayer { path: self.bounding_box }.into()));
-		responses.extend(
-			self.transform_handles
-				.iter()
-				.map(|path| DocumentMessage::Overlays(Operation::DeleteLayer { path: path.clone() }.into()).into()),
-		);
 	}
 }

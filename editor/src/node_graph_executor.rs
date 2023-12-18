@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::*;
+
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
@@ -21,7 +22,6 @@ use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
-
 use graphene_core::{Color, GraphicElement, SurfaceFrame, SurfaceId};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -654,7 +654,7 @@ impl NodeGraphExecutor {
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(DocumentMessage::DirtyRenderDocument);
-					responses.add(DocumentMessage::Overlays(OverlaysMessage::Rerender));
+					responses.add(OverlaysMessage::Draw);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::ResendActiveProperties))
@@ -679,7 +679,7 @@ impl NodeGraphExecutor {
 		let svg = render.svg.to_string();
 
 		// Send to frontend
-		responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+		responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 	}
 
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
@@ -692,7 +692,7 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend
-				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::CanvasFrame(frame)) => {
@@ -710,7 +710,7 @@ impl NodeGraphExecutor {
 					"#,
 					1920, 1080, matrix, frame.surface_id.0
 				);
-				responses.add(FrontendMessage::UpdateDocumentNodeRender { svg });
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			TaggedValue::Bool(render_object) => Self::render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::render(render_object, transform, responses),
