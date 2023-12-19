@@ -3,9 +3,7 @@ use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::tool::common_functionality::resize::Resize;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::Operation;
 
-use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -156,15 +154,15 @@ impl Fsm for ImaginateToolFsmState {
 					imaginate_node_id,
 					imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
-
-				// Add a layer with a frame to the document
-				responses.add(Operation::AddFrame {
-					path: shape_data.layer.unwrap().to_path(),
-					insert_index: -1,
-					transform: DAffine2::ZERO.to_cols_array(),
-					network,
-				});
 				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
+
+				// // Add a layer with a frame to the document
+				// responses.add(Operation::AddFrame {
+				// 	path: shape_data.layer.unwrap().to_path(),
+				// 	insert_index: -1,
+				// 	transform: DAffine2::ZERO.to_cols_array(),
+				// 	network,
+				// });
 
 				ImaginateToolFsmState::Drawing
 			}

@@ -8,7 +8,7 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::{LayerId, Operation};
+use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -680,10 +680,8 @@ impl NodeGraphExecutor {
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) => {
-				// let transform = transform.to_cols_array();
-				// responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetSurface { path: layer_path, surface_id });
+			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _ }) => {
+				// TODO: Reimplement this now that document-legacy is gone
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend

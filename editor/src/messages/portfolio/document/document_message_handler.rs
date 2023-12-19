@@ -18,8 +18,8 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::{DocumentError, LayerId};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
@@ -124,20 +124,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
-			DispatchOperation(op) => match self.document_legacy.handle_operation(*op) {
-				Ok(Some(document_responses)) => {
-					for response in document_responses {
-						match &response {
-							DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
-							DocumentResponse::DocumentChanged => responses.add(RenderDocument),
-						};
-						responses.add(BroadcastEvent::DocumentIsDirty);
-					}
-				}
-				Err(e) => error!("DocumentError: {e:?}"),
-				Ok(_) => (),
-			},
 			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
@@ -318,27 +304,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			FolderChanged { affected_folder_path } => {
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
-			}
-			FrameClear => {
-				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Layer);
-				// Get what is hopefully the only selected Layer layer
-				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any Layer layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_frame_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap();
-
-				let layer = self.document_legacy.layer(layer_path).expect("Clearing Layer image for invalid layer");
-				let previous_blob_url = match &layer.data {
-					LegacyLayerType::Layer(layer) => layer.as_blob_url(),
-					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
-				};
-
-				if let Some(url) = previous_blob_url {
-					responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
-				}
-				responses.add(DocumentOperation::ClearBlobURL { path: layer_path.into() });
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
@@ -636,35 +601,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				for layer in self.metadata().selected_layers_except_artboards() {
 					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
 				}
-			}
-			SetImageBlobUrl {
-				layer_path,
-				blob_url,
-				resolution,
-				document_id,
-			} => {
-				let Ok(layer) = self.document_legacy.layer(&layer_path) else {
-					warn!("Setting blob URL for invalid layer");
-					return;
-				};
-
-				// Revoke the old blob URL
-				match &layer.data {
-					LegacyLayerType::Layer(layer) => {
-						if let Some(url) = layer.as_blob_url() {
-							responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
-						}
-					}
-					other => {
-						warn!("Setting blob URL for invalid layer type, which must be a `Layer` layer type. Found: `{other:?}`");
-						return;
-					}
-				}
-
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
-				});
 			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);

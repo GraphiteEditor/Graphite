@@ -1,8 +1,7 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::layers::folder_layer::FolderLegacyLayer;
-use crate::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer, LegacyLayerType};
-use crate::layers::layer_layer::CachedOutputData;
-use crate::{DocumentError, DocumentResponse, Operation};
+use crate::layers::layer_info::{LegacyLayer, LegacyLayerType};
+use crate::DocumentError;
 
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
@@ -13,7 +12,7 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 use std::vec;
 
 /// A number that identifies a layer.
@@ -255,66 +254,9 @@ impl Document {
 		let scope = to.unwrap_or(DAffine2::IDENTITY);
 		Ok(scope * from_rev)
 	}
-
-	/// Mutate the document by applying the `operation` to it. If the operation necessitates a
-	/// reaction from the frontend, responses may be returned.
-	pub fn handle_operation(&mut self, operation: Operation) -> Result<Option<Vec<DocumentResponse>>, DocumentError> {
-		use DocumentResponse::*;
-
-		// This mutates the state_identifier
-		operation.pseudo_hash().hash(&mut self.state_identifier);
-
-		let responses = match operation {
-			Operation::AddFrame { path, .. } => {
-				let mut responses = vec![DocumentChanged];
-				responses.extend(update_thumbnails_upstream(&path));
-
-				Some(responses)
-			}
-			Operation::SetLayerBlobUrl { layer_path, blob_url, resolution: _ } => {
-				let layer = self.layer_mut(&layer_path).unwrap_or_else(|_| panic!("Blob URL for invalid layer with path '{layer_path:?}'"));
-
-				let LegacyLayerType::Layer(layer) = &mut layer.data else {
-					panic!("Incorrectly trying to set the image blob URL for a layer that is not a 'Layer' layer type");
-				};
-
-				layer.cached_output_data = CachedOutputData::BlobURL(blob_url);
-
-				Some([vec![DocumentChanged, LayerChanged { path: layer_path.clone() }], update_thumbnails_upstream(&layer_path)].concat())
-			}
-			Operation::ClearBlobURL { path } => {
-				let layer = self.layer_mut(&path).expect("Clearing node graph image for invalid layer");
-				match &mut layer.data {
-					LegacyLayerType::Layer(layer) => {
-						if matches!(layer.cached_output_data, CachedOutputData::BlobURL(_)) {
-							layer.cached_output_data = CachedOutputData::None;
-						}
-					}
-					e => panic!("Incorrectly trying to clear the blob URL for layer of type {}", LayerDataTypeDiscriminant::from(&*e)),
-				}
-				Some([vec![DocumentChanged, LayerChanged { path: path.clone() }], update_thumbnails_upstream(&path)].concat())
-			}
-			Operation::SetSurface { path, surface_id } => {
-				if let LegacyLayerType::Layer(layer) = &mut self.layer_mut(&path)?.data {
-					layer.cached_output_data = CachedOutputData::SurfaceId(surface_id);
-				}
-				Some(Vec::new())
-			}
-		};
-		Ok(responses)
-	}
 }
 
 fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
 	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
 	Ok((path, *id))
-}
-
-fn update_thumbnails_upstream(path: &[LayerId]) -> Vec<DocumentResponse> {
-	let length = path.len();
-	let mut responses = Vec::with_capacity(length);
-	for i in 0..length {
-		responses.push(DocumentResponse::LayerChanged { path: path[0..(length - i)].to_vec() });
-	}
-	responses
 }

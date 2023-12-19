@@ -6,7 +6,6 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::LayerId;
-use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
@@ -19,8 +18,6 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	// Sub-messages
-	#[remain::unsorted]
-	DispatchOperation(Box<DocumentOperation>),
 	#[remain::unsorted]
 	#[child]
 	Navigation(NavigationMessage),
@@ -71,7 +68,6 @@ pub enum DocumentMessage {
 	FolderChanged {
 		affected_folder_path: Vec<LayerId>,
 	},
-	FrameClear,
 	GroupSelectedLayers,
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
@@ -128,12 +124,6 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
 	},
-	SetImageBlobUrl {
-		layer_path: Vec<LayerId>,
-		blob_url: String,
-		resolution: (f64, f64),
-		document_id: u64,
-	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
@@ -164,16 +154,4 @@ pub enum DocumentMessage {
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,
-}
-
-impl From<DocumentOperation> for DocumentMessage {
-	fn from(operation: DocumentOperation) -> DocumentMessage {
-		DocumentMessage::DispatchOperation(Box::new(operation))
-	}
-}
-
-impl From<DocumentOperation> for Message {
-	fn from(operation: DocumentOperation) -> Message {
-		DocumentMessage::DispatchOperation(Box::new(operation)).into()
-	}
 }

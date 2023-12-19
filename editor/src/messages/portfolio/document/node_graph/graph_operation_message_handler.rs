@@ -321,7 +321,7 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
-			self.responses.add(DocumentMessage::FrameClear);
+			// Code was removed from here which cleared the frame
 		}
 		if existing_node_id.is_none() {
 			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
@@ -346,7 +346,7 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
-			self.responses.add(DocumentMessage::FrameClear);
+			// Code was removed from here which cleared the frame
 		}
 	}
 

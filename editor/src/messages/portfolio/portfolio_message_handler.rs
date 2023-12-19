@@ -490,25 +490,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.active_document_id = Some(document_id);
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::SetImageBlobUrl {
-				document_id,
-				layer_path,
-				node_id,
-				blob_url,
-				resolution,
-			} => {
-				if let Some(node_id) = node_id {
-					self.executor.insert_thumbnail_blob_url(blob_url, node_id, responses);
-					return;
-				}
-				let message = DocumentMessage::SetImageBlobUrl {
-					layer_path,
-					blob_url,
-					resolution,
-					document_id,
-				};
-				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
-			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,
 				file_type,
