@@ -11,7 +11,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
-use document_legacy::layers::style::RenderData;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -667,15 +666,13 @@ impl PortfolioMessageHandler {
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
-		let render_data = RenderData::new(&self.persistent_data.font_cache, new_document.view_mode, None);
-
 		self.document_ids.push(document_id);
 
 		responses.extend(
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &render_data))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);

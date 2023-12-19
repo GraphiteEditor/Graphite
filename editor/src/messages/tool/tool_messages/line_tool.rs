@@ -178,7 +178,7 @@ impl Fsm for LineToolFsmState {
 		};
 		match (self, event) {
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);

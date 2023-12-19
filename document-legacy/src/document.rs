@@ -1,8 +1,7 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::layers::folder_layer::FolderLegacyLayer;
-use crate::layers::layer_info::{LayerData, LayerDataTypeDiscriminant, LegacyLayer, LegacyLayerType};
+use crate::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer, LegacyLayerType};
 use crate::layers::layer_layer::CachedOutputData;
-use crate::layers::style::RenderData;
 use crate::{DocumentError, DocumentResponse, Operation};
 
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
@@ -237,12 +236,6 @@ impl Document {
 		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
 
 		Ok(indices)
-	}
-
-	pub fn viewport_bounding_box(&self, path: &[LayerId], render_data: &RenderData) -> Result<Option<[DVec2; 2]>, DocumentError> {
-		let layer = self.layer(path)?;
-		let transform = self.multiply_transforms(path)?;
-		Ok(layer.data.bounding_box(transform, render_data))
 	}
 
 	pub fn multiply_transforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {

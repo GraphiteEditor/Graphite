@@ -1,8 +1,6 @@
-use document_legacy::layers::layer_info::{LayerData, LayerDataTypeDiscriminant, LegacyLayer};
-use document_legacy::layers::style::RenderData;
+use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer};
 use document_legacy::LayerId;
 
-use glam::{DAffine2, DVec2};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
@@ -60,45 +58,15 @@ pub struct LayerPanelEntry {
 impl LayerPanelEntry {
 	// TODO: Deprecate this because it's using document-legacy layer data which is no longer linked to data from the node graph,
 	// TODO: so this doesn't feed `name` (that's fed elsewhere) or `visible` (that's broken entirely), etc.
-	pub fn new(layer_metadata: &LayerMetadata, transform: DAffine2, layer: &LegacyLayer, path: Vec<LayerId>, render_data: &RenderData) -> Self {
-		let name = layer.name.clone().unwrap_or_else(|| String::from(""));
-
-		let mut tooltip = name.clone();
-		if cfg!(debug_assertions) {
-			tooltip += "\nLayer Path: ";
-			tooltip += &path.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(" / ");
-			tooltip = tooltip.trim().to_string();
-		}
-
-		let arr = layer.data.bounding_box(transform, render_data).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
-		let mut thumbnail = String::new();
-		let mut svg_defs = String::new();
-		layer.data.clone()/*entry_from_thumbnail*/.render(&mut thumbnail, &mut svg_defs, &mut vec![transform], render_data);
-		let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
-		let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
-			format!(
-				r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"><defs>{}</defs><g transform="matrix({})">{}</g></svg>"#,
-				x_min,
-				y_min,
-				x_max - x_min,
-				y_max - y_min,
-				svg_defs,
-				transform,
-				thumbnail,
-			)
-		} else {
-			String::new()
-		};
-
-		LayerPanelEntry {
-			name,
-			tooltip,
+	pub fn new(layer_metadata: &LayerMetadata, layer: &LegacyLayer, path: Vec<LayerId>) -> Self {
+		Self {
+			name: "".to_string(),    // Replaced before it gets used
+			tooltip: "".to_string(), // Replaced before it gets used
 			visible: layer.visible,
 			layer_type: (&layer.data).into(),
 			layer_metadata: *layer_metadata,
 			path,
-			thumbnail,
+			thumbnail: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 0 0"></svg>"#.to_string(),
 		}
 	}
 }

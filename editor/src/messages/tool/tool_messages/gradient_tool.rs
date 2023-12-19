@@ -268,7 +268,7 @@ struct GradientToolData {
 }
 
 pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
-	snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+	snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 

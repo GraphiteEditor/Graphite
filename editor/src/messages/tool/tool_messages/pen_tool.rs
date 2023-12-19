@@ -568,7 +568,7 @@ impl Fsm for PenToolFsmState {
 		};
 		match (self, event) {
 			(_, PenToolMessage::CanvasTransformed) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 				self
 			}
 			(_, PenToolMessage::SelectionChanged) => {
@@ -591,7 +591,7 @@ impl Fsm for PenToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Initialize snapping
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				// Disable this tool's mirroring

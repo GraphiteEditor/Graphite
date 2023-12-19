@@ -482,7 +482,7 @@ impl Fsm for SelectToolFsmState {
 				let state = if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot

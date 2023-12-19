@@ -208,7 +208,7 @@ impl Fsm for SplineToolFsmState {
 		};
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 				self
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
@@ -218,7 +218,7 @@ impl Fsm for SplineToolFsmState {
 				let parent = document.new_layer_parent();
 				let transform = document.metadata().transform_to_viewport(parent);
 
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 

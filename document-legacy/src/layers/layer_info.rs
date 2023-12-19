@@ -1,29 +1,10 @@
 use super::folder_layer::FolderLegacyLayer;
 use super::layer_layer::LayerLegacyLayer;
-use super::style::RenderData;
-use crate::intersection::Quad;
 use crate::DocumentError;
-use crate::LayerId;
 
 use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
-
-// =========
-// LayerData
-// =========
-
-/// Defines shared behavior for every layer type.
-pub trait LayerData {
-	/// Render the layer as an SVG tag to a given string, returning a boolean to indicate if a redraw is required next frame.
-	fn render(&mut self, cache_inner_svg: &mut String, cache_defs_svg: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool;
-
-	/// Determine the layers within this layer that intersect a given quad.
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData);
-
-	/// Calculate the bounding box for the layer's contents after applying a given transform.
-	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]>;
-}
 
 // ===============
 // LegacyLayerType
@@ -41,36 +22,6 @@ pub enum LegacyLayerType {
 impl Default for LegacyLayerType {
 	fn default() -> Self {
 		LegacyLayerType::Layer(Default::default())
-	}
-}
-
-impl LegacyLayerType {
-	pub fn inner(&self) -> &dyn LayerData {
-		match self {
-			LegacyLayerType::Folder(folder) => folder,
-			LegacyLayerType::Layer(layer) => layer,
-		}
-	}
-
-	pub fn inner_mut(&mut self) -> &mut dyn LayerData {
-		match self {
-			LegacyLayerType::Folder(folder) => folder,
-			LegacyLayerType::Layer(layer) => layer,
-		}
-	}
-}
-
-impl LayerData for LegacyLayerType {
-	fn render(&mut self, cache_inner_svg: &mut String, cache_defs_svg: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
-		self.inner_mut()/*called_via_thumbnail*/.render(cache_inner_svg, cache_defs_svg, transforms, render_data)
-	}
-
-	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
-		self.inner().intersects_quad(quad, path, intersections, render_data)
-	}
-
-	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		self.inner().bounding_box(transform, render_data)
 	}
 }
 
@@ -136,15 +87,6 @@ impl LegacyLayer {
 	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
 	pub fn iter(&self) -> LayerIter<'_> {
 		LayerIter { stack: vec![self] }
-	}
-
-	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
-		if !self.visible {
-			return;
-		}
-
-		let transformed_quad = self.transform.inverse() * quad;
-		self.data.intersects_quad(transformed_quad, path, intersections, render_data)
 	}
 
 	/// Get a mutable reference to the Folder wrapped by the layer.

@@ -121,8 +121,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		} = document_inputs;
 		use DocumentMessage::*;
 
-		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
-
 		#[remain::sorted]
 		match message {
 			// Sub-messages
@@ -192,7 +190,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path, &render_data));
+					responses.extend(self.select_layer(layer_path));
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
@@ -391,7 +389,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
 				}
 				self.update_layers_panel_options_bar_widgets(responses);
@@ -870,17 +868,15 @@ impl DocumentMessageHandler {
 			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
-	fn select_layer(&mut self, path: &[LayerId], render_data: &RenderData) -> Option<Message> {
+	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
-			let render_data = RenderData::new(render_data.font_cache, self.view_mode, None);
-
 			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec(), &render_data).ok()?;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
-			warn!("Tried to select non existing layer {path:?}");
+			warn!("Tried to select non-existing layer {path:?}");
 			None
 		}
 	}
@@ -920,11 +916,10 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns the bounding boxes for all visible layers, optionally excluding any paths.
-	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, _ignore_artboard: Option<LayerId>, render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
-		self.visible_layers()
-			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
-			.filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
+	/// Returns the bounding boxes for all visible layers.
+	pub fn bounding_boxes<'a>(&'a self, _render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
+		std::iter::empty()
 	}
 
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
@@ -1181,31 +1176,21 @@ impl DocumentMessageHandler {
 	}
 
 	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, render_data: &RenderData) -> Result<LayerPanelEntry, EditorError> {
+	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {path:?}")))?;
 		let layer = self.document_legacy.layer(&path)?;
-		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
+		let entry = LayerPanelEntry::new(&data, layer, path);
 		Ok(entry)
 	}
 
-	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but rather attributes such as visibility and names of the layers.
-	pub fn layer_panel(&mut self, path: &[LayerId], render_data: &RenderData) -> Result<Vec<LayerPanelEntry>, EditorError> {
-		let folder = self.document_legacy.folder(path)?;
-		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path, render_data)).collect();
-		Ok(entries)
-	}
-
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
+	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
-		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.metadata().document_to_viewport.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
 
-		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), render_data))
+		Some(LayerPanelEntry::new(layer_metadata, layer, path.to_vec()))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -1216,11 +1201,6 @@ impl DocumentMessageHandler {
 		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
 
 		Ok(new_insert_index)
-	}
-
-	/// Calculates the bounding box of all layers in the document
-	pub fn all_layer_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		self.document_legacy.viewport_bounding_box(&[], render_data).ok().flatten()
 	}
 
 	/// Calculate the path that new layers should be inserted to.
