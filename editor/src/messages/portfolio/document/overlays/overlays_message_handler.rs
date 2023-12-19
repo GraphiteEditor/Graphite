@@ -1,8 +1,5 @@
-use super::utility_functions::overlay_canvas_element;
-use super::utility_types::{OverlayContext, OverlayProvider};
+use super::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
-
-use wasm_bindgen::JsCast;
 
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
@@ -16,6 +13,10 @@ impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> f
 		match message {
 			#[cfg(target_arch = "wasm32")]
 			OverlaysMessage::Draw => {
+				use super::utility_functions::overlay_canvas_element;
+				use super::utility_types::OverlayContext;
+				use wasm_bindgen::JsCast;
+
 				let canvas = self.canvas.get_or_insert_with(|| overlay_canvas_element().expect("Failed to get canvas element"));
 
 				let context = self.context.get_or_insert_with(|| {
@@ -36,7 +37,10 @@ impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> f
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets {overlays_visible} {ipp:?}.");
+				warn!(
+					"Cannot render overlays on non-Wasm targets.\n{responses:?} {overlays_visible} {ipp:?} {:?} {:?}",
+					self.canvas, self.context
+				);
 			}
 			OverlaysMessage::AddProvider(message) => {
 				self.overlay_providers.insert(message);

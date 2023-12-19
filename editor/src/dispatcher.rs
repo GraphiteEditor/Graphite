@@ -35,7 +35,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
-		PropertiesPanelMessageDiscriminant::ResendActiveProperties,
+		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::FolderChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
@@ -262,8 +262,8 @@ mod test {
 	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
 
+	use document_legacy::document::LayerId;
 	use document_legacy::document_metadata::LayerNodeIdentifier;
-	use document_legacy::LayerId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -474,10 +474,6 @@ mod test {
 				map_to_vec(handler.selected_layers_sorted()),
 			)
 		};
-
-		editor.handle_message(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: sorted_layers[..2].to_vec(),
-		});
 
 		editor.handle_message(DocumentMessage::SelectedLayersRaise);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());

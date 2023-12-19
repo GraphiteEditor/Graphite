@@ -4,13 +4,12 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::ViewMode;
-use document_legacy::LayerId;
-use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
+use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 use serde::{Deserialize, Serialize};
 
@@ -19,8 +18,6 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	// Sub-messages
-	#[remain::unsorted]
-	DispatchOperation(Box<DocumentOperation>),
 	#[remain::unsorted]
 	#[child]
 	Navigation(NavigationMessage),
@@ -52,9 +49,6 @@ pub enum DocumentMessage {
 	},
 	ClearLayerTree,
 	CommitTransaction,
-	CopyToClipboardLayerImageOutput {
-		layer_path: Vec<LayerId>,
-	},
 	CreateEmptyFolder {
 		parent: LayerNodeIdentifier,
 	},
@@ -64,14 +58,9 @@ pub enum DocumentMessage {
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
-	DirtyRenderDocument,
-	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
-	DownloadLayerImageOutput {
-		layer_path: Vec<LayerId>,
-	},
 	DuplicateSelectedLayers,
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
@@ -79,7 +68,6 @@ pub enum DocumentMessage {
 	FolderChanged {
 		affected_folder_path: Vec<LayerId>,
 	},
-	FrameClear,
 	GroupSelectedLayers,
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
@@ -116,14 +104,9 @@ pub enum DocumentMessage {
 	RenameDocument {
 		new_name: String,
 	},
-	RenameLayer {
-		layer_path: Vec<LayerId>,
-		new_name: String,
-	},
 	RenderDocument,
 	RenderRulers,
 	RenderScrollbars,
-	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -141,16 +124,6 @@ pub enum DocumentMessage {
 	SetBlendModeForSelectedLayers {
 		blend_mode: BlendMode,
 	},
-	SetImageBlobUrl {
-		layer_path: Vec<LayerId>,
-		blob_url: String,
-		resolution: (f64, f64),
-		document_id: u64,
-	},
-	SetLayerExpansion {
-		layer_path: Vec<LayerId>,
-		set_expanded: bool,
-	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
@@ -159,9 +132,6 @@ pub enum DocumentMessage {
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
-	},
-	SetSelectedLayers {
-		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
 	SetSnapping {
 		snapping_enabled: Option<bool>,
@@ -181,23 +151,7 @@ pub enum DocumentMessage {
 	UpdateDocumentTransform {
 		transform: glam::DAffine2,
 	},
-	UpdateLayerMetadata {
-		layer_path: Vec<LayerId>,
-		layer_metadata: LayerMetadata,
-	},
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,
 	ZoomCanvasToFitAll,
-}
-
-impl From<DocumentOperation> for DocumentMessage {
-	fn from(operation: DocumentOperation) -> DocumentMessage {
-		DocumentMessage::DispatchOperation(Box::new(operation))
-	}
-}
-
-impl From<DocumentOperation> for Message {
-	fn from(operation: DocumentOperation) -> Message {
-		DocumentMessage::DispatchOperation(Box::new(operation)).into()
-	}
 }

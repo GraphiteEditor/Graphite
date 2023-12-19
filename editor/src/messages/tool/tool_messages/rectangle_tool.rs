@@ -189,11 +189,7 @@ impl Fsm for RectangleToolFsmState {
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
 		ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
+			document, global_tool_data, input, ..
 		}: &mut ToolActionHandlerData,
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
@@ -209,11 +205,11 @@ impl Fsm for RectangleToolFsmState {
 
 		match (self, event) {
 			(Drawing, CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input, render_data);
+				tool_data.data.recalculate_snaps(document, input);
 				self
 			}
 			(Ready, DragStart) => {
-				shape_data.start(responses, document, input, render_data);
+				shape_data.start(responses, document, input);
 
 				let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 

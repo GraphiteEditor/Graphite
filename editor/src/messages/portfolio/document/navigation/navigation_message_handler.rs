@@ -103,7 +103,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}
@@ -235,7 +234,6 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				responses.add(DocumentMessage::DirtyRenderDocumentInOutlineView);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), responses);
 			}

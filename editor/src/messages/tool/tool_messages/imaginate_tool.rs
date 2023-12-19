@@ -3,9 +3,7 @@ use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
 use crate::messages::tool::common_functionality::resize::Resize;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::Operation;
 
-use glam::DAffine2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
@@ -105,7 +103,7 @@ impl Fsm for ImaginateToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
+		ToolActionHandlerData { document, input, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -116,12 +114,12 @@ impl Fsm for ImaginateToolFsmState {
 		};
 		match (self, event) {
 			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
-				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, render_data);
+				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, font_cache);
 
 				self
 			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
-				shape_data.start(responses, document, input, render_data);
+				shape_data.start(responses, document, input);
 				responses.add(DocumentMessage::StartTransaction);
 				shape_data.layer = Some(LayerNodeIdentifier::new(generate_uuid(), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -156,15 +154,15 @@ impl Fsm for ImaginateToolFsmState {
 					imaginate_node_id,
 					imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
-
-				// Add a layer with a frame to the document
-				responses.add(Operation::AddFrame {
-					path: shape_data.layer.unwrap().to_path(),
-					insert_index: -1,
-					transform: DAffine2::ZERO.to_cols_array(),
-					network,
-				});
 				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
+
+				// // Add a layer with a frame to the document
+				// responses.add(Operation::AddFrame {
+				// 	path: shape_data.layer.unwrap().to_path(),
+				// 	insert_index: -1,
+				// 	transform: DAffine2::ZERO.to_cols_array(),
+				// 	network,
+				// });
 
 				ImaginateToolFsmState::Drawing
 			}

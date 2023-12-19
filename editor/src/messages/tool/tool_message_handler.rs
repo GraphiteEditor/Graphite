@@ -7,7 +7,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::layers::style::RenderData;
 use graphene_core::raster::color::Color;
 
 #[derive(Debug, Default)]
@@ -25,7 +24,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 		responses: &mut VecDeque<Message>,
 		(document, document_id, input, persistent_data, node_graph): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor),
 	) {
-		let render_data = RenderData::new(&persistent_data.font_cache, document.view_mode, None);
+		let font_cache = &persistent_data.font_cache;
 
 		#[remain::sorted]
 		match message {
@@ -89,7 +88,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
-							render_data: &render_data,
+							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 						};
@@ -171,7 +170,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 					document_id,
 					global_tool_data: &self.tool_state.document_tool_data,
 					input,
-					render_data: &render_data,
+					font_cache,
 					shape_editor: &mut self.shape_editor,
 					node_graph,
 				};
@@ -241,7 +240,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocess
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
-							render_data: &render_data,
+							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 						};

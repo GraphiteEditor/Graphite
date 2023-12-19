@@ -89,7 +89,7 @@ fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn E
 	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
 	let document = serde_json::from_value::<Document>(document["document_legacy"].clone()).expect("Failed to parse document");
 	let Some(LegacyLayerType::Layer(ref node_graph)) = document.root.iter().find(|layer| matches!(layer.data, LegacyLayerType::Layer(_))).map(|x| &x.data) else {
-		panic!("failed to extract node graph from docmuent")
+		panic!("Failed to extract node graph from document")
 	};
 	let network = &node_graph.network;
 	let wrapped_network = wrap_network_in_scope(network.clone());

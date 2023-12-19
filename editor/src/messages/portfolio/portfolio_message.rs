@@ -1,9 +1,8 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
-use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
@@ -102,13 +101,6 @@ pub enum PortfolioMessage {
 	},
 	SetActiveDocument {
 		document_id: u64,
-	},
-	SetImageBlobUrl {
-		document_id: u64,
-		layer_path: Vec<LayerId>,
-		node_id: Option<NodeId>,
-		blob_url: String,
-		resolution: (f64, f64),
 	},
 	SubmitDocumentExport {
 		file_name: String,

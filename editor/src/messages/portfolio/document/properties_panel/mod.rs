@@ -1,7 +1,6 @@
 mod properties_panel_message;
 mod properties_panel_message_handler;
 
-pub mod utility_functions;
 pub mod utility_types;
 
 #[doc(inline)]
