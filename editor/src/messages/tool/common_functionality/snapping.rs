@@ -1,5 +1,8 @@
 use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
+
+use graphene_core::renderer::Quad;
 
 use glam::DVec2;
 
@@ -79,6 +82,37 @@ impl SnapManager {
 					.collect(),
 			);
 			self.point_targets = None;
+		}
+	}
+
+	pub fn grid_overlay(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+		let offset = document.snapping_state.grid.origin;
+		let spacing = document.snapping_state.grid.size;
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+
+		for primary in 0..2 {
+			let secondary = 1 - primary;
+			let min = bounds.0.iter().map(|&corner| corner[secondary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let max = bounds.0.iter().map(|&corner| corner[secondary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let primary1 = bounds.0.iter().map(|&corner| corner[primary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let primary2 = bounds.0.iter().map(|&corner| corner[primary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+			let mut spacing = spacing[secondary];
+			while (max - min) / spacing > 30. {
+				spacing *= 2.;
+			}
+			for line_index in 0..=((max - min) / spacing).ceil() as i32 {
+				let secondary_pos = (((min + offset[secondary]) / spacing).ceil() + line_index as f64) * spacing;
+				let start = if primary == 0 { DVec2::new(primary1, secondary_pos) } else { DVec2::new(secondary_pos, primary1) };
+				let end = if primary == 0 { DVec2::new(primary2, secondary_pos) } else { DVec2::new(secondary_pos, primary2) };
+				overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end));
+			}
+		}
+	}
+
+	pub fn draw_overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+		if document.snapping_state.grid_snapping {
+			self.grid_overlay(document, overlay_context);
 		}
 	}
 

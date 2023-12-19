@@ -15,11 +15,12 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip, default = "overlay_canvas_context")]
 	pub render_context: web_sys::CanvasRenderingContext2d,
+	pub size: DVec2,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -39,8 +40,8 @@ impl OverlayContext {
 
 	pub fn line(&mut self, start: DVec2, end: DVec2) {
 		self.render_context.begin_path();
-		self.render_context.move_to(start.x.round(), start.y.round());
-		self.render_context.line_to(end.x.round(), end.y.round());
+		self.render_context.move_to(start.x, start.y);
+		self.render_context.line_to(end.x, end.y);
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}

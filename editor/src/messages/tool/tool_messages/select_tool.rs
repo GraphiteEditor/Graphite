@@ -53,7 +53,7 @@ impl fmt::Display for NestedSelectionBehavior {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SelectToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -381,6 +381,8 @@ impl Fsm for SelectToolFsmState {
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
+				tool_data.snap_manager.draw_overlays(document, &mut overlay_context);
+
 				let selected_layers_count = document.metadata().selected_layers().count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;

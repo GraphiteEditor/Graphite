@@ -61,18 +61,64 @@ pub struct SnappingState {
 	pub snapping_enabled: bool,
 	pub bounding_box_snapping: bool,
 	pub node_snapping: bool,
+	pub grid_snapping: bool,
+	pub bounds: BoundsSnapping,
+	pub nodes: NodeSnapping,
+	pub grid: GridSnapping,
 }
-
 impl Default for SnappingState {
 	fn default() -> Self {
 		Self {
 			snapping_enabled: true,
 			bounding_box_snapping: true,
 			node_snapping: true,
+			grid_snapping: true,
+			bounds: BoundsSnapping {
+				edges: true,
+				corners: true,
+				edge_midpoints: false,
+				centres: false,
+			},
+			nodes: NodeSnapping {
+				paths: true,
+				path_intersections: true,
+				cusp_nodes: true,
+				smooth_nodes: false,
+				line_midpoints: true,
+				perpendicular: true,
+				tangents: true,
+			},
+			grid: GridSnapping {
+				origin: DVec2::ZERO,
+				size: DVec2::ONE,
+				dots: false,
+			},
 		}
 	}
 }
-
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BoundsSnapping {
+	pub edges: bool,
+	pub corners: bool,
+	pub edge_midpoints: bool,
+	pub centres: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeSnapping {
+	pub paths: bool,
+	pub path_intersections: bool,
+	pub cusp_nodes: bool,
+	pub smooth_nodes: bool,
+	pub line_midpoints: bool,
+	pub perpendicular: bool,
+	pub tangents: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GridSnapping {
+	pub origin: DVec2,
+	pub size: DVec2,
+	pub dots: bool,
+}
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {
 	BoundingBoxes,
