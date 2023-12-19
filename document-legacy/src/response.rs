@@ -8,32 +8,15 @@ use std::fmt;
 pub enum DocumentResponse {
 	/// For the purposes of rendering, this triggers a re-render of the entire document.
 	DocumentChanged,
-	FolderChanged {
-		path: Vec<LayerId>,
-	},
-	CreatedLayer {
-		path: Vec<LayerId>,
-		is_selected: bool,
-	},
-	DeletedLayer {
-		path: Vec<LayerId>,
-	},
 	/// Triggers an update of the layer in the layer panel.
-	LayerChanged {
-		path: Vec<LayerId>,
-	},
-	DeletedSelectedManipulatorPoints,
+	LayerChanged { path: Vec<LayerId> },
 }
 
 impl fmt::Display for DocumentResponse {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			DocumentResponse::DocumentChanged { .. } => write!(f, "DocumentChanged"),
-			DocumentResponse::FolderChanged { .. } => write!(f, "FolderChanged"),
-			DocumentResponse::CreatedLayer { .. } => write!(f, "CreatedLayer"),
 			DocumentResponse::LayerChanged { .. } => write!(f, "LayerChanged"),
-			DocumentResponse::DeletedLayer { .. } => write!(f, "DeleteLayer"),
-			DocumentResponse::DeletedSelectedManipulatorPoints { .. } => write!(f, "DeletedSelectedManipulatorPoints"),
 		}
 	}
 }

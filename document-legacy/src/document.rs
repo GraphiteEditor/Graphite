@@ -220,18 +220,6 @@ impl Document {
 		sorted_layers
 	}
 
-	pub fn folder_children_paths(&self, path: &[LayerId]) -> Vec<Vec<LayerId>> {
-		if let Ok(folder) = self.folder(path) {
-			folder.list_layers().iter().map(|f| [path, &[*f]].concat()).collect()
-		} else {
-			vec![]
-		}
-	}
-
-	pub fn is_folder(&self, path: impl AsRef<[LayerId]>) -> bool {
-		return self.folder(path.as_ref()).is_ok();
-	}
-
 	/// Given a path to a layer, returns a vector of the indices in the layer tree
 	/// These indices can be used to order a list of layers
 	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
@@ -264,7 +252,7 @@ impl Document {
 			if let Ok(folder) = root.as_folder() {
 				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			}
-			trans = trans * root.transform;
+			trans *= root.transform;
 		}
 		Ok(trans)
 	}
@@ -285,13 +273,7 @@ impl Document {
 
 		let responses = match operation {
 			Operation::AddFrame { path, .. } => {
-				let mut responses = vec![
-					DocumentChanged,
-					CreatedLayer {
-						path: path.clone(),
-						is_selected: true,
-					},
-				];
+				let mut responses = vec![DocumentChanged];
 				responses.extend(update_thumbnails_upstream(&path));
 
 				Some(responses)

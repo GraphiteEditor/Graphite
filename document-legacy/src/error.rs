@@ -5,9 +5,6 @@ use super::LayerId;
 pub enum DocumentError {
 	LayerNotFound(Vec<LayerId>),
 	InvalidPath,
-	IndexOutOfBounds,
 	NotFolder,
-	NotShape,
-	NotLayer,
 	InvalidFile(String),
 }

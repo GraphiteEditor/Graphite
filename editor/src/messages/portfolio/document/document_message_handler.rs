@@ -127,39 +127,19 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		match message {
 			// Sub-messages
 			#[remain::unsorted]
-			DispatchOperation(op) => {
-				match self.document_legacy.handle_operation(*op) {
-					Ok(Some(document_responses)) => {
-						for response in document_responses {
-							match &response {
-								DocumentResponse::FolderChanged { path } => responses.add(FolderChanged { affected_folder_path: path.clone() }),
-								DocumentResponse::DeletedLayer { path } => {
-									self.layer_metadata.remove(path);
-								}
-								DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
-								DocumentResponse::CreatedLayer { .. } => {
-									unimplemented!("We should no longer be creating layers in the document and should instead be using the node graph.")
-								}
-								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
-								DocumentResponse::DeletedSelectedManipulatorPoints => {
-									// Clear Properties panel after deleting all points by updating backend widget state.
-									responses.add(LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesOptions,
-									});
-									responses.add(LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesSections,
-									});
-								}
-							};
-							responses.add(BroadcastEvent::DocumentIsDirty);
-						}
+			DispatchOperation(op) => match self.document_legacy.handle_operation(*op) {
+				Ok(Some(document_responses)) => {
+					for response in document_responses {
+						match &response {
+							DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
+							DocumentResponse::DocumentChanged => responses.add(RenderDocument),
+						};
+						responses.add(BroadcastEvent::DocumentIsDirty);
 					}
-					Err(e) => error!("DocumentError: {e:?}"),
-					Ok(_) => (),
 				}
-			}
+				Err(e) => error!("DocumentError: {e:?}"),
+				Ok(_) => (),
+			},
 			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
@@ -269,15 +249,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 			}
 			CommitTransaction => (),
-			CopyToClipboardLayerImageOutput { layer_path } => {
-				let layer = self.document_legacy.layer(&layer_path).ok();
-
-				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
-
-				if let Some(blob_url) = blob_url {
-					responses.add(FrontendMessage::TriggerCopyToClipboardBlobUrl { blob_url });
-				}
-			}
 			CreateEmptyFolder { parent } => {
 				let id = generate_uuid();
 
@@ -317,17 +288,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
-			}
-			DownloadLayerImageOutput { layer_path } => {
-				let layer = self.document_legacy.layer(&layer_path).ok();
-
-				let layer_name = layer.map(|layer| layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()));
-
-				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
-
-				if let (Some(layer_name), Some(blob_url)) = (layer_name, blob_url) {
-					responses.add(FrontendMessage::TriggerDownloadBlobUrl { layer_name, blob_url });
-				}
 			}
 			DuplicateSelectedLayers => {
 				// TODO: Reimplement selected layer duplication

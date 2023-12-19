@@ -2,7 +2,6 @@
 // #[macro_use]
 extern crate log;
 
-pub mod consts;
 pub mod document;
 pub mod document_metadata;
 pub mod error;

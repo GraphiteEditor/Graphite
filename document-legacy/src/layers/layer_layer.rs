@@ -10,6 +10,10 @@ use kurbo::{Affine, BezPath, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Write;
 
+// ================
+// CachedOutputData
+// ================
+
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub enum CachedOutputData {
 	#[default]
@@ -19,6 +23,10 @@ pub enum CachedOutputData {
 	SurfaceId(SurfaceId),
 	Svg(String),
 }
+
+// ================
+// LayerLegacyLayer
+// ================
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct LayerLegacyLayer {
@@ -120,7 +128,7 @@ impl LayerData for LayerLegacyLayer {
 		if transform.matrix2 == DMat2::ZERO {
 			return None;
 		}
-		path.apply_affine(glam_to_kurbo(transform));
+		path.apply_affine(Affine::new(transform.to_cols_array()));
 
 		let kurbo::Rect { x0, y0, x1, y1 } = path.bounding_box();
 		Some([(x0, y0).into(), (x1, y1).into()])
@@ -151,13 +159,6 @@ impl LayerLegacyLayer {
 		kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.)).to_path(0.)
 	}
 
-	pub fn as_vector_data(&self) -> Option<&VectorData> {
-		if let CachedOutputData::VectorPath(vector_data) = &self.cached_output_data {
-			Some(vector_data)
-		} else {
-			None
-		}
-	}
 	pub fn as_blob_url(&self) -> Option<&String> {
 		if let CachedOutputData::BlobURL(blob_url) = &self.cached_output_data {
 			Some(blob_url)
@@ -165,8 +166,4 @@ impl LayerLegacyLayer {
 			None
 		}
 	}
-}
-
-fn glam_to_kurbo(transform: DAffine2) -> Affine {
-	Affine::new(transform.to_cols_array())
 }

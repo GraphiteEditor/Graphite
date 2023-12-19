@@ -12,6 +12,8 @@
 //! When different layers overlap, they are blended together according to the [BlendMode](blend_mode::BlendMode)
 //! using the CSS [`mix-blend-mode`](https://developer.mozilla.org/en-US/docs/Web/CSS/mix-blend-mode) property and the layer opacity.
 
+pub use render_data::RenderData;
+
 pub mod base64_serde;
 /// Contains the [FolderLegacyLayer](folder_layer::FolderLegacyLayer) type that encapsulates other layers, including more folders.
 pub mod folder_layer;
@@ -19,10 +21,7 @@ pub mod folder_layer;
 pub mod layer_info;
 /// Contains the [LayerLegacyLayer](nodegraph_layer::LayerLegacyLayer) type that contains a node graph.
 pub mod layer_layer;
-
 mod render_data;
-pub use render_data::RenderData;
-
 pub mod style {
 	pub use super::RenderData;
 	pub use graphene_core::vector::style::*;

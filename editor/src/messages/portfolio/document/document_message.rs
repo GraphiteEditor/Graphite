@@ -52,9 +52,6 @@ pub enum DocumentMessage {
 	},
 	ClearLayerTree,
 	CommitTransaction,
-	CopyToClipboardLayerImageOutput {
-		layer_path: Vec<LayerId>,
-	},
 	CreateEmptyFolder {
 		parent: LayerNodeIdentifier,
 	},
@@ -67,9 +64,6 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
-	DownloadLayerImageOutput {
-		layer_path: Vec<LayerId>,
-	},
 	DuplicateSelectedLayers,
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,

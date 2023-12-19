@@ -9,12 +9,6 @@ use std::ops::Mul;
 pub struct Quad([DVec2; 4]);
 
 impl Quad {
-	/// Convert a box defined by two corner points to a quad.
-	pub fn from_box(bbox: [DVec2; 2]) -> Self {
-		let size = bbox[1] - bbox[0];
-		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
-	}
-
 	/// Get all the edges in the quad.
 	fn lines_glam(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
@@ -87,8 +81,18 @@ pub fn intersect_quad_bez_path(quad: Quad, shape: &BezPath, filled: bool) -> boo
 		return true;
 	}
 
-	// Check if shape is entirely within selection
-	get_arbitrary_point_on_path(&shape).map(|shape_point| quad.path().contains(shape_point)).unwrap_or_default()
+	let shape_entirely_within_selection = shape
+		.segments()
+		.next()
+		.map(|seg| match seg {
+			PathSeg::Line(line) => line.p0,
+			PathSeg::Quad(quad) => quad.p0,
+			PathSeg::Cubic(cubic) => cubic.p0,
+		})
+		.map(|shape_point| quad.path().contains(shape_point))
+		.unwrap_or_default();
+
+	shape_entirely_within_selection
 }
 
 pub fn intersect_quad_subpath(quad: Quad, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, close_subpath: bool) -> bool {
@@ -118,14 +122,4 @@ pub fn intersect_quad_subpath(quad: Quad, subpath: &bezier_rs::Subpath<Manipulat
 		.map(|group| group.anchor)
 		.map(|shape_point| quad.path().contains(to_point(shape_point)))
 		.unwrap_or_default()
-}
-
-/// Returns a point on `path`.
-/// This function will usually return the first point from the path's first segment, but callers should not rely on this behavior.
-pub fn get_arbitrary_point_on_path(path: &BezPath) -> Option<Point> {
-	path.segments().next().map(|seg| match seg {
-		PathSeg::Line(line) => line.p0,
-		PathSeg::Quad(quad) => quad.p0,
-		PathSeg::Cubic(cubic) => cubic.p0,
-	})
 }

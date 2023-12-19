@@ -6,7 +6,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
@@ -867,34 +866,10 @@ pub fn load_image_properties(document_node: &DocumentNode, node_id: NodeId, _con
 	vec![LayoutGroup::Row { widgets: url }]
 }
 
-pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let output_type = context.executor.previous_output_type(context.layer_path);
-	let disabled = match output_type {
-		Some(output_type) => output_type != concrete!(ImageFrame<Color>),
-		None => true,
-	};
+pub fn output_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let label = TextLabel::new("Graphics fed into the Output are drawn in the viewport").widget_holder();
 
-	let layer_path_1 = context.layer_path.to_vec();
-	let layer_path_2 = context.layer_path.to_vec();
-
-	let label = TextLabel::new("The graph's output is drawn in the layer").widget_holder();
-	let download_button = TextButton::new("Download Render Output")
-		.tooltip("Download the rendered image output as a PNG file")
-		.disabled(disabled)
-		.on_update(move |_| DocumentMessage::DownloadLayerImageOutput { layer_path: layer_path_1.clone() }.into())
-		.widget_holder();
-	let copy_button = TextButton::new("Copy Render Output")
-		.tooltip("Copy the rendered image output to the clipboard")
-		.disabled(disabled)
-		.on_update(move |_| DocumentMessage::CopyToClipboardLayerImageOutput { layer_path: layer_path_2.clone() }.into())
-		.widget_holder();
-
-	vec![
-		LayoutGroup::Row { widgets: vec![label] },
-		LayoutGroup::Row {
-			widgets: vec![download_button, Separator::new(SeparatorType::Related).widget_holder(), copy_button],
-		},
-	]
+	vec![LayoutGroup::Row { widgets: vec![label] }]
 }
 
 pub fn mask_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1738,10 +1713,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		LayoutGroup::Row { widgets }.with_tooltip("Seed determines the random outcome, enabling limitless unique variations")
 	};
 
-	let transform = context
-		.executor
-		.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
-		.unwrap_or_default();
+	// let transform = context
+	// 	.executor
+	// 	.introspect_node_in_network(context.network, &imaginate_node, |network| network.inputs.first().copied(), |frame: &ImageFrame<Color>| frame.transform)
+	// 	.unwrap_or_default();
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
