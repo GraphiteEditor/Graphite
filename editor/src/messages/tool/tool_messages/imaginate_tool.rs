@@ -105,7 +105,7 @@ impl Fsm for ImaginateToolFsmState {
 		self,
 		event: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		ToolActionHandlerData { document, input, render_data, .. }: &mut ToolActionHandlerData,
+		ToolActionHandlerData { document, input, .. }: &mut ToolActionHandlerData,
 		_tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
@@ -116,12 +116,12 @@ impl Fsm for ImaginateToolFsmState {
 		};
 		match (self, event) {
 			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
-				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, render_data);
+				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, font_cache);
 
 				self
 			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
-				shape_data.start(responses, document, input, render_data);
+				shape_data.start(responses, document, input);
 				responses.add(DocumentMessage::StartTransaction);
 				shape_data.layer = Some(LayerNodeIdentifier::new(generate_uuid(), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);

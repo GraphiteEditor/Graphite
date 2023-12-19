@@ -3,7 +3,7 @@ use super::layer_layer::LayerLegacyLayer;
 use crate::DocumentError;
 
 use core::fmt;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 
 // ===============
@@ -105,21 +105,6 @@ impl LegacyLayer {
 			LegacyLayerType::Folder(f) => Ok(f),
 			_ => Err(DocumentError::NotFolder),
 		}
-	}
-}
-
-impl From<FolderLegacyLayer> for LegacyLayer {
-	fn from(from: FolderLegacyLayer) -> LegacyLayer {
-		LegacyLayer::new(LegacyLayerType::Folder(from), DAffine2::IDENTITY.to_cols_array())
-	}
-}
-
-impl<'a> IntoIterator for &'a LegacyLayer {
-	type Item = &'a LegacyLayer;
-	type IntoIter = LayerIter<'a>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.iter()
 	}
 }
 

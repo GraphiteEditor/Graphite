@@ -6,8 +6,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_g
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::{Fill, Gradient, GradientType, RenderData};
 use graphene_core::raster::color::Color;
+use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default)]
 pub struct GradientTool {
@@ -267,8 +267,8 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
-	snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
+pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+	snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
@@ -278,11 +278,7 @@ impl Fsm for GradientToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
+			document, global_tool_data, input, ..
 		} = tool_action_data;
 
 		let ToolMessage::Gradient(event) = event else {
@@ -434,7 +430,7 @@ impl Fsm for GradientToolFsmState {
 						let pos = transform.transform_point2(pos);
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut tool_data.snap_manager, document, input, render_data);
+							start_snap(&mut tool_data.snap_manager, document, input);
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer,
 								transform,
@@ -479,7 +475,7 @@ impl Fsm for GradientToolFsmState {
 
 						tool_data.selected_gradient = Some(selected_gradient);
 
-						start_snap(&mut tool_data.snap_manager, document, input, render_data);
+						start_snap(&mut tool_data.snap_manager, document, input);
 
 						GradientToolFsmState::Drawing
 					} else {

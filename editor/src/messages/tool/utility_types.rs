@@ -12,8 +12,8 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::prelude::*;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use document_legacy::layers::style::RenderData;
 use graphene_core::raster::color::Color;
+use graphene_std::text::FontCache;
 
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
@@ -23,7 +23,7 @@ pub struct ToolActionHandlerData<'a> {
 	pub document_id: u64,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub render_data: &'a RenderData<'a>,
+	pub font_cache: &'a FontCache,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 }
@@ -33,7 +33,7 @@ impl<'a> ToolActionHandlerData<'a> {
 		document_id: u64,
 		global_tool_data: &'a DocumentToolData,
 		input: &'a InputPreprocessorMessageHandler,
-		render_data: &'a RenderData<'a>,
+		font_cache: &'a FontCache,
 		shape_editor: &'a mut ShapeState,
 		node_graph: &'a NodeGraphExecutor,
 	) -> Self {
@@ -42,7 +42,7 @@ impl<'a> ToolActionHandlerData<'a> {
 			document_id,
 			global_tool_data,
 			input,
-			render_data,
+			font_cache,
 			shape_editor,
 			node_graph,
 		}

@@ -5,12 +5,12 @@ use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::ViewMode;
 use document_legacy::LayerId;
 use document_legacy::Operation as DocumentOperation;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
+use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 use serde::{Deserialize, Serialize};
 

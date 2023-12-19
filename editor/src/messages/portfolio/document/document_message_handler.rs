@@ -19,12 +19,12 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::layers::style::{RenderData, ViewMode};
 use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
+use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -917,8 +917,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the bounding boxes for all visible layers.
-	pub fn bounding_boxes<'a>(&'a self, _render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
-		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
+	pub fn bounding_boxes<'a>(&'a self) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+		// TODO: Remove this function entirely?
+		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
 		std::iter::empty()
 	}
 

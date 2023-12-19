@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
-use document_legacy::layers::style::Fill;
+
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct FillTool {

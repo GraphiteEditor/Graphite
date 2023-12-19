@@ -4,7 +4,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::style::RenderData;
 
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
@@ -17,16 +16,16 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
-		self.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
+	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 		let root_transform = document.metadata().document_to_viewport;
 		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
 
 	/// Recalculates snap targets without snapping the starting position.
-	pub fn recalculate_snaps(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, render_data: &RenderData) {
-		self.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
+	pub fn recalculate_snaps(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 	}
 

@@ -16,11 +16,6 @@ pub struct FolderLegacyLayer {
 }
 
 impl FolderLegacyLayer {
-	/// Returns a list of [LayerId]s in the folder.
-	pub fn list_layers(&self) -> &[LayerId] {
-		self.layer_ids.as_slice()
-	}
-
 	/// Get references to all the [Layer]s in the folder.
 	pub fn layers(&self) -> &[LegacyLayer] {
 		self.layers.as_slice()

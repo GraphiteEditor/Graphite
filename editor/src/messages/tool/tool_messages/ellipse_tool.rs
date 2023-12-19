@@ -185,11 +185,7 @@ impl Fsm for EllipseToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
+			document, global_tool_data, input, ..
 		} = tool_action_data;
 
 		let shape_data = &mut tool_data.data;
@@ -199,11 +195,11 @@ impl Fsm for EllipseToolFsmState {
 		};
 		match (self, event) {
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input, render_data);
+				tool_data.data.recalculate_snaps(document, input);
 				self
 			}
 			(EllipseToolFsmState::Ready, EllipseToolMessage::DragStart) => {
-				shape_data.start(responses, document, input, render_data);
+				shape_data.start(responses, document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Create a new ellipse vector shape

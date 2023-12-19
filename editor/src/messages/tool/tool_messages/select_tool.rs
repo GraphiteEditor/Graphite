@@ -382,7 +382,7 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, render_data, .. } = tool_action_data;
+		let ToolActionHandlerData { document, input, .. } = tool_action_data;
 
 		let ToolMessage::Select(event) = event else {
 			return self;
@@ -482,7 +482,7 @@ impl Fsm for SelectToolFsmState {
 				let state = if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(render_data), true, true);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
@@ -494,7 +494,7 @@ impl Fsm for SelectToolFsmState {
 					//
 					// tool_data
 					// 	.snap_manager
-					// 	.start_snap(document, input, document.bounding_boxes(Some(&selected), None, render_data), snap_x, snap_y);
+					// 	.start_snap(document, input, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
 					// tool_data
 					// 	.snap_manager
 					// 	.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
@@ -550,7 +550,7 @@ impl Fsm for SelectToolFsmState {
 
 					// tool_data
 					// 	.snap_manager
-					// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
+					// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 
 					SelectToolFsmState::Dragging
 				} else {
@@ -922,7 +922,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 	// tool_data
 	// 	.snap_manager
-	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
+	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
@@ -932,7 +932,7 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Ve
 	});
 	// tool_data
 	// 	.snap_manager
-	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, render_data), true, true);
+	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 }
 
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
