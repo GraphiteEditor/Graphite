@@ -74,7 +74,7 @@ impl LayerPanelEntry {
 		let arr = arr.iter().map(|x| (*x).into()).collect::<Vec<(f64, f64)>>();
 		let mut thumbnail = String::new();
 		let mut svg_defs = String::new();
-		layer.data.clone().render(&mut thumbnail, &mut svg_defs, &mut vec![transform], render_data);
+		layer.data.clone()/*entry_from_thumbnail*/.render(&mut thumbnail, &mut svg_defs, &mut vec![transform], render_data);
 		let transform = transform.to_cols_array().iter().map(ToString::to_string).collect::<Vec<_>>().join(",");
 		let thumbnail = if let [(x_min, y_min), (x_max, y_max)] = arr.as_slice() {
 			format!(

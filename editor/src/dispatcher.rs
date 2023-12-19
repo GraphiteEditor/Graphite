@@ -475,10 +475,6 @@ mod test {
 			)
 		};
 
-		editor.handle_message(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: sorted_layers[..2].to_vec(),
-		});
-
 		editor.handle_message(DocumentMessage::SelectedLayersRaise);
 		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
 		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());

@@ -5,13 +5,15 @@ use crate::intersection::Quad;
 use crate::DocumentError;
 use crate::LayerId;
 
-use graphene_core::raster::BlendMode;
 use graphene_core::vector::VectorData;
 
 use core::fmt;
 use glam::{DAffine2, DMat2, DVec2};
 use serde::{Deserialize, Serialize};
-use std::fmt::Write;
+
+// ===============
+// LegacyLayerType
+// ===============
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 /// Represents different types of layers.
@@ -24,7 +26,7 @@ pub enum LegacyLayerType {
 
 impl Default for LegacyLayerType {
 	fn default() -> Self {
-		LegacyLayerType::Folder(FolderLegacyLayer::default())
+		LegacyLayerType::Layer(Default::default())
 	}
 }
 
@@ -43,6 +45,10 @@ impl LegacyLayerType {
 		}
 	}
 }
+
+// =========================
+// LayerDataTypeDiscriminant
+// =========================
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, specta::Type)]
 pub enum LayerDataTypeDiscriminant {
@@ -70,85 +76,25 @@ impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
 	}
 }
 
+// =========
+// LayerData
+// =========
+
 /// Defines shared behavior for every layer type.
 pub trait LayerData {
 	/// Render the layer as an SVG tag to a given string, returning a boolean to indicate if a redraw is required next frame.
-	///
-	/// # Example
-	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
-	/// # use graphite_document_legacy::layers::layer_info::LayerData;
-	/// # use std::collections::HashMap;
-	///
-	/// let mut shape = ShapeLegacyLayer::rectangle(PathStyle::new(None, Fill::None));
-	/// let mut svg = String::new();
-	///
-	/// // Render the shape without any transforms, in normal view mode
-	/// # let font_cache = Default::default();
-	/// let render_data = RenderData::new(&font_cache, ViewMode::Normal, None);
-	/// shape.render(&mut svg, &mut String::new(), &mut vec![], &render_data);
-	///
-	/// assert_eq!(
-	///     svg,
-	///     "<g transform=\"matrix(\n1,-0,-0,1,-0,-0)\">\
-	///     <path d=\"M0,0L0,1L1,1L1,0Z\"  fill=\"none\" />\
-	///     </g>"
-	/// );
-	/// ```
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool;
+	fn render(&mut self, cache_inner_svg: &mut String, cache_defs_svg: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool;
 
 	/// Determine the layers within this layer that intersect a given quad.
-	/// # Example
-	/// ```
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, ViewMode, RenderData};
-	/// # use graphite_document_legacy::layers::layer_info::LayerData;
-	/// # use graphite_document_legacy::intersection::Quad;
-	/// # use glam::f64::{DAffine2, DVec2};
-	/// # use std::collections::HashMap;
-	///
-	/// let mut shape = ShapeLegacyLayer::ellipse(PathStyle::new(None, Fill::None));
-	/// let shape_id = 42;
-	/// let mut svg = String::new();
-	///
-	/// let quad = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
-	/// let mut intersections = vec![];
-	///
-	/// let font_cache = Default::default();
-	/// let render_data = RenderData::new(&font_cache, Default::default(), None);
-	/// shape.intersects_quad(quad, &mut vec![shape_id], &mut intersections, &render_data);
-	///
-	/// assert_eq!(intersections, vec![vec![shape_id]]);
-	/// ```
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData);
 
-	// TODO: this doctest fails because 0 != 1e-32, maybe assert difference < epsilon?
 	/// Calculate the bounding box for the layer's contents after applying a given transform.
-	/// # Example
-	/// ```no_run
-	/// # use graphite_document_legacy::layers::shape_layer::ShapeLegacyLayer;
-	/// # use graphite_document_legacy::layers::style::{Fill, PathStyle, RenderData};
-	/// # use graphite_document_legacy::layers::layer_info::LayerData;
-	/// # use glam::f64::{DAffine2, DVec2};
-	/// # use std::collections::HashMap;
-	/// let shape = ShapeLegacyLayer::ellipse(PathStyle::new(None, Fill::None));
-	///
-	/// // Calculate the bounding box without applying any transformations.
-	/// // (The identity transform maps every vector to itself.)
-	/// let transform = DAffine2::IDENTITY;
-	/// let font_cache = Default::default();
-	/// let render_data = RenderData::new(&font_cache, Default::default(), None);
-	/// let bounding_box = shape.bounding_box(transform, &render_data);
-	///
-	/// assert_eq!(bounding_box, Some([DVec2::ZERO, DVec2::ONE]));
-	/// ```
 	fn bounding_box(&self, transform: glam::DAffine2, render_data: &RenderData) -> Option<[DVec2; 2]>;
 }
 
 impl LayerData for LegacyLayerType {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
-		self.inner_mut().render(svg, svg_defs, transforms, render_data)
+	fn render(&mut self, cache_inner_svg: &mut String, cache_defs_svg: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
+		self.inner_mut()/*called_via_thumbnail*/.render(cache_inner_svg, cache_defs_svg, transforms, render_data)
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
@@ -160,18 +106,9 @@ impl LayerData for LegacyLayerType {
 	}
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "glam::DAffine2")]
-struct DAffine2Ref {
-	pub matrix2: DMat2,
-	pub translation: DVec2,
-}
-
-/// Utility function for providing a default boolean value to serde.
-#[inline(always)]
-fn return_true() -> bool {
-	true
-}
+// ===========
+// LegacyLayer
+// ===========
 
 #[derive(Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct LegacyLayer {
@@ -184,28 +121,6 @@ pub struct LegacyLayer {
 	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
 	#[serde(with = "DAffine2Ref")]
 	pub transform: glam::DAffine2,
-	/// Should the aspect ratio of this layer be preserved?
-	#[serde(default = "return_true")]
-	pub preserve_aspect: bool,
-	/// The center of transformations like rotation or scaling with the shift key.
-	/// This is in local space (so the layer's transform should be applied).
-	pub pivot: DVec2,
-	/// The cached SVG thumbnail view of the layer.
-	#[serde(skip)]
-	pub thumbnail_cache: String,
-	/// The cached SVG render of the layer.
-	#[serde(skip)]
-	pub cache: String,
-	/// The cached definition(s) used by the layer's SVG tag, placed at the top in the SVG defs tag.
-	#[serde(skip)]
-	pub svg_defs_cache: String,
-	/// Whether or not the [Cache](Layer::cache) and [Thumbnail Cache](Layer::thumbnail_cache) need to be updated.
-	#[serde(skip, default = "return_true")]
-	pub cache_dirty: bool,
-	/// The blend mode describing how this layer should composite with others underneath it.
-	pub blend_mode: BlendMode,
-	/// The opacity, in the range of 0 to 1.
-	pub opacity: f64,
 }
 
 impl LegacyLayer {
@@ -215,14 +130,6 @@ impl LegacyLayer {
 			name: None,
 			data,
 			transform: glam::DAffine2::from_cols_array(&transform),
-			preserve_aspect: true,
-			pivot: DVec2::splat(0.5),
-			cache: String::new(),
-			thumbnail_cache: String::new(),
-			svg_defs_cache: String::new(),
-			cache_dirty: true,
-			blend_mode: BlendMode::Normal,
-			opacity: 1.,
 		}
 	}
 
@@ -277,56 +184,6 @@ impl LegacyLayer {
 	/// ```
 	pub fn iter(&self) -> LayerIter<'_> {
 		LayerIter { stack: vec![self] }
-	}
-
-	/// Renders the layer, returning the result and if a redraw is required
-	pub fn render(&mut self, transforms: &mut Vec<DAffine2>, svg_defs: &mut String, render_data: &RenderData) -> (&str, bool) {
-		if !self.visible {
-			return ("", false);
-		}
-
-		transforms.push(self.transform);
-
-		// Skip rendering if outside the viewport bounds
-		if let Some(viewport_bounds) = render_data.culling_bounds {
-			if let Some(bounding_box) = self.data.bounding_box(transforms.iter().cloned().reduce(|a, b| a * b).unwrap_or(DAffine2::IDENTITY), render_data) {
-				let is_overlapping =
-					viewport_bounds[0].x < bounding_box[1].x && bounding_box[0].x < viewport_bounds[1].x && viewport_bounds[0].y < bounding_box[1].y && bounding_box[0].y < viewport_bounds[1].y;
-				if !is_overlapping {
-					transforms.pop();
-					self.cache.clear();
-					self.cache_dirty = true;
-					return ("", true);
-				}
-			}
-		}
-
-		let mut requires_redraw = false;
-
-		if self.cache_dirty {
-			self.thumbnail_cache.clear();
-			self.svg_defs_cache.clear();
-			requires_redraw = self.data.render(&mut self.thumbnail_cache, &mut self.svg_defs_cache, transforms, render_data);
-
-			self.cache.clear();
-			let _ = writeln!(self.cache, r#"<g transform="matrix("#);
-			self.transform.to_cols_array().iter().enumerate().for_each(|(i, f)| {
-				let _ = self.cache.write_str(&(f.to_string() + if i == 5 { "" } else { "," }));
-			});
-			let _ = write!(self.cache, r#")" style="opacity: {};{}">{}</g>"#, self.opacity, self.blend_mode.render(), self.thumbnail_cache.as_str());
-
-			self.cache_dirty = false;
-		}
-
-		transforms.pop();
-		svg_defs.push_str(&self.svg_defs_cache);
-
-		// If a redraw is required then set the cache to dirty.
-		if requires_redraw {
-			self.cache_dirty = true;
-		}
-
-		(self.cache.as_str(), requires_redraw)
 	}
 
 	pub fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
@@ -384,20 +241,6 @@ impl LegacyLayer {
 		};
 
 		self.transform * scale
-	}
-
-	pub fn layerspace_pivot(&self, render_data: &RenderData) -> DVec2 {
-		let [mut min, max] = self.aabb_for_transform(DAffine2::IDENTITY, render_data).unwrap_or([DVec2::ZERO, DVec2::ONE]);
-
-		// If the layer bounds are 0 in either axis then set them to one (to avoid div 0)
-		if (max.x - min.x) < f64::EPSILON * 1000. {
-			min.x = max.x - 1.;
-		}
-		if (max.y - min.y) < f64::EPSILON * 1000. {
-			min.y = max.y - 1.;
-		}
-
-		self.pivot * (max - min) + min
 	}
 
 	/// Get a mutable reference to the Folder wrapped by the layer.
@@ -458,14 +301,6 @@ impl Clone for LegacyLayer {
 			name: self.name.clone(),
 			data: self.data.clone(),
 			transform: self.transform,
-			preserve_aspect: self.preserve_aspect,
-			pivot: self.pivot,
-			cache: String::new(),
-			thumbnail_cache: String::new(),
-			svg_defs_cache: String::new(),
-			cache_dirty: true,
-			blend_mode: self.blend_mode,
-			opacity: self.opacity,
 		}
 	}
 }
@@ -507,4 +342,11 @@ impl<'a> Iterator for LayerIter<'a> {
 			None => None,
 		}
 	}
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "glam::DAffine2")]
+struct DAffine2Ref {
+	pub matrix2: DMat2,
+	pub translation: DVec2,
 }

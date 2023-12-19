@@ -21,14 +21,10 @@ pub struct FolderLegacyLayer {
 }
 
 impl LayerData for FolderLegacyLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<glam::DAffine2>, render_data: &RenderData) -> bool {
-		let mut any_child_requires_redraw = false;
-		for layer in &mut self.layers {
-			let (svg_value, requires_redraw) = layer.render(transforms, svg_defs, render_data);
-			*svg += svg_value;
-			any_child_requires_redraw = any_child_requires_redraw || requires_redraw;
-		}
-		any_child_requires_redraw
+	fn render(&mut self, _cache_inner_svg: &mut String, _cache_defs_svg: &mut String, _transforms: &mut Vec<glam::DAffine2>, _render_data: &RenderData) -> bool {
+		// Support for rendering folders has been removed as part of the deprecation of legacy layers, as the Layers panel does not support folder thumbnails.
+
+		false
 	}
 
 	fn intersects_quad(&self, quad: Quad, path: &mut Vec<LayerId>, intersections: &mut Vec<Vec<LayerId>>, render_data: &RenderData) {
@@ -218,20 +214,6 @@ impl FolderLegacyLayer {
 	/// ```
 	pub fn folder(&self, id: LayerId) -> Option<&FolderLegacyLayer> {
 		match self.layer(id) {
-			Some(LegacyLayer {
-				data: LegacyLayerType::Folder(folder),
-				..
-			}) => Some(folder),
-			_ => None,
-		}
-	}
-
-	/// Tries to get a mutable reference to folder with the given `id`.
-	/// This operation will return `None` if either no layer with `id` exists
-	/// in the folder or the layer with matching ID is not a folder.
-	/// See the [FolderLegacyLayer::folder] method for a usage example.
-	pub fn folder_mut(&mut self, id: LayerId) -> Option<&mut FolderLegacyLayer> {
-		match self.layer_mut(id) {
 			Some(LegacyLayer {
 				data: LegacyLayerType::Folder(folder),
 				..

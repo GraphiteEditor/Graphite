@@ -1,4 +1,3 @@
-use crate::layers::layer_info::LegacyLayer;
 use crate::LayerId;
 
 use serde::{Deserialize, Serialize};
@@ -30,19 +29,6 @@ pub enum Operation {
 	SetSurface {
 		path: Vec<LayerId>,
 		surface_id: graphene_core::SurfaceId,
-	},
-	DuplicateLayer {
-		path: Vec<LayerId>,
-	},
-	InsertLayer {
-		layer: Box<LegacyLayer>,
-		destination_path: Vec<LayerId>,
-		insert_index: isize,
-		duplicating: bool,
-	},
-	SetLayerTransform {
-		path: Vec<LayerId>,
-		transform: [f64; 6],
 	},
 }
 

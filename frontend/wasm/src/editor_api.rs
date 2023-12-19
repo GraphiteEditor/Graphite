@@ -587,13 +587,6 @@ impl JsEditorHandle {
 			resolution,
 		};
 		self.dispatch(message);
-
-		if let Some(array) = transform.filter(|array| array.length() == 6) {
-			let mut transform: [f64; 6] = [0.; 6];
-			array.copy_to(&mut transform);
-			let message = document_legacy::Operation::SetLayerTransform { path: layer_path, transform };
-			self.dispatch(message);
-		}
 	}
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs

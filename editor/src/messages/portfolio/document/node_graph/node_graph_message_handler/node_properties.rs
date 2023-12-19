@@ -1770,7 +1770,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let dimensions_is_auto = vec2.is_none();
 			let vec2 = vec2.unwrap_or_else(|| round((image_size.0 as f64, image_size.1 as f64).into()));
 
-			let layer_path = context.layer_path.to_vec();
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Rescale", 24)

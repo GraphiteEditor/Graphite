@@ -312,16 +312,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DirtyRenderDocument => {
-				// Mark all non-overlay caches as dirty
-				DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-				responses.add(DocumentMessage::RenderDocument);
-			}
-			DirtyRenderDocumentInOutlineView => {
-				if self.view_mode == ViewMode::Outline {
-					responses.add_front(DocumentMessage::DirtyRenderDocument);
-				}
-			}
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
@@ -340,12 +330,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 			}
 			DuplicateSelectedLayers => {
-				self.backup(responses);
-				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
-				self.layer_range_selection_reference = None;
-				for path in self.selected_layers_sorted() {
-					responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
-				}
+				// TODO: Reimplement selected layer duplication
+				// self.backup(responses);
+				// self.layer_range_selection_reference = None;
+				// for path in self.selected_layers_sorted() {
+				// 	responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
+				// }
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -566,9 +556,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			RenderDocument => {
-				// responses.add(FrontendMessage::UpdateDocumentArtwork {
-				// 	svg: self.document_legacy.render_root(&render_data),
-				// });
 				responses.add(OverlaysMessage::Draw);
 			}
 			RenderRulers => {
@@ -606,10 +593,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					size: scrollbar_size.into(),
 					multiplier: scrollbar_multiplier.into(),
 				});
-			}
-			RollbackTransaction => {
-				self.rollback(responses);
-				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			SaveDocument => {
 				self.set_save_state(true);
@@ -725,11 +708,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
 				});
 			}
-			SetLayerExpansion { layer_path, set_expanded } => {
-				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
-				responses.add(DocumentStructureChanged);
-				responses.add(LayerChanged { affected_layer_path: layer_path })
-			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.) as f32;
@@ -745,16 +723,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
-			}
-			SetSelectedLayers { replacement_selected_layers } => {
-				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);
-				selected.for_each(|(path, layer_metadata)| {
-					layer_metadata.selected = false;
-					responses.add(LayerChanged { affected_layer_path: path.clone() })
-				});
-
-				let additional_layers = replacement_selected_layers;
-				responses.add_front(AddSelectedLayers { additional_layers });
 			}
 			SetSnapping {
 				snapping_enabled,
@@ -825,9 +793,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			UpdateLayerMetadata { layer_path, layer_metadata } => {
-				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
 			ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
@@ -1156,7 +1121,6 @@ impl DocumentMessageHandler {
 		let old_root = self.metadata().document_to_viewport;
 		let document = std::mem::replace(&mut self.document_legacy, document);
 		self.document_legacy.metadata.document_to_viewport = old_root;
-		self.document_legacy.root.cache_dirty = true;
 
 		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 

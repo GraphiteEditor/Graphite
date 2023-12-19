@@ -651,7 +651,6 @@ impl NodeGraphExecutor {
 					responses.add(DocumentMessage::RenderDocument);
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
-					responses.add(DocumentMessage::DirtyRenderDocument);
 					responses.add(OverlaysMessage::Draw);
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh)),
@@ -681,9 +680,9 @@ impl NodeGraphExecutor {
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
-				let transform = transform.to_cols_array();
-				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
+			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) => {
+				// let transform = transform.to_cols_array();
+				// responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
 				responses.add(Operation::SetSurface { path: layer_path, surface_id });
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {

@@ -64,8 +64,6 @@ pub enum DocumentMessage {
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
-	DirtyRenderDocument,
-	DirtyRenderDocumentInOutlineView,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
@@ -119,7 +117,6 @@ pub enum DocumentMessage {
 	RenderDocument,
 	RenderRulers,
 	RenderScrollbars,
-	RollbackTransaction,
 	SaveDocument,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -143,10 +140,6 @@ pub enum DocumentMessage {
 		resolution: (f64, f64),
 		document_id: u64,
 	},
-	SetLayerExpansion {
-		layer_path: Vec<LayerId>,
-		set_expanded: bool,
-	},
 	SetOpacityForSelectedLayers {
 		opacity: f64,
 	},
@@ -155,9 +148,6 @@ pub enum DocumentMessage {
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
-	},
-	SetSelectedLayers {
-		replacement_selected_layers: Vec<Vec<LayerId>>,
 	},
 	SetSnapping {
 		snapping_enabled: Option<bool>,
@@ -176,10 +166,6 @@ pub enum DocumentMessage {
 	UngroupSelectedLayers,
 	UpdateDocumentTransform {
 		transform: glam::DAffine2,
-	},
-	UpdateLayerMetadata {
-		layer_path: Vec<LayerId>,
-		layer_metadata: LayerMetadata,
 	},
 	ZoomCanvasTo100Percent,
 	ZoomCanvasTo200Percent,

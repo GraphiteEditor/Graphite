@@ -30,22 +30,22 @@ pub struct LayerLegacyLayer {
 }
 
 impl LayerData for LayerLegacyLayer {
-	fn render(&mut self, svg: &mut String, svg_defs: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
+	fn render(&mut self, cache_inner_svg: &mut String, cache_defs_svg: &mut String, transforms: &mut Vec<DAffine2>, render_data: &RenderData) -> bool {
 		let transform = self.transform(transforms, render_data.view_mode);
 		let inverse = transform.inverse();
 
 		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
 
 		if !inverse.is_finite() {
-			let _ = write!(svg, "<!-- SVG shape has an invalid transform -->");
+			let _ = write!(cache_inner_svg, "<!-- SVG shape has an invalid transform -->");
 			return false;
 		}
 
-		let _ = writeln!(svg, r#"<g transform="matrix("#);
+		let _ = writeln!(cache_inner_svg, r#"<g transform="matrix("#);
 		inverse.to_cols_array().iter().enumerate().for_each(|(i, entry)| {
-			let _ = svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
+			let _ = cache_inner_svg.write_str(&(entry.to_string() + if i == 5 { "" } else { "," }));
 		});
-		let _ = svg.write_str(r#")">"#);
+		let _ = cache_inner_svg.write_str(r#")">"#);
 
 		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
 			.to_cols_array()
@@ -59,19 +59,19 @@ impl LayerData for LayerLegacyLayer {
 				let layer_bounds = vector_data.bounding_box().unwrap_or_default();
 				let transformed_bounds = vector_data.bounding_box_with_transform(transform).unwrap_or_default();
 
-				let _ = write!(svg, "<path d=\"");
+				let _ = write!(cache_inner_svg, "<path d=\"");
 				for subpath in &vector_data.subpaths {
-					let _ = subpath.subpath_to_svg(svg, transform);
+					let _ = subpath.subpath_to_svg(cache_inner_svg, transform);
 				}
-				svg.push('"');
+				cache_inner_svg.push('"');
 
-				svg.push_str(&vector_data.style.render(render_data.view_mode, svg_defs, transform, layer_bounds, transformed_bounds));
-				let _ = write!(svg, "/>");
+				cache_inner_svg.push_str(&vector_data.style.render(render_data.view_mode, cache_defs_svg, transform, layer_bounds, transformed_bounds));
+				let _ = write!(cache_inner_svg, "/>");
 			}
 			CachedOutputData::BlobURL(blob_url) => {
 				// Render the image if it exists
 				let _ = write!(
-					svg,
+					cache_inner_svg,
 					r#"<image width="{}" height="{}" preserveAspectRatio="none" href="{}" transform="matrix({})" />"#,
 					width.abs(),
 					height.abs(),
@@ -82,7 +82,7 @@ impl LayerData for LayerLegacyLayer {
 			CachedOutputData::SurfaceId(SurfaceId(id)) => {
 				// Render the image if it exists
 				let _ = write!(
-					svg,
+					cache_inner_svg,
 					r#"
 					<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>
 					"#,
@@ -92,11 +92,11 @@ impl LayerData for LayerLegacyLayer {
 					id
 				);
 			}
-			CachedOutputData::Svg(new_svg) => svg.push_str(new_svg),
+			CachedOutputData::Svg(new_svg) => cache_inner_svg.push_str(new_svg),
 			_ => {
 				// Render a dotted blue outline if there is no image or vector data
 				let _ = write!(
-					svg,
+					cache_inner_svg,
 					r#"<rect width="{}" height="{}" fill="none" stroke="var(--color-data-vector)" stroke-width="3" stroke-dasharray="8" transform="matrix({})" />"#,
 					width.abs(),
 					height.abs(),
@@ -105,7 +105,7 @@ impl LayerData for LayerLegacyLayer {
 			}
 		}
 
-		let _ = svg.write_str(r#"</g>"#);
+		let _ = cache_inner_svg.write_str(r#"</g>"#);
 
 		false
 	}
