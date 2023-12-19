@@ -338,7 +338,7 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline<'a>(&'a self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &'a bezier_rs::Subpath<ManipulatorGroupId>> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<ManipulatorGroupId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().map(|click_target| &click_target.subpath)
@@ -361,12 +361,6 @@ impl core::fmt::Debug for LayerNodeIdentifier {
 	}
 }
 
-impl core::fmt::Display for LayerNodeIdentifier {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!("Layer(node_id={})", self.to_node()))
-	}
-}
-
 impl LayerNodeIdentifier {
 	pub const ROOT: Self = LayerNodeIdentifier::new_unchecked(0);
 
@@ -385,10 +379,6 @@ impl LayerNodeIdentifier {
 			network.nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
-	}
-
-	pub fn from_path(path: &[u64], network: &NodeNetwork) -> Self {
-		Self::new(*path.last().unwrap(), network)
 	}
 
 	/// Access the node id of this layer
@@ -569,18 +559,6 @@ impl LayerNodeIdentifier {
 			.filter(|&layer| layer != LayerNodeIdentifier::ROOT)
 			.last()
 			.expect("There should be a layer before the root")
-	}
-}
-
-impl From<NodeId> for LayerNodeIdentifier {
-	fn from(node_id: NodeId) -> Self {
-		Self::new_unchecked(node_id)
-	}
-}
-
-impl From<LayerNodeIdentifier> for NodeId {
-	fn from(identifier: LayerNodeIdentifier) -> Self {
-		identifier.to_node()
 	}
 }
 

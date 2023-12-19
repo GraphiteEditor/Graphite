@@ -196,11 +196,7 @@ impl Fsm for SplineToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
+			document, global_tool_data, input, ..
 		} = tool_action_data;
 
 		let ToolMessage::Spline(event) = event else {
@@ -208,7 +204,7 @@ impl Fsm for SplineToolFsmState {
 		};
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 				self
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
@@ -218,7 +214,7 @@ impl Fsm for SplineToolFsmState {
 				let parent = document.new_layer_parent();
 				let transform = document.metadata().transform_to_viewport(parent);
 
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, None, render_data), true, true);
+				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 

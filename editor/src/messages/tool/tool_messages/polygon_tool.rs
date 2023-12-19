@@ -225,11 +225,7 @@ impl Fsm for PolygonToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document,
-			global_tool_data,
-			input,
-			render_data,
-			..
+			document, global_tool_data, input, ..
 		} = tool_action_data;
 
 		let polygon_data = &mut tool_data.data;
@@ -239,11 +235,11 @@ impl Fsm for PolygonToolFsmState {
 		};
 		match (self, event) {
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input, render_data);
+				tool_data.data.recalculate_snaps(document, input);
 				self
 			}
 			(PolygonToolFsmState::Ready, PolygonToolMessage::DragStart) => {
-				polygon_data.start(responses, document, input, render_data);
+				polygon_data.start(responses, document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
 				let subpath = match tool_options.primitive_shape_type {

@@ -11,7 +11,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
-use document_legacy::layers::style::RenderData;
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
@@ -105,12 +104,11 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::CloseAllDocuments => {
 				if self.active_document_id.is_some() {
-					responses.add(PropertiesPanelMessage::Deactivate);
 					responses.add(BroadcastEvent::ToolAbort);
 					responses.add(ToolMessage::DeactivateTools);
 
 					// Clear relevant UI layouts if there are no documents
-					responses.add(PropertiesPanelMessage::ClearSelection);
+					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayerTree);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -134,7 +132,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				// Is this the last document?
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
-					responses.add(PropertiesPanelMessage::ClearSelection);
+					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayerTree);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
@@ -306,12 +304,12 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					})
 				}
 				if &server_status != self.persistent_data.imaginate.server_status() {
-					responses.add(PropertiesPanelMessage::ResendActiveProperties);
+					responses.add(PropertiesPanelMessage::Refresh);
 				}
 			}
 			PortfolioMessage::ImaginatePollServerStatus => {
 				self.persistent_data.imaginate.poll_server_check();
-				responses.add(PropertiesPanelMessage::ResendActiveProperties);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			PortfolioMessage::ImaginatePreferences => self.executor.update_imaginate_preferences(preferences.get_imaginate_preferences()),
 			PortfolioMessage::ImaginateServerHostname => {
@@ -492,25 +490,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				self.active_document_id = Some(document_id);
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::SetImageBlobUrl {
-				document_id,
-				layer_path,
-				node_id,
-				blob_url,
-				resolution,
-			} => {
-				if let Some(node_id) = node_id {
-					self.executor.insert_thumbnail_blob_url(blob_url, node_id, responses);
-					return;
-				}
-				let message = DocumentMessage::SetImageBlobUrl {
-					layer_path,
-					blob_url,
-					resolution,
-					document_id,
-				};
-				responses.add(PortfolioMessage::DocumentPassMessage { document_id, message });
-			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,
 				file_type,
@@ -668,15 +647,13 @@ impl PortfolioMessageHandler {
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
-		let render_data = RenderData::new(&self.persistent_data.font_cache, new_document.view_mode, None);
-
 		self.document_ids.push(document_id);
 
 		responses.extend(
 			new_document
 				.layer_metadata
 				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path, &render_data))
+				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
 				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
 				.collect::<Vec<_>>(),
 		);
@@ -685,7 +662,6 @@ impl PortfolioMessageHandler {
 		self.documents.insert(document_id, new_document);
 
 		if self.active_document().is_some() {
-			responses.add(PropertiesPanelMessage::Deactivate);
 			responses.add(BroadcastEvent::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
 		}
@@ -696,12 +672,10 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
 		responses.add(PortfolioMessage::GraphViewOverlay { open: self.graph_view_overlay_open });
 		responses.add(ToolMessage::InitTools);
-		responses.add(PropertiesPanelMessage::Init);
 		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 		responses.add(DocumentMessage::DocumentStructureChanged);
-		responses.add(PropertiesPanelMessage::ClearSelection);
-		responses.add(PropertiesPanelMessage::UpdateSelectedDocumentProperties);
+		responses.add(PropertiesPanelMessage::Clear);
 		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}
 

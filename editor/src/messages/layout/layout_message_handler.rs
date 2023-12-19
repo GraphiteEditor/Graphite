@@ -2,7 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use document_legacy::LayerId;
+use document_legacy::document::LayerId;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 

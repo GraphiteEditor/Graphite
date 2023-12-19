@@ -17,14 +17,15 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::layers::style::{RenderData, ViewMode};
-use document_legacy::{DocumentError, DocumentResponse, LayerId, Operation as DocumentOperation};
+use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
+use document_legacy::DocumentError;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
+use graphene_core::vector::style::ViewMode;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -121,45 +122,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		} = document_inputs;
 		use DocumentMessage::*;
 
-		let render_data = RenderData::new(&persistent_data.font_cache, self.view_mode, Some(ipp.document_bounds()));
-
 		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
-			DispatchOperation(op) => {
-				match self.document_legacy.handle_operation(*op) {
-					Ok(Some(document_responses)) => {
-						for response in document_responses {
-							match &response {
-								DocumentResponse::FolderChanged { path } => responses.add(FolderChanged { affected_folder_path: path.clone() }),
-								DocumentResponse::DeletedLayer { path } => {
-									self.layer_metadata.remove(path);
-								}
-								DocumentResponse::LayerChanged { path } => responses.add(LayerChanged { affected_layer_path: path.clone() }),
-								DocumentResponse::CreatedLayer { .. } => {
-									unimplemented!("We should no longer be creating layers in the document and should instead be using the node graph.")
-								}
-								DocumentResponse::DocumentChanged => responses.add(RenderDocument),
-								DocumentResponse::DeletedSelectedManipulatorPoints => {
-									// Clear Properties panel after deleting all points by updating backend widget state.
-									responses.add(LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesOptions,
-									});
-									responses.add(LayoutMessage::SendLayout {
-										layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
-										layout_target: LayoutTarget::PropertiesSections,
-									});
-								}
-							};
-							responses.add(BroadcastEvent::DocumentIsDirty);
-						}
-					}
-					Err(e) => error!("DocumentError: {e:?}"),
-					Ok(_) => (),
-				}
-			}
 			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
@@ -212,7 +177,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			AddSelectedLayers { additional_layers } => {
 				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path, &render_data));
+					responses.extend(self.select_layer(layer_path));
 				}
 
 				// TODO: Correctly update layer panel in clear_selection instead of here
@@ -269,15 +234,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 			}
 			CommitTransaction => (),
-			CopyToClipboardLayerImageOutput { layer_path } => {
-				let layer = self.document_legacy.layer(&layer_path).ok();
-
-				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
-
-				if let Some(blob_url) = blob_url {
-					responses.add(FrontendMessage::TriggerCopyToClipboardBlobUrl { blob_url });
-				}
-			}
 			CreateEmptyFolder { parent } => {
 				let id = generate_uuid();
 
@@ -295,7 +251,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DeleteLayer { layer_path } => {
 				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
 				responses.add_front(BroadcastEvent::ToolAbort);
-				responses.add(PropertiesPanelMessage::CheckSelectedWasDeleted { path: layer_path });
 			}
 			DeleteSelectedLayers => {
 				self.backup(responses);
@@ -313,40 +268,19 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DirtyRenderDocument => {
-				// Mark all non-overlay caches as dirty
-				DocumentLegacy::mark_children_as_dirty(&mut self.document_legacy.root);
-				responses.add(DocumentMessage::RenderDocument);
-			}
-			DirtyRenderDocumentInOutlineView => {
-				if self.view_mode == ViewMode::Outline {
-					responses.add_front(DocumentMessage::DirtyRenderDocument);
-				}
-			}
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
 			}
-			DownloadLayerImageOutput { layer_path } => {
-				let layer = self.document_legacy.layer(&layer_path).ok();
-
-				let layer_name = layer.map(|layer| layer.name.clone().unwrap_or_else(|| "Untitled Layer".to_string()));
-
-				let blob_url = layer.and_then(|layer| layer.as_layer().ok()).and_then(|layer_layer| layer_layer.as_blob_url()).cloned();
-
-				if let (Some(layer_name), Some(blob_url)) = (layer_name, blob_url) {
-					responses.add(FrontendMessage::TriggerDownloadBlobUrl { layer_name, blob_url });
-				}
-			}
 			DuplicateSelectedLayers => {
-				self.backup(responses);
-				responses.add_front(SetSelectedLayers { replacement_selected_layers: vec![] });
-				self.layer_range_selection_reference = None;
-				for path in self.selected_layers_sorted() {
-					responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
-				}
+				// TODO: Reimplement selected layer duplication
+				// self.backup(responses);
+				// self.layer_range_selection_reference = None;
+				// for path in self.selected_layers_sorted() {
+				// 	responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
+				// }
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -371,27 +305,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			FolderChanged { affected_folder_path } => {
 				let affected_layer_path = affected_folder_path;
 				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
-			}
-			FrameClear => {
-				let mut selected_frame_layers = self.selected_layers_with_type(LayerDataTypeDiscriminant::Layer);
-				// Get what is hopefully the only selected Layer layer
-				let layer_path = selected_frame_layers.next();
-				// Abort if we didn't have any Layer layer, or if there are additional ones also selected
-				if layer_path.is_none() || selected_frame_layers.next().is_some() {
-					return;
-				}
-				let layer_path = layer_path.unwrap();
-
-				let layer = self.document_legacy.layer(layer_path).expect("Clearing Layer image for invalid layer");
-				let previous_blob_url = match &layer.data {
-					LegacyLayerType::Layer(layer) => layer.as_blob_url(),
-					x => panic!("Cannot find blob url for layer type {}", LayerDataTypeDiscriminant::from(x)),
-				};
-
-				if let Some(url) = previous_blob_url {
-					responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
-				}
-				responses.add(DocumentOperation::ClearBlobURL { path: layer_path.into() });
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
@@ -442,10 +355,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone(), &render_data) {
+				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
 					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
 				}
-				responses.add(PropertiesPanelMessage::CheckSelectedWasUpdated { path: affected_layer_path });
 				self.update_layers_panel_options_bar_widgets(responses);
 			}
 			MoveSelectedLayersTo { parent, insert_index } => {
@@ -567,11 +479,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
-			RenameLayer { layer_path, new_name } => responses.add(DocumentOperation::RenameLayer { layer_path, new_name }),
 			RenderDocument => {
-				// responses.add(FrontendMessage::UpdateDocumentArtwork {
-				// 	svg: self.document_legacy.render_root(&render_data),
-				// });
 				responses.add(OverlaysMessage::Draw);
 			}
 			RenderRulers => {
@@ -609,10 +517,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					size: scrollbar_size.into(),
 					multiplier: scrollbar_multiplier.into(),
 				});
-			}
-			RollbackTransaction => {
-				self.rollback(responses);
-				responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 			}
 			SaveDocument => {
 				self.set_save_state(true);
@@ -699,40 +603,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
 				}
 			}
-			SetImageBlobUrl {
-				layer_path,
-				blob_url,
-				resolution,
-				document_id,
-			} => {
-				let Ok(layer) = self.document_legacy.layer(&layer_path) else {
-					warn!("Setting blob URL for invalid layer");
-					return;
-				};
-
-				// Revoke the old blob URL
-				match &layer.data {
-					LegacyLayerType::Layer(layer) => {
-						if let Some(url) = layer.as_blob_url() {
-							responses.add(FrontendMessage::TriggerRevokeBlobUrl { url: url.clone() });
-						}
-					}
-					other => {
-						warn!("Setting blob URL for invalid layer type, which must be a `Layer` layer type. Found: `{other:?}`");
-						return;
-					}
-				}
-
-				responses.add(PortfolioMessage::DocumentPassMessage {
-					document_id,
-					message: DocumentOperation::SetLayerBlobUrl { layer_path, blob_url, resolution }.into(),
-				});
-			}
-			SetLayerExpansion { layer_path, set_expanded } => {
-				self.layer_metadata_mut(&layer_path).expanded = set_expanded;
-				responses.add(DocumentStructureChanged);
-				responses.add(LayerChanged { affected_layer_path: layer_path })
-			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.) as f32;
@@ -748,16 +618,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
-			}
-			SetSelectedLayers { replacement_selected_layers } => {
-				let selected = self.layer_metadata.iter_mut().filter(|(_, layer_metadata)| layer_metadata.selected);
-				selected.for_each(|(path, layer_metadata)| {
-					layer_metadata.selected = false;
-					responses.add(LayerChanged { affected_layer_path: path.clone() })
-				});
-
-				let additional_layers = replacement_selected_layers;
-				responses.add_front(AddSelectedLayers { additional_layers });
 			}
 			SetSnapping {
 				snapping_enabled,
@@ -828,9 +688,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			UpdateLayerMetadata { layer_path, layer_metadata } => {
-				self.layer_metadata.insert(layer_path, layer_metadata);
 			}
 			ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
@@ -948,17 +805,15 @@ impl DocumentMessageHandler {
 			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
 	}
 
-	fn select_layer(&mut self, path: &[LayerId], render_data: &RenderData) -> Option<Message> {
+	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
 		println!("Select_layer fail: {:?}", self.all_layers_sorted());
 
 		if let Some(layer) = self.layer_metadata.get_mut(path) {
-			let render_data = RenderData::new(render_data.font_cache, self.view_mode, None);
-
 			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec(), &render_data).ok()?;
+			let data = self.layer_panel_entry(path.to_vec()).ok()?;
 			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
 		} else {
-			warn!("Tried to select non existing layer {path:?}");
+			warn!("Tried to select non-existing layer {path:?}");
 			None
 		}
 	}
@@ -998,11 +853,11 @@ impl DocumentMessageHandler {
 		})
 	}
 
-	/// Returns the bounding boxes for all visible layers, optionally excluding any paths.
-	pub fn bounding_boxes<'a>(&'a self, ignore_document: Option<&'a Vec<Vec<LayerId>>>, _ignore_artboard: Option<LayerId>, render_data: &'a RenderData) -> impl Iterator<Item = [DVec2; 2]> + 'a {
-		self.visible_layers()
-			.filter(move |path| ignore_document.map_or(true, |ignore_document| !ignore_document.iter().any(|ig| ig.as_slice() == *path)))
-			.filter_map(|path| self.document_legacy.viewport_bounding_box(path, render_data).ok()?)
+	/// Returns the bounding boxes for all visible layers.
+	pub fn bounding_boxes<'a>(&'a self) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+		// TODO: Remove this function entirely?
+		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
+		std::iter::empty()
 	}
 
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
@@ -1159,7 +1014,6 @@ impl DocumentMessageHandler {
 		let old_root = self.metadata().document_to_viewport;
 		let document = std::mem::replace(&mut self.document_legacy, document);
 		self.document_legacy.metadata.document_to_viewport = old_root;
-		self.document_legacy.root.cache_dirty = true;
 
 		let layer_metadata = std::mem::replace(&mut self.layer_metadata, layer_metadata);
 
@@ -1260,31 +1114,21 @@ impl DocumentMessageHandler {
 	}
 
 	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>, render_data: &RenderData) -> Result<LayerPanelEntry, EditorError> {
+	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
 		let data: LayerMetadata = *self
 			.layer_metadata
 			.get_mut(&path)
 			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {path:?}")))?;
 		let layer = self.document_legacy.layer(&path)?;
-		let entry = LayerPanelEntry::new(&data, self.document_legacy.multiply_transforms(&path)?, layer, path, render_data);
+		let entry = LayerPanelEntry::new(&data, layer, path);
 		Ok(entry)
 	}
 
-	/// Returns a list of `LayerPanelEntry`s intended for display purposes. These don't contain
-	/// any actual data, but rather attributes such as visibility and names of the layers.
-	pub fn layer_panel(&mut self, path: &[LayerId], render_data: &RenderData) -> Result<Vec<LayerPanelEntry>, EditorError> {
-		let folder = self.document_legacy.folder(path)?;
-		let paths: Vec<Vec<LayerId>> = folder.layer_ids.iter().map(|id| [path, &[*id]].concat()).collect();
-		let entries = paths.iter().rev().filter_map(|path| self.layer_panel_entry_from_path(path, render_data)).collect();
-		Ok(entries)
-	}
-
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId], render_data: &RenderData) -> Option<LayerPanelEntry> {
+	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
 		let layer_metadata = self.layer_metadata(path);
-		let transform = self.document_legacy.generate_transform_across_scope(path, Some(self.metadata().document_to_viewport.inverse())).ok()?;
 		let layer = self.document_legacy.layer(path).ok()?;
 
-		Some(LayerPanelEntry::new(layer_metadata, transform, layer, path.to_vec(), render_data))
+		Some(LayerPanelEntry::new(layer_metadata, layer, path.to_vec()))
 	}
 
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
@@ -1295,11 +1139,6 @@ impl DocumentMessageHandler {
 		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
 
 		Ok(new_insert_index)
-	}
-
-	/// Calculates the bounding box of all layers in the document
-	pub fn all_layer_bounds(&self, render_data: &RenderData) -> Option<[DVec2; 2]> {
-		self.document_legacy.viewport_bounding_box(&[], render_data).ok().flatten()
 	}
 
 	/// Calculate the path that new layers should be inserted to.

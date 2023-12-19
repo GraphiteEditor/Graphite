@@ -6,9 +6,9 @@ use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, L
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -626,9 +626,7 @@ impl NodeGraphExecutor {
 								name: document.document_network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 								tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 								visible: !document.document_network.disabled.contains(&layer.to_node()),
-								layer_type: if document.metadata.is_artboard(layer) {
-									LayerDataTypeDiscriminant::Artboard
-								} else if document.metadata.is_folder(layer) {
+								layer_type: if document.metadata.is_folder(layer) {
 									LayerDataTypeDiscriminant::Folder
 								} else {
 									LayerDataTypeDiscriminant::Layer
@@ -653,12 +651,9 @@ impl NodeGraphExecutor {
 					responses.add(DocumentMessage::RenderDocument);
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
-					responses.add(DocumentMessage::DirtyRenderDocument);
 					responses.add(OverlaysMessage::Draw);
 				}
-				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
-					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::ResendActiveProperties))
-				}
+				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh)),
 			}
 		}
 		Ok(())
@@ -685,10 +680,8 @@ impl NodeGraphExecutor {
 	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
 		match node_graph_output {
-			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform }) => {
-				let transform = transform.to_cols_array();
-				responses.add(Operation::SetLayerTransform { path: layer_path.clone(), transform });
-				responses.add(Operation::SetSurface { path: layer_path, surface_id });
+			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _ }) => {
+				// TODO: Reimplement this now that document-legacy is gone
 			}
 			TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) => {
 				// Send to frontend

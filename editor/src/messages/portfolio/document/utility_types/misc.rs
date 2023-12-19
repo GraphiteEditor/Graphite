@@ -1,6 +1,6 @@
 pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
 use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::LayerId;
+use document_legacy::document::LayerId;
 use graphene_core::raster::color::Color;
 
 use serde::{Deserialize, Serialize};

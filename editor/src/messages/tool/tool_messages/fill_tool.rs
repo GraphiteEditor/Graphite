@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
-use document_legacy::layers::style::Fill;
+
+use graphene_core::vector::style::Fill;
 
 #[derive(Default)]
 pub struct FillTool {
@@ -80,9 +81,6 @@ impl Fsm for FillToolFsmState {
 		let fill = Fill::Solid(color);
 
 		responses.add(DocumentMessage::StartTransaction);
-		responses.add(DocumentMessage::SetSelectedLayers {
-			replacement_selected_layers: vec![layer.clone()],
-		});
 		responses.add(GraphOperationMessage::FillSet { layer, fill });
 		responses.add(DocumentMessage::CommitTransaction);
 

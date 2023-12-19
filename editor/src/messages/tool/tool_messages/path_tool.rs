@@ -257,7 +257,7 @@ impl PathToolData {
 
 		//self
 		//	.snap_manager
-		//	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, render_data), true, true);
+		//	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, font_cache), true, true);
 
 		// Do not snap against handles when anchor is selected
 		let mut additional_selected_points = Vec::new();

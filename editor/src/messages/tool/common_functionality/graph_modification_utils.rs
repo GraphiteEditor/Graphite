@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::prelude::*;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use document_legacy::{document::Document, document_metadata::LayerNodeIdentifier, LayerId, Operation};
+use document_legacy::{document::Document, document_metadata::LayerNodeIdentifier};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
@@ -10,7 +10,7 @@ use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
 use graphene_core::Color;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
@@ -32,18 +32,6 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 		insert_index,
 	});
 	LayerNodeIdentifier::new_unchecked(id)
-}
-
-/// Create a legacy node graph frame TODO: remove
-pub fn new_custom_layer(network: NodeNetwork, layer_path: Vec<LayerId>, responses: &mut VecDeque<Message>) {
-	responses.add(DocumentMessage::DeselectAllLayers);
-	responses.add(Operation::AddFrame {
-		path: layer_path.clone(),
-		insert_index: -1,
-		transform: DAffine2::ZERO.to_cols_array(),
-		network,
-	});
-	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 }
 
 /// Batch set all of the manipulator groups to mirror on a specific layer
@@ -75,12 +63,6 @@ pub fn get_pivot(layer: LayerNodeIdentifier, document: &Document) -> Option<DVec
 	} else {
 		None
 	}
-}
-
-pub fn get_document_pivot(layer: LayerNodeIdentifier, document: &Document) -> DVec2 {
-	let [min, max] = document.metadata.nonzero_bounding_box(layer);
-	let pivot = get_pivot(layer, document).unwrap_or(DVec2::splat(0.5));
-	document.metadata.transform_to_document(layer).transform_point2(min + (max - min) * pivot)
 }
 
 pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document: &Document) -> DVec2 {
@@ -231,25 +213,6 @@ impl<'a> NodeGraphLayer<'a> {
 			node_graph,
 			_outwards_links: outwards_links,
 			layer_node: layer.to_node(),
-		})
-	}
-
-	/// Get the nearest layer node from the path and the document
-	pub fn new_from_path(layer: &[LayerId], document: &'a document_legacy::document::Document) -> Option<Self> {
-		let node_graph = &document.document_network;
-		let outwards_links = document.document_network.collect_outwards_links();
-
-		let Some(mut layer_node) = layer.last().copied() else {
-			error!("Tried to modify root layer");
-			return None;
-		};
-		while !node_graph.nodes.get(&layer_node)?.is_layer() {
-			layer_node = outwards_links.get(&layer_node)?.first().copied()?;
-		}
-		Some(Self {
-			node_graph,
-			_outwards_links: outwards_links,
-			layer_node,
 		})
 	}
 

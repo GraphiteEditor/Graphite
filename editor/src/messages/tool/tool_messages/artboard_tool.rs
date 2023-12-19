@@ -6,7 +6,6 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::RenderData;
 
 use glam::{IVec2, Vec2Swizzles};
 
@@ -117,13 +116,11 @@ impl ArtboardToolData {
 		Some(edges)
 	}
 
-	fn start_resizing(&mut self, selected_edges: (bool, bool, bool, bool), document: &DocumentMessageHandler, render_data: &RenderData, input: &InputPreprocessorMessageHandler) {
+	fn start_resizing(&mut self, selected_edges: (bool, bool, bool, bool), document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		let snap_x = selected_edges.2 || selected_edges.3;
 		let snap_y = selected_edges.0 || selected_edges.1;
 
-		let artboard = self.selected_artboard.unwrap();
-		self.snap_manager
-			.start_snap(document, input, document.bounding_boxes(None, Some(artboard.to_node()), render_data), snap_x, snap_y);
+		self.snap_manager.start_snap(document, input, document.bounding_boxes(), snap_x, snap_y);
 		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 		if let Some(bounds) = &mut self.bounding_box_manager {
@@ -131,7 +128,7 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn select_artboard(&mut self, document: &DocumentMessageHandler, render_data: &RenderData, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
 
 		let mut intersections = document
@@ -143,15 +140,14 @@ impl ArtboardToolData {
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
 
-			self.snap_manager
-				.start_snap(document, input, document.bounding_boxes(None, Some(intersection.to_node()), render_data), true, true);
+			self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 			self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 			true
 		} else {
 			self.selected_artboard = None;
 
-			responses.add(PropertiesPanelMessage::ClearSelection);
+			responses.add(PropertiesPanelMessage::Clear);
 
 			false
 		}
@@ -183,7 +179,7 @@ impl Fsm for ArtboardToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, render_data, .. } = tool_action_data;
+		let ToolActionHandlerData { document, input, .. } = tool_action_data;
 
 		let ToolMessage::Artboard(event) = event else {
 			return self;
@@ -210,10 +206,10 @@ impl Fsm for ArtboardToolFsmState {
 
 				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
-					tool_data.start_resizing(selected_edges, document, render_data, input);
+					tool_data.start_resizing(selected_edges, document, input);
 
 					ArtboardToolFsmState::ResizingBounds
-				} else if tool_data.select_artboard(document, render_data, input, responses) {
+				} else if tool_data.select_artboard(document, input, responses) {
 					ArtboardToolFsmState::Dragging
 				} else {
 					ArtboardToolFsmState::Drawing
@@ -284,7 +280,7 @@ impl Fsm for ArtboardToolFsmState {
 					let id = generate_uuid();
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(None, Some(id), render_data), true, true);
+					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					responses.add(GraphOperationMessage::NewArtboard {
@@ -367,11 +363,6 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::Abort) => {
-				// Register properties when switching back to other tools
-				responses.add(PropertiesPanelMessage::SetActiveLayers {
-					paths: document.selected_layers().map(|path| path.to_vec()).collect(),
-				});
-
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 				ArtboardToolFsmState::Ready

@@ -1,8 +1,8 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 
+use document_legacy::document::LayerId;
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::LayerId;
 use graphene_core::raster::curve::Curve;
 use graphite_proc_macros::WidgetBuilder;
 

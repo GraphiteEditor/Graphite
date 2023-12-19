@@ -3,8 +3,8 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use document_legacy::document::Document;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use document_legacy::{LayerId, Operation};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
@@ -315,13 +315,13 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		self.node_graph.network.clear();
-		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		self.responses.add(PropertiesPanelMessage::Refresh);
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
 			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
-			self.responses.add(DocumentMessage::FrameClear);
+			// Code was removed from here which cleared the frame
 		}
 		if existing_node_id.is_none() {
 			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
@@ -340,13 +340,13 @@ impl<'a> ModifyInputsContext<'a> {
 			self.modify_existing_node_inputs(existing_node_id, &mut update_input);
 		}
 
-		self.responses.add(PropertiesPanelMessage::ResendActiveProperties);
+		self.responses.add(PropertiesPanelMessage::Refresh);
 		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
 			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
 		} else {
-			self.responses.add(DocumentMessage::FrameClear);
+			// Code was removed from here which cleared the frame
 		}
 	}
 
@@ -582,8 +582,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
 					modify_inputs.fill_set(fill);
-				} else {
-					responses.add(Operation::SetLayerFill { path: layer, fill });
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
@@ -604,8 +602,6 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
-				} else {
-					responses.add(Operation::SetLayerStroke { path: layer, stroke });
 				}
 			}
 			GraphOperationMessage::TransformChange {
