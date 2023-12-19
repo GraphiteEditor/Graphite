@@ -9,7 +9,7 @@ use graphene_core::transform::Footprint;
 use graphene_core::{concrete, generic, ProtoNodeIdentifier};
 use graphene_std::wasm_application_io::WasmEditorApi;
 
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
@@ -43,7 +43,11 @@ impl PartialEq for Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: LegacyLayer::new(LegacyLayerType::Folder(FolderLegacyLayer::default()), DAffine2::IDENTITY.to_cols_array()),
+			root: LegacyLayer {
+				name: None,
+				visible: true,
+				data: LegacyLayerType::Folder(FolderLegacyLayer::default()),
+			},
 			state_identifier: DefaultHasher::new(),
 			document_network: {
 				use graph_craft::document::{value::TaggedValue, NodeInput};
@@ -229,30 +233,19 @@ impl Document {
 		for id in path {
 			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 			indices.push(pos);
-			root = root.folder(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = match root.layer(*id) {
+				Some(LegacyLayer {
+					data: LegacyLayerType::Folder(folder),
+					..
+				}) => Some(folder),
+				_ => None,
+			}
+			.ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
 		}
 
 		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
 
 		Ok(indices)
-	}
-
-	pub fn multiply_transforms(&self, path: &[LayerId]) -> Result<DAffine2, DocumentError> {
-		let mut root = &self.root;
-		let mut trans = self.root.transform;
-		for id in path {
-			if let Ok(folder) = root.as_folder() {
-				root = folder.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
-			}
-			trans *= root.transform;
-		}
-		Ok(trans)
-	}
-
-	pub fn generate_transform_across_scope(&self, from: &[LayerId], to: Option<DAffine2>) -> Result<DAffine2, DocumentError> {
-		let from_rev = self.multiply_transforms(from)?;
-		let scope = to.unwrap_or(DAffine2::IDENTITY);
-		Ok(scope * from_rev)
 	}
 }
 

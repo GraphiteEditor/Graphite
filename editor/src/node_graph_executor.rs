@@ -6,9 +6,9 @@ use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, L
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
-use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;

@@ -3,7 +3,6 @@ use super::layer_layer::LayerLegacyLayer;
 use crate::DocumentError;
 
 use core::fmt;
-use glam::{DMat2, DVec2};
 use serde::{Deserialize, Serialize};
 
 // ===============
@@ -61,27 +60,15 @@ impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
 
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
 pub struct LegacyLayer {
-	/// Whether the layer is currently visible or hidden.
-	pub visible: bool,
 	/// The user-given name of the layer.
 	pub name: Option<String>,
+	/// Whether the layer is currently visible or hidden.
+	pub visible: bool,
 	/// The type of layer, such as folder or shape.
 	pub data: LegacyLayerType,
-	/// A transformation applied to the layer (translation, rotation, scaling, and shear).
-	#[serde(with = "DAffine2Ref")]
-	pub transform: glam::DAffine2,
 }
 
 impl LegacyLayer {
-	pub fn new(data: LegacyLayerType, transform: [f64; 6]) -> Self {
-		Self {
-			visible: true,
-			name: None,
-			data,
-			transform: glam::DAffine2::from_cols_array(&transform),
-		}
-	}
-
 	/// Iterate over the layers encapsulated by this layer.
 	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
 	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
@@ -108,6 +95,10 @@ impl LegacyLayer {
 	}
 }
 
+// =========
+// LayerIter
+// =========
+
 /// An iterator over the layers encapsulated by this layer.
 /// See [Layer::iter] for more information.
 #[derive(Debug, Default)]
@@ -122,7 +113,7 @@ impl<'a> Iterator for LayerIter<'a> {
 		match self.stack.pop() {
 			Some(layer) => {
 				if let LegacyLayerType::Folder(folder) = &layer.data {
-					let layers = folder.layers();
+					let layers = folder.layers.as_slice();
 					self.stack.extend(layers);
 				};
 				Some(layer)
@@ -130,15 +121,4 @@ impl<'a> Iterator for LayerIter<'a> {
 			None => None,
 		}
 	}
-}
-
-// ===========
-// DAffine2Ref
-// ===========
-
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "glam::DAffine2")]
-struct DAffine2Ref {
-	pub matrix2: DMat2,
-	pub translation: DVec2,
 }

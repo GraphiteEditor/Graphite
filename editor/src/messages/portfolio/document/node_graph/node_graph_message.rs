@@ -1,6 +1,6 @@
 use crate::messages::prelude::*;
 
-use document_legacy::LayerId;
+use document_legacy::document::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 

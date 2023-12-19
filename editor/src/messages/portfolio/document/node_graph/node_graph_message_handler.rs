@@ -6,8 +6,8 @@ use crate::messages::prelude::*;
 use crate::node_graph_executor::GraphIdentifier;
 
 use document_legacy::document::Document;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::*;

@@ -2,8 +2,8 @@ use super::shape_editor::ManipulatorPointInfo;
 use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
 use crate::messages::prelude::*;
 
+use document_legacy::document::LayerId;
 use document_legacy::layers::layer_info::LegacyLayer;
-use document_legacy::LayerId;
 
 use glam::DVec2;
 

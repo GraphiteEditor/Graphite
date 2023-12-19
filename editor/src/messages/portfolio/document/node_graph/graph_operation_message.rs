@@ -15,7 +15,7 @@ use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 
-pub type LayerIdentifier = Vec<document_legacy::LayerId>;
+pub type LayerIdentifier = Vec<document_legacy::document::LayerId>;
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

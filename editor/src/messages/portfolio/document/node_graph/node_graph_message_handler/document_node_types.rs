@@ -71,7 +71,7 @@ pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
 	pub document: &'a document_legacy::document::Document,
 	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
-	pub layer_path: &'a [document_legacy::LayerId],
+	pub layer_path: &'a [document_legacy::document::LayerId],
 	pub nested_path: &'a [NodeId],
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network: &'a NodeNetwork,

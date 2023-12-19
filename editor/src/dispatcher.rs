@@ -262,8 +262,8 @@ mod test {
 	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
 
+	use document_legacy::document::LayerId;
 	use document_legacy::document_metadata::LayerNodeIdentifier;
-	use document_legacy::LayerId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {

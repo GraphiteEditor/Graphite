@@ -1,8 +1,8 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
 use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};

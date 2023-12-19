@@ -6,8 +6,8 @@
 use crate::helpers::translate_key;
 use crate::{Error, EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
 use editor::application::generate_uuid;
 use editor::application::Editor;
 use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};

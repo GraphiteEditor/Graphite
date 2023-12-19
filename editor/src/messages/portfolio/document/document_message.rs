@@ -4,8 +4,8 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::LayerId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;

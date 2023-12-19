@@ -4,9 +4,13 @@ extern crate log;
 
 pub mod document;
 pub mod document_metadata;
-pub mod error;
-pub mod intersection;
 pub mod layers;
 
-pub use document::LayerId;
-pub use error::DocumentError;
+/// A set of different errors that can occur when using this crate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentError {
+	LayerNotFound(Vec<document::LayerId>),
+	InvalidPath,
+	NotFolder,
+	InvalidFile(String),
+}

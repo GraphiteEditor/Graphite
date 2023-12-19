@@ -3,8 +3,8 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use document_legacy::document::Document;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use document_legacy::LayerId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};

@@ -1,5 +1,5 @@
 use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::LayerId;
+use document_legacy::document::LayerId;
 
 use crate::{messages::prelude::NodeGraphMessageHandler, node_graph_executor::NodeGraphExecutor};
 

@@ -17,9 +17,10 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use document_legacy::document::Document as DocumentLegacy;
+use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
 use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::{DocumentError, LayerId};
+use document_legacy::DocumentError;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;

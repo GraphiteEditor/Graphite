@@ -1,5 +1,5 @@
+use document_legacy::document::LayerId;
 use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer};
-use document_legacy::LayerId;
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
