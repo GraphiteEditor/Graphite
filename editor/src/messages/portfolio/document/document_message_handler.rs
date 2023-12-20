@@ -315,7 +315,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DebugPrintDocument => {
-				info!("{:#?}\n", self.network);
+				info!("{:#?}", self.network);
 			}
 			DeleteLayer { layer_path } => {
 				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
@@ -973,6 +973,7 @@ impl DocumentMessageHandler {
 		let Some(document) = self.document_undo_history.pop_back() else {
 			return;
 		};
+
 		responses.add(BroadcastEvent::SelectionChanged);
 
 		let document_save = self.replace_document(document);

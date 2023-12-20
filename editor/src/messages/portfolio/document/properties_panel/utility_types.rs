@@ -1,5 +1,4 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::NodeGraphMessageHandler;
 use crate::node_graph_executor::NodeGraphExecutor;
 
