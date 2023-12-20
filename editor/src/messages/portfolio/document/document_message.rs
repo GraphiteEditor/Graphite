@@ -62,9 +62,6 @@ pub enum DocumentMessage {
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
-	FolderChanged {
-		affected_folder_path: Vec<LayerId>,
-	},
 	GroupSelectedLayers,
 	ImaginateClear {
 		layer_path: Vec<LayerId>,
@@ -79,9 +76,6 @@ pub enum DocumentMessage {
 	},
 	InputFrameRasterizeRegionBelowLayer {
 		layer_path: Vec<LayerId>,
-	},
-	LayerChanged {
-		affected_layer_path: Vec<LayerId>,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,

@@ -1,7 +1,8 @@
 use fern::colors::{Color, ColoredLevelConfig};
 use std::{error::Error, sync::Arc};
 
-use document_legacy::{document::Document, layers::layer_info::LegacyLayerType};
+use document_legacy::document::Document;
+use document_legacy::layers::LegacyLayerType;
 use futures::executor::block_on;
 use graph_craft::{
 	concrete,
@@ -88,10 +89,9 @@ fn init_logging() {
 fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
 	let document = serde_json::from_value::<Document>(document["document_legacy"].clone()).expect("Failed to parse document");
-	let Some(LegacyLayerType::Layer(ref node_graph)) = document.root.iter().find(|layer| matches!(layer.data, LegacyLayerType::Layer(_))).map(|x| &x.data) else {
+	let Some(LegacyLayerType::Layer(ref network)) = document.root.iter().find(|layer| matches!(layer, LegacyLayerType::Layer(_))).map(|x| x) else {
 		panic!("Failed to extract node graph from document")
 	};
-	let network = &node_graph.network;
 	let wrapped_network = wrap_network_in_scope(network.clone());
 	let compiler = Compiler {};
 	let protograph = compiler.compile_single(wrapped_network)?;

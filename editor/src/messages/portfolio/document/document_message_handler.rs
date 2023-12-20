@@ -7,7 +7,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, RawBuffer};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -19,7 +19,6 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::DocumentError;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
@@ -259,6 +258,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
+				self.update_layers_panel_options_bar_widgets(responses);
+
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
 			}
@@ -289,10 +290,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					}
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
-			}
-			FolderChanged { affected_folder_path } => {
-				let affected_layer_path = affected_folder_path;
-				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
@@ -342,12 +339,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
-			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
-					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
-				}
-				self.update_layers_panel_options_bar_widgets(responses);
-			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
 
@@ -356,7 +347,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					return;
 				}
 
-				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index).unwrap();
+				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
@@ -460,7 +451,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentHistoryForward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(RenderDocument);
-				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(DocumentStructureChanged);
 			}
 			RenameDocument { new_name } => {
 				self.name = new_name;
@@ -642,7 +633,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentHistoryBackward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(RenderDocument);
-				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(DocumentStructureChanged);
 				responses.add(UndoFinished);
 			}
 			UndoFinished => self.undo_in_progress = false,
@@ -752,14 +743,14 @@ impl DocumentMessageHandler {
 		val.unwrap()
 	}
 
-	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
+	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
+		let deserialized_result: Result<Self, EditorError> = serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()));
 		match deserialized_result {
 			Ok(document) => {
 				if document.version == GRAPHITE_DOCUMENT_VERSION {
 					Ok(document)
 				} else {
-					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
+					Err(EditorError::DocumentDeserialization("Graphite document version mismatch".to_string()))
 				}
 			}
 			Err(e) => Err(e),
@@ -776,14 +767,9 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		match Self::deserialize_document(&serialized_content) {
-			Ok(mut document) => {
-				document.name = name;
-				Ok(document)
-			}
-			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::DocumentDeserialization(msg)),
-			_ => Err(EditorError::Document(String::from("Failed to open file"))),
-		}
+		let mut document = Self::deserialize_document(&serialized_content)?;
+		document.name = name;
+		Ok(document)
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
@@ -920,10 +906,7 @@ impl DocumentMessageHandler {
 				self.document_redo_history.pop_front();
 			}
 
-			for layer in self.layer_metadata.keys() {
-				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-			}
-
+			responses.add(DocumentMessage::DocumentStructureChanged);
 			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
@@ -949,10 +932,7 @@ impl DocumentMessageHandler {
 				self.document_undo_history.pop_front();
 			}
 
-			for layer in self.layer_metadata.keys() {
-				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-			}
-
+			responses.add(DocumentMessage::DocumentStructureChanged);
 			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
@@ -991,32 +971,14 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self
-			.layer_metadata
-			.get_mut(&path)
-			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {path:?}")))?;
-		let layer = self.document_legacy.layer(&path)?;
-		let entry = LayerPanelEntry::new(&data, layer, path);
-		Ok(entry)
-	}
-
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
-		let layer_metadata = self.layer_metadata(path);
-		let layer = self.document_legacy.layer(path).ok()?;
-
-		Some(LayerPanelEntry::new(layer_metadata, layer, path.to_vec()))
-	}
-
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> Result<isize, DocumentError> {
+	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
 		let layer_ids_above = parent.children(self.metadata()).take(if insert_index < 0 { usize::MAX } else { insert_index as usize });
 		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
 
-		Ok(new_insert_index)
+		new_insert_index
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {

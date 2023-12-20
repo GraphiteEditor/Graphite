@@ -1,7 +1,5 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
-use crate::layers::folder_layer::FolderLegacyLayer;
-use crate::layers::layer_info::LegacyLayerType;
-use crate::DocumentError;
+use crate::layers::LegacyLayerType;
 
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
@@ -23,7 +21,6 @@ pub type LayerId = u64;
 pub struct Document {
 	#[serde(default)]
 	pub document_network: NodeNetwork,
-	/// The root layer, usually a [FolderLegacyLayer](layers::folder_layer::FolderLegacyLayer) that contains all other [`LegacyLayerType`](layers::layer_info::LegacyLayerType)s.
 	#[serde(skip)]
 	pub root: LegacyLayerType,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
@@ -43,7 +40,7 @@ impl PartialEq for Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: LegacyLayerType::Folder(FolderLegacyLayer::default()),
+			root: LegacyLayerType::Folder(Vec::new()),
 			state_identifier: DefaultHasher::new(),
 			document_network: {
 				use graph_craft::document::{value::TaggedValue, NodeInput};
@@ -151,20 +148,5 @@ impl Document {
 
 	pub fn current_state_identifier(&self) -> u64 {
 		self.state_identifier.finish()
-	}
-
-	/// Returns a reference to the layer or folder at the path.
-	pub fn layer(&self, path: &[LayerId]) -> Result<&LegacyLayerType, DocumentError> {
-		if path.is_empty() {
-			return Ok(&self.root);
-		}
-
-		let (&id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
-
-		let mut root = &self.root;
-		for id in path {
-			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
-		}
-		root.as_folder()?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
 }

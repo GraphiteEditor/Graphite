@@ -8,7 +8,7 @@ use crate::messages::prelude::*;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
+use document_legacy::layers::LayerDataTypeDiscriminant;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -430,10 +430,6 @@ impl NodeGraphExecutor {
 			.expect("Failed to send imaginate preferences");
 	}
 
-	pub fn previous_output_type(&self, path: &[LayerId]) -> Option<Type> {
-		self.last_output_type.get(path).cloned().flatten()
-	}
-
 	pub fn introspect_node_in_network<T: std::any::Any + core::fmt::Debug, U, F1: FnOnce(&NodeNetwork) -> Option<NodeId>, F2: FnOnce(&T) -> U>(
 		&mut self,
 		network: &NodeNetwork,
@@ -493,17 +489,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, layer_path: Vec<LayerId>, viewport_resolution: UVec2) -> Result<(), String> {
 		// Get the node graph layer
-		let network = if layer_path.is_empty() {
-			document.network().clone()
-		} else {
-			let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
-
-			let layer_layer = match layer {
-				LegacyLayerType::Layer(layer) => Ok(layer),
-				_ => Err("Invalid layer type".to_string()),
-			}?;
-			layer_layer.network.clone()
-		};
+		let network = document.network().clone();
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
@@ -644,9 +630,6 @@ impl NodeGraphExecutor {
 					document.metadata.update_click_targets(new_click_targets);
 					responses.extend(updates);
 					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses)?;
-					responses.add(DocumentMessage::LayerChanged {
-						affected_layer_path: execution_context.layer_path,
-					});
 					responses.add(DocumentMessage::RenderDocument);
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);

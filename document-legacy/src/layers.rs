@@ -1,7 +1,3 @@
-use super::folder_layer::FolderLegacyLayer;
-use super::layer_layer::LayerLegacyLayer;
-use crate::DocumentError;
-
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
@@ -10,12 +6,9 @@ use serde::{Deserialize, Serialize};
 // ===============
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-/// Represents different types of layers.
 pub enum LegacyLayerType {
-	/// A layer that wraps a [FolderLegacyLayer] struct.
-	Folder(FolderLegacyLayer),
-	/// A layer that wraps an [LayerLegacyLayer] struct.
-	Layer(LayerLegacyLayer),
+	Folder(Vec<LegacyLayerType>),
+	Layer(graph_craft::document::NodeNetwork),
 }
 
 impl Default for LegacyLayerType {
@@ -30,24 +23,6 @@ impl LegacyLayerType {
 	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
 	pub fn iter(&self) -> LegacyLayerTypeIter<'_> {
 		LegacyLayerTypeIter { stack: vec![self] }
-	}
-
-	/// Get a mutable reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
-	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLegacyLayer, DocumentError> {
-		match self {
-			LegacyLayerType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotFolder),
-		}
-	}
-
-	/// Get a reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
-	pub fn as_folder(&self) -> Result<&FolderLegacyLayer, DocumentError> {
-		match self {
-			LegacyLayerType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotFolder),
-		}
 	}
 }
 
@@ -98,8 +73,7 @@ impl<'a> Iterator for LegacyLayerTypeIter<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		self.stack.pop().map(|layer| {
 			if let LegacyLayerType::Folder(folder) = layer {
-				let layers = folder.layers.as_slice();
-				self.stack.extend(layers);
+				self.stack.extend(folder.as_slice());
 			}
 			layer
 		})

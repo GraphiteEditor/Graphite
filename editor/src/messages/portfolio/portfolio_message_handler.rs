@@ -146,12 +146,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(DocumentMessage::RenderDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
-
-				if let Some(document) = self.active_document() {
-					for layer in document.layer_metadata.keys() {
-						responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() });
-					}
-				}
 			}
 			PortfolioMessage::CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
@@ -474,9 +468,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
 				responses.add(DocumentMessage::RenderDocument);
 				responses.add(DocumentMessage::DocumentStructureChanged);
-				for layer in self.documents.get(&document_id).unwrap().layer_metadata.keys() {
-					responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() });
-				}
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -649,14 +640,6 @@ impl PortfolioMessageHandler {
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: u64, responses: &mut VecDeque<Message>) {
 		self.document_ids.push(document_id);
 
-		responses.extend(
-			new_document
-				.layer_metadata
-				.keys()
-				.filter_map(|path| new_document.layer_panel_entry_from_path(path))
-				.map(|entry| FrontendMessage::UpdateDocumentLayerDetails { data: entry }.into())
-				.collect::<Vec<_>>(),
-		);
 		new_document.update_layers_panel_options_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);

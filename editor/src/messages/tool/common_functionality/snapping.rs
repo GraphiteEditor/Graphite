@@ -3,7 +3,7 @@ use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
 use crate::messages::prelude::*;
 
 use document_legacy::document::LayerId;
-use document_legacy::layers::layer_info::LegacyLayerType;
+use document_legacy::layers::LegacyLayerType;
 
 use glam::DVec2;
 
