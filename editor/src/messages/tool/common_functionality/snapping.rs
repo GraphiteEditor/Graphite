@@ -3,7 +3,7 @@ use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
 use crate::messages::prelude::*;
 
 use document_legacy::document::LayerId;
-use document_legacy::layers::layer_info::LegacyLayer;
+use document_legacy::layers::layer_info::LegacyLayerType;
 
 use glam::DVec2;
 
@@ -109,7 +109,7 @@ impl SnapManager {
 		&mut self,
 		_document_message_handler: &DocumentMessageHandler,
 		_input: &InputPreprocessorMessageHandler,
-		_layer: &LegacyLayer,
+		_layer: &LegacyLayerType,
 		_path: &[LayerId],
 		_include_handles: bool,
 		_ignore_points: &[ManipulatorPointInfo],
@@ -150,18 +150,18 @@ impl SnapManager {
 	/// Adds all of the shape handles in the document, including bézier handles of the points specified
 	pub fn add_all_document_handles(
 		&mut self,
-		document_message_handler: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		include_handles: &[&[LayerId]],
-		exclude: &[&[LayerId]],
-		ignore_points: &[ManipulatorPointInfo],
+		_document_message_handler: &DocumentMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
+		_include_handles: &[&[LayerId]],
+		_exclude: &[&[LayerId]],
+		_ignore_points: &[ManipulatorPointInfo],
 	) {
-		for path in document_message_handler.all_layers() {
-			if !exclude.contains(&path) {
-				let layer = document_message_handler.document_legacy.layer(path).expect("Could not get layer for snapping");
-				self.add_snap_path(document_message_handler, input, layer, path, include_handles.contains(&path), ignore_points);
-			}
-		}
+		// for path in document_message_handler.all_layers() {
+		// 	if !exclude.contains(&path) {
+		// 		let layer = document_message_handler.document_legacy.layer(path).expect("Could not get layer for snapping");
+		// 		self.add_snap_path(document_message_handler, input, layer, path, include_handles.contains(&path), ignore_points);
+		// 	}
+		// }
 	}
 
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.

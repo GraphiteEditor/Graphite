@@ -24,6 +24,33 @@ impl Default for LegacyLayerType {
 	}
 }
 
+impl LegacyLayerType {
+	/// Iterate over the layers encapsulated by this layer.
+	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
+	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
+	pub fn iter(&self) -> LegacyLayerTypeIter<'_> {
+		LegacyLayerTypeIter { stack: vec![self] }
+	}
+
+	/// Get a mutable reference to the Folder wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
+	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLegacyLayer, DocumentError> {
+		match self {
+			LegacyLayerType::Folder(f) => Ok(f),
+			_ => Err(DocumentError::NotFolder),
+		}
+	}
+
+	/// Get a reference to the Folder wrapped by the layer.
+	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
+	pub fn as_folder(&self) -> Result<&FolderLegacyLayer, DocumentError> {
+		match self {
+			LegacyLayerType::Folder(f) => Ok(f),
+			_ => Err(DocumentError::NotFolder),
+		}
+	}
+}
+
 // =========================
 // LayerDataTypeDiscriminant
 // =========================
@@ -54,69 +81,27 @@ impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
 	}
 }
 
-// ===========
-// LegacyLayer
-// ===========
-
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
-pub struct LegacyLayer {
-	/// The user-given name of the layer.
-	pub name: Option<String>,
-	/// The type of layer, such as folder or shape.
-	pub data: LegacyLayerType,
-}
-
-impl LegacyLayer {
-	/// Iterate over the layers encapsulated by this layer.
-	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
-	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
-	pub fn iter(&self) -> LegacyLayerIter<'_> {
-		LegacyLayerIter { stack: vec![self] }
-	}
-
-	/// Get a mutable reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
-	pub fn as_folder_mut(&mut self) -> Result<&mut FolderLegacyLayer, DocumentError> {
-		match &mut self.data {
-			LegacyLayerType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotFolder),
-		}
-	}
-
-	/// Get a reference to the Folder wrapped by the layer.
-	/// This operation will fail if the [Layer type](Layer::data) is not `LegacyLayerType::Folder`.
-	pub fn as_folder(&self) -> Result<&FolderLegacyLayer, DocumentError> {
-		match &self.data {
-			LegacyLayerType::Folder(f) => Ok(f),
-			_ => Err(DocumentError::NotFolder),
-		}
-	}
-}
-
-// ===============
-// LegacyLayerIter
-// ===============
+// ===================
+// LegacyLayerTypeIter
+// ===================
 
 /// An iterator over the layers encapsulated by this layer.
 /// See [Layer::iter] for more information.
 #[derive(Debug, Default)]
-pub struct LegacyLayerIter<'a> {
-	pub stack: Vec<&'a LegacyLayer>,
+pub struct LegacyLayerTypeIter<'a> {
+	pub stack: Vec<&'a LegacyLayerType>,
 }
 
-impl<'a> Iterator for LegacyLayerIter<'a> {
-	type Item = &'a LegacyLayer;
+impl<'a> Iterator for LegacyLayerTypeIter<'a> {
+	type Item = &'a LegacyLayerType;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		match self.stack.pop() {
-			Some(layer) => {
-				if let LegacyLayerType::Folder(folder) = &layer.data {
-					let layers = folder.layers.as_slice();
-					self.stack.extend(layers);
-				};
-				Some(layer)
+		self.stack.pop().map(|layer| {
+			if let LegacyLayerType::Folder(folder) = layer {
+				let layers = folder.layers.as_slice();
+				self.stack.extend(layers);
 			}
-			None => None,
-		}
+			layer
+		})
 	}
 }

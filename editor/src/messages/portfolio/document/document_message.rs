@@ -36,9 +36,6 @@ pub enum DocumentMessage {
 
 	// Messages
 	AbortTransaction,
-	AddSelectedLayers {
-		additional_layers: Vec<Vec<LayerId>>,
-	},
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,

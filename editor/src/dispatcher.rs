@@ -454,41 +454,6 @@ mod test {
 	}
 
 	#[test]
-	#[ignore] // TODO: Re-enable test, see issue #444 (https://github.com/GraphiteEditor/Graphite/pull/444)
-	/// - create rect, shape and ellipse
-	/// - select ellipse and rect
-	/// - move them down and back up again
-	fn move_selection() {
-		let mut editor = create_editor_with_three_layers();
-
-		fn map_to_vec(paths: Vec<&[LayerId]>) -> Vec<Vec<LayerId>> {
-			paths.iter().map(|layer| layer.to_vec()).collect::<Vec<_>>()
-		}
-		let sorted_layers = map_to_vec(editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().all_layers_sorted());
-		println!("Sorted layers: {sorted_layers:?}");
-
-		let verify_order = |handler: &mut DocumentMessageHandler| {
-			(
-				map_to_vec(handler.all_layers_sorted()),
-				map_to_vec(handler.non_selected_layers_sorted()),
-				map_to_vec(handler.selected_layers_sorted()),
-			)
-		};
-
-		editor.handle_message(DocumentMessage::SelectedLayersRaise);
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
-
-		editor.handle_message(DocumentMessage::SelectedLayersLower);
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, selected.into_iter().chain(non_selected).collect::<Vec<_>>());
-
-		editor.handle_message(DocumentMessage::SelectedLayersRaiseToFront);
-		let (all, non_selected, selected) = verify_order(editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap());
-		assert_eq!(all, non_selected.into_iter().chain(selected).collect::<Vec<_>>());
-	}
-
-	#[test]
 	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_graphite_file_version_upgrade_is_needed() {

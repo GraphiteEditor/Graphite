@@ -1,6 +1,6 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::layers::folder_layer::FolderLegacyLayer;
-use crate::layers::layer_info::{LegacyLayer, LegacyLayerType};
+use crate::layers::layer_info::LegacyLayerType;
 use crate::DocumentError;
 
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
@@ -23,9 +23,9 @@ pub type LayerId = u64;
 pub struct Document {
 	#[serde(default)]
 	pub document_network: NodeNetwork,
-	/// The root layer, usually a [FolderLegacyLayer](layers::folder_layer::FolderLegacyLayer) that contains all other [LegacyLayers](layers::layer_info::LegacyLayer).
+	/// The root layer, usually a [FolderLegacyLayer](layers::folder_layer::FolderLegacyLayer) that contains all other [`LegacyLayerType`](layers::layer_info::LegacyLayerType)s.
 	#[serde(skip)]
-	pub root: LegacyLayer,
+	pub root: LegacyLayerType,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
@@ -43,10 +43,7 @@ impl PartialEq for Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: LegacyLayer {
-				name: None,
-				data: LegacyLayerType::Folder(FolderLegacyLayer::default()),
-			},
+			root: LegacyLayerType::Folder(FolderLegacyLayer::default()),
 			state_identifier: DefaultHasher::new(),
 			document_network: {
 				use graph_craft::document::{value::TaggedValue, NodeInput};
@@ -156,99 +153,18 @@ impl Document {
 		self.state_identifier.finish()
 	}
 
-	/// Returns a reference to the requested folder. Fails if the path does not exist,
-	/// or if the requested layer is not of type folder.
-	pub fn folder(&self, path: impl AsRef<[LayerId]>) -> Result<&FolderLegacyLayer, DocumentError> {
-		let mut root = &self.root;
-		for id in path.as_ref() {
-			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
-		}
-		root.as_folder()
-	}
-
-	/// Returns a mutable reference to the requested folder. Fails if the path does not exist,
-	/// or if the requested layer is not of type folder.
-	fn folder_mut(&mut self, path: &[LayerId]) -> Result<&mut FolderLegacyLayer, DocumentError> {
-		let mut root = &mut self.root;
-		for id in path {
-			root = root.as_folder_mut()?.layer_mut(*id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
-		}
-		root.as_folder_mut()
-	}
-
 	/// Returns a reference to the layer or folder at the path.
-	pub fn layer(&self, path: &[LayerId]) -> Result<&LegacyLayer, DocumentError> {
+	pub fn layer(&self, path: &[LayerId]) -> Result<&LegacyLayerType, DocumentError> {
 		if path.is_empty() {
 			return Ok(&self.root);
 		}
-		let (path, id) = split_path(path)?;
-		self.folder(path)?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
-	}
 
-	/// Returns a mutable reference to the layer or folder at the path.
-	pub fn layer_mut(&mut self, path: &[LayerId]) -> Result<&mut LegacyLayer, DocumentError> {
-		if path.is_empty() {
-			return Ok(&mut self.root);
-		}
-		let (path, id) = split_path(path)?;
-		self.folder_mut(path)?.layer_mut(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
-	}
+		let (&id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
 
-	pub fn common_layer_path_prefix<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> &'a [LayerId] {
-		layers.reduce(|a, b| &a[..a.iter().zip(b.iter()).take_while(|&(a, b)| a == b).count()]).unwrap_or_default()
-	}
-
-	/// Returns the shallowest folder given the selection, even if the selection doesn't contain any folders
-	pub fn shallowest_common_folder<'a>(&self, layers: impl Iterator<Item = &'a [LayerId]>) -> Result<&'a [LayerId], DocumentError> {
-		let common_prefix_of_path = self.common_layer_path_prefix(layers);
-
-		Ok(match self.layer(common_prefix_of_path)?.data {
-			LegacyLayerType::Folder(_) => common_prefix_of_path,
-			_ => &common_prefix_of_path[..common_prefix_of_path.len() - 1],
-		})
-	}
-
-	/// Returns all layers that are not contained in any other of the given folders
-	/// Takes and Iterator over &[LayerId] or &Vec<LayerId>.
-	pub fn shallowest_unique_layers<'a, T>(layers: impl Iterator<Item = T>) -> Vec<T>
-	where
-		T: AsRef<[LayerId]> + std::cmp::Ord + 'a,
-	{
-		let mut sorted_layers: Vec<_> = layers.collect();
-		sorted_layers.sort();
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.dedup_by(|a, b| a.as_ref().starts_with(b.as_ref()));
-		sorted_layers
-	}
-
-	/// Given a path to a layer, returns a vector of the indices in the layer tree
-	/// These indices can be used to order a list of layers
-	pub fn indices_for_path(&self, path: &[LayerId]) -> Result<Vec<usize>, DocumentError> {
-		let mut root = self.root.as_folder()?;
-		let mut indices = vec![];
-		let (path, layer_id) = split_path(path)?;
-
-		// TODO: appears to be n^2? should we maintain a lookup table?
+		let mut root = &self.root;
 		for id in path {
-			let pos = root.layer_ids.iter().position(|x| *x == *id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
-			indices.push(pos);
-			root = match root.layer(*id) {
-				Some(LegacyLayer {
-					data: LegacyLayerType::Folder(folder),
-					..
-				}) => Some(folder),
-				_ => None,
-			}
-			.ok_or_else(|| DocumentError::LayerNotFound(path.into()))?;
+			root = root.as_folder()?.layer(*id).ok_or_else(|| DocumentError::LayerNotFound(path.as_ref().into()))?;
 		}
-
-		indices.push(root.layer_ids.iter().position(|x| *x == layer_id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))?);
-
-		Ok(indices)
+		root.as_folder()?.layer(id).ok_or_else(|| DocumentError::LayerNotFound(path.into()))
 	}
-}
-
-fn split_path(path: &[LayerId]) -> Result<(&[LayerId], LayerId), DocumentError> {
-	let (id, path) = path.split_last().ok_or(DocumentError::InvalidPath)?;
-	Ok((path, *id))
 }

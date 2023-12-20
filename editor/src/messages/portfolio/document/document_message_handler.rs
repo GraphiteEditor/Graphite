@@ -19,7 +19,6 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use document_legacy::DocumentError;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
@@ -174,17 +173,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					self.undo(responses);
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 				}
-			}
-			AddSelectedLayers { additional_layers } => {
-				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path));
-				}
-
-				// TODO: Correctly update layer panel in clear_selection instead of here
-				responses.add(FolderChanged { affected_folder_path: vec![] });
-				responses.add(BroadcastEvent::SelectionChanged);
-
-				self.update_layers_panel_options_bar_widgets(responses);
 			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
@@ -798,52 +786,8 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn is_unmodified_default(&self) -> bool {
-		self.serialize_root().len() == Self::default().serialize_root().len()
-			&& self.document_undo_history.is_empty()
-			&& self.document_redo_history.is_empty()
-			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
-	}
-
-	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
-		println!("Select_layer fail: {:?}", self.all_layers_sorted());
-
-		if let Some(layer) = self.layer_metadata.get_mut(path) {
-			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec()).ok()?;
-			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
-		} else {
-			warn!("Tried to select non-existing layer {path:?}");
-			None
-		}
-	}
-
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()))
-	}
-
-	pub fn selected_layers_with_type(&self, discriminant: LayerDataTypeDiscriminant) -> impl Iterator<Item = &[LayerId]> {
-		self.selected_layers().filter(move |path| {
-			self.document_legacy
-				.layer(path)
-				.map(|layer| LayerDataTypeDiscriminant::from(&layer.data) == discriminant)
-				.unwrap_or(false)
-		})
-	}
-
-	pub fn non_selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.iter().filter_map(|(path, data)| (!data.selected).then_some(path.as_slice()))
-	}
-
-	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let unique_layers = DocumentLegacy::shallowest_unique_layers(self.selected_layers());
-
-		// We need to maintain layer ordering
-		self.sort_layers(unique_layers.iter().copied())
-	}
-
-	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
-		self.layer_metadata.get(path).map(|layer| layer.selected).unwrap_or(false)
 	}
 
 	/// Returns the bounding boxes for all visible layers.
@@ -913,61 +857,8 @@ impl DocumentMessageHandler {
 		structure
 	}
 
-	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
-	pub fn all_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then_some(path.as_slice()))
-	}
-
-	/// Returns the paths to all layers in order
-	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
-		// Compute the indices for each layer to be able to sort them
-		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
-			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter(|path| !path.is_empty())
-			.filter_map(|path| {
-				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
-				match self.document_legacy.indices_for_path(path) {
-					Err(err) => {
-						warn!("layers_sorted: Could not get indices for the layer {path:?}: {err:?}");
-						None
-					}
-					Ok(indices) => Some((path, indices)),
-				}
-			})
-			.collect();
-
-		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
-		layers_with_indices.into_iter().map(|(path, _)| path).collect()
-	}
-
-	/// Returns the paths to all layers in order
-	pub fn all_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.all_layers())
-	}
-
-	/// Returns the paths to all selected layers in order
-	pub fn selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.selected_layers())
-	}
-
-	/// Returns the paths to all non_selected layers in order
-	#[allow(dead_code)] // used for test cases
-	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.non_selected_layers())
-	}
-
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
 		self.layer_metadata.get(path).unwrap_or_else(|| panic!("Editor's layer metadata for {path:?} does not exist"))
-	}
-
-	pub fn layer_metadata_mut(&mut self, path: &[LayerId]) -> &mut LayerMetadata {
-		Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, path)
-	}
-
-	pub fn layer_metadata_mut_no_borrow_self<'a>(layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>, path: &[LayerId]) -> &'a mut LayerMetadata {
-		layer_metadata
-			.get_mut(path)
-			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {path:?} does not exist"))
 	}
 
 	/// Places a document into the history system
@@ -993,12 +884,6 @@ impl DocumentMessageHandler {
 			document: self.document_legacy.clone(),
 			layer_metadata: self.layer_metadata.clone(),
 		});
-	}
-
-	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup(responses);
-		self.undo(responses);
-		// TODO: Consider if we should check if the document is saved
 	}
 
 	/// Replace the document with a new document save, returning the document save.
@@ -1132,16 +1017,6 @@ impl DocumentMessageHandler {
 		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
 
 		Ok(new_insert_index)
-	}
-
-	/// Calculate the path that new layers should be inserted to.
-	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
-	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
-		// If the selected layers don't actually exist, a new uuid for the
-		// root folder will be returned
-		let mut path = self.document_legacy.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
-		path.push(generate_uuid());
-		path
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {

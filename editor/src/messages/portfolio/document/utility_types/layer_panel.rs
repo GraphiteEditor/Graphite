@@ -1,5 +1,5 @@
 use document_legacy::document::LayerId;
-use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer};
+use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayerType};
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -57,11 +57,11 @@ pub struct LayerPanelEntry {
 impl LayerPanelEntry {
 	// TODO: Deprecate this because it's using document-legacy layer data which is no longer linked to data from the node graph,
 	// TODO: so this doesn't feed `name` (that's fed elsewhere) or `visible` (that's broken entirely), etc.
-	pub fn new(layer_metadata: &LayerMetadata, layer: &LegacyLayer, path: Vec<LayerId>) -> Self {
+	pub fn new(layer_metadata: &LayerMetadata, layer: &LegacyLayerType, path: Vec<LayerId>) -> Self {
 		Self {
 			name: "".to_string(),    // Replaced before it gets used
 			tooltip: "".to_string(), // Replaced before it gets used
-			layer_type: (&layer.data).into(),
+			layer_type: layer.into(),
 			layer_metadata: *layer_metadata,
 			path,
 			thumbnail: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 0 0"></svg>"#.to_string(),

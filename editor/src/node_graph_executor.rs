@@ -498,7 +498,7 @@ impl NodeGraphExecutor {
 		} else {
 			let layer = document.document_legacy.layer(&layer_path).map_err(|e| format!("No layer: {e:?}"))?;
 
-			let layer_layer = match &layer.data {
+			let layer_layer = match layer {
 				LegacyLayerType::Layer(layer) => Ok(layer),
 				_ => Err("Invalid layer type".to_string()),
 			}?;

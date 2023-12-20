@@ -374,8 +374,8 @@ impl LayerNodeIdentifier {
 	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
-			is_layer_node(node_id, network),
-			"Layer identifier constructed from non layer node {node_id}: {:#?}",
+			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer()),
+			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
@@ -631,10 +631,6 @@ pub struct NodeRelations {
 	next_sibling: Option<LayerNodeIdentifier>,
 	first_child: Option<LayerNodeIdentifier>,
 	last_child: Option<LayerNodeIdentifier>,
-}
-
-fn is_layer_node(node: NodeId, network: &NodeNetwork) -> bool {
-	node == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node).is_some_and(|node| node.is_layer())
 }
 
 #[test]
