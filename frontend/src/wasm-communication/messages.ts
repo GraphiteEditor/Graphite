@@ -667,8 +667,6 @@ export class LayerPanelEntry {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	visible!: boolean;
-
 	layerType!: LayerType;
 
 	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))

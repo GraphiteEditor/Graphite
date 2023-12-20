@@ -846,13 +846,6 @@ impl DocumentMessageHandler {
 		self.layer_metadata.get(path).map(|layer| layer.selected).unwrap_or(false)
 	}
 
-	pub fn visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.all_layers().filter(|path| match self.document_legacy.layer(path) {
-			Ok(layer) => layer.visible,
-			Err(_) => false,
-		})
-	}
-
 	/// Returns the bounding boxes for all visible layers.
 	pub fn bounding_boxes<'a>(&'a self) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		// TODO: Remove this function entirely?

@@ -349,8 +349,8 @@
 						class={"visibility"}
 						action={(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())}
 						size={24}
-						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						tooltip={listing.entry.visible ? "Visible" : "Hidden"}
+						icon={(() => true)() ? "EyeVisible" : "EyeHidden"}
+						tooltip={(() => true)() ? "Visible" : "Hidden"}
 					/>
 				</LayoutRow>
 			{/each}

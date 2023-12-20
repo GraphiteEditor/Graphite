@@ -45,7 +45,6 @@ impl Default for Document {
 		Self {
 			root: LegacyLayer {
 				name: None,
-				visible: true,
 				data: LegacyLayerType::Folder(FolderLegacyLayer::default()),
 			},
 			state_identifier: DefaultHasher::new(),

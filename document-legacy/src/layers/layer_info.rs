@@ -62,8 +62,6 @@ impl From<&LegacyLayerType> for LayerDataTypeDiscriminant {
 pub struct LegacyLayer {
 	/// The user-given name of the layer.
 	pub name: Option<String>,
-	/// Whether the layer is currently visible or hidden.
-	pub visible: bool,
 	/// The type of layer, such as folder or shape.
 	pub data: LegacyLayerType,
 }
@@ -72,8 +70,8 @@ impl LegacyLayer {
 	/// Iterate over the layers encapsulated by this layer.
 	/// If the [Layer type](Layer::data) is not a folder, the only item in the iterator will be the layer itself.
 	/// If the [Layer type](Layer::data) wraps a [Folder](LegacyLayerType::Folder), the iterator will recursively yield all the layers contained in the folder as well as potential sub-folders.
-	pub fn iter(&self) -> LayerIter<'_> {
-		LayerIter { stack: vec![self] }
+	pub fn iter(&self) -> LegacyLayerIter<'_> {
+		LegacyLayerIter { stack: vec![self] }
 	}
 
 	/// Get a mutable reference to the Folder wrapped by the layer.
@@ -95,18 +93,18 @@ impl LegacyLayer {
 	}
 }
 
-// =========
-// LayerIter
-// =========
+// ===============
+// LegacyLayerIter
+// ===============
 
 /// An iterator over the layers encapsulated by this layer.
 /// See [Layer::iter] for more information.
 #[derive(Debug, Default)]
-pub struct LayerIter<'a> {
+pub struct LegacyLayerIter<'a> {
 	pub stack: Vec<&'a LegacyLayer>,
 }
 
-impl<'a> Iterator for LayerIter<'a> {
+impl<'a> Iterator for LegacyLayerIter<'a> {
 	type Item = &'a LegacyLayer;
 
 	fn next(&mut self) -> Option<Self::Item> {

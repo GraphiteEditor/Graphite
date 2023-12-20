@@ -46,7 +46,6 @@ impl LayerMetadata {
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub tooltip: String,
-	pub visible: bool,
 	#[serde(rename = "layerType")]
 	pub layer_type: LayerDataTypeDiscriminant,
 	#[serde(rename = "layerMetadata")]
@@ -62,7 +61,6 @@ impl LayerPanelEntry {
 		Self {
 			name: "".to_string(),    // Replaced before it gets used
 			tooltip: "".to_string(), // Replaced before it gets used
-			visible: layer.visible,
 			layer_type: (&layer.data).into(),
 			layer_metadata: *layer_metadata,
 			path,
