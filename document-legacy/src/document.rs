@@ -1,5 +1,4 @@
 use crate::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
-use crate::layers::LegacyLayerType;
 
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, NodeOutput};
 use graphene_core::renderer::ClickTarget;
@@ -21,8 +20,6 @@ pub type LayerId = u64;
 pub struct Document {
 	#[serde(default)]
 	pub document_network: NodeNetwork,
-	#[serde(skip)]
-	pub root: LegacyLayerType,
 	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
 	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
 	#[serde(skip)]
@@ -40,7 +37,6 @@ impl PartialEq for Document {
 impl Default for Document {
 	fn default() -> Self {
 		Self {
-			root: LegacyLayerType::Folder(Vec::new()),
 			state_identifier: DefaultHasher::new(),
 			document_network: {
 				use graph_craft::document::{value::TaggedValue, NodeInput};

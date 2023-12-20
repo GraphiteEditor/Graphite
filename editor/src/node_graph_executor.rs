@@ -2,13 +2,13 @@ use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::FrontendImageData;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
+use crate::messages::portfolio::document::utility_types::layer_panel::LayerClassification;
 use crate::messages::portfolio::document::utility_types::misc::{LayerMetadata, LayerPanelEntry};
 use crate::messages::prelude::*;
 
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::LayerDataTypeDiscriminant;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -611,10 +611,12 @@ impl NodeGraphExecutor {
 							data: LayerPanelEntry {
 								name: document.document_network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 								tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
-								layer_type: if document.metadata.is_folder(layer) {
-									LayerDataTypeDiscriminant::Folder
+								layer_classification: if document.metadata.is_artboard(layer) {
+									LayerClassification::Artboard
+								} else if document.metadata.is_folder(layer) {
+									LayerClassification::Folder
 								} else {
-									LayerDataTypeDiscriminant::Layer
+									LayerClassification::Layer
 								},
 								layer_metadata: LayerMetadata {
 									expanded: layer.has_children(&document.metadata) && !collapsed_folders.contains(&layer),

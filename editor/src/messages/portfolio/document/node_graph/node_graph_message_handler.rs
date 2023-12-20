@@ -147,12 +147,6 @@ impl Default for NodeGraphMessageHandler {
 	}
 }
 
-impl Into<Message> for document_legacy::document_metadata::SelectionChanged {
-	fn into(self) -> Message {
-		BroadcastMessage::TriggerEvent(BroadcastEvent::SelectionChanged).into()
-	}
-}
-
 impl NodeGraphMessageHandler {
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
@@ -429,7 +423,8 @@ impl NodeGraphMessageHandler {
 			return false;
 		}
 		network.nodes.remove(&node_id);
-		responses.add(document.metadata.retain_selected_nodes(|&id| id != node_id));
+		document.metadata.retain_selected_nodes(|&id| id != node_id);
+		responses.add(BroadcastEvent::SelectionChanged);
 		true
 	}
 
@@ -627,13 +622,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::StartTransaction);
 
 					let new_ids = &document.metadata.selected_nodes().map(|&id| (id, crate::application::generate_uuid())).collect();
-					responses.add(document.metadata.clear_selected_nodes());
+
+					document.metadata.clear_selected_nodes();
+					responses.add(BroadcastEvent::SelectionChanged);
 
 					// Copy the selected nodes
 					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
 
 					// Select the new nodes
-					responses.add(document.metadata.add_selected_nodes(copied_nodes.iter().map(|(node_id, _)| *node_id)));
+					document.metadata.add_selected_nodes(copied_nodes.iter().map(|(node_id, _)| *node_id));
+					responses.add(BroadcastEvent::SelectionChanged);
 
 					for (node_id, mut document_node) in copied_nodes {
 						// Shift duplicated node
@@ -649,7 +647,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
-				responses.add(document.metadata.clear_selected_nodes());
+				document.metadata.clear_selected_nodes();
+				responses.add(BroadcastEvent::SelectionChanged);
+
 				for _ in 0..depth_of_nesting {
 					self.network.pop();
 				}
@@ -755,13 +755,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
-				responses.add(document.metadata.add_selected_nodes(nodes));
+				document.metadata.add_selected_nodes(nodes);
+				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
-				responses.add(document.metadata.retain_selected_nodes(|node| !nodes.contains(node)));
+				document.metadata.retain_selected_nodes(|node| !nodes.contains(node));
+				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
-				responses.add(document.metadata.set_selected_nodes(nodes));
+				document.metadata.set_selected_nodes(nodes);
+				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
@@ -953,7 +956,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				if let Some(network) = document.document_network.nested_network(&self.network) {
-					responses.add(document.metadata.clear_selected_nodes());
+					document.metadata.clear_selected_nodes();
+					responses.add(BroadcastEvent::SelectionChanged);
 
 					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
 

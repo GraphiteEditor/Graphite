@@ -5,7 +5,7 @@
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { LayerType, LayerPanelEntry } from "@graphite/wasm-communication/messages";
+	import type { LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -136,8 +136,8 @@
 		editor.instance.deselectAllLayers();
 	}
 
-	function isGroupOrArtboard(layerType: LayerType) {
-		return layerType === "Folder" || layerType === "Artboard";
+	function isNestingLayer(layerClassification: LayerClassification) {
+		return layerClassification === "Folder" || layerClassification === "Artboard";
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -179,9 +179,9 @@
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					insertFolder = isGroupOrArtboard(layer.layerType) ? layer.path : layer.path.slice(0, layer.path.length - 1);
-					insertIndex = isGroupOrArtboard(layer.layerType) ? 0 : folderIndex + 1;
-					highlightFolder = isGroupOrArtboard(layer.layerType);
+					insertFolder = isNestingLayer(layer.layerClassification) ? layer.path : layer.path.slice(0, layer.path.length - 1);
+					insertIndex = isNestingLayer(layer.layerClassification) ? 0 : folderIndex + 1;
+					highlightFolder = isNestingLayer(layer.layerClassification);
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
@@ -320,11 +320,11 @@
 					on:dragstart={(e) => draggable && dragStart(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					{#if isGroupOrArtboard(listing.entry.layerType)}
+					{#if isNestingLayer(listing.entry.layerClassification)}
 						<button class="expand-arrow" class:expanded={listing.entry.layerMetadata.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
-						{#if listing.entry.layerType === "Artboard"}
+						{#if listing.entry.layerClassification === "Artboard"}
 							<IconLabel icon="Artboard" class={"layer-type-icon"} />
-						{:else if listing.entry.layerType === "Folder"}
+						{:else if listing.entry.layerClassification === "Folder"}
 							<IconLabel icon="Folder" class={"layer-type-icon"} />
 						{/if}
 					{:else}
@@ -337,7 +337,7 @@
 							data-text-input
 							type="text"
 							value={listing.entry.name}
-							placeholder={listing.entry.layerType}
+							placeholder={listing.entry.layerClassification}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

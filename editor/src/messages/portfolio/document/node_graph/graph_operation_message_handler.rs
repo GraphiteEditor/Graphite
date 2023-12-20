@@ -564,7 +564,8 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		self.responses.add(self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id)));
+		self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id));
+		self.responses.add(BroadcastEvent::SelectionChanged);
 
 		self.responses.add(DocumentMessage::DocumentStructureChanged);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
