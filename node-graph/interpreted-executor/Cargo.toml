@@ -14,7 +14,7 @@ quantization = ["graphene-std/quantization"]
 
 [dependencies]
 graphene-core = { workspace = true, features = ["std"] }
-graphene-std = { path = "../gstd" }
+graphene-std = { path = "../gstd", features = ["serde"] }
 graph-craft = { path = "../graph-craft" }
 gpu-executor = { path = "../gpu-executor" }
 wgpu-executor = { path = "../wgpu-executor" }
@@ -23,5 +23,6 @@ num-traits = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true, optional = true }
 glam = { workspace = true }
-once_cell = "1.18"                                                   # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
+# Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
+once_cell = "1.18"
 futures = { workspace = true }

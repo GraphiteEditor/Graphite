@@ -1,11 +1,10 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-
-use document_legacy::document_metadata::LayerNodeIdentifier;
 
 use glam::{IVec2, Vec2Swizzles};
 
@@ -132,9 +131,8 @@ impl ArtboardToolData {
 		responses.add(DocumentMessage::StartTransaction);
 
 		let mut intersections = document
-			.document_legacy
 			.click_xray(input.mouse.position)
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Artboard"));
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Artboard"));
 
 		responses.add(BroadcastEvent::DocumentIsDirty);
 		if let Some(intersection) = intersections.next() {

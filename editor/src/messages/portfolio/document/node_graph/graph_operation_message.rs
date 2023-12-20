@@ -1,7 +1,8 @@
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
@@ -15,7 +16,7 @@ use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 
-pub type LayerIdentifier = Vec<document_legacy::document::LayerId>;
+pub type LayerIdentifier = Vec<LayerId>;
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

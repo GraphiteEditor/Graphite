@@ -3,10 +3,10 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font, FontCache};
@@ -225,7 +225,7 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.document_legacy) {
+		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
 			responses.add(NodeGraphMessage::SetHidden { node_id, hidden: editable });
 		}
 
@@ -245,8 +245,8 @@ impl TextToolData {
 
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
-		let color = graph_modification_utils::get_fill_color(self.layer, &document.document_legacy).unwrap_or(Color::BLACK);
-		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.document_legacy)?;
+		let color = graph_modification_utils::get_fill_color(self.layer, &document.network).unwrap_or(Color::BLACK);
+		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.network)?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -276,9 +276,8 @@ impl TextToolData {
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
 		if let Some(clicked_text_layer_path) = document
-			.document_legacy
 			.click(mouse, document.network())
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text"))
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Text"))
 		{
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
@@ -350,7 +349,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text") {
+	if !is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
 		return None;
 	}
 
@@ -391,7 +390,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
 				for layer in document.metadata().selected_layers() {
-					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.document_legacy) else {
+					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network) else {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
@@ -439,7 +438,7 @@ impl Fsm for TextToolFsmState {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
 					layer_path: Vec::new(),
-					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.document_legacy).unwrap()],
+					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap()],
 					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});

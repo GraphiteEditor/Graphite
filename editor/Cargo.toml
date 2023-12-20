@@ -44,11 +44,10 @@ gpu-executor = { path = "../node-graph/gpu-executor", optional = true }
 interpreted-executor = { path = "../node-graph/interpreted-executor" }
 dyn-any = { workspace = true }
 graphene-core = { path = "../node-graph/gcore" }
-graphene-std = { path = "../node-graph/gstd" }
+graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 num_enum = "0.6.1"
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
-document-legacy = { workspace = true }
 # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 once_cell = "1.13.0"
 web-sys = { workspace = true, features = [
@@ -61,5 +60,4 @@ web-sys = { workspace = true, features = [
 
 [dev-dependencies]
 env_logger = "0.10"
-test-case = "3.1"
 futures = { workspace = true }

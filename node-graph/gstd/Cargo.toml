@@ -74,16 +74,8 @@ image-compare = { version = "0.3.0", optional = true }
 vello = { workspace = true, optional = true }
 vello_svg = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
-
-[dependencies.serde]
-workspace = true
-optional = true
-features = ["derive"]
-
-[dependencies.web-sys]
-workspace = true
-optional = true
-features = [
+serde = { workspace = true, optional = true, features = ["derive"] }
+web-sys = { workspace = true, optional = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",
 	"ImageData",
@@ -93,4 +85,4 @@ features = [
 	"HtmlCanvasElement",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
-]
+] }

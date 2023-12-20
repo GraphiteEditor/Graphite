@@ -1,8 +1,7 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-
-use document_legacy::document_metadata::LayerNodeIdentifier;
 
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]

@@ -20,7 +20,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 editor = { path = "../../editor", package = "graphite-editor" }
-document-legacy = { workspace = true }
 graph-craft = { workspace = true }
 log = { workspace = true }
 graphene-core = { workspace = true, features = ["std", "alloc"] }

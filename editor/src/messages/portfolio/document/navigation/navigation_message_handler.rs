@@ -5,10 +5,9 @@ use crate::consts::{
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-
-use document_legacy::document::Document;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
@@ -59,13 +58,13 @@ impl Default for NavigationMessageHandler {
 	}
 }
 
-impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
+impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: NavigationMessage,
 		responses: &mut VecDeque<Message>,
-		(document, document_bounds, ipp, selection_bounds): (&Document, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>),
+		(document_metadata, document_bounds, ipp, selection_bounds): (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>),
 	) {
 		use NavigationMessage::*;
 
@@ -85,8 +84,8 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				padding_scale_factor,
 				prevent_zoom_past_100,
 			} => {
-				let v1 = document.metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document.metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
+				let v1 = document_metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
+				let v2 = document_metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
 				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 				let size = (pos2 - pos1) / (v2 - v1);
@@ -108,7 +107,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
-					let transform = document.metadata.document_to_viewport.inverse();
+					let transform = document_metadata.document_to_viewport.inverse();
 					responses.add(FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
 						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
@@ -270,7 +269,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
-				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta);
+				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta);
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -288,7 +287,7 @@ impl MessageHandler<NavigationMessage, (&Document, Option<[DVec2; 2]>, &InputPre
 				self.transform_operation = TransformOperation::Pan { pre_commit_pan: self.pan };
 			}
 			TranslateCanvasByViewportFraction { delta } => {
-				let transformed_delta = document.metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				self.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);

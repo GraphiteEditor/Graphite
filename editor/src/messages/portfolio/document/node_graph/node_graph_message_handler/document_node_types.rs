@@ -1,11 +1,15 @@
 use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
+use crate::messages::portfolio::document::utility_types::LayerId;
+use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::concrete;
-use graph_craft::document::value::*;
 use graph_craft::document::*;
+use graph_craft::document::{value::*, DocumentNodeMetadata};
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 #[cfg(feature = "gpu")]
@@ -68,13 +72,13 @@ impl DocumentOutputType {
 }
 
 pub struct NodePropertiesContext<'a> {
-	pub persistent_data: &'a crate::messages::portfolio::utility_types::PersistentData,
-	pub document: &'a document_legacy::document::Document,
-	pub responses: &'a mut VecDeque<crate::messages::prelude::Message>,
-	pub layer_path: &'a [document_legacy::document::LayerId],
+	pub persistent_data: &'a PersistentData,
+	pub responses: &'a mut VecDeque<Message>,
+	pub layer_path: &'a [LayerId],
 	pub nested_path: &'a [NodeId],
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network: &'a NodeNetwork,
+	pub metadata: &'a mut DocumentMetadata,
 }
 
 #[derive(Clone)]
@@ -2493,7 +2497,7 @@ impl DocumentNodeDefinition {
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata
-	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: graph_craft::document::DocumentNodeMetadata) -> DocumentNode {
+	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, document_metadata: DocumentNodeMetadata) -> DocumentNode {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 		DocumentNode {
@@ -2501,7 +2505,7 @@ impl DocumentNodeDefinition {
 			inputs,
 			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
-			metadata,
+			metadata: document_metadata,
 			manual_composition: self.manual_composition.clone(),
 			..Default::default()
 		}
@@ -2509,10 +2513,10 @@ impl DocumentNodeDefinition {
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, metadata: graph_craft::document::DocumentNodeMetadata) -> DocumentNode {
+	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, document_metadata: DocumentNodeMetadata) -> DocumentNode {
 		let mut input_override = input_override.into_iter();
 		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
-		self.to_document_node(inputs, metadata)
+		self.to_document_node(inputs, document_metadata)
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default

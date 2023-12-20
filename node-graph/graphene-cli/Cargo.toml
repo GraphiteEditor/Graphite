@@ -31,7 +31,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-graphene-std = { path = "../gstd" }
+graphene-std = { path = "../gstd", features = ["serde"] }
 image = { workspace = true, default-features = false, features = [
 	"bmp",
 	"png",
@@ -48,9 +48,5 @@ fern = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 wgpu = { workspace = true }
-
-[dependencies.document-legacy]
-path = "../../document-legacy"
-package = "graphite-document-legacy"
 
 [dev-dependencies]

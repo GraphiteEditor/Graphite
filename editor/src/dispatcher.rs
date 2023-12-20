@@ -257,12 +257,11 @@ impl Dispatcher {
 mod test {
 	use crate::application::Editor;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+	use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
 	use crate::messages::prelude::*;
 	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
 
-	use document_legacy::document::LayerId;
-	use document_legacy::document_metadata::LayerNodeIdentifier;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -299,14 +298,14 @@ mod test {
 	fn copy_paste_single_layer() {
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
 		});
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
 		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
@@ -330,7 +329,7 @@ mod test {
 	fn copy_paste_single_layer_from_middle() {
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 		let shape_id = document_before_copy.metadata.all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
@@ -341,7 +340,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
 		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
@@ -370,15 +369,15 @@ mod test {
 		});
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 
-		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
-		let folder_layer = LayerNodeIdentifier::new(FOLDER_ID, &document_before_added_shapes.document_network);
+		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
+		let folder_layer = LayerNodeIdentifier::new(FOLDER_ID, &document_before_added_shapes.network);
 
 		editor.drag_tool(ToolType::Line, 0., 0., 10., 10.);
 		editor.drag_tool(ToolType::Freehand, 10., 20., 30., 40.);
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
@@ -387,7 +386,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
 		let layers_before_added_shapes = document_before_added_shapes.metadata.all_layers().collect::<Vec<_>>();
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
@@ -416,7 +415,7 @@ mod test {
 	fn copy_paste_deleted_layers() {
 		let mut editor = create_editor_with_three_layers();
 
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 		let mut layers = document_before_copy.metadata.all_layers();
 		let rect_id = layers.next().expect("rectangle");
 		let shape_id = layers.next().expect("shape");
@@ -439,7 +438,7 @@ mod test {
 			insert_index: -1,
 		});
 
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().document_legacy.clone();
+		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
 		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();

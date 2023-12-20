@@ -3,12 +3,12 @@ use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -217,7 +217,7 @@ impl PenToolData {
 		self.subpath_index = subpath_index;
 
 		// Stop the handles on the first point from mirroring
-		let Some(subpaths) = get_subpaths(layer, &document.document_legacy) else {
+		let Some(subpaths) = get_subpaths(layer, &document.network) else {
 			return;
 		};
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
@@ -277,7 +277,7 @@ impl PenToolData {
 	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<()> {
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -323,7 +323,7 @@ impl PenToolData {
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -395,7 +395,7 @@ impl PenToolData {
 
 	fn drag_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
 
 		// Get the last manipulator group
 		let manipulator_groups = subpath.manipulator_groups();
@@ -448,7 +448,7 @@ impl PenToolData {
 	fn place_anchor(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -492,7 +492,7 @@ impl PenToolData {
 
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.document_legacy)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
 
 		// Abort if only one manipulator group has been placed
 		if fsm == PenToolFsmState::PlacingAnchor && subpath.len() < 3 {
@@ -724,7 +724,7 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 	for layer in document.metadata().selected_layers() {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 
-		let subpaths = get_subpaths(layer, &document.document_legacy)?;
+		let subpaths = get_subpaths(layer, &document.network)?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			if subpath.closed() {
 				continue;

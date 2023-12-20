@@ -2,12 +2,12 @@ use super::tool_prelude::*;
 use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::document::Document;
-use document_legacy::document_metadata::LayerNodeIdentifier;
+use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -223,14 +223,14 @@ impl PathToolData {
 		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, shift) {
+		if let Some(selected_points) = shape_editor.select_point(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
 			self.start_dragging_point(selected_points, input, document, responses);
 			responses.add(OverlaysMessage::Draw);
 
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network) {
+		else if let Some(layer) = document.click(input.mouse.position, &document.network) {
 			if shift {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -238,7 +238,7 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
-			shape_editor.select_all_anchors(&document.document_legacy, layer);
+			shape_editor.select_all_anchors(&document.network, layer);
 
 			PathToolFsmState::Dragging
 		} else {
@@ -292,16 +292,16 @@ impl PathToolData {
 
 		if shift {
 			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_legacy));
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.network));
 			}
 		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
-			shape_editor.reset_opposing_handle_lengths(&document.document_legacy, opposing_handle_lengths, responses);
+			shape_editor.reset_opposing_handle_lengths(&document.network, opposing_handle_lengths, responses);
 			self.opposing_handle_lengths = None;
 		}
 
 		// Move the selected points with the mouse
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
-		shape_editor.move_selected_points(&document.document_legacy, snapped_position - self.previous_mouse_position, shift, responses);
+		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_position - self.previous_mouse_position, shift, responses);
 		self.previous_mouse_position = snapped_position;
 	}
 }
@@ -365,7 +365,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
+					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 				}
 				responses.add(OverlaysMessage::Draw);
 
@@ -379,7 +379,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.document_legacy, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
+					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -391,16 +391,16 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				let nearest_point = shape_editor
-					.find_nearest_point_indices(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD)
+					.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD)
 					.map(|(_, nearest_point)| nearest_point);
 
-				shape_editor.delete_selected_handles_with_zero_length(&document.document_legacy, &tool_data.opposing_handle_lengths, responses);
+				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.metadata, &tool_data.opposing_handle_lengths, responses);
 
 				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
 					if clicked_selected {
 						shape_editor.deselect_all();
-						shape_editor.select_point(&document.document_legacy, input.mouse.position, SELECTION_THRESHOLD, false);
+						shape_editor.select_point(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
 						responses.add(OverlaysMessage::Draw);
 					}
 				}
@@ -421,9 +421,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::InsertPoint) => {
 				// First we try and flip the sharpness (if they have clicked on an anchor)
-				if !shape_editor.flip_sharp(&document.document_legacy, input.mouse.position, SELECTION_TOLERANCE, responses) {
+				if !shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses) {
 					// If not, then we try and split the path that may have been clicked upon
-					shape_editor.split(&document.document_legacy, input.mouse.position, SELECTION_TOLERANCE, responses);
+					shape_editor.split(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -436,35 +436,35 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(&document.document_legacy, (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(&document.network, &document.metadata, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectAllPoints) => {
-				shape_editor.select_all_points(&document.document_legacy);
+				shape_editor.select_all_points(&document.network);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(new_x, coordinates.y), layer);
+					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(new_x, coordinates.y), layer);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.document_legacy, DVec2::new(coordinates.x, new_y), layer);
+					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(coordinates.x, new_y), layer);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				tool_data.selection_status = get_selection_status(&document.document_legacy, shape_editor);
+				tool_data.selection_status = get_selection_status(&document.network, &document.metadata, shape_editor);
 				self
 			}
 			(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.set_handle_mirroring_on_selected(true, responses);
-				shape_editor.smooth_selected_groups(responses, &document.document_legacy);
+				shape_editor.smooth_selected_groups(responses, &document.network);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}
@@ -549,7 +549,7 @@ struct SingleSelectedPoint {
 
 /// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
 /// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
-fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> SelectionStatus {
+fn get_selection_status(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, shape_state: &mut ShapeState) -> SelectionStatus {
 	let mut selection_layers = shape_state.selected_shape_state.iter().map(|(k, v)| (*k, v.selected_points_count()));
 	let total_selected_points = selection_layers.clone().map(|(_, v)| v).sum::<usize>();
 
@@ -559,10 +559,10 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 			return SelectionStatus::None;
 		};
 
-		let Some(subpaths) = get_subpaths(layer, document) else {
+		let Some(subpaths) = get_subpaths(layer, document_network) else {
 			return SelectionStatus::None;
 		};
-		let Some(mirror) = get_mirror_handles(layer, document) else {
+		let Some(mirror) = get_mirror_handles(layer, document_network) else {
 			return SelectionStatus::None;
 		};
 		let Some(point) = shape_state.selected_points().next() else {
@@ -579,7 +579,7 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 		let manipulator_angle = if mirror.contains(&point.group) { ManipulatorAngle::Smooth } else { ManipulatorAngle::Sharp };
 
 		return SelectionStatus::One(SingleSelectedPoint {
-			coordinates: document.metadata.transform_to_document(layer).transform_point2(local_position),
+			coordinates: document_metadata.transform_to_document(layer).transform_point2(local_position),
 			layer,
 			id: *point,
 			manipulator_angle,
@@ -589,7 +589,7 @@ fn get_selection_status(document: &Document, shape_state: &mut ShapeState) -> Se
 	// Check to see if multiple manipulator groups are selected
 	if total_selected_points > 1 {
 		return SelectionStatus::Multiple(MultipleSelectedPoints {
-			manipulator_angle: shape_state.selected_manipulator_angles(document),
+			manipulator_angle: shape_state.selected_manipulator_angles(document_network),
 		});
 	}
 

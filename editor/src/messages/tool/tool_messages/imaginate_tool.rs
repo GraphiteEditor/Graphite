@@ -1,8 +1,7 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::resize::Resize;
-
-use document_legacy::document_metadata::LayerNodeIdentifier;
 
 use serde::{Deserialize, Serialize};
 

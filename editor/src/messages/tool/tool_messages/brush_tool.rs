@@ -1,9 +1,9 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::resolve_document_node_type;
 use crate::messages::portfolio::document::node_graph::transform_utils::{get_current_normalized_pivot, get_current_transform};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeMetadata, NodeInput};
 use graphene_core::raster::BlendMode;
