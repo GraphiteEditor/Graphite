@@ -154,24 +154,20 @@ impl DocumentMetadata {
 
 // selected layer modifications
 impl DocumentMetadata {
-	#[must_use]
-	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) -> SelectionChanged {
+	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
 		self.selected_nodes.retain(f);
-		SelectionChanged
 	}
-	#[must_use]
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) -> SelectionChanged {
+
+	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
 		self.selected_nodes = new;
-		SelectionChanged
 	}
-	#[must_use]
-	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) -> SelectionChanged {
+
+	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) {
 		self.selected_nodes.extend(iter);
-		SelectionChanged
 	}
-	#[must_use]
-	pub fn clear_selected_nodes(&mut self) -> SelectionChanged {
-		self.set_selected_nodes(Vec::new())
+
+	pub fn clear_selected_nodes(&mut self) {
+		self.set_selected_nodes(Vec::new());
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -374,8 +370,8 @@ impl LayerNodeIdentifier {
 	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
-			is_layer_node(node_id, network),
-			"Layer identifier constructed from non layer node {node_id}: {:#?}",
+			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer()),
+			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
 		Self::new_unchecked(node_id)
@@ -631,10 +627,6 @@ pub struct NodeRelations {
 	next_sibling: Option<LayerNodeIdentifier>,
 	first_child: Option<LayerNodeIdentifier>,
 	last_child: Option<LayerNodeIdentifier>,
-}
-
-fn is_layer_node(node: NodeId, network: &NodeNetwork) -> bool {
-	node == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node).is_some_and(|node| node.is_layer())
 }
 
 #[test]

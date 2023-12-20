@@ -7,7 +7,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::layer_panel::{LayerMetadata, RawBuffer};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, DocumentSave, FlipAxis};
 use crate::messages::portfolio::document::utility_types::vectorize_layer_metadata;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -19,8 +19,6 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_legacy::document::Document as DocumentLegacy;
 use document_legacy::document::LayerId;
 use document_legacy::document_metadata::LayerNodeIdentifier;
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
-use document_legacy::DocumentError;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
@@ -175,17 +173,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
 				}
 			}
-			AddSelectedLayers { additional_layers } => {
-				for layer_path in &additional_layers {
-					responses.extend(self.select_layer(layer_path));
-				}
-
-				// TODO: Correctly update layer panel in clear_selection instead of here
-				responses.add(FolderChanged { affected_folder_path: vec![] });
-				responses.add(BroadcastEvent::SelectionChanged);
-
-				self.update_layers_panel_options_bar_widgets(responses);
-			}
 			AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 
@@ -271,6 +258,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
+				self.update_layers_panel_options_bar_widgets(responses);
+
 				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
 				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
 			}
@@ -301,10 +290,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					}
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
-			}
-			FolderChanged { affected_folder_path } => {
-				let affected_layer_path = affected_folder_path;
-				responses.extend([LayerChanged { affected_layer_path }.into(), DocumentStructureChanged.into()]);
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
@@ -354,12 +339,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 			}
 			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
-			LayerChanged { affected_layer_path } => {
-				if let Ok(layer_entry) = self.layer_panel_entry(affected_layer_path.clone()) {
-					responses.add(FrontendMessage::UpdateDocumentLayerDetails { data: layer_entry });
-				}
-				self.update_layers_panel_options_bar_widgets(responses);
-			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
 
@@ -368,7 +347,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					return;
 				}
 
-				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index).unwrap();
+				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
@@ -472,7 +451,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentHistoryForward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(RenderDocument);
-				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(DocumentStructureChanged);
 			}
 			RenameDocument { new_name } => {
 				self.name = new_name;
@@ -654,7 +633,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentHistoryBackward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(RenderDocument);
-				responses.add(FolderChanged { affected_folder_path: vec![] });
+				responses.add(DocumentStructureChanged);
 				responses.add(UndoFinished);
 			}
 			UndoFinished => self.undo_in_progress = false,
@@ -764,14 +743,14 @@ impl DocumentMessageHandler {
 		val.unwrap()
 	}
 
-	pub fn deserialize_document(serialized_content: &str) -> Result<Self, DocumentError> {
-		let deserialized_result: Result<Self, DocumentError> = serde_json::from_str(serialized_content).map_err(|e| DocumentError::InvalidFile(e.to_string()));
+	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
+		let deserialized_result: Result<Self, EditorError> = serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()));
 		match deserialized_result {
 			Ok(document) => {
 				if document.version == GRAPHITE_DOCUMENT_VERSION {
 					Ok(document)
 				} else {
-					Err(DocumentError::InvalidFile("Graphite document version mismatch".to_string()))
+					Err(EditorError::DocumentDeserialization("Graphite document version mismatch".to_string()))
 				}
 			}
 			Err(e) => Err(e),
@@ -788,69 +767,13 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn with_name_and_content(name: String, serialized_content: String) -> Result<Self, EditorError> {
-		match Self::deserialize_document(&serialized_content) {
-			Ok(mut document) => {
-				document.name = name;
-				Ok(document)
-			}
-			Err(DocumentError::InvalidFile(msg)) => Err(EditorError::DocumentDeserialization(msg)),
-			_ => Err(EditorError::Document(String::from("Failed to open file"))),
-		}
-	}
-
-	pub fn is_unmodified_default(&self) -> bool {
-		self.serialize_root().len() == Self::default().serialize_root().len()
-			&& self.document_undo_history.is_empty()
-			&& self.document_redo_history.is_empty()
-			&& self.name.starts_with(DEFAULT_DOCUMENT_NAME)
-	}
-
-	fn select_layer(&mut self, path: &[LayerId]) -> Option<Message> {
-		println!("Select_layer fail: {:?}", self.all_layers_sorted());
-
-		if let Some(layer) = self.layer_metadata.get_mut(path) {
-			layer.selected = true;
-			let data = self.layer_panel_entry(path.to_vec()).ok()?;
-			(!path.is_empty()).then(|| FrontendMessage::UpdateDocumentLayerDetails { data }.into())
-		} else {
-			warn!("Tried to select non-existing layer {path:?}");
-			None
-		}
+		let mut document = Self::deserialize_document(&serialized_content)?;
+		document.name = name;
+		Ok(document)
 	}
 
 	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
 		self.layer_metadata.iter().filter_map(|(path, data)| data.selected.then_some(path.as_slice()))
-	}
-
-	pub fn selected_layers_with_type(&self, discriminant: LayerDataTypeDiscriminant) -> impl Iterator<Item = &[LayerId]> {
-		self.selected_layers().filter(move |path| {
-			self.document_legacy
-				.layer(path)
-				.map(|layer| LayerDataTypeDiscriminant::from(&layer.data) == discriminant)
-				.unwrap_or(false)
-		})
-	}
-
-	pub fn non_selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.iter().filter_map(|(path, data)| (!data.selected).then_some(path.as_slice()))
-	}
-
-	pub fn selected_layers_without_children(&self) -> Vec<&[LayerId]> {
-		let unique_layers = DocumentLegacy::shallowest_unique_layers(self.selected_layers());
-
-		// We need to maintain layer ordering
-		self.sort_layers(unique_layers.iter().copied())
-	}
-
-	pub fn selected_layers_contains(&self, path: &[LayerId]) -> bool {
-		self.layer_metadata.get(path).map(|layer| layer.selected).unwrap_or(false)
-	}
-
-	pub fn visible_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.all_layers().filter(|path| match self.document_legacy.layer(path) {
-			Ok(layer) => layer.visible,
-			Err(_) => false,
-		})
 	}
 
 	/// Returns the bounding boxes for all visible layers.
@@ -920,61 +843,8 @@ impl DocumentMessageHandler {
 		structure
 	}
 
-	/// Returns an unsorted list of all layer paths including folders at all levels, except the document's top-level root folder itself
-	pub fn all_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.layer_metadata.keys().filter_map(|path| (!path.is_empty()).then_some(path.as_slice()))
-	}
-
-	/// Returns the paths to all layers in order
-	fn sort_layers<'a>(&self, paths: impl Iterator<Item = &'a [LayerId]>) -> Vec<&'a [LayerId]> {
-		// Compute the indices for each layer to be able to sort them
-		let mut layers_with_indices: Vec<(&[LayerId], Vec<usize>)> = paths
-			// 'path.len() > 0' filters out root layer since it has no indices
-			.filter(|path| !path.is_empty())
-			.filter_map(|path| {
-				// TODO: `indices_for_path` can return an error. We currently skip these layers and log a warning. Once this problem is solved this code can be simplified.
-				match self.document_legacy.indices_for_path(path) {
-					Err(err) => {
-						warn!("layers_sorted: Could not get indices for the layer {path:?}: {err:?}");
-						None
-					}
-					Ok(indices) => Some((path, indices)),
-				}
-			})
-			.collect();
-
-		layers_with_indices.sort_by_key(|(_, indices)| indices.clone());
-		layers_with_indices.into_iter().map(|(path, _)| path).collect()
-	}
-
-	/// Returns the paths to all layers in order
-	pub fn all_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.all_layers())
-	}
-
-	/// Returns the paths to all selected layers in order
-	pub fn selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.selected_layers())
-	}
-
-	/// Returns the paths to all non_selected layers in order
-	#[allow(dead_code)] // used for test cases
-	pub fn non_selected_layers_sorted(&self) -> Vec<&[LayerId]> {
-		self.sort_layers(self.non_selected_layers())
-	}
-
 	pub fn layer_metadata(&self, path: &[LayerId]) -> &LayerMetadata {
 		self.layer_metadata.get(path).unwrap_or_else(|| panic!("Editor's layer metadata for {path:?} does not exist"))
-	}
-
-	pub fn layer_metadata_mut(&mut self, path: &[LayerId]) -> &mut LayerMetadata {
-		Self::layer_metadata_mut_no_borrow_self(&mut self.layer_metadata, path)
-	}
-
-	pub fn layer_metadata_mut_no_borrow_self<'a>(layer_metadata: &'a mut HashMap<Vec<LayerId>, LayerMetadata>, path: &[LayerId]) -> &'a mut LayerMetadata {
-		layer_metadata
-			.get_mut(path)
-			.unwrap_or_else(|| panic!("Layer data cannot be found because the path {path:?} does not exist"))
 	}
 
 	/// Places a document into the history system
@@ -1000,12 +870,6 @@ impl DocumentMessageHandler {
 			document: self.document_legacy.clone(),
 			layer_metadata: self.layer_metadata.clone(),
 		});
-	}
-
-	pub fn rollback(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup(responses);
-		self.undo(responses);
-		// TODO: Consider if we should check if the document is saved
 	}
 
 	/// Replace the document with a new document save, returning the document save.
@@ -1042,10 +906,7 @@ impl DocumentMessageHandler {
 				self.document_redo_history.pop_front();
 			}
 
-			for layer in self.layer_metadata.keys() {
-				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-			}
-
+			responses.add(DocumentMessage::DocumentStructureChanged);
 			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
@@ -1071,10 +932,7 @@ impl DocumentMessageHandler {
 				self.document_undo_history.pop_front();
 			}
 
-			for layer in self.layer_metadata.keys() {
-				responses.add(DocumentMessage::LayerChanged { affected_layer_path: layer.clone() })
-			}
-
+			responses.add(DocumentMessage::DocumentStructureChanged);
 			responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 		}
 	}
@@ -1113,42 +971,14 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	// TODO: This should probably take a slice not a vec, also why does this even exist when `layer_panel_entry_from_path` also exists?
-	pub fn layer_panel_entry(&mut self, path: Vec<LayerId>) -> Result<LayerPanelEntry, EditorError> {
-		let data: LayerMetadata = *self
-			.layer_metadata
-			.get_mut(&path)
-			.ok_or_else(|| EditorError::Document(format!("Could not get layer metadata for {path:?}")))?;
-		let layer = self.document_legacy.layer(&path)?;
-		let entry = LayerPanelEntry::new(&data, layer, path);
-		Ok(entry)
-	}
-
-	pub fn layer_panel_entry_from_path(&self, path: &[LayerId]) -> Option<LayerPanelEntry> {
-		let layer_metadata = self.layer_metadata(path);
-		let layer = self.document_legacy.layer(path).ok()?;
-
-		Some(LayerPanelEntry::new(layer_metadata, layer, path.to_vec()))
-	}
-
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> Result<isize, DocumentError> {
+	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
 		let layer_ids_above = parent.children(self.metadata()).take(if insert_index < 0 { usize::MAX } else { insert_index as usize });
 		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
 
-		Ok(new_insert_index)
-	}
-
-	/// Calculate the path that new layers should be inserted to.
-	/// Depends on the selected layers as well as their types (Folder/Non-Folder)
-	pub fn get_path_for_new_layer(&self) -> Vec<u64> {
-		// If the selected layers don't actually exist, a new uuid for the
-		// root folder will be returned
-		let mut path = self.document_legacy.shallowest_common_folder(self.selected_layers()).map_or(vec![], |v| v.to_vec());
-		path.push(generate_uuid());
-		path
+		new_insert_index
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {

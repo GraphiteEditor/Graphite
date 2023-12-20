@@ -1,8 +1,6 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 
-use document_legacy::document::LayerId;
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use graphene_core::raster::curve::Curve;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -135,33 +133,6 @@ pub struct InvisibleStandinInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
-pub struct LayerReferenceInput {
-	#[widget_builder(constructor)]
-	pub value: Option<Vec<LayerId>>,
-
-	#[serde(rename = "layerName")]
-	#[widget_builder(constructor)]
-	pub layer_name: Option<String>,
-
-	#[serde(rename = "layerType")]
-	#[widget_builder(constructor)]
-	pub layer_type: Option<LayerDataTypeDiscriminant>,
-
-	pub disabled: bool,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<LayerReferenceInput>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]

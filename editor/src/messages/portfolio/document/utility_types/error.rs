@@ -1,4 +1,3 @@
-use document_legacy::DocumentError;
 use graphene_core::raster::color::Color;
 
 use thiserror::Error;
@@ -38,4 +37,3 @@ macro_rules! derive_from {
 derive_from!(&str, Misc);
 derive_from!(String, Misc);
 derive_from!(Color, Color);
-derive_from!(DocumentError, Document);

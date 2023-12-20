@@ -667,9 +667,7 @@ export class LayerPanelEntry {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	visible!: boolean;
-
-	layerType!: LayerType;
+	layerClassification!: LayerClassification;
 
 	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
 	path!: BigUint64Array;
@@ -686,7 +684,7 @@ export class LayerMetadata {
 	selected!: boolean;
 }
 
-export type LayerType = "Folder" | "Layer" | "Artboard";
+export type LayerClassification = "Folder" | "Artboard" | "Layer";
 
 export class RenderedImageData {
 	readonly path!: BigUint64Array;
@@ -875,24 +873,6 @@ export class ImageLabel extends WidgetProps {
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
-}
-
-export class LayerReferenceInput extends WidgetProps {
-	@Transform(({ value }: { value: BigUint64Array | undefined }) => (value ? String(value) : undefined))
-	value!: string | undefined;
-
-	layerName!: string | undefined;
-
-	layerType!: LayerType | undefined;
-
-	disabled!: boolean;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-
-	// Styling
-
-	minWidth!: number;
 }
 
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
@@ -1129,7 +1109,6 @@ const widgetSubTypes = [
 	{ value: IconButton, name: "IconButton" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: ImageLabel, name: "ImageLabel" },
-	{ value: LayerReferenceInput, name: "LayerReferenceInput" },
 	{ value: NumberInput, name: "NumberInput" },
 	{ value: OptionalInput, name: "OptionalInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },

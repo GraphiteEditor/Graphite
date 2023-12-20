@@ -1,5 +1,4 @@
 use document_legacy::document::LayerId;
-use document_legacy::layers::layer_info::{LayerDataTypeDiscriminant, LegacyLayer};
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -30,7 +29,7 @@ impl Serialize for JsRawBuffer {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy, specta::Type)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Copy, specta::Type)]
 pub struct LayerMetadata {
 	pub selected: bool,
 	pub expanded: bool,
@@ -42,31 +41,22 @@ impl LayerMetadata {
 	}
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+pub enum LayerClassification {
+	#[default]
+	Folder,
+	Artboard,
+	Layer,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub name: String,
 	pub tooltip: String,
-	pub visible: bool,
-	#[serde(rename = "layerType")]
-	pub layer_type: LayerDataTypeDiscriminant,
+	#[serde(rename = "layerClassification")]
+	pub layer_classification: LayerClassification,
 	#[serde(rename = "layerMetadata")]
 	pub layer_metadata: LayerMetadata,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,
-}
-
-impl LayerPanelEntry {
-	// TODO: Deprecate this because it's using document-legacy layer data which is no longer linked to data from the node graph,
-	// TODO: so this doesn't feed `name` (that's fed elsewhere) or `visible` (that's broken entirely), etc.
-	pub fn new(layer_metadata: &LayerMetadata, layer: &LegacyLayer, path: Vec<LayerId>) -> Self {
-		Self {
-			name: "".to_string(),    // Replaced before it gets used
-			tooltip: "".to_string(), // Replaced before it gets used
-			visible: layer.visible,
-			layer_type: (&layer.data).into(),
-			layer_metadata: *layer_metadata,
-			path,
-			thumbnail: r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 0 0"></svg>"#.to_string(),
-		}
-	}
 }

@@ -5,10 +5,9 @@ use super::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use document_legacy::layers::layer_info::LayerDataTypeDiscriminant;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
-use graph_craft::imaginate_input::{ImaginateMaskStartingFill, ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
+use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice,
@@ -1505,10 +1504,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let neg_index = resolve_input("Negative Prompt");
 	let base_img_index = resolve_input("Adapt Input Image");
 	let img_creativity_index = resolve_input("Image Creativity");
-	let mask_index = resolve_input("Masking Layer");
-	let inpaint_index = resolve_input("Inpaint");
-	let mask_blur_index = resolve_input("Mask Blur");
-	let mask_fill_index = resolve_input("Mask Starting Fill");
+	// let mask_index = resolve_input("Masking Layer");
+	// let inpaint_index = resolve_input("Inpaint");
+	// let mask_blur_index = resolve_input("Mask Blur");
+	// let mask_fill_index = resolve_input("Mask Starting Fill");
 	let faces_index = resolve_input("Improve Faces");
 	let tiling_index = resolve_input("Tiling");
 
@@ -1877,44 +1876,6 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		)
 	};
 
-	let mut layer_reference_input_layer_is_some = false;
-	let layer_mask = {
-		let mut widgets = start_widgets(document_node, node_id, mask_index, "Masking Layer", FrontendGraphDataType::General, true);
-
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::LayerPath(layer_path),
-			exposed: false,
-		} = &document_node.inputs[mask_index]
-		{
-			let layer_reference_input_layer = layer_path
-				.as_ref()
-				.and_then(|path| context.document.layer(path).ok())
-				.map(|layer| (layer.name.clone().unwrap_or_default(), LayerDataTypeDiscriminant::from(&layer.data)));
-
-			layer_reference_input_layer_is_some = layer_reference_input_layer.is_some();
-
-			let layer_reference_input_layer_name = layer_reference_input_layer.as_ref().map(|(layer_name, _)| layer_name);
-			let layer_reference_input_layer_type = layer_reference_input_layer.as_ref().map(|(_, layer_type)| layer_type);
-
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-			if !transform_not_connected {
-				widgets.push(
-					LayerReferenceInput::new(layer_path.clone(), layer_reference_input_layer_name.cloned(), layer_reference_input_layer_type.cloned())
-						.disabled(!use_base_image)
-						.on_update(update_value(|input: &LayerReferenceInput| TaggedValue::LayerPath(input.value.clone()), node_id, mask_index))
-						.widget_holder(),
-				);
-			} else {
-				widgets.push(TextLabel::new("Requires Transform Input").italic(true).widget_holder());
-			}
-		}
-		LayoutGroup::Row { widgets }.with_tooltip(
-			"Reference to a layer or folder which masks parts of the input image. Image generation is constrained to masked areas.\n\
-			\n\
-			Black shapes represent the masked regions. Lighter shades of gray act as a partial mask, and colors become grayscale. (This is the reverse of traditional masks because it is easier to draw black shapes; this will be changed later when the mask input is a bitmap.)",
-		)
-	};
-
 	let mut layout = vec![
 		server_status,
 		progress,
@@ -1928,73 +1889,73 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		negative_prompt,
 		base_image,
 		image_creativity,
-		layer_mask,
+		// layer_mask,
 	];
 
-	if use_base_image && layer_reference_input_layer_is_some {
-		let in_paint = {
-			let mut widgets = start_widgets(document_node, node_id, inpaint_index, "Inpaint", FrontendGraphDataType::Boolean, true);
+	// if use_base_image && layer_reference_input_layer_is_some {
+	// 	let in_paint = {
+	// 		let mut widgets = start_widgets(document_node, node_id, inpaint_index, "Inpaint", FrontendGraphDataType::Boolean, true);
 
-			if let &NodeInput::Value {
-				tagged_value: TaggedValue::Bool(in_paint),
-				exposed: false,
-			} = &document_node.inputs[inpaint_index]
-			{
-				widgets.extend_from_slice(&[
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					RadioInput::new(
-						[(true, "Inpaint"), (false, "Outpaint")]
-							.into_iter()
-							.map(|(paint, name)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
-							.collect(),
-					)
-					.selected_index(Some(1 - in_paint as u32))
-					.widget_holder(),
-				]);
-			}
-			LayoutGroup::Row { widgets }.with_tooltip(
-				"Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
-				\n\
-				An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
-				\n\
-				An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.",
-			)
-		};
+	// 		if let &NodeInput::Value {
+	// 			tagged_value: TaggedValue::Bool(in_paint),
+	// 			exposed: false,
+	// 		} = &document_node.inputs[inpaint_index]
+	// 		{
+	// 			widgets.extend_from_slice(&[
+	// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
+	// 				RadioInput::new(
+	// 					[(true, "Inpaint"), (false, "Outpaint")]
+	// 						.into_iter()
+	// 						.map(|(paint, name)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
+	// 						.collect(),
+	// 				)
+	// 				.selected_index(Some(1 - in_paint as u32))
+	// 				.widget_holder(),
+	// 			]);
+	// 		}
+	// 		LayoutGroup::Row { widgets }.with_tooltip(
+	// 			"Constrain image generation to the interior (inpaint) or exterior (outpaint) of the mask, while referencing the other unchanged parts as context imagery.\n\
+	// 			\n\
+	// 			An unwanted part of an image can be replaced by drawing around it with a black shape and inpainting with that mask layer.\n\
+	// 			\n\
+	// 			An image can be uncropped by resizing the Imaginate layer to the target bounds and outpainting with a black rectangle mask matching the original image bounds.",
+	// 		)
+	// 	};
 
-		let blur_radius = {
-			let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
-			let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, true);
-			LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
-		};
+	// 	let blur_radius = {
+	// 		let number_props = NumberInput::default().unit(" px").min(0.).max(25.).int();
+	// 		let widgets = number_widget(document_node, node_id, mask_blur_index, "Mask Blur", number_props, true);
+	// 		LayoutGroup::Row { widgets }.with_tooltip("Blur radius for the mask. Useful for softening sharp edges to blend the masked area with the rest of the image.")
+	// 	};
 
-		let mask_starting_fill = {
-			let mut widgets = start_widgets(document_node, node_id, mask_fill_index, "Mask Starting Fill", FrontendGraphDataType::General, true);
+	// 	let mask_starting_fill = {
+	// 		let mut widgets = start_widgets(document_node, node_id, mask_fill_index, "Mask Starting Fill", FrontendGraphDataType::General, true);
 
-			if let &NodeInput::Value {
-				tagged_value: TaggedValue::ImaginateMaskStartingFill(starting_fill),
-				exposed: false,
-			} = &document_node.inputs[mask_fill_index]
-			{
-				let mask_fill_content_modes = ImaginateMaskStartingFill::list();
-				let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
-				for mode in mask_fill_content_modes {
-					entries.push(MenuListEntry::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
-				}
-				let entries = vec![entries];
+	// 		if let &NodeInput::Value {
+	// 			tagged_value: TaggedValue::ImaginateMaskStartingFill(starting_fill),
+	// 			exposed: false,
+	// 		} = &document_node.inputs[mask_fill_index]
+	// 		{
+	// 			let mask_fill_content_modes = ImaginateMaskStartingFill::list();
+	// 			let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
+	// 			for mode in mask_fill_content_modes {
+	// 				entries.push(MenuListEntry::new(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
+	// 			}
+	// 			let entries = vec![entries];
 
-				widgets.extend_from_slice(&[
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					DropdownInput::new(entries).selected_index(Some(starting_fill as u32)).widget_holder(),
-				]);
-			}
-			LayoutGroup::Row { widgets }.with_tooltip(
-				"Begin in/outpainting the masked areas using this fill content as the starting input image.\n\
-				\n\
-				Each option can be visualized by generating with 'Sampling Steps' set to 0.",
-			)
-		};
-		layout.extend_from_slice(&[in_paint, blur_radius, mask_starting_fill]);
-	}
+	// 			widgets.extend_from_slice(&[
+	// 				Separator::new(SeparatorType::Unrelated).widget_holder(),
+	// 				DropdownInput::new(entries).selected_index(Some(starting_fill as u32)).widget_holder(),
+	// 			]);
+	// 		}
+	// 		LayoutGroup::Row { widgets }.with_tooltip(
+	// 			"Begin in/outpainting the masked areas using this fill content as the starting input image.\n\
+	// 			\n\
+	// 			Each option can be visualized by generating with 'Sampling Steps' set to 0.",
+	// 		)
+	// 	};
+	// 	layout.extend_from_slice(&[in_paint, blur_radius, mask_starting_fill]);
+	// }
 
 	let improve_faces = {
 		let widgets = bool_widget(document_node, node_id, faces_index, "Improve Faces", true);

@@ -17,7 +17,6 @@
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
-	import LayerReferenceInput from "@graphite/components/widgets/inputs/LayerReferenceInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
 	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
@@ -125,10 +124,6 @@
 		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
 		{#if imageLabel}
 			<ImageLabel {...exclude(imageLabel)} />
-		{/if}
-		{@const layerReferenceInput = narrowWidgetProps(component.props, "LayerReferenceInput")}
-		{#if layerReferenceInput}
-			<LayerReferenceInput {...exclude(layerReferenceInput)} on:value={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const numberInput = narrowWidgetProps(component.props, "NumberInput")}
 		{#if numberInput}
