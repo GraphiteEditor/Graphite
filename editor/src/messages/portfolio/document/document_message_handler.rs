@@ -72,8 +72,6 @@ pub struct DocumentMessageHandler {
 	pub commit_hash: String,
 	#[serde(default)]
 	pub collapsed: Vec<LayerNodeIdentifier>,
-	#[serde(default)]
-	pub selected: HashMap<Vec<LayerId>, bool>,
 
 	// Fields omitted from the saved document format
 	//
@@ -114,7 +112,6 @@ impl Default for DocumentMessageHandler {
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
 			undo_in_progress: false,
-			selected: vec![(vec![], true)].into_iter().collect(),
 			layer_range_selection_reference: None,
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
@@ -223,7 +220,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
-					selected_layers: &mut self.selected.iter().filter_map(|(path, selected)| selected.then_some(path.as_slice())),
 					node_graph_message_handler: &self.node_graph_handler,
 					executor,
 					document_name: self.name.as_str(),
@@ -319,7 +315,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DebugPrintDocument => {
-				info!("{:#?}\n{:#?}", self.network, self.selected);
+				info!("{:#?}\n", self.network);
 			}
 			DeleteLayer { layer_path } => {
 				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
@@ -870,10 +866,6 @@ impl DocumentMessageHandler {
 		Ok(document)
 	}
 
-	pub fn selected_layers(&self) -> impl Iterator<Item = &[LayerId]> {
-		self.selected.iter().filter_map(|(path, selected)| selected.then_some(path.as_slice()))
-	}
-
 	/// Returns the bounding boxes for all visible layers.
 	pub fn bounding_boxes<'a>(&'a self) -> impl Iterator<Item = [DVec2; 2]> + 'a {
 		// TODO: Remove this function entirely?
@@ -978,19 +970,10 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
-
 		let Some(document) = self.document_undo_history.pop_back() else {
 			return;
 		};
-
-		// Update the currently displayed layer on the Properties panel if the selection changes after an undo action
-		// Also appropriately update the Properties panel if an undo action results in a layer being deleted
-		let prev_selected_paths: Vec<Vec<LayerId>> = self.selected.iter().filter_map(|(layer_id, selected)| selected.then_some(layer_id.clone())).collect();
-
-		if prev_selected_paths != selected_paths {
-			responses.add(BroadcastEvent::SelectionChanged);
-		}
+		responses.add(BroadcastEvent::SelectionChanged);
 
 		let document_save = self.replace_document(document);
 
@@ -1007,17 +990,9 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-		let selected_paths: Vec<Vec<LayerId>> = self.selected_layers().map(|path| path.to_vec()).collect();
-
 		let Some(document) = self.document_redo_history.pop_back() else { return };
 
-		// Update currently displayed layer on property panel if selection changes after redo action
-		// Also appropriately update property panel if redo action results in a layer being added
-		let next_selected_paths: Vec<Vec<LayerId>> = self.selected.iter().filter_map(|(layer_id, selected)| selected.then_some(layer_id.clone())).collect();
-
-		if next_selected_paths != selected_paths {
-			responses.add(BroadcastEvent::SelectionChanged);
-		}
+		responses.add(BroadcastEvent::SelectionChanged);
 
 		let document_save = self.replace_document(document);
 		self.document_undo_history.push_back(document_save);
