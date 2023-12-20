@@ -8,6 +8,10 @@ use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
+// ================
+// DocumentMetadata
+// ================
+
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -33,9 +37,11 @@ impl Default for DocumentMetadata {
 		}
 	}
 }
-pub struct SelectionChanged;
 
-// layer iters
+// =================================
+// DocumentMetadata: Layer iterators
+// =================================
+
 impl DocumentMetadata {
 	/// Get the root layer from the document
 	pub const fn root(&self) -> LayerNodeIdentifier {
@@ -152,7 +158,10 @@ impl DocumentMetadata {
 	}
 }
 
-// selected layer modifications
+// ==============================================
+// DocumentMetadata: Selected layer modifications
+// ==============================================
+
 impl DocumentMetadata {
 	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
 		self.selected_nodes.retain(f);
@@ -172,6 +181,10 @@ impl DocumentMetadata {
 
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork) {
+		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
+			graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
+		}
+
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
 		self.folders = HashSet::new();
 		self.artboards = HashSet::new();
@@ -204,7 +217,9 @@ impl DocumentMetadata {
 					}
 				}
 
-				current = sibling_below(graph, current_node);
+				// Get the sibling below
+				let construct_layer_node = &current_node.inputs[1];
+				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)));
 			}
 		}
 
@@ -214,16 +229,10 @@ impl DocumentMetadata {
 	}
 }
 
-fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
-}
+// ============================
+// DocumentMetadata: Transforms
+// ============================
 
-fn sibling_below<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-	let construct_layer_node = &node.inputs[1];
-	construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)))
-}
-
-// transforms
 impl DocumentMetadata {
 	/// Update the cached transforms of the layers
 	pub fn update_transforms(&mut self, new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>) {
@@ -258,19 +267,10 @@ impl DocumentMetadata {
 	}
 }
 
-pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.is_artboard())
-}
+// ===============================
+// DocumentMetadata: Click targets
+// ===============================
 
-pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
-		|| network
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
-			.skip(1)
-			.any(|(node, _)| node.is_artboard() || node.is_layer())
-}
-
-// click targets
 impl DocumentMetadata {
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
@@ -341,7 +341,11 @@ impl DocumentMetadata {
 	}
 }
 
-/// Id of a layer node
+// ===================
+// LayerNodeIdentifier
+// ===================
+
+/// ID of a layer node
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayerNodeIdentifier(NonZeroU64);
 
@@ -558,12 +562,16 @@ impl LayerNodeIdentifier {
 	}
 }
 
+// ========
+// AxisIter
+// ========
+
 /// Iterator over specified axis.
 #[derive(Clone)]
 pub struct AxisIter<'a> {
-	layer_node: Option<LayerNodeIdentifier>,
-	next_node: fn(LayerNodeIdentifier, &DocumentMetadata) -> Option<LayerNodeIdentifier>,
-	document_metadata: &'a DocumentMetadata,
+	pub layer_node: Option<LayerNodeIdentifier>,
+	pub next_node: fn(LayerNodeIdentifier, &DocumentMetadata) -> Option<LayerNodeIdentifier>,
+	pub document_metadata: &'a DocumentMetadata,
 }
 
 impl<'a> Iterator for AxisIter<'a> {
@@ -575,6 +583,10 @@ impl<'a> Iterator for AxisIter<'a> {
 		layer_node
 	}
 }
+
+// ==============
+// DecendantsIter
+// ==============
 
 #[derive(Clone)]
 pub struct DecendantsIter<'a> {
@@ -620,13 +632,33 @@ impl<'a> DoubleEndedIterator for DecendantsIter<'a> {
 	}
 }
 
+// =============
+// NodeRelations
+// =============
+
 #[derive(Debug, Clone, Copy, Default)]
-pub struct NodeRelations {
+struct NodeRelations {
 	parent: Option<LayerNodeIdentifier>,
 	previous_sibling: Option<LayerNodeIdentifier>,
 	next_sibling: Option<LayerNodeIdentifier>,
 	first_child: Option<LayerNodeIdentifier>,
 	last_child: Option<LayerNodeIdentifier>,
+}
+
+// ================
+// Helper functions
+// ================
+
+pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.is_artboard())
+}
+
+pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
+		|| network
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
+			.skip(1)
+			.any(|(node, _)| node.is_artboard() || node.is_layer())
 }
 
 #[test]

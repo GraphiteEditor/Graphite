@@ -1,5 +1,6 @@
-use document_legacy::document::LayerId;
-use document_legacy::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::LayerId;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]

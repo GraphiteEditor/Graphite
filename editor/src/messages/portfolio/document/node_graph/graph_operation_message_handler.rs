@@ -1,10 +1,9 @@
 use super::{resolve_document_node_type, VectorDataModification};
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use document_legacy::document::Document;
-use document_legacy::document::LayerId;
-use document_legacy::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
@@ -23,35 +22,41 @@ pub mod transform_utils;
 pub struct GraphOperationMessageHandler;
 
 struct ModifyInputsContext<'a> {
-	network: &'a mut NodeNetwork,
+	document_metadata: &'a mut DocumentMetadata,
+	document_network: &'a mut NodeNetwork,
 	node_graph: &'a mut NodeGraphMessageHandler,
 	responses: &'a mut VecDeque<Message>,
 	layer: &'a [LayerId],
 	outwards_links: HashMap<NodeId, Vec<NodeId>>,
 	layer_node: Option<NodeId>,
-	document_metadata: &'a mut DocumentMetadata,
 }
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
-	fn new(document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
+	fn new(document_network: &'a mut NodeNetwork, document_metadata: &'a mut DocumentMetadata, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
 		Self {
-			outwards_links: document.document_network.collect_outwards_links(),
-			network: &mut document.document_network,
+			outwards_links: document_network.collect_outwards_links(),
+			document_network,
 			node_graph,
 			responses,
 			layer: &[],
 			layer_node: None,
-			document_metadata: &mut document.metadata,
+			document_metadata,
 		}
 	}
 
-	fn new_with_layer(layer: &'a [LayerId], document: &'a mut Document, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Option<Self> {
-		let mut document = Self::new(document, node_graph, responses);
+	fn new_with_layer(
+		layer: &'a [LayerId],
+		document_network: &'a mut NodeNetwork,
+		document_metadata: &'a mut DocumentMetadata,
+		node_graph: &'a mut NodeGraphMessageHandler,
+		responses: &'a mut VecDeque<Message>,
+	) -> Option<Self> {
+		let mut document = Self::new(document_network, document_metadata, node_graph, responses);
 		let Some(mut id) = layer.last().copied() else {
 			error!("Tried to modify root layer");
 			return None;
 		};
-		while !document.network.nodes.get(&id)?.is_layer() {
+		while !document.document_network.nodes.get(&id)?.is_layer() {
 			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
 		document.layer_node = Some(id);
@@ -60,20 +65,20 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Updates the input of an existing node
 	fn modify_existing_node_inputs(&mut self, node_id: NodeId, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let document_node = self.network.nodes.get_mut(&node_id).unwrap();
+		let document_node = self.document_network.nodes.get_mut(&node_id).unwrap();
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
 	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
-		assert!(!self.network.nodes.contains_key(&id), "Creating already existing node");
-		let pre_node = self.network.nodes.get_mut(&pre.node_id)?;
+		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
+		let pre_node = self.document_network.nodes.get_mut(&pre.node_id)?;
 		node.metadata.position = pre_node.metadata.position;
 
-		let post_node = self.network.nodes.get_mut(&post.node_id)?;
+		let post_node = self.document_network.nodes.get_mut(&post.node_id)?;
 		node.inputs[input] = NodeInput::node(pre.node_id, pre.node_output_index);
 		post_node.inputs[post.node_output_index] = NodeInput::node(id, output);
 
-		self.network.nodes.insert(id, node);
+		self.document_network.nodes.insert(id, node);
 
 		self.shift_upstream(id, shift_upstream);
 
@@ -81,19 +86,19 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
-		assert!(!self.network.nodes.contains_key(&new_id), "Creating already existing node");
-		let post_node = self.network.nodes.get_mut(&node_id)?;
+		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing node");
+		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
 		document_node.metadata.position = post_node.metadata.position + offset;
-		self.network.nodes.insert(new_id, document_node);
+		self.document_network.nodes.insert(new_id, document_node);
 
 		Some(new_id)
 	}
 
 	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
-		while let NodeInput::Node { node_id, output_index, .. } = &self.network.nodes.get(&output.node_id)?.inputs[output.node_output_index] {
-			let sibling_node = self.network.nodes.get(node_id)?;
+		while let NodeInput::Node { node_id, output_index, .. } = &self.document_network.nodes.get(&output.node_id)?.inputs[output.node_output_index] {
+			let sibling_node = self.document_network.nodes.get(node_id)?;
 			if sibling_node.name != "Artboard" {
 				return Some((*node_id, *output_index));
 			}
@@ -103,14 +108,14 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize, skip_layer_nodes: usize) -> Option<NodeId> {
-		assert!(!self.network.nodes.contains_key(&new_id), "Creating already existing layer");
+		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
 		let mut output = NodeOutput::new(output_node_id, input_index);
 		let mut sibling_layer = None;
 		let mut shift = IVec2::new(0, 3);
 		// Locate the node output of the first sibling layer to the new layer
 		if let Some((node_id, output_index)) = self.skip_artboards(&mut output) {
-			let sibling_node = self.network.nodes.get(&node_id)?;
+			let sibling_node = self.document_network.nodes.get(&node_id)?;
 			if sibling_node.is_layer() {
 				// There is already a layer node
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
@@ -125,7 +130,7 @@ impl<'a> ModifyInputsContext<'a> {
 			for _ in 0..skip_layer_nodes {
 				if let Some(old_sibling) = &sibling_layer {
 					output = NodeOutput::new(old_sibling.node_id, 1);
-					sibling_layer = self.network.nodes.get(&old_sibling.node_id)?.inputs[1].as_node().map(|node| NodeOutput::new(node, 0));
+					sibling_layer = self.document_network.nodes.get(&old_sibling.node_id)?.inputs[1].as_node().map(|node| NodeOutput::new(node, 0));
 					shift = IVec2::new(0, 3);
 				}
 			}
@@ -145,12 +150,12 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Update the document metadata structure
 		if let Some(new_id) = new_id {
-			let parent = if self.network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer()) {
-				LayerNodeIdentifier::new(output_node_id, self.network)
+			let parent = if self.document_network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer()) {
+				LayerNodeIdentifier::new(output_node_id, self.document_network)
 			} else {
 				LayerNodeIdentifier::ROOT
 			};
-			let new_child = LayerNodeIdentifier::new(new_id, self.network);
+			let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
 			parent.push_front_child(self.document_metadata, new_child);
 			self.responses.add(DocumentMessage::DocumentStructureChanged);
 		}
@@ -162,7 +167,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
 
 		let output_node_id = if parent == LayerNodeIdentifier::ROOT {
-			self.network.original_outputs()[0].node_id
+			self.document_network.original_outputs()[0].node_id
 		} else {
 			parent.to_node()
 		};
@@ -256,7 +261,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut shift_nodes = HashSet::new();
 		let mut stack = vec![node_id];
 		while let Some(node_id) = stack.pop() {
-			let Some(node) = self.network.nodes.get(&node_id) else { continue };
+			let Some(node) = self.document_network.nodes.get(&node_id) else { continue };
 			for input in &node.inputs {
 				let NodeInput::Node { node_id, .. } = input else { continue };
 				if shift_nodes.insert(*node_id) {
@@ -266,7 +271,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		for node_id in shift_nodes {
-			if let Some(node) = self.network.nodes.get_mut(&node_id) {
+			if let Some(node) = self.document_network.nodes.get_mut(&node_id) {
 				node.metadata.position += shift;
 			}
 		}
@@ -274,8 +279,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Inserts a new node and modifies the inputs
 	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let output_node_id = self.layer_node.unwrap_or(self.network.outputs[0].node_id);
-		let Some(output_node) = self.network.nodes.get_mut(&output_node_id) else {
+		let output_node_id = self.layer_node.unwrap_or(self.document_network.outputs[0].node_id);
+		let Some(output_node) = self.document_network.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
 			return;
 		};
@@ -292,11 +297,11 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let mut new_document_node = node_type.to_document_node_default_inputs([new_input], metadata);
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
-		self.network.nodes.insert(node_id, new_document_node);
+		self.document_network.nodes.insert(node_id, new_document_node);
 
-		let upstream_nodes = self.network.upstream_flow_back_from_nodes(vec![node_id], true).map(|(_, id)| id).collect::<Vec<_>>();
+		let upstream_nodes = self.document_network.upstream_flow_back_from_nodes(vec![node_id], true).map(|(_, id)| id).collect::<Vec<_>>();
 		for node_id in upstream_nodes {
-			let Some(node) = self.network.nodes.get_mut(&node_id) else { continue };
+			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
 			node.metadata.position.x -= 8;
 		}
 	}
@@ -304,8 +309,12 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Changes the inputs of a specific node
 	fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let existing_node_id = self
-			.network
-			.upstream_flow_back_from_nodes(self.layer_node.map_or_else(|| self.network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]), true)
+			.document_network
+			.upstream_flow_back_from_nodes(
+				self.layer_node
+					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+				true,
+			)
 			.find(|(node, _)| node.name == name)
 			.map(|(_, id)| id);
 		if let Some(node_id) = existing_node_id {
@@ -331,8 +340,12 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Changes the inputs of a all of the existing instances of a node name
 	fn modify_all_node_inputs(&mut self, name: &'static str, skip_rerender: bool, mut update_input: impl FnMut(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let existing_nodes: Vec<_> = self
-			.network
-			.upstream_flow_back_from_nodes(self.layer_node.map_or_else(|| self.network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]), true)
+			.document_network
+			.upstream_flow_back_from_nodes(
+				self.layer_node
+					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+				true,
+			)
 			.filter(|(node, _)| node.name == name)
 			.map(|(_, id)| id)
 			.collect();
@@ -516,18 +529,18 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn delete_layer(&mut self, id: NodeId) {
-		let Some(node) = self.network.nodes.get(&id) else {
+		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
 		};
 
-		LayerNodeIdentifier::new(id, self.network).delete(self.document_metadata);
+		LayerNodeIdentifier::new(id, self.document_network).delete(self.document_metadata);
 
 		let new_input = node.inputs[1].clone();
 		let deleted_position = node.metadata.position;
 
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
-			let Some(node) = self.network.nodes.get_mut(post_node) else {
+			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
 				continue;
 			};
 
@@ -541,7 +554,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut delete_nodes = vec![id];
-		for (_node, id) in self.network.upstream_flow_back_from_nodes(vec![id], true) {
+		for (_node, id) in self.document_network.upstream_flow_back_from_nodes(vec![id], true) {
 			// Don't delete the node if other layers depend on it.
 			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
@@ -552,13 +565,13 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		for node_id in &delete_nodes {
-			self.network.nodes.remove(node_id);
+			self.document_network.nodes.remove(node_id);
 		}
 
 		if let Some(node_id) = new_input.as_node() {
-			if let Some(shift) = self.network.nodes.get(&node_id).map(|node| deleted_position - node.metadata.position) {
-				for node_id in self.network.upstream_flow_back_from_nodes(vec![node_id], false).map(|(_, id)| id).collect::<Vec<_>>() {
-					let Some(node) = self.network.nodes.get_mut(&node_id) else { continue };
+			if let Some(shift) = self.document_network.nodes.get(&node_id).map(|node| deleted_position - node.metadata.position) {
+				for node_id in self.document_network.upstream_flow_back_from_nodes(vec![node_id], false).map(|(_, id)| id).collect::<Vec<_>>() {
+					let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
 					node.metadata.position += shift;
 				}
 			}
@@ -572,36 +585,36 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 }
 
-impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
+impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetadata, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
 	fn process_message(
 		&mut self,
 		message: GraphOperationMessage,
 		responses: &mut VecDeque<Message>,
-		(document, collapsed_folders, node_graph): (&mut Document, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler),
+		(document_network, document_metadata, collapsed, node_graph): (&mut NodeNetwork, &mut DocumentMetadata, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler),
 	) {
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
 			}
@@ -611,10 +624,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 				transform_in,
 				skip_rerender,
 			} => {
-				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
-				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier);
-				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), document_network);
+				let parent_transform = document_metadata.downstream_transform_to_viewport(layer_identifier);
+				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 			}
@@ -624,37 +637,37 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 				transform_in,
 				skip_rerender,
 			} => {
-				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), &document.document_network);
-				let parent_transform = document.metadata.downstream_transform_to_viewport(layer_identifier);
+				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), document_network);
+				let parent_transform = document_metadata.downstream_transform_to_viewport(layer_identifier);
 
-				let current_transform = Some(document.metadata.transform_to_viewport(layer_identifier));
-				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				let current_transform = Some(document_metadata.transform_to_viewport(layer_identifier));
+				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				let bounds = LayerBounds::new(document, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.network.original_outputs()[0].node_id, 0, 0) {
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -662,7 +675,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
@@ -670,7 +683,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
 				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, crate::application::generate_uuid())).collect();
@@ -679,7 +692,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 						.get(&0)
 						.and_then(|node| {
 							modify_inputs
-								.network
+								.document_network
 								.nodes
 								.get(&layer)
 								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
@@ -695,10 +708,10 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 						document_node = document_node.map_ids(NodeGraphMessageHandler::default_node_input, &new_ids);
 
 						// Insert node into network
-						modify_inputs.network.nodes.insert(node_id, document_node);
+						modify_inputs.document_network.nodes.insert(node_id, document_node);
 					}
 
-					if let Some(layer_node) = modify_inputs.network.nodes.get_mut(&layer) {
+					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&0) {
 							layer_node.inputs[0] = NodeInput::node(input, 0)
 						}
@@ -707,14 +720,14 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 				}
 
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -724,31 +737,31 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&[id], document, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&[id], document_network, document_metadata, node_graph, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				modify_inputs.delete_layer(id);
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::ClearArtboards => {
-				let mut modify_inputs = ModifyInputsContext::new(document, node_graph, responses);
-				let layer_nodes = modify_inputs.network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
-					if modify_inputs.network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
+					if modify_inputs.document_network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
 						modify_inputs.delete_layer(layer);
 					}
 				}
-				load_network_structure(document, collapsed_folders);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 		}
 	}
@@ -758,7 +771,7 @@ impl MessageHandler<GraphOperationMessage, (&mut Document, &mut Vec<LayerNodeIde
 	}
 }
 
-pub fn load_network_structure(document: &mut Document, collapsed_folders: &mut Vec<LayerNodeIdentifier>) {
-	document.metadata.load_structure(&document.document_network);
-	collapsed_folders.retain(|&layer| document.metadata.layer_exists(layer));
+pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, collapsed: &mut Vec<LayerNodeIdentifier>) {
+	document_metadata.load_structure(document_network);
+	collapsed.retain(|&layer| document_metadata.layer_exists(layer));
 }

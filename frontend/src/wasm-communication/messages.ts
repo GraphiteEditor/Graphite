@@ -672,16 +672,11 @@ export class LayerPanelEntry {
 	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
 	path!: BigUint64Array;
 
-	@Type(() => LayerMetadata)
-	layerMetadata!: LayerMetadata;
-
-	thumbnail!: string;
-}
-
-export class LayerMetadata {
 	expanded!: boolean;
 
 	selected!: boolean;
+
+	thumbnail!: string;
 }
 
 export type LayerClassification = "Folder" | "Artboard" | "Layer";

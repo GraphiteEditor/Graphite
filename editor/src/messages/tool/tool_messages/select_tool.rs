@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
@@ -11,8 +12,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use document_legacy::document::Document;
-use document_legacy::document_metadata::LayerNodeIdentifier;
+use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 
 use std::fmt;
@@ -394,22 +394,21 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers
-				for layer in document.document_legacy.selected_visible_layers() {
+				for layer in document.selected_visible_layers() {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
 				// Get the layer the user is hovering over
-				let click = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network);
+				let click = document.click(input.mouse.position, &document.network);
 				let not_selected_click = click.filter(|&hovered_layer| !document.metadata().selected_layers_contains(hovered_layer));
 				if let Some(layer) = not_selected_click {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
 				// Update bounds
-				let transform = document.document_legacy.selected_visible_layers().next().map(|layer| document.metadata().transform_to_viewport(layer));
+				let transform = document.selected_visible_layers().next().map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
-					.document_legacy
 					.selected_visible_layers()
 					.filter_map(|layer| {
 						document
@@ -440,10 +439,10 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::EditLayer) => {
 				// Edit the clicked layer
-				if let Some(intersect) = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network) {
+				if let Some(intersect) = document.click(input.mouse.position, &document.network) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
-						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.document_legacy, responses),
+						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network, responses),
 					}
 				}
 
@@ -471,8 +470,8 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document.document_legacy.selected_visible_layers().collect();
-				let intersection = document.document_legacy.click(input.mouse.position, &document.document_legacy.document_network);
+				let mut selected: Vec<_> = document.selected_visible_layers().collect();
+				let intersection = document.click(input.mouse.position, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -502,16 +501,16 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						let document = &document.document_legacy;
 						bounds.original_bound_transform = bounds.transform;
 
-						tool_data.layers_dragging.retain(|layer| document.document_network.nodes.contains_key(&layer.to_node()));
+						tool_data.layers_dragging.retain(|layer| document.network.nodes.contains_key(&layer.to_node()));
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
 							&tool_data.layers_dragging,
 							responses,
-							document,
+							&document.network,
+							&document.metadata,
 							None,
 							&ToolType::Select,
 						);
@@ -529,7 +528,8 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&selected,
 							responses,
-							&document.document_legacy,
+							&document.network,
+							&document.metadata,
 							None,
 							&ToolType::Select,
 						);
@@ -639,7 +639,16 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.document_legacy, None, &ToolType::Select);
+						let mut selected = Selected::new(
+							&mut bounds.original_transforms,
+							&mut pivot,
+							selected,
+							responses,
+							&document.network,
+							&document.metadata,
+							None,
+							&ToolType::Select,
+						);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 					}
@@ -670,7 +679,8 @@ impl Fsm for SelectToolFsmState {
 						&mut bounds.center_of_transformation,
 						&tool_data.layers_dragging,
 						responses,
-						&document.document_legacy,
+						&document.network,
+						&document.metadata,
 						None,
 						&ToolType::Select,
 					);
@@ -725,7 +735,7 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network);
+					let intersection = document.intersect_quad(quad, &document.network);
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document.metadata().selected_layers().filter(|&layer| !path.starts_with(layer, document.metadata())).collect();
@@ -795,7 +805,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.document_legacy.intersect_quad(quad, &document.document_legacy.document_network).collect();
+				let new_selected: HashSet<_> = document.intersect_quad(quad, &document.network).collect();
 				let current_selected: HashSet<_> = document.metadata().selected_layers().collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
@@ -813,7 +823,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.document_legacy, "Text") {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -836,7 +846,8 @@ impl Fsm for SelectToolFsmState {
 						&mut bounding_box_overlays.opposite_pivot,
 						&tool_data.layers_dragging,
 						responses,
-						&document.document_legacy,
+						&document.network,
+						&document.metadata,
 						None,
 						&ToolType::Select,
 					);
@@ -951,11 +962,11 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
-fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document: &Document, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, document, "Text") {
+fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+	if is_layer_fed_by_node_of_name(layer, document_network, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, document, "Shape") {
+	} else if is_layer_fed_by_node_of_name(layer, document_network, "Shape") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

@@ -15,10 +15,11 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 		use PropertiesPanelMessage::*;
 
 		let PropertiesPanelMessageHandlerData {
-			document_name,
-			artwork_document,
 			node_graph_message_handler,
 			executor,
+			document_network,
+			document_metadata,
+			document_name,
 			..
 		} = data;
 
@@ -36,12 +37,12 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			Refresh => {
 				let mut context = NodePropertiesContext {
 					persistent_data,
-					document: artwork_document,
 					responses,
 					nested_path: &node_graph_message_handler.network,
 					layer_path: &[],
 					executor,
-					network: &artwork_document.document_network,
+					network: document_network,
+					metadata: document_metadata,
 				};
 
 				let properties_sections = node_graph_message_handler.collate_properties(&mut context);

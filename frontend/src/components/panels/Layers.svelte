@@ -209,11 +209,11 @@
 	async function dragStart(event: DragEvent, listing: LayerListingInfo) {
 		const layer = listing.entry;
 		dragInPanel = true;
-		if (!layer.layerMetadata.selected) {
+		if (!layer.selected) {
 			fakeHighlight = [layer.path];
 		}
 		const select = () => {
-			if (!layer.layerMetadata.selected) selectLayer(false, false, listing);
+			if (!layer.selected) selectLayer(false, false, listing);
 		};
 
 		const target = (event.target instanceof HTMLElement && event.target) || undefined;
@@ -309,7 +309,7 @@
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.layerMetadata.selected,
+						selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.selected,
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertFolder === listing.entry.path,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.path.length - 1}` }}
@@ -321,7 +321,7 @@
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if isNestingLayer(listing.entry.layerClassification)}
-						<button class="expand-arrow" class:expanded={listing.entry.layerMetadata.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
+						<button class="expand-arrow" class:expanded={listing.entry.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
 						{#if listing.entry.layerClassification === "Artboard"}
 							<IconLabel icon="Artboard" class={"layer-type-icon"} />
 						{:else if listing.entry.layerClassification === "Folder"}

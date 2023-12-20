@@ -1,10 +1,10 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::Stroke;
 use graphene_core::Color;

@@ -1,17 +1,10 @@
-pub use super::layer_panel::{LayerMetadata, LayerPanelEntry};
-use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::document::LayerId;
+pub use super::layer_panel::LayerPanelEntry;
+use crate::messages::portfolio::document::utility_types::LayerId;
+
 use graphene_core::raster::color::Color;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
-
-#[derive(Debug, Clone)]
-pub struct DocumentSave {
-	pub document: DocumentLegacy,
-	pub layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
-}
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
@@ -32,8 +25,9 @@ pub enum AlignAggregate {
 	Center,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DocumentMode {
+	#[default]
 	DesignMode,
 	SelectMode,
 	GuideMode,

@@ -1,12 +1,12 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 
-use document_legacy::document::Document;
-use document_legacy::document_metadata::LayerNodeIdentifier;
+use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -31,12 +31,12 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], document: &'a Document, shape_editor: Option<&'a ShapeState>) {
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], document_network: &NodeNetwork, document_metadata: &DocumentMetadata, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
 				for &layer in selected {
-					layer_map.entry(layer).or_insert_with(|| document.metadata.upstream_transform(layer.to_node()));
+					layer_map.entry(layer).or_insert_with(|| document_metadata.upstream_transform(layer.to_node()));
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
@@ -61,7 +61,7 @@ impl OriginalTransforms {
 					if path_map.contains_key(&layer) {
 						continue;
 					}
-					let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document) else {
+					let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document_network) else {
 						continue;
 					};
 					let get_manipulator_point_position = |point_id: ManipulatorPointId| {
@@ -312,7 +312,8 @@ impl TransformOperation {
 pub struct Selected<'a> {
 	pub selected: &'a [LayerNodeIdentifier],
 	pub responses: &'a mut VecDeque<Message>,
-	pub document: &'a Document,
+	pub document_network: &'a NodeNetwork,
+	pub document_metadata: &'a DocumentMetadata,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
 	pub shape_editor: Option<&'a ShapeState>,
@@ -325,7 +326,8 @@ impl<'a> Selected<'a> {
 		pivot: &'a mut DVec2,
 		selected: &'a [LayerNodeIdentifier],
 		responses: &'a mut VecDeque<Message>,
-		document: &'a Document,
+		document_network: &'a NodeNetwork,
+		document_metadata: &'a DocumentMetadata,
 		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
 	) -> Self {
@@ -334,12 +336,13 @@ impl<'a> Selected<'a> {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 
-		original_transforms.update(selected, document, shape_editor);
+		original_transforms.update(selected, document_network, document_metadata, shape_editor);
 
 		Self {
 			selected,
 			responses,
-			document,
+			document_network,
+			document_metadata,
 			original_transforms,
 			pivot,
 			shape_editor,
@@ -351,7 +354,7 @@ impl<'a> Selected<'a> {
 		let xy_summation = self
 			.selected
 			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.document))
+			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.document_network, self.document_metadata))
 			.reduce(|a, b| a + b)
 			.unwrap_or_default();
 
@@ -362,15 +365,15 @@ impl<'a> Selected<'a> {
 		let [min, max] = self
 			.selected
 			.iter()
-			.filter_map(|&layer| self.document.metadata.bounding_box_viewport(layer))
+			.filter_map(|&layer| self.document_metadata.bounding_box_viewport(layer))
 			.reduce(Quad::combine_bounds)
 			.unwrap_or_default();
 		(min + max) / 2.
 	}
 
-	fn transform_layer(document: &Document, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let Some(&original_transform) = original_transform else { return };
-		let to = document.metadata.downstream_transform_to_viewport(layer);
+		let to = document_metadata.downstream_transform_to_viewport(layer);
 		let new = to.inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer: layer.to_path(),
@@ -380,8 +383,14 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(document: &Document, layer: LayerNodeIdentifier, initial_points: Option<&Vec<(ManipulatorPointId, DVec2)>>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
-		let viewspace = document.metadata.transform_to_viewport(layer);
+	fn transform_path(
+		document_metadata: &DocumentMetadata,
+		layer: LayerNodeIdentifier,
+		initial_points: Option<&Vec<(ManipulatorPointId, DVec2)>>,
+		transformation: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
 		let Some(initial_points) = initial_points else {
@@ -404,12 +413,12 @@ impl<'a> Selected<'a> {
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_ancestors in self.document.metadata.shallowest_unique_layers(self.selected.iter().copied()) {
+			for layer_ancestors in self.document_metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
 
 				match &self.original_transforms {
-					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document, layer, layer_transforms.get(&layer), transformation, self.responses),
-					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document, layer, path_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Path(path_transforms) => Self::transform_path(&self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
 				}
 			}
 			self.responses.add(BroadcastEvent::DocumentIsDirty);

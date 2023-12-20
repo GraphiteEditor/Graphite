@@ -599,32 +599,3 @@ impl HintInfo {
 		self
 	}
 }
-
-#[cfg(test)]
-mod tool_crash_on_layer_delete_tests {
-	use crate::application::{set_uuid_seed, Editor};
-	use crate::messages::portfolio::document::DocumentMessage;
-	use crate::messages::tool::utility_types::ToolType;
-	use crate::test_utils::EditorTestUtils;
-
-	use test_case::test_case;
-
-	#[test_case(ToolType::Pen; "while using Pen tool")]
-	#[test_case(ToolType::Freehand; "while using Freehand tool")]
-	#[test_case(ToolType::Spline; "while using Spline tool")]
-	#[test_case(ToolType::Line; "while using Line tool")]
-	#[test_case(ToolType::Rectangle; "while using Rectangle tool")]
-	#[test_case(ToolType::Ellipse; "while using Ellipse tool")]
-	#[test_case(ToolType::Polygon; "while using Polygon tool")]
-	#[test_case(ToolType::Path; "while using Path tool")]
-	fn should_not_crash_when_layer_is_deleted(tool: ToolType) {
-		set_uuid_seed(0);
-		let mut test_editor = Editor::new();
-
-		test_editor.select_tool(tool);
-		test_editor.lmb_mousedown(0.0, 0.0);
-		test_editor.move_mouse(100.0, 100.0);
-
-		test_editor.handle_message(DocumentMessage::DeleteSelectedLayers);
-	}
-}

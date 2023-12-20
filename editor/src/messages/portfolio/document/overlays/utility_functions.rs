@@ -26,7 +26,7 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	for layer in document.metadata().selected_layers() {
-		let Some(subpaths) = get_subpaths(layer, &document.document_legacy) else { continue };
+		let Some(subpaths) = get_subpaths(layer, &document.network) else { continue };
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));

@@ -1,16 +1,15 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::portfolio::document::utility_types::layer_panel::LayerMetadata;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
-use document_legacy::document::Document as DocumentLegacy;
-use document_legacy::document::LayerId;
-use document_legacy::document_metadata::LayerNodeIdentifier;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
+
 use serde::{Deserialize, Serialize};
 
 #[remain::sorted]
@@ -41,8 +40,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BackupDocument {
-		document: DocumentLegacy,
-		layer_metadata: HashMap<Vec<LayerId>, LayerMetadata>,
+		document: DocumentMessageHandler,
 	},
 	ClearLayerTree,
 	CommitTransaction,

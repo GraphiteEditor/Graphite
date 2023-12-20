@@ -1,4 +1,4 @@
-use document_legacy::document::LayerId;
+use crate::messages::portfolio::document::utility_types::LayerId;
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -29,18 +29,6 @@ impl Serialize for JsRawBuffer {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Copy, specta::Type)]
-pub struct LayerMetadata {
-	pub selected: bool,
-	pub expanded: bool,
-}
-
-impl LayerMetadata {
-	pub fn new(expanded: bool) -> Self {
-		Self { selected: false, expanded }
-	}
-}
-
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub enum LayerClassification {
 	#[default]
@@ -55,8 +43,8 @@ pub struct LayerPanelEntry {
 	pub tooltip: String,
 	#[serde(rename = "layerClassification")]
 	pub layer_classification: LayerClassification,
-	#[serde(rename = "layerMetadata")]
-	pub layer_metadata: LayerMetadata,
+	pub selected: bool,
+	pub expanded: bool,
 	pub path: Vec<LayerId>,
 	pub thumbnail: String,
 }
