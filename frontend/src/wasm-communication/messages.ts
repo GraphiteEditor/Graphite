@@ -650,8 +650,8 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 export class UpdateImageData extends JsMessage {
 	readonly documentId!: bigint;
 
-	@Type(() => RenderedImageData)
-	readonly imageData!: RenderedImageData[];
+	@Type(() => FrontendImageData)
+	readonly imageData!: FrontendImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -681,16 +681,10 @@ export class LayerPanelEntry {
 
 export type LayerClassification = "Folder" | "Artboard" | "Layer";
 
-export class RenderedImageData {
-	readonly path!: BigUint64Array;
-
-	readonly nodeId!: bigint;
-
+export class FrontendImageData {
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
-
-	readonly transform!: Float64Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}

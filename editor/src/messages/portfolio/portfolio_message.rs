@@ -1,8 +1,8 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
+
 use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
@@ -111,7 +111,6 @@ pub enum PortfolioMessage {
 	},
 	SubmitGraphRender {
 		document_id: u64,
-		layer_path: Vec<LayerId>,
 	},
 	ToggleRulers,
 	UpdateDocumentWidgets,

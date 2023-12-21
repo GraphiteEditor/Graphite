@@ -10,35 +10,6 @@ export type Editor = Readonly<ReturnType<typeof createEditor>>;
 // `wasmImport` starts uninitialized because its initialization needs to occur asynchronously, and thus needs to occur by manually calling and awaiting `initWasm()`
 let wasmImport: WebAssembly.Memory | undefined;
 
-export async function updateImage(path: BigUint64Array, nodeId: bigint, mime: string, imageData: Uint8Array, _transform: Float64Array, _documentId: bigint) {
-	const blob = new Blob([imageData], { type: mime });
-
-	const blobURL = URL.createObjectURL(blob);
-
-	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
-	const image = new Image();
-	image.src = blobURL;
-	await image.decode();
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	// (window as any).editorInstance?.setImageBlobURL(documentId, path, nodeId, blobURL, image.naturalWidth, image.naturalHeight, transform);
-}
-
-export async function fetchImage(_path: BigUint64Array, _nodeId: bigint, _mime: string, _documentId: bigint, url: string) {
-	const data = await fetch(url);
-	const blob = await data.blob();
-
-	const blobURL = URL.createObjectURL(blob);
-
-	// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
-	const image = new Image();
-	image.src = blobURL;
-	await image.decode();
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	// (window as any).editorInstance?.setImageBlobURL(documentId, path, nodeId, blobURL, image.naturalWidth, image.naturalHeight, undefined);
-}
-
 const tauri = "__TAURI_METADATA__" in window && import("@tauri-apps/api");
 export async function dispatchTauri(message: unknown) {
 	if (!tauri) return;

@@ -743,7 +743,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
-			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
+			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
 				metadata.add_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);

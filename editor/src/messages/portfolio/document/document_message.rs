@@ -61,11 +61,8 @@ pub enum DocumentMessage {
 		flip_axis: FlipAxis,
 	},
 	GroupSelectedLayers,
-	ImaginateGenerate {
-		layer_path: Vec<LayerId>,
-	},
+	ImaginateGenerate,
 	ImaginateRandom {
-		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
 	},

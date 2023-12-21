@@ -35,8 +35,6 @@ pub fn set_random_seed(seed: u64) {
 /// This avoids creating a json with a list millions of numbers long.
 #[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
 extern "C" {
-	fn updateImage(path: Vec<u64>, nodeId: Option<u64>, mime: String, imageData: &[u8], transform: js_sys::Float64Array, document_id: u64);
-	fn fetchImage(path: Vec<u64>, nodeId: Option<u64>, mime: String, document_id: u64, identifier: String);
 	//fn dispatchTauri(message: String) -> String;
 	fn dispatchTauri(message: String);
 }
@@ -160,25 +158,24 @@ impl JsEditorHandle {
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
 		// Special case for update image data to avoid serialization times.
-		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
-			for image in image_data {
-				#[cfg(not(feature = "tauri"))]
-				{
-					let transform = if let Some(transform_val) = image.transform {
-						let transform = js_sys::Float64Array::new_with_length(6);
-						transform.copy_from(&transform_val);
-						transform
-					} else {
-						js_sys::Float64Array::default()
-					};
-					updateImage(image.path, image.node_id, image.mime, &image.image_data, transform, document_id);
-				}
-				#[cfg(feature = "tauri")]
-				{
-					let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
-					fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
-				}
-			}
+		if let FrontendMessage::UpdateImageData { document_id: _, image_data: _ } = message {
+			// for image in image_data {
+			// 	#[cfg(not(feature = "tauri"))]
+			// 	{
+			// 		let transform = if let Some(transform_val) = image.transform {
+			// 			let transform = js_sys::Float64Array::new_with_length(6);
+			// 			transform.copy_from(&transform_val);
+			// 			transform
+			// 		} else {
+			// 			js_sys::Float64Array::default()
+			// 		};
+			// 	}
+			// 	#[cfg(feature = "tauri")]
+			// 	{
+			// 		let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
+			// 		fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
+			// 	}
+			// }
 			return;
 		}
 		if let FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer } = message {

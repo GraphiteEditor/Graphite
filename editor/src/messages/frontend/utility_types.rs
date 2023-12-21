@@ -1,5 +1,4 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::LayerId;
 
 use serde::{Deserialize, Serialize};
 
@@ -15,13 +14,9 @@ pub struct FrontendDocumentDetails {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct FrontendImageData {
-	pub path: Vec<LayerId>,
 	pub mime: String,
 	#[serde(skip)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
-	pub transform: Option<[f64; 6]>,
-	#[serde(rename = "nodeId")]
-	pub node_id: Option<graph_craft::document::NodeId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]

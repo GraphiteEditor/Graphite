@@ -2,7 +2,6 @@ use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -74,7 +73,6 @@ impl DocumentOutputType {
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
-	pub layer_path: &'a [LayerId],
 	pub nested_path: &'a [NodeId],
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network: &'a NodeNetwork,

@@ -436,12 +436,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
-			ImaginateGenerate { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
-			ImaginateRandom {
-				layer_path,
-				imaginate_node,
-				then_generate,
-			} => {
+			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
+			ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
 				// outside of this range can get rounded in f64
 				let random_bits = generate_uuid();
@@ -456,7 +452,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				// Generate the image
 				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
+					responses.add(DocumentMessage::ImaginateGenerate);
 				}
 			}
 			MoveSelectedLayersTo { parent, insert_index } => {

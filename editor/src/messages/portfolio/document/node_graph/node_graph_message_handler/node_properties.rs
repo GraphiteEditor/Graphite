@@ -1618,12 +1618,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Generate with a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
-						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
 							controller.trigger_regenerate();
 							DocumentMessage::ImaginateRandom {
-								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: true,
 							}
@@ -1635,11 +1633,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				TextButton::new("Generate")
 					.tooltip("Fill layer frame by generating a new image")
 					.on_update({
-						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
 							controller.trigger_regenerate();
-							DocumentMessage::ImaginateGenerate { layer_path: layer_path.clone() }.into()
+							DocumentMessage::ImaginateGenerate.into()
 						}
 					})
 					.widget_holder(),
@@ -1648,11 +1645,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Remove generated image from the layer frame")
 					.disabled(!matches!(imaginate_status, ImaginateStatus::ReadyDone))
 					.on_update({
-						let layer_path = context.layer_path.to_vec();
 						let controller = controller.clone();
 						move |_| {
 							controller.set_status(ImaginateStatus::Ready);
-							DocumentMessage::ImaginateGenerate { layer_path: layer_path.clone() }.into()
+							DocumentMessage::ImaginateGenerate.into()
 						}
 					})
 					.widget_holder(),
@@ -1676,10 +1672,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.tooltip("Set a new random seed")
 					.on_update({
 						let imaginate_node = imaginate_node.clone();
-						let layer_path = context.layer_path.to_vec();
 						move |_| {
 							DocumentMessage::ImaginateRandom {
-								layer_path: layer_path.clone(),
 								imaginate_node: imaginate_node.clone(),
 								then_generate: false,
 							}
