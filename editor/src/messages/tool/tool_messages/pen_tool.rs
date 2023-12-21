@@ -591,7 +591,6 @@ impl Fsm for PenToolFsmState {
 
 				// Initialize snapping
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				// Disable this tool's mirroring
 				tool_data.should_mirror = false;

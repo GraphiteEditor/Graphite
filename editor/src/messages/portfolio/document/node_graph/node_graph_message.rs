@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -83,7 +82,6 @@ pub enum NodeGraphMessage {
 		input: NodeInput,
 	},
 	SetQualifiedInputValue {
-		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,

@@ -359,8 +359,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DebugPrintDocument => {
 				info!("{:#?}", self.network);
 			}
-			DeleteLayer { layer_path } => {
-				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
+			DeleteLayer { id } => {
+				responses.add(GraphOperationMessage::DeleteLayer { id });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
 			DeleteSelectedLayers => {
@@ -368,9 +368,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.metadata().selected_layers()) {
-					responses.add_front(DocumentMessage::DeleteLayer {
-						layer_path: path.last().unwrap().to_path(),
-					});
+					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
@@ -438,7 +436,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
-			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
 			ImaginateGenerate { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			ImaginateRandom {
 				layer_path,
@@ -462,7 +459,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
 				}
 			}
-			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
 

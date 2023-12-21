@@ -279,7 +279,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "Image Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -1069,7 +1069,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "OutputBuffer",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -1137,7 +1137,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "CommandBuffer",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -1171,7 +1171,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "PipelineLayout",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]

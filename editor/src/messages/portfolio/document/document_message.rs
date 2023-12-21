@@ -49,7 +49,7 @@ pub enum DocumentMessage {
 	},
 	DebugPrintDocument,
 	DeleteLayer {
-		layer_path: Vec<LayerId>,
+		id: NodeId,
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
@@ -61,9 +61,6 @@ pub enum DocumentMessage {
 		flip_axis: FlipAxis,
 	},
 	GroupSelectedLayers,
-	ImaginateClear {
-		layer_path: Vec<LayerId>,
-	},
 	ImaginateGenerate {
 		layer_path: Vec<LayerId>,
 	},
@@ -71,9 +68,6 @@ pub enum DocumentMessage {
 		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
-	},
-	InputFrameRasterizeRegionBelowLayer {
-		layer_path: Vec<LayerId>,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,

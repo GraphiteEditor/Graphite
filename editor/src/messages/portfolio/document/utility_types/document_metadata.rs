@@ -107,8 +107,9 @@ impl DocumentMetadata {
 				layer_path
 			})
 			.collect::<Vec<_>>();
-		sorted_layers.sort();
+
 		// Sorting here creates groups of similar UUID paths
+		sorted_layers.sort();
 		sorted_layers.dedup_by(|a, b| a.starts_with(b));
 		sorted_layers
 	}

@@ -275,9 +275,6 @@ impl PathToolData {
 		}
 		selected_points.points.extend(additional_selected_points);
 
-		//let include_handles: Vec<_> = selected_layers.iter().map(|x| x.as_slice()).collect();
-		//self.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
-
 		self.drag_start_pos = input.mouse.position;
 		self.previous_mouse_position = input.mouse.position - selected_points.offset;
 	}

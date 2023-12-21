@@ -215,7 +215,6 @@ impl Fsm for SplineToolFsmState {
 				let transform = document.metadata().transform_to_viewport(parent);
 
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let pos = transform.inverse().transform_point2(snapped_position);

@@ -17,7 +17,6 @@ impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 		let root_transform = document.metadata().document_to_viewport;
 		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
 	}
@@ -25,7 +24,6 @@ impl Resize {
 	/// Recalculates snap targets without snapping the starting position.
 	pub fn recalculate_snaps(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 	}
 
 	/// Calculate the drag start position in viewport space.

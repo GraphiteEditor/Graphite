@@ -31,22 +31,6 @@ use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 
-/// Identifies a node graph, either the document graph or a node graph associated with a legacy layer.
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum GraphIdentifier {
-	DocumentGraph,
-	LayerGraph(LayerId),
-}
-
-impl GraphIdentifier {
-	pub const fn new(layer_id: Option<LayerId>) -> Self {
-		match layer_id {
-			Some(layer_id) => Self::LayerGraph(layer_id),
-			None => Self::DocumentGraph,
-		}
-	}
-}
-
 pub struct NodeRuntime {
 	pub(crate) executor: DynamicExecutor,
 	font_cache: FontCache,

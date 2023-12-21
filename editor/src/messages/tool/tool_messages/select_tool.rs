@@ -336,11 +336,6 @@ impl SelectToolData {
 			// 	layer_metadata,
 			// });
 		}
-
-		// // Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
-		// for layer_path in self.not_duplicated_layers.iter().flatten() {
-		// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
-		// }
 	}
 
 	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
@@ -482,21 +477,10 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
 				} else if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
-
-					// let snap_x = selected_edges.2 || selected_edges.3;
-					// let snap_y = selected_edges.0 || selected_edges.1;
-					//
-					// tool_data
-					// 	.snap_manager
-					// 	.start_snap(document, input, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
-					// tool_data
-					// 	.snap_manager
-					// 	.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
 
 					tool_data.layers_dragging = selected;
 

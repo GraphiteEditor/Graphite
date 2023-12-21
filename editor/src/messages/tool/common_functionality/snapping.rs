@@ -1,6 +1,4 @@
-use super::shape_editor::ManipulatorPointInfo;
 use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use glam::DVec2;
@@ -98,23 +96,6 @@ impl SnapManager {
 				self.point_targets = Some(snap_points.collect());
 			}
 		}
-	}
-
-	/// Adds all of the shape handles in the document, including bézier handles of the points specified
-	pub fn add_all_document_handles(
-		&mut self,
-		_document_message_handler: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		_include_handles: &[&[LayerId]],
-		_exclude: &[&[LayerId]],
-		_ignore_points: &[ManipulatorPointInfo],
-	) {
-		// for path in document_message_handler.all_layers() {
-		// 	if !exclude.contains(&path) {
-		// 		let layer = document_message_handler.document_legacy.layer(path).expect("Could not get layer for snapping");
-		// 		self.add_snap_path(document_message_handler, input, layer, path, include_handles.contains(&path), ignore_points);
-		// 	}
-		// }
 	}
 
 	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.

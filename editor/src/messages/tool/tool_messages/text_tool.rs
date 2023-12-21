@@ -437,7 +437,6 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					layer_path: Vec::new(),
 					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap()],
 					input_index: 1,
 					value: TaggedValue::String(new_text),

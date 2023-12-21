@@ -26,7 +26,6 @@ struct ModifyInputsContext<'a> {
 	document_network: &'a mut NodeNetwork,
 	node_graph: &'a mut NodeGraphMessageHandler,
 	responses: &'a mut VecDeque<Message>,
-	layer: &'a [LayerId],
 	outwards_links: HashMap<NodeId, Vec<NodeId>>,
 	layer_node: Option<NodeId>,
 }
@@ -38,7 +37,6 @@ impl<'a> ModifyInputsContext<'a> {
 			document_network,
 			node_graph,
 			responses,
-			layer: &[],
 			layer_node: None,
 			document_metadata,
 		}
@@ -325,10 +323,9 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.node_graph.network.clear();
 		self.responses.add(PropertiesPanelMessage::Refresh);
-		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
-			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		} else {
 			// Code was removed from here which cleared the frame
 		}
@@ -354,10 +351,9 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		self.responses.add(PropertiesPanelMessage::Refresh);
-		let layer_path = self.layer.to_vec();
 
 		if !skip_rerender {
-			self.responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		} else {
 			// Code was removed from here which cleared the frame
 		}
@@ -509,8 +505,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
 		if empty {
-			if let Some(layer) = self.layer_node {
-				self.responses.add(DocumentMessage::DeleteLayer { layer_path: vec![layer] })
+			if let Some(id) = self.layer_node {
+				self.responses.add(DocumentMessage::DeleteLayer { id })
 			}
 		}
 	}

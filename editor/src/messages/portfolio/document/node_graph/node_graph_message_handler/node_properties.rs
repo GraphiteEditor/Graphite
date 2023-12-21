@@ -785,17 +785,6 @@ fn curves_widget(document_node: &DocumentNode, node_id: u64, index: usize, name:
 	LayoutGroup::Row { widgets }
 }
 
-/// Properties for the input node, with information describing how frames work and a refresh button
-pub fn input_properties(_document_node: &DocumentNode, _node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let information = TextLabel::new("The graph's input frame is the rasterized artwork under the layer").widget_holder();
-	let layer_path = context.layer_path.to_vec();
-	let refresh_button = TextButton::new("Refresh Input")
-		.tooltip("Refresh the artwork under the layer")
-		.on_update(move |_| DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() }.into())
-		.widget_holder();
-	vec![LayoutGroup::Row { widgets: vec![information] }, LayoutGroup::Row { widgets: vec![refresh_button] }]
-}
-
 pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
 	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
@@ -1663,7 +1652,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						let controller = controller.clone();
 						move |_| {
 							controller.set_status(ImaginateStatus::Ready);
-							DocumentMessage::ImaginateClear { layer_path: layer_path.clone() }.into()
+							DocumentMessage::ImaginateGenerate { layer_path: layer_path.clone() }.into()
 						}
 					})
 					.widget_holder(),
