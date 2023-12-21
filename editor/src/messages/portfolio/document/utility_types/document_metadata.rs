@@ -387,11 +387,6 @@ impl LayerNodeIdentifier {
 		u64::from(self.0) - 1
 	}
 
-	/// Convert layer to layer path
-	pub fn to_path(self) -> Vec<NodeId> {
-		vec![self.to_node()]
-	}
-
 	/// Access the parent layer if possible
 	pub fn parent(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		document_metadata.get_relations(self).and_then(|relations| relations.parent)

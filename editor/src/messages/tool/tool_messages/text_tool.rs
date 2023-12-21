@@ -310,7 +310,7 @@ impl TextToolData {
 
 			self.set_editing(true, font_cache, document, responses);
 
-			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: self.layer.to_path() });
+			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
 			TextToolFsmState::Editing
 		} else {

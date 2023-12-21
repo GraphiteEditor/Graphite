@@ -669,8 +669,12 @@ export class LayerPanelEntry {
 
 	layerClassification!: LayerClassification;
 
-	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
-	path!: BigUint64Array;
+	parentId!: bigint | undefined;
+
+	id!: bigint;
+
+	@Transform(({ value }: { value: bigint }) => Number(value))
+	depth!: number;
 
 	expanded!: boolean;
 

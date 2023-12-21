@@ -40,7 +40,9 @@ A message is an enum variant of a certain message sub-type like `FrontendMessage
 DocumentMessage::DeleteSelectedLayers
 
 // Carries a layer path and a string as data
-DocumentMessage::RenameLayer(Vec<LayerId>, String)
+DocumentMessage::DeleteLayer {
+	id: NodeId,
+}
 ```
 
 Message sub-types hierarchically wrap other message sub-types; for example, `DocumentMessage` is wrapped by `PortfolioMessage` via:
@@ -65,4 +67,9 @@ DocumentMessage::DeleteSelectedLayers.into()
 instead of:
 ```rs
 Message(PortfolioMessage::Document(DocumentMessage::DeleteSelectedLayers))
+```
+
+And when pushing a message to the queue, we have the `add` and `add_front` functions which call `.into()` for you. Therefore it's as simple as writing:
+```rs
+responses.add(DocumentMessage::DeleteSelectedLayers.into());
 ```

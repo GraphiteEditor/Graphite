@@ -588,7 +588,9 @@ impl NodeGraphExecutor {
 								},
 								expanded: layer.has_children(document_metadata) && !collapsed.contains(&layer),
 								selected: document_metadata.selected_layers_contains(layer),
-								path: vec![node_id],
+								parent_id: layer.parent(document_metadata).map(|parent| parent.to_node()),
+								id: node_id,
+								depth: layer.ancestors(document_metadata).count(),
 								thumbnail: svg.to_string(),
 							},
 						});
