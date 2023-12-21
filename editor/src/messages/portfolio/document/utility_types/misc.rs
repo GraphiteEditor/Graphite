@@ -3,6 +3,7 @@ use crate::messages::portfolio::document::utility_types::LayerId;
 
 use graphene_core::raster::color::Color;
 
+use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -59,7 +60,7 @@ pub enum DocumentRenderMode<'a> {
 	LayerCutout(&'a [LayerId], Color),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 /// SnappingState determines the current individual snapping states
 pub struct SnappingState {
 	pub snapping_enabled: bool,
@@ -89,5 +90,18 @@ impl fmt::Display for SnappingOptions {
 			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
 			SnappingOptions::Points => write!(f, "Points"),
 		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct PTZ {
+	pub pan: DVec2,
+	pub tilt: f64,
+	pub zoom: f64,
+}
+
+impl Default for PTZ {
+	fn default() -> Self {
+		Self { pan: DVec2::ZERO, tilt: 0., zoom: 1. }
 	}
 }

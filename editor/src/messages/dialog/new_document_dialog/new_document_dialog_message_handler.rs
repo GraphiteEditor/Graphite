@@ -1,4 +1,3 @@
-use crate::consts::VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -34,7 +33,6 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					});
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [DVec2::ZERO, self.dimensions.as_dvec2()],
-						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
 						prevent_zoom_past_100: true,
 					});
 				}

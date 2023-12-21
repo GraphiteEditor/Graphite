@@ -614,10 +614,13 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current = mouse_position + closest_move;
 
-				if input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_none() {
-					tool_data.start_duplicates(document, responses);
-				} else if !input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_some() {
-					tool_data.stop_duplicates(document, responses);
+				// TODO: Reenable this feature after fixing it
+				if false {
+					if input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_none() {
+						tool_data.start_duplicates(document, responses);
+					} else if !input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_some() {
+						tool_data.stop_duplicates(document, responses);
+					}
 				}
 
 				SelectToolFsmState::Dragging
@@ -625,7 +628,8 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (center, axis_align) = (input.keyboard.key(center), input.keyboard.key(axis_align));
+						let (_center, axis_align) = (input.keyboard.key(center), input.keyboard.key(axis_align));
+						let center = false; // TODO: Reenable this feature after fixing it
 
 						let mouse_position = input.mouse.position;
 

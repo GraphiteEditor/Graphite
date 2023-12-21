@@ -1,7 +1,7 @@
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState};
-use crate::application::generate_uuid;
-use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR};
+use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::properties_panel::utility_types::Prope
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::layer_panel::RawBuffer;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
@@ -29,56 +29,55 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::{DAffine2, DVec2};
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
 use std::vec;
-
-/// Utility function for providing a default boolean value to serde.
-#[inline(always)]
-fn return_true() -> bool {
-	true
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DocumentMessageHandler {
+	// ======================
 	// Child message handlers
-	navigation_handler: NavigationMessageHandler,
+	// ======================
 	#[serde(skip)]
 	node_graph_handler: NodeGraphMessageHandler,
+	#[serde(skip)]
+	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
-
+	// ============================================
 	// Fields that are saved in the document format
-	//
-	pub name: String,
-	pub version: String,
+	// ============================================
+	#[serde(default = "default_network")]
 	pub network: NodeNetwork,
-	pub saved_document_identifier: u64,
-	pub auto_saved_document_identifier: u64,
-
-	// Fields that can be non-fatally missing from the saved document format
-	//
-	#[serde(default)]
-	pub document_mode: DocumentMode,
-	#[serde(default)]
+	#[serde(default = "default_name")]
+	pub name: String,
+	#[serde(default = "default_version")]
+	version: String,
+	#[serde(default = "default_commit_hash")]
+	commit_hash: String,
+	#[serde(default = "default_pan_tilt_zoom")]
+	navigation: PTZ,
+	#[serde(default = "default_document_mode")]
+	document_mode: DocumentMode,
+	#[serde(default = "default_view_mode")]
 	pub view_mode: ViewMode,
-	#[serde(default = "return_true")]
-	pub overlays_visible: bool,
-	#[serde(default = "return_true")]
+	#[serde(default = "default_overlays_visible")]
+	overlays_visible: bool,
+	#[serde(default = "default_rulers_visible")]
 	pub rulers_visible: bool,
-	#[serde(default)]
-	pub commit_hash: String,
-	#[serde(default)]
-	pub collapsed: Vec<LayerNodeIdentifier>,
-
+	#[serde(default = "default_collapsed")]
+	pub collapsed: Vec<LayerNodeIdentifier>, // TODO: Is this actually used? Maybe or maybe not. Investigate and potentially remove.
+	// =============================================
 	// Fields omitted from the saved document format
-	//
+	// =============================================
 	#[serde(skip)]
-	pub document_undo_history: VecDeque<DocumentMessageHandler>,
+	document_undo_history: VecDeque<NodeNetwork>,
 	#[serde(skip)]
-	pub document_redo_history: VecDeque<DocumentMessageHandler>,
+	document_redo_history: VecDeque<NodeNetwork>,
+	#[serde(skip)]
+	saved_hash: Option<u64>,
+	#[serde(skip)]
+	auto_saved_hash: Option<u64>,
 	/// Don't allow aborting transactions whilst undoing to avoid #559
 	#[serde(skip)]
 	undo_in_progress: bool,
@@ -88,39 +87,85 @@ pub struct DocumentMessageHandler {
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
-	/// The state_identifier serves to provide a way to uniquely identify a particular state that the document is in.
-	/// This identifier is not a hash and is not guaranteed to be equal for equivalent documents.
-	#[serde(skip)]
-	pub state_identifier: DefaultHasher,
 }
 
 impl Default for DocumentMessageHandler {
 	fn default() -> Self {
 		Self {
-			network: root_network(),
-			saved_document_identifier: 0,
-			auto_saved_document_identifier: 0,
-			name: DEFAULT_DOCUMENT_NAME.to_string(),
-			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
-			commit_hash: crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			collapsed: Vec::new(),
-			document_mode: DocumentMode::DesignMode,
-			view_mode: ViewMode::default(),
-			snapping_state: SnappingState::default(),
-			overlays_visible: true,
-			rulers_visible: true,
-			document_undo_history: VecDeque::new(),
-			document_redo_history: VecDeque::new(),
-			undo_in_progress: false,
-			layer_range_selection_reference: None,
+			// ======================
+			// Child message handlers
+			// ======================
+			node_graph_handler: Default::default(),
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
-			node_graph_handler: Default::default(),
-			state_identifier: DefaultHasher::new(),
+			// ============================================
+			// Fields that are saved in the document format
+			// ============================================
+			network: root_network(),
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
+			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
+			navigation: PTZ::default(),
+			document_mode: DocumentMode::DesignMode,
+			view_mode: ViewMode::default(),
+			overlays_visible: true,
+			rulers_visible: true,
+			collapsed: Vec::new(),
+			// =============================================
+			// Fields omitted from the saved document format
+			// =============================================
+			document_undo_history: VecDeque::new(),
+			document_redo_history: VecDeque::new(),
+			saved_hash: None,
+			auto_saved_hash: None,
+			undo_in_progress: false,
+			snapping_state: SnappingState::default(),
+			layer_range_selection_reference: None,
 			metadata: Default::default(),
 		}
 	}
+}
+
+#[inline(always)]
+fn default_network() -> NodeNetwork {
+	DocumentMessageHandler::default().network
+}
+#[inline(always)]
+fn default_name() -> String {
+	DocumentMessageHandler::default().name
+}
+#[inline(always)]
+fn default_version() -> String {
+	DocumentMessageHandler::default().version
+}
+#[inline(always)]
+fn default_commit_hash() -> String {
+	DocumentMessageHandler::default().commit_hash
+}
+#[inline(always)]
+fn default_pan_tilt_zoom() -> PTZ {
+	DocumentMessageHandler::default().navigation
+}
+#[inline(always)]
+fn default_document_mode() -> DocumentMode {
+	DocumentMessageHandler::default().document_mode
+}
+#[inline(always)]
+fn default_view_mode() -> ViewMode {
+	DocumentMessageHandler::default().view_mode
+}
+#[inline(always)]
+fn default_overlays_visible() -> bool {
+	DocumentMessageHandler::default().overlays_visible
+}
+#[inline(always)]
+fn default_rulers_visible() -> bool {
+	DocumentMessageHandler::default().rulers_visible
+}
+#[inline(always)]
+fn default_collapsed() -> Vec<LayerNodeIdentifier> {
+	DocumentMessageHandler::default().collapsed
 }
 
 fn root_network() -> NodeNetwork {
@@ -178,12 +223,6 @@ fn root_network() -> NodeNetwork {
 	}
 }
 
-impl PartialEq for DocumentMessageHandler {
-	fn eq(&self, other: &Self) -> bool {
-		self.state_identifier.finish() == other.state_identifier.finish()
-	}
-}
-
 pub struct DocumentInputs<'a> {
 	pub document_id: u64,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -210,8 +249,11 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
-				self.navigation_handler
-					.process_message(message, responses, (&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport()));
+				self.navigation_handler.process_message(
+					message,
+					responses,
+					(&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport(), &mut self.navigation),
+				);
 			}
 			#[remain::unsorted]
 			Overlays(message) => {
@@ -290,7 +332,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
-			BackupDocument { document } => self.backup_with_document(document, responses),
+			BackupDocument { network } => self.backup_with_document(network, responses),
 			ClearLayerTree => {
 				// Send an empty layer tree
 				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
@@ -544,7 +586,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(OverlaysMessage::Draw);
 			}
 			RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_scale();
+				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
 
 				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = document_transform_scale.log2();
@@ -559,7 +601,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 			}
 			RenderScrollbars => {
-				let document_transform_scale = self.navigation_handler.snapped_scale();
+				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -758,11 +800,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
-					responses.add(NavigationMessage::FitViewportToBounds {
-						bounds,
-						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
-						prevent_zoom_past_100: true,
-					})
+					responses.add(NavigationMessage::SetCanvasRotation { angle_radians: 0. });
+					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
 		}
@@ -819,10 +858,6 @@ impl DocumentMessageHandler {
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
-	pub fn current_state_identifier(&self) -> u64 {
-		self.state_identifier.finish()
-	}
-
 	pub fn network(&self) -> &NodeNetwork {
 		&self.network
 	}
@@ -853,7 +888,7 @@ impl DocumentMessageHandler {
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
 		let mut document = Self { name, ..Self::default() };
-		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2.);
+		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2., DVec2::ZERO, 0., 1.);
 		document.metadata.document_to_viewport = transform;
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 
@@ -934,9 +969,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Places a document into the history system
-	fn backup_with_document(&mut self, document: DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn backup_with_document(&mut self, network: NodeNetwork, responses: &mut VecDeque<Message>) {
 		self.document_redo_history.clear();
-		self.document_undo_history.push_back(document);
+		self.document_undo_history.push_back(network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -947,38 +982,30 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.clone(), responses);
+		self.backup_with_document(self.network.clone(), responses);
 	}
 
 	// TODO: Is this now redundant?
 	/// Push a message backing up the document in its current state
 	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::BackupDocument { document: self.clone() });
+		responses.add(DocumentMessage::BackupDocument { network: self.network.clone() });
 	}
 
 	/// Replace the document with a new document save, returning the document save.
-	pub fn replace_document(&mut self, document: DocumentMessageHandler) -> DocumentMessageHandler {
-		// Replace the network. (Keeping the root is required if the bounds of the viewport have changed during the operation.)
-		let old_root = self.metadata().document_to_viewport;
-		let document = std::mem::replace(self, document);
-		self.metadata.document_to_viewport = old_root;
-
-		document
+	pub fn replace_document(&mut self, network: NodeNetwork) -> NodeNetwork {
+		std::mem::replace(&mut self.network, network)
 	}
 
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-		let Some(document) = self.document_undo_history.pop_back() else {
-			return;
-		};
+		let Some(network) = self.document_undo_history.pop_back() else { return };
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let document_save = self.replace_document(document);
-
-		self.document_redo_history.push_back(document_save);
+		let previous_network = std::mem::replace(&mut self.network, network);
+		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
@@ -991,12 +1018,12 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-		let Some(document) = self.document_redo_history.pop_back() else { return };
+		let Some(network) = self.document_redo_history.pop_back() else { return };
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let document_save = self.replace_document(document);
-		self.document_undo_history.push_back(document_save);
+		let previous_network = std::mem::replace(&mut self.network, network);
+		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
@@ -1005,33 +1032,31 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
-	pub fn current_identifier(&self) -> u64 {
-		// We can use the last state of the document to serve as the identifier to compare against
-		// This is useful since when the document is empty the identifier will be 0
-		self.document_undo_history.iter().last().map(|document| document.state_identifier.finish()).unwrap_or(0)
+	pub fn current_hash(&self) -> Option<u64> {
+		self.document_undo_history.iter().last().map(|network| network.current_hash())
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
-		self.current_identifier() == self.auto_saved_document_identifier
+		self.current_hash() == self.auto_saved_hash
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_identifier() == self.saved_document_identifier
+		self.current_hash() == self.saved_hash
 	}
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.auto_saved_document_identifier = self.current_identifier();
+			self.auto_saved_hash = self.current_hash();
 		} else {
-			self.auto_saved_document_identifier = generate_uuid();
+			self.auto_saved_hash = None;
 		}
 	}
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.saved_document_identifier = self.current_identifier();
+			self.saved_hash = self.current_hash();
 		} else {
-			self.saved_document_identifier = generate_uuid();
+			self.saved_hash = None;
 		}
 	}
 
@@ -1177,7 +1202,7 @@ impl DocumentMessageHandler {
 				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_scale() * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
@@ -1193,7 +1218,7 @@ impl DocumentMessageHandler {
 				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
 				.widget_holder(),
 		];
-		let rotation_value = self.navigation_handler.snapped_angle() / (std::f64::consts::PI / 180.);
+		let rotation_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
 		if rotation_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),

@@ -30,7 +30,9 @@ pub fn default_mapping() -> Mapping {
 	// it as an available action in the respective message handler file (such as the bottom of `document_message_handler.rs`).
 
 	let mappings = mapping![
-		// HIGHER PRIORITY:
+		// ===============
+		// HIGHER PRIORITY
+		// ===============
 		//
 		// NavigationMessage
 		entry!(
@@ -41,7 +43,9 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Lmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Lmb }),
 		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Mmb }),
 		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Key::Rmb }),
-		// NORMAL PRIORITY:
+		// ===============
+		// NORMAL PRIORITY
+		// ===============
 		//
 		// NodeGraphMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
@@ -312,7 +316,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
 		//
 		// NavigationMessage
-		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
 		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
 		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::ZoomCanvasBegin),
 		entry!(KeyDown(Lmb); modifiers=[Shift, Space], action_dispatch=NavigationMessage::ZoomCanvasBegin),

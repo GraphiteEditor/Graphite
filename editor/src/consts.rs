@@ -18,6 +18,8 @@ pub const VIEWPORT_SCROLL_RATE: f64 = 0.6;
 
 pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
+pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
+
 // Snapping axis
 pub const SNAP_AXIS_TOLERANCE: f64 = 3.;
 pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 15.;
@@ -79,9 +81,7 @@ pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document
-pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.1.1"; // Remember to update the demo artwork in /demos with both this version number and the contents so it remains editable
+pub const GRAPHITE_DOCUMENT_VERSION: &str = "0.1.2"; // Remember to update the demo artwork in /demos with both this version number and the contents so it remains editable
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
-
-pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f32 = 1.05;

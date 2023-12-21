@@ -1,11 +1,14 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
-use graphene_core::{GraphicGroup, ProtoNodeIdentifier, Type};
 
 use dyn_any::{DynAny, StaticType};
-use glam::IVec2;
 pub use graphene_core::uuid::generate_uuid;
+use graphene_core::{GraphicGroup, ProtoNodeIdentifier, Type};
+
+use glam::IVec2;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 pub mod value;
 
@@ -14,8 +17,7 @@ pub type NodeId = u64;
 /// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
 /// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
 fn merge_ids(a: u64, b: u64) -> u64 {
-	use std::hash::{Hash, Hasher};
-	let mut hasher = std::collections::hash_map::DefaultHasher::new();
+	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);
 	b.hash(&mut hasher);
 	hasher.finish()
@@ -448,6 +450,12 @@ impl std::hash::Hash for NodeNetwork {
 
 /// Graph modification functions
 impl NodeNetwork {
+	pub fn current_hash(&self) -> u64 {
+		let mut hasher = DefaultHasher::new();
+		self.hash(&mut hasher);
+		hasher.finish()
+	}
+
 	/// Get the original output nodes of this network, ignoring any preview node
 	pub fn original_outputs(&self) -> &Vec<NodeOutput> {
 		self.previous_outputs.as_ref().unwrap_or(&self.outputs)

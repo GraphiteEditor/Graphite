@@ -4,9 +4,7 @@ use crate::messages::portfolio::document::node_graph::NodePropertiesContext;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct PropertiesPanelMessageHandler;
 
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {

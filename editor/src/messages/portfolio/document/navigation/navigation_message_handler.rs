@@ -6,6 +6,7 @@ use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
+use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
@@ -30,27 +31,16 @@ enum TransformOperation {
 	},
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NavigationMessageHandler {
-	pub pan: DVec2,
-	pub tilt: f64,
-	pub zoom: f64,
-
-	#[serde(skip)]
 	transform_operation: TransformOperation,
-	#[serde(skip)]
 	mouse_position: ViewportPosition,
-	#[serde(skip)]
 	finish_operation_with_click: bool,
 }
 
 impl Default for NavigationMessageHandler {
 	fn default() -> Self {
 		Self {
-			pan: DVec2::ZERO,
-			tilt: 0.,
-			zoom: 1.,
-
 			mouse_position: ViewportPosition::default(),
 			finish_operation_with_click: false,
 			transform_operation: TransformOperation::None,
@@ -58,30 +48,29 @@ impl Default for NavigationMessageHandler {
 	}
 }
 
-impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>)> for NavigationMessageHandler {
+impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>, &mut PTZ)> for NavigationMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: NavigationMessage,
 		responses: &mut VecDeque<Message>,
-		(document_metadata, document_bounds, ipp, selection_bounds): (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>),
+		(document_metadata, document_bounds, ipp, selection_bounds, ptz): (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>, &mut PTZ),
 	) {
 		use NavigationMessage::*;
 
-		let old_zoom = self.zoom;
+		let old_zoom = ptz.zoom;
 
 		#[remain::sorted]
 		match message {
 			DecreaseCanvasZoom { center_on_mouse } => {
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < self.zoom).unwrap_or(&self.zoom);
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom).unwrap_or(&ptz.zoom);
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
+					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
 				}
 				responses.add(SetCanvasZoom { zoom_factor: new_scale });
 			}
 			FitViewportToBounds {
 				bounds: [pos1, pos2],
-				padding_scale_factor,
 				prevent_zoom_past_100,
 			} => {
 				let v1 = document_metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
@@ -92,33 +81,32 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				let size = 1. / size;
 				let new_scale = size.min_element();
 
-				self.pan += center;
-				self.zoom *= new_scale;
+				ptz.pan += center;
+				ptz.zoom *= new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
 
-				self.zoom /= padding_scale_factor.unwrap_or(1.) as f64;
-
-				if self.zoom > 1. && prevent_zoom_past_100 {
-					self.zoom = 1.
+				// Keep the canvas filling less than the full available viewport bounds if requested.
+				// And if the zoom is close to the full viewport bounds, we ignore the padding because 100% is preferrable if it still fits.
+				if prevent_zoom_past_100 && ptz.zoom > VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR {
+					ptz.zoom = 1.;
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
 					let transform = document_metadata.document_to_viewport.inverse();
 					responses.add(FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
-						padding_scale_factor: Some(VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR),
 						prevent_zoom_past_100: false,
 					})
 				}
 			}
 			IncreaseCanvasZoom { center_on_mouse } => {
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > self.zoom).unwrap_or(&self.zoom);
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom).unwrap_or(&ptz.zoom);
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / self.zoom, ipp.mouse.position));
+					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
 				}
 				responses.add(SetCanvasZoom { zoom_factor: new_scale });
 			}
@@ -144,7 +132,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 						if !(wait_for_snap_angle_release && new_snap && !snap_tilt_released) {
 							// When disabling snap, keep the viewed rotation as it was previously.
 							if !new_snap && snap_tilt {
-								self.tilt = self.snapped_angle();
+								ptz.tilt = self.snapped_angle(ptz.tilt);
 							}
 							self.transform_operation = TransformOperation::Rotate {
 								pre_commit_tilt,
@@ -160,15 +148,15 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 							start_offset.angle_between(end_offset)
 						};
 
-						responses.add(SetCanvasRotation { angle_radians: self.tilt + rotation });
+						responses.add(SetCanvasRotation { angle_radians: ptz.tilt + rotation });
 					}
 					TransformOperation::Zoom { snap_zoom_enabled, pre_commit_zoom } => {
-						let zoom_start = self.snapped_scale();
+						let zoom_start = self.snapped_scale(ptz.zoom);
 
 						let new_snap = ipp.keyboard.get(snap_zoom as usize);
 						// When disabling snap, keep the viewed zoom as it was previously
 						if !new_snap && snap_zoom_enabled {
-							self.zoom = self.snapped_scale();
+							ptz.zoom = self.snapped_scale(ptz.zoom);
 						}
 
 						if snap_zoom_enabled != new_snap {
@@ -181,16 +169,16 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 						let difference = self.mouse_position.y - ipp.mouse.position.y;
 						let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
 
-						self.zoom *= amount;
-						self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
+						ptz.zoom *= amount;
+						ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
 
 						if let Some(mouse) = zoom_from_viewport {
-							let zoom_factor = self.snapped_scale() / zoom_start;
+							let zoom_factor = self.snapped_scale(ptz.zoom) / zoom_start;
 
-							responses.add(SetCanvasZoom { zoom_factor: self.zoom });
+							responses.add(SetCanvasZoom { zoom_factor: ptz.zoom });
 							responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
 						} else {
-							responses.add(SetCanvasZoom { zoom_factor: self.zoom });
+							responses.add(SetCanvasZoom { zoom_factor: ptz.zoom });
 						}
 					}
 				}
@@ -215,7 +203,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				});
 
 				self.transform_operation = TransformOperation::Rotate {
-					pre_commit_tilt: self.tilt,
+					pre_commit_tilt: ptz.tilt,
 					snap_tilt_released: false,
 					snap_tilt: false,
 				};
@@ -224,17 +212,17 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				self.finish_operation_with_click = was_dispatched_from_menu;
 			}
 			SetCanvasRotation { angle_radians } => {
-				self.tilt = angle_radians;
-				self.create_document_transform(ipp.viewport_bounds.center(), responses);
+				ptz.tilt = angle_radians;
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			SetCanvasZoom { zoom_factor } => {
-				self.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				self.zoom *= Self::clamp_zoom(self.zoom, document_bounds, old_zoom, ipp);
+				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			TransformCanvasEnd { abort_transform } => {
 				if abort_transform {
@@ -244,19 +232,19 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 							responses.add(SetCanvasRotation { angle_radians: pre_commit_tilt });
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
-							self.pan = pre_commit_pan;
-							self.create_document_transform(ipp.viewport_bounds.center(), responses);
+							ptz.pan = pre_commit_pan;
+							self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 						}
 						TransformOperation::Zoom { pre_commit_zoom, .. } => {
-							self.zoom = pre_commit_zoom;
+							ptz.zoom = pre_commit_zoom;
 							responses.add(PortfolioMessage::UpdateDocumentWidgets);
-							self.create_document_transform(ipp.viewport_bounds.center(), responses);
+							self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 						}
 					}
 				}
 
-				self.tilt = self.snapped_angle();
-				self.zoom = self.snapped_scale();
+				ptz.tilt = self.snapped_angle(ptz.tilt);
+				ptz.zoom = self.snapped_scale(ptz.zoom);
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(ToolMessage::UpdateCursor);
@@ -271,10 +259,10 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 			TranslateCanvas { delta } => {
 				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta);
 
-				self.pan += transformed_delta;
+				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(ipp.viewport_bounds.center(), responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
@@ -284,14 +272,14 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				});
 
 				self.mouse_position = ipp.mouse.position;
-				self.transform_operation = TransformOperation::Pan { pre_commit_pan: self.pan };
+				self.transform_operation = TransformOperation::Pan { pre_commit_pan: ptz.pan };
 			}
 			TranslateCanvasByViewportFraction { delta } => {
 				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
-				self.pan += transformed_delta;
+				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				self.create_document_transform(ipp.viewport_bounds.center(), responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {
@@ -306,10 +294,10 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				if ipp.mouse.scroll_delta.y > 0 {
 					zoom_factor = 1. / zoom_factor
 				}
-				zoom_factor *= Self::clamp_zoom(self.zoom * zoom_factor, document_bounds, old_zoom, ipp);
+				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
 
 				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
-				responses.add(SetCanvasZoom { zoom_factor: self.zoom * zoom_factor });
+				responses.add(SetCanvasZoom { zoom_factor: ptz.zoom * zoom_factor });
 			}
 			ZoomCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
@@ -328,7 +316,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				});
 
 				self.transform_operation = TransformOperation::Zoom {
-					pre_commit_zoom: self.zoom,
+					pre_commit_zoom: ptz.zoom,
 					snap_zoom_enabled: false,
 				};
 				self.mouse_position = ipp.mouse.position;
@@ -372,43 +360,40 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 }
 
 impl NavigationMessageHandler {
-	pub fn snapped_angle(&self) -> f64 {
+	pub fn snapped_angle(&self, tilt: f64) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
 		if let TransformOperation::Rotate { snap_tilt: true, .. } = self.transform_operation {
-			(self.tilt / increment_radians).round() * increment_radians
+			(tilt / increment_radians).round() * increment_radians
 		} else {
-			self.tilt
+			tilt
 		}
 	}
 
-	pub fn snapped_scale(&self) -> f64 {
+	pub fn snapped_scale(&self, zoom: f64) -> f64 {
 		if let TransformOperation::Zoom { snap_zoom_enabled: true, .. } = self.transform_operation {
-			*VIEWPORT_ZOOM_LEVELS
-				.iter()
-				.min_by(|a, b| (**a - self.zoom).abs().partial_cmp(&(**b - self.zoom).abs()).unwrap())
-				.unwrap_or(&self.zoom)
+			*VIEWPORT_ZOOM_LEVELS.iter().min_by(|a, b| (**a - zoom).abs().partial_cmp(&(**b - zoom).abs()).unwrap()).unwrap_or(&zoom)
 		} else {
-			self.zoom
+			zoom
 		}
 	}
 
-	pub fn calculate_offset_transform(&self, viewport_center: DVec2) -> DAffine2 {
-		let scaled_centre = viewport_center / self.snapped_scale();
+	pub fn calculate_offset_transform(&self, viewport_center: DVec2, pan: DVec2, tilt: f64, zoom: f64) -> DAffine2 {
+		let scaled_centre = viewport_center / self.snapped_scale(zoom);
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_scale();
-		let rounded_pan = ((self.pan + scaled_centre) * scale).round() / scale - scaled_centre;
+		let scale = self.snapped_scale(zoom);
+		let rounded_pan = ((pan + scaled_centre) * scale).round() / scale - scaled_centre;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_centre);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
-		let angle_transform = DAffine2::from_angle(self.snapped_angle());
+		let angle_transform = DAffine2::from_angle(self.snapped_angle(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
 
-	fn create_document_transform(&self, viewport_center: DVec2, responses: &mut VecDeque<Message>) {
-		let transform = self.calculate_offset_transform(viewport_center);
+	fn create_document_transform(&self, viewport_center: DVec2, ptz: &PTZ, responses: &mut VecDeque<Message>) {
+		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom);
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

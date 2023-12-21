@@ -122,12 +122,11 @@ impl FrontendNodeType {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NodeGraphMessageHandler {
 	pub layer_path: Option<Vec<LayerId>>,
 	pub network: Vec<NodeId>,
 	has_selection: bool,
-	#[serde(skip)]
 	pub widgets: [LayoutGroup; 2],
 }
 

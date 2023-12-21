@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
@@ -40,7 +40,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 	},
 	BackupDocument {
-		document: DocumentMessageHandler,
+		network: NodeNetwork,
 	},
 	ClearLayerTree,
 	CommitTransaction,
