@@ -301,7 +301,7 @@ impl BrushToolData {
 	fn update_strokes(&self, responses: &mut VecDeque<Message>) {
 		let Some(layer) = self.layer else { return };
 		let strokes = self.strokes.clone();
-		responses.add(GraphOperationMessage::Brush { layer: layer.to_path(), strokes });
+		responses.add(GraphOperationMessage::Brush { layer, strokes });
 	}
 }
 

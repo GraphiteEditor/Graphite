@@ -63,7 +63,7 @@ impl Resize {
 
 		Some(
 			GraphOperationMessage::TransformSet {
-				layer: layer.to_path(),
+				layer,
 				transform: DAffine2::from_scale_angle_translation(size, 0., start),
 				transform_in: TransformIn::Viewport,
 				skip_rerender,

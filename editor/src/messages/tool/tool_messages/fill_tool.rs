@@ -72,8 +72,6 @@ impl Fsm for FillToolFsmState {
 		let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
 			return self;
 		};
-		let layer = layer_identifier.to_path();
-
 		let color = match event {
 			FillToolMessage::LeftPointerDown => global_tool_data.primary_color,
 			FillToolMessage::RightPointerDown => global_tool_data.secondary_color,
@@ -81,7 +79,7 @@ impl Fsm for FillToolFsmState {
 		let fill = Fill::Solid(color);
 
 		responses.add(DocumentMessage::StartTransaction);
-		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
 		responses.add(DocumentMessage::CommitTransaction);
 
 		FillToolFsmState::Ready

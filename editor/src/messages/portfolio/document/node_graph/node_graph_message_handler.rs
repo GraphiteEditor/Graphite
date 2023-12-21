@@ -3,7 +3,6 @@ use super::load_network_structure;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -123,10 +122,9 @@ impl FrontendNodeType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGraphMessageHandler {
-	pub layer_path: Option<Vec<LayerId>>,
 	pub network: Vec<NodeId>,
 	has_selection: bool,
-	pub widgets: [LayoutGroup; 2],
+	widgets: [LayoutGroup; 2],
 }
 
 impl Default for NodeGraphMessageHandler {
@@ -136,7 +134,6 @@ impl Default for NodeGraphMessageHandler {
 		let add_nodes_label_row = LayoutGroup::Row { widgets: vec![add_nodes_label] };
 
 		Self {
-			layer_path: None,
 			network: Vec::new(),
 			has_selection: false,
 			widgets: [add_nodes_label_row, LayoutGroup::default()],

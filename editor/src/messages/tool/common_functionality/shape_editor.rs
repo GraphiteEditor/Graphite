@@ -192,7 +192,7 @@ impl ShapeState {
 
 		if point.manipulator_type.is_handle() {
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: false },
 			});
 		}
@@ -202,7 +202,7 @@ impl ShapeState {
 				return;
 			};
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: (position + delta) },
 			});
 		};
@@ -270,7 +270,7 @@ impl ShapeState {
 
 		// Mirror the angle but not the distance
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: manipulator.id,
 				mirror_angle: true,
@@ -291,7 +291,7 @@ impl ShapeState {
 		if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
 			});
 		}
@@ -299,7 +299,7 @@ impl ShapeState {
 		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: out_handle },
 			});
 		}
@@ -338,7 +338,7 @@ impl ShapeState {
 						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
 						if let Some(position) = group.out_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer.to_path(),
+								layer,
 								modification: VectorDataModification::SetManipulatorPosition { point: out_handle, position },
 							});
 						}
@@ -347,7 +347,7 @@ impl ShapeState {
 						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
 						if let Some(position) = group.in_handle {
 							responses.add(GraphOperationMessage::Vector {
-								layer: layer.to_path(),
+								layer,
 								modification: VectorDataModification::SetManipulatorPosition { point: in_handle, position },
 							});
 						}
@@ -391,7 +391,7 @@ impl ShapeState {
 					let Some(previous_position) = point.manipulator_type.get_position(group) else { return };
 					let position = previous_position + delta;
 					responses.add(GraphOperationMessage::Vector {
-						layer: layer.to_path(),
+						layer,
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
 					});
 				};
@@ -410,7 +410,7 @@ impl ShapeState {
 					// and set angle mirroring to true.
 					if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer.to_path(),
+							layer,
 							modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: true },
 						});
 						mirror = true;
@@ -428,7 +428,7 @@ impl ShapeState {
 						}
 						let position = group.anchor - (original_handle_position - group.anchor);
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer.to_path(),
+							layer,
 							modification: VectorDataModification::SetManipulatorPosition { point, position },
 						});
 					}
@@ -471,7 +471,7 @@ impl ShapeState {
 
 				if (anchor_position - point_position).length() < DRAG_THRESHOLD {
 					responses.add(GraphOperationMessage::Vector {
-						layer: layer.to_path(),
+						layer,
 						modification: VectorDataModification::RemoveManipulatorPoint { point },
 					});
 
@@ -481,7 +481,7 @@ impl ShapeState {
 						if let Some(lengths) = opposing_handle_lengths {
 							if lengths.contains_key(&point.group) {
 								responses.add(GraphOperationMessage::Vector {
-									layer: layer.to_path(),
+									layer,
 									modification: VectorDataModification::RemoveManipulatorPoint { point: opposite_point },
 								});
 							}
@@ -567,7 +567,7 @@ impl ShapeState {
 
 					let Some(opposing_handle_length) = opposing_handle_length else {
 						responses.add(GraphOperationMessage::Vector {
-							layer: layer.to_path(),
+							layer,
 							modification: VectorDataModification::RemoveManipulatorPoint {
 								point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
 							},
@@ -586,7 +586,7 @@ impl ShapeState {
 					assert!(position.is_finite(), "Opposing handle not finite!");
 
 					responses.add(GraphOperationMessage::Vector {
-						layer: layer.to_path(),
+						layer,
 						modification: VectorDataModification::SetManipulatorPosition { point, position },
 					});
 				}
@@ -596,10 +596,10 @@ impl ShapeState {
 
 	/// Dissolve the selected points.
 	pub fn delete_selected_points(&self, responses: &mut VecDeque<Message>) {
-		for (layer, state) in &self.selected_shape_state {
+		for (&layer, state) in &self.selected_shape_state {
 			for &point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::RemoveManipulatorPoint { point },
 				})
 			}
@@ -608,10 +608,10 @@ impl ShapeState {
 
 	/// Toggle if the handles should mirror angle across the anchor position.
 	pub fn toggle_handle_mirroring_on_selected(&self, responses: &mut VecDeque<Message>) {
-		for (layer, state) in &self.selected_shape_state {
+		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::ToggleManipulatorHandleMirroring { id: point.group },
 				})
 			}
@@ -620,10 +620,10 @@ impl ShapeState {
 
 	/// Toggle if the handles should mirror angle across the anchor position.
 	pub fn set_handle_mirroring_on_selected(&self, mirror_angle: bool, responses: &mut VecDeque<Message>) {
-		for (layer, state) in &self.selected_shape_state {
+		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
 				});
 			}
@@ -732,7 +732,7 @@ impl ShapeState {
 				let point = ManipulatorPointId::new(start, SelectedType::OutHandle);
 				let position = first.handle_start().unwrap_or(first.start());
 				let out_handle = GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorPosition { point, position },
 				};
 				responses.add(out_handle);
@@ -740,7 +740,7 @@ impl ShapeState {
 				// Insert a new manipulator group between the existing ones
 				let manipulator_group = ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
 				let insert = GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: start },
 				};
 				responses.add(insert);
@@ -749,7 +749,7 @@ impl ShapeState {
 				let point = ManipulatorPointId::new(end, SelectedType::InHandle);
 				let position = second.handle_end().unwrap_or(second.end());
 				let in_handle = GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorPosition { point, position },
 				};
 				responses.add(in_handle);
@@ -797,16 +797,16 @@ impl ShapeState {
 			} else {
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
 				});
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
 				});
 				responses.add(GraphOperationMessage::Vector {
-					layer: layer.to_path(),
+					layer,
 					modification: VectorDataModification::SetManipulatorHandleMirroring {
 						id: manipulator.id,
 						mirror_angle: false,

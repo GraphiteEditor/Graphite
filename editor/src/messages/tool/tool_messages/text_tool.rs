@@ -298,11 +298,11 @@ impl TextToolData {
 				insert_index: -1,
 			});
 			responses.add(GraphOperationMessage::FillSet {
-				layer: self.layer.to_path(),
+				layer: self.layer,
 				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
 			});
 			responses.add(GraphOperationMessage::TransformSet {
-				layer: self.layer.to_path(),
+				layer: self.layer,
 				transform: editing_text.transform,
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -331,10 +331,11 @@ impl TextToolData {
 	}
 
 	fn fix_text_bounds(&self, new_text: &str, _document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> Option<()> {
-		let layer = self.layer.to_path();
-		let old_bounds = self.get_bounds(&self.editing_text.as_ref()?.text, font_cache)?;
-		let new_bounds = self.get_bounds(new_text, font_cache)?;
-		responses.add(GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds });
+		responses.add(GraphOperationMessage::UpdateBounds {
+			layer: self.layer,
+			old_bounds: self.get_bounds(&self.editing_text.as_ref()?.text, font_cache)?,
+			new_bounds: self.get_bounds(new_text, font_cache)?,
+		});
 
 		Some(())
 	}

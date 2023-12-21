@@ -302,10 +302,10 @@ impl SelectToolData {
 
 		// Duplicate each previously selected layer and select the new ones.
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			let layer = layer_ancestors.last().unwrap();
+			let layer = *layer_ancestors.last().unwrap();
 			// Moves the original back to its starting position.
 			responses.add_front(GraphOperationMessage::TransformChange {
-				layer: layer.to_path(),
+				layer,
 				transform: DAffine2::from_translation(self.drag_start - self.drag_current),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -356,7 +356,7 @@ impl SelectToolData {
 		// Move the original to under the mouse
 		for layer_ancestors in document.metadata().shallowest_unique_layers(originals.iter().copied()) {
 			responses.add_front(GraphOperationMessage::TransformChange {
-				layer: layer_ancestors.last().unwrap().to_path(),
+				layer: *layer_ancestors.last().unwrap(),
 				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -590,7 +590,7 @@ impl Fsm for SelectToolFsmState {
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
-						layer: layer_ancestors.last().unwrap().to_path(),
+						layer: *layer_ancestors.last().unwrap(),
 						transform: DAffine2::from_translation(mouse_delta + closest_move),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,

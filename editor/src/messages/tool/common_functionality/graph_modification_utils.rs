@@ -38,7 +38,7 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 pub fn set_manipulator_mirror_angle(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, mirror_angle: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: manipulator_group.id,
 				mirror_angle,

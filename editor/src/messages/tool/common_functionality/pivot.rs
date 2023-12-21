@@ -105,7 +105,6 @@ impl Pivot {
 			let pivot = transform.inverse().transform_point2(position);
 			// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.
 			if pivot.is_finite() {
-				let layer = layer.to_path();
 				responses.add(GraphOperationMessage::TransformSetPivot { layer, pivot });
 			}
 		}

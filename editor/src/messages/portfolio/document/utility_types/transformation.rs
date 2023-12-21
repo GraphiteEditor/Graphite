@@ -376,7 +376,7 @@ impl<'a> Selected<'a> {
 		let to = document_metadata.downstream_transform_to_viewport(layer);
 		let new = to.inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
-			layer: layer.to_path(),
+			layer,
 			transform: new,
 			transform_in: TransformIn::Local,
 			skip_rerender: false,
@@ -404,7 +404,7 @@ impl<'a> Selected<'a> {
 			let position = new_pos_viewport;
 
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position },
 			});
 		}
@@ -438,17 +438,17 @@ impl<'a> Selected<'a> {
 				OriginalTransforms::Layer(hash) => {
 					let Some(matrix) = hash.get(&layer) else { continue };
 					self.responses.add(GraphOperationMessage::TransformSet {
-						layer: layer.to_path(),
+						layer,
 						transform: *matrix,
 						transform_in: TransformIn::Local,
 						skip_rerender: false,
 					});
 				}
 				OriginalTransforms::Path(path) => {
-					for (layer, points) in path {
+					for (&layer, points) in path {
 						for &(point, position) in points {
 							self.responses.add(GraphOperationMessage::Vector {
-								layer: layer.to_path(),
+								layer,
 								modification: VectorDataModification::SetManipulatorPosition { point, position },
 							});
 						}

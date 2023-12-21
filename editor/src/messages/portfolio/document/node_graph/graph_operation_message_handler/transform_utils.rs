@@ -2,7 +2,6 @@ use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use graph_craft::document::NodeNetwork;
 use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -53,8 +52,7 @@ pub struct LayerBounds {
 
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
-	pub fn new(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: &[u64]) -> Self {
-		let layer = LayerNodeIdentifier::new(*layer.last().unwrap(), document_network);
+	pub fn new(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {
 		Self {
 			bounds: document_metadata.nonzero_bounding_box(layer),
 			bounds_transform: DAffine2::IDENTITY,

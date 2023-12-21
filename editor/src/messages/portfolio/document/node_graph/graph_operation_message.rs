@@ -1,5 +1,4 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
@@ -16,56 +15,54 @@ use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
 
-pub type LayerIdentifier = Vec<LayerId>;
-
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
 	FillSet {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
 	OpacitySet {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		opacity: f32,
 	},
 	BlendModeSet {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
 	},
 	UpdateBounds {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		old_bounds: [DVec2; 2],
 		new_bounds: [DVec2; 2],
 	},
 	StrokeSet {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		stroke: Stroke,
 	},
 
 	TransformChange {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		transform: DAffine2,
 		transform_in: TransformIn,
 		skip_rerender: bool,
 	},
 	TransformSet {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		transform: DAffine2,
 		transform_in: TransformIn,
 		skip_rerender: bool,
 	},
 	TransformSetPivot {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		pivot: DVec2,
 	},
 
 	Vector {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		modification: VectorDataModification,
 	},
 	Brush {
-		layer: LayerIdentifier,
+		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
 

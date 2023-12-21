@@ -227,12 +227,12 @@ impl Fsm for SplineToolFsmState {
 				let layer = graph_modification_utils::new_vector_layer(vec![], generate_uuid(), parent, responses);
 
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer.to_path(),
+					layer,
 					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
 				});
 				tool_data.layer = Some(layer);
@@ -328,5 +328,5 @@ fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut
 	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), layer, true, responses);
 	let subpaths = vec![subpath];
 	let modification = VectorDataModification::UpdateSubpaths { subpaths };
-	responses.add_front(GraphOperationMessage::Vector { layer: layer.to_path(), modification });
+	responses.add_front(GraphOperationMessage::Vector { layer, modification });
 }

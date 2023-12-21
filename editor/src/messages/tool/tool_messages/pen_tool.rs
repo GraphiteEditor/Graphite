@@ -226,7 +226,7 @@ impl PenToolData {
 		};
 
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::SetManipulatorHandleMirroring {
 				id: last_handle.id,
 				mirror_angle: false,
@@ -259,12 +259,12 @@ impl PenToolData {
 		self.layer = Some(layer);
 
 		responses.add(GraphOperationMessage::FillSet {
-			layer: layer.to_path(),
+			layer,
 			fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 		});
 
 		responses.add(GraphOperationMessage::StrokeSet {
-			layer: layer.to_path(),
+			layer,
 			stroke: Stroke::new(stroke_color, line_weight),
 		});
 
@@ -298,21 +298,21 @@ impl PenToolData {
 		}
 		// Remove the point that has just been placed
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 		});
 
 		// Move the in handle of the previous anchor to on top of the previous position
 		let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::SetManipulatorPosition { point, position: previous_anchor },
 		});
 
 		// Stop the handles on the last point from mirroring
 		let id = previous_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
-			layer: layer.to_path(),
+			layer,
 			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
 		});
 
@@ -353,26 +353,26 @@ impl PenToolData {
 			// Move the in handle of the first point to where the user has placed it
 			let point = ManipulatorPointId::new(first_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: last_in },
 			});
 
 			// Stop the handles on the first point from mirroring
 			let id = first_manipulator_group.id;
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
 			});
 
 			// Remove the point that has just been placed
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 
 			// Push a close path node
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetClosed { index: 0, closed: true },
 			});
 
@@ -387,7 +387,7 @@ impl PenToolData {
 		}
 		// Add a new manipulator for the next anchor that we will place
 		if let Some(out_handle) = outwards_handle.get_position(last_manipulator_group) {
-			responses.add(add_manipulator_group(&self.layer, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
+			responses.add(add_manipulator_group(self.layer, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
 		}
 
 		Some(PenToolFsmState::PlacingAnchor)
@@ -419,7 +419,7 @@ impl PenToolData {
 		// Update points on current segment (to show preview of new handle)
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?.to_path(),
+			layer: self.layer?,
 			modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 		});
 
@@ -430,7 +430,7 @@ impl PenToolData {
 			let pos = last_anchor - (pos - last_anchor);
 			let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
-				layer: self.layer?.to_path(),
+				layer: self.layer?,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 			});
 		}
@@ -438,7 +438,7 @@ impl PenToolData {
 		// Update the mirror status of the currently modifying point
 		let id = last_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?.to_path(),
+			layer: self.layer?,
 			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: should_mirror },
 		});
 
@@ -483,7 +483,7 @@ impl PenToolData {
 		for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
 			let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
 			responses.add(GraphOperationMessage::Vector {
-				layer: layer.to_path(),
+				layer,
 				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 			});
 		}
@@ -516,7 +516,7 @@ impl PenToolData {
 		// Remove the unplaced anchor if in anchor placing mode
 		if fsm == PenToolFsmState::PlacingAnchor {
 			responses.add(GraphOperationMessage::Vector {
-				layer: self.layer?.to_path(),
+				layer: self.layer?,
 				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 			last_manipulator_group = previous_manipulator_group;
@@ -526,7 +526,7 @@ impl PenToolData {
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		let position = last_manipulator_group.anchor;
 		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?.to_path(),
+			layer: self.layer?,
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
 		});
 
@@ -702,11 +702,10 @@ fn compute_snapped_angle(cached_angle: &mut f64, lock_angle: bool, snap_angle: b
 }
 
 /// Pushes a [ManipulatorGroup] to the current layer via a [GraphOperationMessage].
-fn add_manipulator_group(layer: &Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<ManipulatorGroupId>) -> Message {
+fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<ManipulatorGroupId>) -> Message {
 	let Some(layer) = layer else {
 		return Message::NoOp;
 	};
-	let layer = layer.to_path();
 	let modification = if from_start {
 		VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
 	} else {

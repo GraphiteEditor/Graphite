@@ -185,7 +185,7 @@ impl Fsm for LineToolFsmState {
 
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 				tool_data.layer = Some(layer);
@@ -279,7 +279,7 @@ fn generate_transform(tool_data: &mut LineToolData, document_to_viewport: DAffin
 	}
 
 	GraphOperationMessage::TransformSet {
-		layer: tool_data.layer.unwrap().to_path(),
+		layer: tool_data.layer.unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
 		transform_in: TransformIn::Viewport,
 		skip_rerender: false,

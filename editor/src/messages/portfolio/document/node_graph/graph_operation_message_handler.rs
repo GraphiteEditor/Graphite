@@ -1,6 +1,5 @@
 use super::{resolve_document_node_type, VectorDataModification};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
@@ -43,20 +42,19 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	fn new_with_layer(
-		layer: &'a [LayerId],
+		id: NodeId,
 		document_network: &'a mut NodeNetwork,
 		document_metadata: &'a mut DocumentMetadata,
 		node_graph: &'a mut NodeGraphMessageHandler,
 		responses: &'a mut VecDeque<Message>,
 	) -> Option<Self> {
 		let mut document = Self::new(document_network, document_metadata, node_graph, responses);
-		let Some(mut id) = layer.last().copied() else {
-			error!("Tried to modify root layer");
-			return None;
-		};
+
+		let mut id = id;
 		while !document.document_network.nodes.get(&id)?.is_layer() {
 			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
+
 		document.layer_node = Some(id);
 		Some(document)
 	}
@@ -590,27 +588,27 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 	) {
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				}
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
 			}
@@ -620,10 +618,9 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				transform_in,
 				skip_rerender,
 			} => {
-				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), document_network);
-				let parent_transform = document_metadata.downstream_transform_to_viewport(layer_identifier);
-				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
+				let bounds = LayerBounds::new(document_metadata, layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 			}
@@ -633,28 +630,27 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				transform_in,
 				skip_rerender,
 			} => {
-				let layer_identifier = LayerNodeIdentifier::new(*layer.last().unwrap(), document_network);
-				let parent_transform = document_metadata.downstream_transform_to_viewport(layer_identifier);
+				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 
-				let current_transform = Some(document_metadata.transform_to_viewport(layer_identifier));
-				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				let current_transform = Some(document_metadata.transform_to_viewport(layer));
+				let bounds = LayerBounds::new(document_metadata, layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				let bounds = LayerBounds::new(document_network, document_metadata, &layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				let bounds = LayerBounds::new(document_metadata, layer);
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&layer, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
@@ -740,7 +736,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(&[id], document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}

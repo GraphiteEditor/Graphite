@@ -324,7 +324,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					};
 					let translation = (aggregated - center) * axis;
 					responses.add(GraphOperationMessage::TransformChange {
-						layer: layer.to_path(),
+						layer,
 						transform: DAffine2::from_translation(translation),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,
@@ -404,7 +404,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					let bbox_trans = DAffine2::from_translation(-center);
 					for layer in self.metadata().selected_layers() {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: layer.to_path(),
+							layer,
 							transform: DAffine2::from_scale(scale),
 							transform_in: TransformIn::Scope { scope: bbox_trans },
 							skip_rerender: false,
@@ -488,7 +488,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					// Nudge translation
 					if !ipp.keyboard.key(resize) {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: layer.to_path(),
+							layer,
 							transform: DAffine2::from_translation(delta),
 							transform_in: TransformIn::Local,
 							skip_rerender: false,
@@ -517,7 +517,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						let original_transform = self.metadata().upstream_transform(layer.to_node());
 						let new = to.inverse() * transformation * to * original_transform;
 						responses.add(GraphOperationMessage::TransformSet {
-							layer: layer.to_path(),
+							layer,
 							transform: new,
 							transform_in: TransformIn::Local,
 							skip_rerender: false,
@@ -553,7 +553,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
-					layer: layer.to_path(),
+					layer,
 					transform,
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
@@ -695,7 +695,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for layer in self.metadata().selected_layers_except_artboards() {
-					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
+					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
 			SetOpacityForSelectedLayers { opacity } => {
@@ -703,7 +703,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let opacity = opacity.clamp(0., 1.) as f32;
 
 				for layer in self.metadata().selected_layers_except_artboards() {
-					responses.add(GraphOperationMessage::OpacitySet { layer: layer.to_path(), opacity });
+					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
 			SetOverlaysVisibility { visible } => {

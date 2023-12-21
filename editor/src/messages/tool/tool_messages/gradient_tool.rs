@@ -235,9 +235,10 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
-		let fill = Fill::Gradient(self.gradient.clone());
-		let layer = self.layer.to_path();
-		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		responses.add(GraphOperationMessage::FillSet {
+			layer: self.layer,
+			fill: Fill::Gradient(self.gradient.clone()),
+		});
 	}
 }
 
@@ -337,9 +338,10 @@ impl Fsm for GradientToolFsmState {
 
 				// The gradient has only one point and so should become a fill
 				if selected_gradient.gradient.positions.len() == 1 {
-					let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
-					let layer = selected_gradient.layer.to_path();
-					responses.add(GraphOperationMessage::FillSet { layer, fill });
+					responses.add(GraphOperationMessage::FillSet {
+						layer: selected_gradient.layer,
+						fill: Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK)),
+					});
 					return self;
 				}
 

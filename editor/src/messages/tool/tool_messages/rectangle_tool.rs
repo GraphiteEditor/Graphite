@@ -220,12 +220,12 @@ impl Fsm for RectangleToolFsmState {
 
 				let fill_color = tool_options.fill.active_color();
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer.to_path(),
+					layer,
 					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 
