@@ -54,7 +54,7 @@ impl core::hash::Hash for Gradient {
 }
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
-	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, _uuid: u64, gradient_type: GradientType) -> Self {
+	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,

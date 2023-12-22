@@ -1,5 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::LayerId;
+use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,18 +10,14 @@ pub struct FrontendDocumentDetails {
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
 	pub name: String,
-	pub id: u64,
+	pub id: DocumentId,
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub struct FrontendImageData {
-	pub path: Vec<LayerId>,
 	pub mime: String,
 	#[serde(skip)]
 	pub image_data: std::sync::Arc<Vec<u8>>,
-	pub transform: Option<[f64; 6]>,
-	#[serde(rename = "nodeId")]
-	pub node_id: Option<graph_craft::document::NodeId>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]

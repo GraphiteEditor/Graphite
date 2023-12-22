@@ -1,7 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -42,14 +41,14 @@ pub enum DocumentMessage {
 	BackupDocument {
 		network: NodeNetwork,
 	},
-	ClearLayerTree,
+	ClearLayersPanel,
 	CommitTransaction,
 	CreateEmptyFolder {
 		parent: LayerNodeIdentifier,
 	},
 	DebugPrintDocument,
 	DeleteLayer {
-		layer_path: Vec<LayerId>,
+		id: NodeId,
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
@@ -61,19 +60,10 @@ pub enum DocumentMessage {
 		flip_axis: FlipAxis,
 	},
 	GroupSelectedLayers,
-	ImaginateClear {
-		layer_path: Vec<LayerId>,
-	},
-	ImaginateGenerate {
-		layer_path: Vec<LayerId>,
-	},
+	ImaginateGenerate,
 	ImaginateRandom {
-		layer_path: Vec<LayerId>,
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
-	},
-	InputFrameRasterizeRegionBelowLayer {
-		layer_path: Vec<LayerId>,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,
@@ -106,7 +96,7 @@ pub enum DocumentMessage {
 		relative_index_offset: isize,
 	},
 	SelectLayer {
-		layer_path: Vec<LayerId>,
+		id: NodeId,
 		ctrl: bool,
 		shift: bool,
 	},
@@ -132,7 +122,7 @@ pub enum DocumentMessage {
 	},
 	StartTransaction,
 	ToggleLayerExpansion {
-		layer: NodeId,
+		id: NodeId,
 	},
 	Undo,
 	UndoFinished,

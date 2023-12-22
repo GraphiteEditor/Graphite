@@ -91,8 +91,8 @@ impl LayoutHolder for PathTool {
 			.label("X")
 			.min_width(120)
 			.disabled(x.is_none())
-			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
 				let new_x = number_input.value.unwrap_or(x.unwrap());
 				PathToolMessage::SelectedPointXChanged { new_x }.into()
@@ -104,8 +104,8 @@ impl LayoutHolder for PathTool {
 			.label("Y")
 			.min_width(120)
 			.disabled(y.is_none())
-			.min(-((1u64 << std::f64::MANTISSA_DIGITS) as f64))
-			.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
+			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
 				let new_y = number_input.value.unwrap_or(y.unwrap());
 				PathToolMessage::SelectedPointYChanged { new_y }.into()
@@ -274,9 +274,6 @@ impl PathToolData {
 			}
 		}
 		selected_points.points.extend(additional_selected_points);
-
-		//let include_handles: Vec<_> = selected_layers.iter().map(|x| x.as_slice()).collect();
-		//self.snap_manager.add_all_document_handles(document, input, &include_handles, &[], &selected_points.points);
 
 		self.drag_start_pos = input.mouse.position;
 		self.previous_mouse_position = input.mouse.position - selected_points.offset;

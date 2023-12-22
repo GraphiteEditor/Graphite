@@ -20,7 +20,7 @@ use std::fmt::{self, Debug};
 
 pub struct ToolActionHandlerData<'a> {
 	pub document: &'a DocumentMessageHandler,
-	pub document_id: u64,
+	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub font_cache: &'a FontCache,
@@ -30,7 +30,7 @@ pub struct ToolActionHandlerData<'a> {
 impl<'a> ToolActionHandlerData<'a> {
 	pub fn new(
 		document: &'a DocumentMessageHandler,
-		document_id: u64,
+		document_id: DocumentId,
 		global_tool_data: &'a DocumentToolData,
 		input: &'a InputPreprocessorMessageHandler,
 		font_cache: &'a FontCache,

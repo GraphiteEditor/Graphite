@@ -81,7 +81,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -175,7 +175,6 @@ impl Fsm for LineToolFsmState {
 		match (self, event) {
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				tool_data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(viewport_start);
@@ -186,7 +185,7 @@ impl Fsm for LineToolFsmState {
 
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 				tool_data.layer = Some(layer);
@@ -280,7 +279,7 @@ fn generate_transform(tool_data: &mut LineToolData, document_to_viewport: DAffin
 	}
 
 	GraphOperationMessage::TransformSet {
-		layer: tool_data.layer.unwrap().to_path(),
+		layer: tool_data.layer.unwrap(),
 		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
 		transform_in: TransformIn::Viewport,
 		skip_rerender: false,

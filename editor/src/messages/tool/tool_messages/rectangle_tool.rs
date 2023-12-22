@@ -68,7 +68,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -220,12 +220,12 @@ impl Fsm for RectangleToolFsmState {
 
 				let fill_color = tool_options.fill.active_color();
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer.to_path(),
+					layer,
 					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 

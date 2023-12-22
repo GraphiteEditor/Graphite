@@ -87,7 +87,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(1.)
-		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -215,12 +215,12 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.layer = Some(layer);
 
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer.to_path(),
+					layer,
 					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
 				});
 
@@ -234,7 +234,7 @@ impl Fsm for FreehandToolFsmState {
 					if tool_data.last_point != pos {
 						let manipulator_group = ManipulatorGroup::new_anchor(pos);
 						let modification = VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group };
-						responses.add(GraphOperationMessage::Vector { layer: layer.to_path(), modification });
+						responses.add(GraphOperationMessage::Vector { layer, modification });
 						tool_data.dragged = true;
 						tool_data.last_point = pos;
 					}

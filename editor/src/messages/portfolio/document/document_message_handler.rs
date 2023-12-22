@@ -10,7 +10,6 @@ use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::layer_panel::RawBuffer;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
@@ -224,7 +223,7 @@ fn root_network() -> NodeNetwork {
 }
 
 pub struct DocumentInputs<'a> {
-	pub document_id: u64,
+	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
@@ -324,7 +323,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					};
 					let translation = (aggregated - center) * axis;
 					responses.add(GraphOperationMessage::TransformChange {
-						layer: layer.to_path(),
+						layer,
 						transform: DAffine2::from_translation(translation),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,
@@ -333,10 +332,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BackupDocument { network } => self.backup_with_document(network, responses),
-			ClearLayerTree => {
-				// Send an empty layer tree
-				let data_buffer: RawBuffer = Self::default().serialize_root().as_slice().into();
-				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer });
+			ClearLayersPanel => {
+				// Send an empty layer list
+				let data_buffer: RawBuffer = Self::default().serialize_root();
+				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 
 				// Clear the options bar
 				responses.add(LayoutMessage::SendLayout {
@@ -359,8 +358,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DebugPrintDocument => {
 				info!("{:#?}", self.network);
 			}
-			DeleteLayer { layer_path } => {
-				responses.add(GraphOperationMessage::DeleteLayer { id: layer_path[0] });
+			DeleteLayer { id } => {
+				responses.add(GraphOperationMessage::DeleteLayer { id });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
 			DeleteSelectedLayers => {
@@ -368,9 +367,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.metadata().selected_layers()) {
-					responses.add_front(DocumentMessage::DeleteLayer {
-						layer_path: path.last().unwrap().to_path(),
-					});
+					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
 				}
 
 				responses.add(BroadcastEvent::DocumentIsDirty);
@@ -384,8 +381,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				let data_buffer: RawBuffer = self.serialize_root().as_slice().into();
-				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
+				let data_buffer: RawBuffer = self.serialize_root();
+				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer })
 			}
 			DuplicateSelectedLayers => {
 				// TODO: Reimplement selected layer duplication
@@ -406,7 +403,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					let bbox_trans = DAffine2::from_translation(-center);
 					for layer in self.metadata().selected_layers() {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: layer.to_path(),
+							layer,
 							transform: DAffine2::from_scale(scale),
 							transform_in: TransformIn::Scope { scope: bbox_trans },
 							skip_rerender: false,
@@ -438,13 +435,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
-			ImaginateClear { layer_path } => responses.add(InputFrameRasterizeRegionBelowLayer { layer_path }),
-			ImaginateGenerate { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
-			ImaginateRandom {
-				layer_path,
-				imaginate_node,
-				then_generate,
-			} => {
+			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
+			ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
 				// outside of this range can get rounded in f64
 				let random_bits = generate_uuid();
@@ -459,10 +451,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				// Generate the image
 				if then_generate {
-					responses.add(DocumentMessage::ImaginateGenerate { layer_path });
+					responses.add(DocumentMessage::ImaginateGenerate);
 				}
 			}
-			InputFrameRasterizeRegionBelowLayer { layer_path } => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path }),
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.metadata().selected_layers().collect::<Vec<_>>();
 
@@ -496,7 +487,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					// Nudge translation
 					if !ipp.keyboard.key(resize) {
 						responses.add(GraphOperationMessage::TransformChange {
-							layer: layer.to_path(),
+							layer,
 							transform: DAffine2::from_translation(delta),
 							transform_in: TransformIn::Local,
 							skip_rerender: false,
@@ -525,7 +516,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						let original_transform = self.metadata().upstream_transform(layer.to_node());
 						let new = to.inverse() * transformation * to * original_transform;
 						responses.add(GraphOperationMessage::TransformSet {
-							layer: layer.to_path(),
+							layer,
 							transform: new,
 							transform_in: TransformIn::Local,
 							skip_rerender: false,
@@ -561,7 +552,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
-					layer: layer.to_path(),
+					layer,
 					transform,
 					transform_in: TransformIn::Local,
 					skip_rerender: false,
@@ -655,16 +646,15 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
-			SelectLayer { layer_path, ctrl, shift } => {
-				let clicked_node = *layer_path.last().expect("Cannot select root");
-				let layer = LayerNodeIdentifier::new(clicked_node, self.network());
+			SelectLayer { id, ctrl, shift } => {
+				let layer = LayerNodeIdentifier::new(id, self.network());
 
 				let mut nodes = vec![];
 
 				// If we have shift pressed and a layer already selected then fill the range
 				if let Some(last_selected) = self.layer_range_selection_reference.filter(|_| shift) {
 					nodes.push(last_selected.to_node());
-					nodes.push(clicked_node);
+					nodes.push(id);
 
 					// Fill the selection range
 					self.metadata()
@@ -677,13 +667,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					if ctrl {
 						// Toggle selection when holding ctrl
 						if self.metadata().selected_layers_contains(layer) {
-							responses.add_front(NodeGraphMessage::SelectedNodesRemove { nodes: vec![clicked_node] });
+							responses.add_front(NodeGraphMessage::SelectedNodesRemove { nodes: vec![id] });
 						} else {
-							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![clicked_node] });
+							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
 						responses.add(BroadcastEvent::SelectionChanged);
 					} else {
-						nodes.push(clicked_node);
+						nodes.push(id);
 					}
 
 					// Set our last selection reference
@@ -703,7 +693,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for layer in self.metadata().selected_layers_except_artboards() {
-					responses.add(GraphOperationMessage::BlendModeSet { layer: layer.to_path(), blend_mode });
+					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
 			SetOpacityForSelectedLayers { opacity } => {
@@ -711,7 +701,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let opacity = opacity.clamp(0., 1.) as f32;
 
 				for layer in self.metadata().selected_layers_except_artboards() {
-					responses.add(GraphOperationMessage::OpacitySet { layer: layer.to_path(), opacity });
+					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
 			SetOverlaysVisibility { visible } => {
@@ -742,8 +732,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
 			StartTransaction => self.backup(responses),
-			ToggleLayerExpansion { layer } => {
-				let layer = LayerNodeIdentifier::new(layer, self.network());
+			ToggleLayerExpansion { id } => {
+				let layer = LayerNodeIdentifier::new(id, self.network());
 				if self.collapsed.contains(&layer) {
 					self.collapsed.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
@@ -908,23 +898,23 @@ impl DocumentMessageHandler {
 		std::iter::empty()
 	}
 
-	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<u64>, data: &mut Vec<LayerId>, path: &mut Vec<LayerId>) {
+	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<LayerNodeIdentifier>, data: &mut Vec<LayerNodeIdentifier>, path: &mut Vec<LayerNodeIdentifier>) {
 		let mut space = 0;
 		for layer_node in folder.children(self.metadata()) {
-			data.push(layer_node.to_node());
+			data.push(layer_node);
 			space += 1;
 			if layer_node.has_children(self.metadata()) && !self.collapsed.contains(&layer_node) {
-				path.push(layer_node.to_node());
+				path.push(layer_node);
 
 				// TODO: Skip if folder is not expanded.
-				structure.push(space);
+				structure.push(LayerNodeIdentifier::new_unchecked(space));
 				self.serialize_structure(layer_node, structure, data, path);
 				space = 0;
 
 				path.pop();
 			}
 		}
-		structure.push(space | 1 << 63);
+		structure.push(LayerNodeIdentifier::new_unchecked(space | 1 << 63));
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.
@@ -959,13 +949,15 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,15878401910454357952]
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
-	pub fn serialize_root(&self) -> Vec<u64> {
-		let (mut structure, mut data) = (vec![0], Vec::new());
+	pub fn serialize_root(&self) -> RawBuffer {
+		let mut structure = vec![LayerNodeIdentifier::ROOT];
+		let mut data = Vec::new();
 		self.serialize_structure(self.metadata().root(), &mut structure, &mut data, &mut vec![]);
-		structure[0] = structure.len() as u64 - 1;
+
+		structure[0] = LayerNodeIdentifier::new_unchecked(structure.len() as NodeId - 1);
 		structure.extend(data);
 
-		structure
+		structure.iter().map(|id| id.to_node()).collect::<Vec<_>>().as_slice().into()
 	}
 
 	/// Places a document into the history system
@@ -1064,10 +1056,9 @@ impl DocumentMessageHandler {
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
 	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
-		let layer_ids_above = parent.children(self.metadata()).take(if insert_index < 0 { usize::MAX } else { insert_index as usize });
-		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
-
-		new_insert_index
+		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
+		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
+		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {

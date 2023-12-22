@@ -33,7 +33,7 @@ export function panicProxy<T extends object>(module: T): T {
 					result = targetValue.apply(this, args);
 				} catch (err) {
 					// Suppress `unreachable` WebAssembly.RuntimeError exceptions
-					if (!`${err}`.startsWith("RuntimeError: unreachable")) throw err;
+					if (!String(err).startsWith("RuntimeError: unreachable")) throw err;
 				}
 				return result;
 			};

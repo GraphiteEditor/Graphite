@@ -38,10 +38,9 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerTreeStructure),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::DocumentIsDirty)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::InputFrameRasterizeRegionBelowLayer)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 ];
 
@@ -262,6 +261,7 @@ mod test {
 	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
 
+	use graph_craft::document::NodeId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -359,7 +359,7 @@ mod test {
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
-		const FOLDER_ID: u64 = 3;
+		const FOLDER_ID: NodeId = 3;
 
 		editor.handle_message(GraphOperationMessage::NewCustomLayer {
 			id: FOLDER_ID,

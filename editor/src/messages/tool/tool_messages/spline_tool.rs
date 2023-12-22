@@ -89,7 +89,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.unit(" px")
 		.label("Weight")
 		.min(0.)
-		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }
@@ -215,7 +215,6 @@ impl Fsm for SplineToolFsmState {
 				let transform = document.metadata().transform_to_viewport(parent);
 
 				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let pos = transform.inverse().transform_point2(snapped_position);
@@ -228,12 +227,12 @@ impl Fsm for SplineToolFsmState {
 				let layer = graph_modification_utils::new_vector_layer(vec![], generate_uuid(), parent, responses);
 
 				responses.add(GraphOperationMessage::FillSet {
-					layer: layer.to_path(),
+					layer,
 					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
 				});
 
 				responses.add(GraphOperationMessage::StrokeSet {
-					layer: layer.to_path(),
+					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
 				});
 				tool_data.layer = Some(layer);
@@ -329,5 +328,5 @@ fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut
 	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), layer, true, responses);
 	let subpaths = vec![subpath];
 	let modification = VectorDataModification::UpdateSubpaths { subpaths };
-	responses.add_front(GraphOperationMessage::Vector { layer: layer.to_path(), modification });
+	responses.add_front(GraphOperationMessage::Vector { layer, modification });
 }

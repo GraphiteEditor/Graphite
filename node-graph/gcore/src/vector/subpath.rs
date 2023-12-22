@@ -1,7 +1,7 @@
-use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
+use super::{consts::ManipulatorType, id_vec::ElementId};
 use crate::uuid::ManipulatorGroupId;
 
 use alloc::string::String;
@@ -204,7 +204,7 @@ impl Subpath {
 
 	/// Delete the selected points from the [Subpath]
 	pub fn delete_selected(&mut self) {
-		let mut ids_to_delete: Vec<u64> = vec![];
+		let mut ids_to_delete: Vec<ElementId> = vec![];
 		for (id, manipulator_group) in self.manipulator_groups_mut().enumerate_mut() {
 			if manipulator_group.is_anchor_selected() {
 				ids_to_delete.push(*id);
@@ -228,7 +228,7 @@ impl Subpath {
 	// ** SELECTION OF POINTS **
 
 	/// Set a single point to a chosen selection state by providing `(manipulator group ID, manipulator type)`.
-	pub fn select_point(&mut self, point: (u64, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
+	pub fn select_point(&mut self, point: (ElementId, ManipulatorType), selected: bool) -> Option<&mut ManipulatorGroup> {
 		let (manipulator_group_id, point_id) = point;
 		if let Some(manipulator_group) = self.manipulator_groups_mut().by_id_mut(manipulator_group_id) {
 			manipulator_group.select_point(point_id as usize, selected);
@@ -240,7 +240,7 @@ impl Subpath {
 	}
 
 	/// Set points in the [Subpath] to a chosen selection state, given by `(manipulator group ID, manipulator type)`.
-	pub fn select_points(&mut self, points: &[(u64, ManipulatorType)], selected: bool) {
+	pub fn select_points(&mut self, points: &[(ElementId, ManipulatorType)], selected: bool) {
 		points.iter().for_each(|point| {
 			self.select_point(*point, selected);
 		});

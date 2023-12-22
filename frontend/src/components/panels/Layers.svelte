@@ -4,7 +4,7 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -27,8 +27,9 @@
 
 	type DraggingData = {
 		select?: () => void;
-		insertFolder: BigUint64Array;
-		insertIndex: number;
+		insertParentId: bigint | undefined;
+		insertDepth: number;
+		insertIndex: number | undefined;
 		highlightFolder: boolean;
 		markerHeight: number;
 	};
@@ -42,7 +43,7 @@
 	// Interactive dragging
 	let draggable = true;
 	let draggingData: undefined | DraggingData = undefined;
-	let fakeHighlight: undefined | BigUint64Array[] = undefined;
+	let fakeHighlight: undefined | bigint = undefined;
 	let dragInPanel = false;
 
 	// Layouts
@@ -54,24 +55,24 @@
 			layersPanelOptionsLayout = layersPanelOptionsLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
-			rebuildLayerTree(updateDocumentLayerTreeStructure);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
+			rebuildLayerHierarchy(updateDocumentLayerStructure);
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
 			const targetLayer = updateDocumentLayerDetails.data;
-			const targetPath = targetLayer.path;
+			const targetId = targetLayer.id;
 
-			updateLayerInTree(targetPath, targetLayer);
+			updateLayerInTree(targetId, targetLayer);
 		});
 	});
 
-	function toggleLayerVisibility(path: BigUint64Array) {
-		editor.instance.toggleLayerVisibility(path);
+	function toggleLayerVisibility(id: bigint) {
+		editor.instance.toggleLayerVisibility(id);
 	}
 
-	function handleExpandArrowClick(path: BigUint64Array) {
-		editor.instance.toggleLayerExpansion(path);
+	function handleExpandArrowClick(id: bigint) {
+		editor.instance.toggleLayerExpansion(id);
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -97,7 +98,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.instance.setLayerName(listing.entry.path, name);
+		editor.instance.setLayerName(listing.entry.id, name);
 		listing.entry.name = name;
 	}
 
@@ -120,16 +121,16 @@
 		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
 
 		// Select the layer only if the accel and/or shift keys are pressed
-		if (!oppositeAccel && !alt) selectLayer(accel, shift, listing);
+		if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
 		e.stopPropagation();
 	}
 
-	function selectLayer(accel: boolean, shift: boolean, listing: LayerListingInfo) {
+	function selectLayer(listing: LayerListingInfo, accel: boolean, shift: boolean) {
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.instance.selectLayer(listing.entry.path, accel, shift);
+		editor.instance.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
@@ -148,10 +149,11 @@
 		let closest = Infinity;
 
 		// Folder to insert into
-		let insertFolder = new BigUint64Array();
+		let insertParentId: bigint | undefined = undefined;
+		let insertDepth = 0;
 
-		// Insert index
-		let insertIndex = -1;
+		// Insert index (starts at the end, essentially infinity)
+		let insertIndex = undefined;
 
 		// Whether you are inserting into a folder and should show the folder outline
 		let highlightFolder = false;
@@ -171,7 +173,8 @@
 
 				// Inserting above current row
 				if (distance > 0 && distance < closest) {
-					insertFolder = layer.path.slice(0, layer.path.length - 1);
+					insertParentId = layer.parentId;
+					insertDepth = layer.depth - 1;
 					insertIndex = folderIndex;
 					highlightFolder = false;
 					closest = distance;
@@ -179,15 +182,24 @@
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					insertFolder = isNestingLayer(layer.layerClassification) ? layer.path : layer.path.slice(0, layer.path.length - 1);
-					insertIndex = isNestingLayer(layer.layerClassification) ? 0 : folderIndex + 1;
-					highlightFolder = isNestingLayer(layer.layerClassification);
+					if (isNestingLayer(layer.layerClassification)) {
+						insertParentId = layer.id;
+						insertDepth = layer.depth;
+						insertIndex = 0;
+						highlightFolder = true;
+					} else {
+						insertParentId = layer.parentId;
+						insertDepth = layer.depth - 1;
+						insertIndex = folderIndex + 1;
+						highlightFolder = false;
+					}
+
 					closest = -distance;
 					markerHeight = index === treeChildren.length - 1 ? rect.bottom - INSERT_MARK_OFFSET : rect.bottom;
 				}
 				// Inserting with no nesting at the end of the panel
 				else if (closest === Infinity) {
-					if (layer.path.length === 1) insertIndex = folderIndex + 1;
+					if (layer.parentId === undefined) insertIndex = folderIndex + 1;
 
 					markerHeight = rect.bottom - INSERT_MARK_OFFSET;
 				}
@@ -199,7 +211,8 @@
 
 		return {
 			select,
-			insertFolder,
+			insertParentId,
+			insertDepth,
 			insertIndex,
 			highlightFolder,
 			markerHeight,
@@ -210,10 +223,10 @@
 		const layer = listing.entry;
 		dragInPanel = true;
 		if (!layer.selected) {
-			fakeHighlight = [layer.path];
+			fakeHighlight = layer.id;
 		}
 		const select = () => {
-			if (!layer.selected) selectLayer(false, false, listing);
+			if (!layer.selected) selectLayer(listing, false, false);
 		};
 
 		const target = (event.target instanceof HTMLElement && event.target) || undefined;
@@ -240,58 +253,49 @@
 
 	async function drop() {
 		if (draggingData && dragInPanel) {
-			const { select, insertFolder, insertIndex } = draggingData;
+			const { select, insertParentId, insertIndex } = draggingData;
 
 			select?.();
-			editor.instance.moveLayerInTree(insertFolder, insertIndex);
+			editor.instance.moveLayerInTree(insertParentId, insertIndex);
 		}
 		draggingData = undefined;
 		fakeHighlight = undefined;
 		dragInPanel = false;
 	}
 
-	function rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructureJs) {
+	function rebuildLayerHierarchy(updateDocumentLayerStructure: UpdateDocumentLayerStructureJs) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
-		const layerPathWithNameBeingEdited = layerWithNameBeingEdited?.entry.path;
-		const layerIdWithNameBeingEdited = layerPathWithNameBeingEdited?.slice(-1)[0];
-		const path: bigint[] = [];
+		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
-		// Clear the layer tree before rebuilding it
+		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
-		// Build the new layer tree
-		const recurse = (folder: UpdateDocumentLayerTreeStructureJs) => {
+		// Build the new layer hierarchy
+		const recurse = (folder: UpdateDocumentLayerStructureJs) => {
 			folder.children.forEach((item, index) => {
-				// TODO: fix toString
-				const layerId = BigInt(item.layerId.toString());
-				path.push(layerId);
-
-				const mapping = layerCache.get([path[path.length - 1]].toString());
+				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
-					mapping.path = new BigUint64Array(path);
+					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === folder.children.length - 1,
 						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === layerId,
+						editingName: layerIdWithNameBeingEdited === item.layerId,
 					});
 				}
 
 				// Call self recursively if there are any children
 				if (item.children.length >= 1) recurse(item);
-
-				path.pop();
 			});
 		};
-		recurse(updateDocumentLayerTreeStructure);
+		recurse(updateDocumentLayerStructure);
 		layers = layers;
 	}
 
-	function updateLayerInTree(targetPath: BigUint64Array, targetLayer: LayerPanelEntry) {
-		const path = targetPath.toString();
-		layerCache.set(path, targetLayer);
+	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
+		layerCache.set(String(targetId), targetLayer);
 
-		const layer = layers.find((layer: LayerListingInfo) => layer.entry.path.toString() === path);
+		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
 		if (layer) {
 			layer.entry = targetLayer;
 			layers = layers;
@@ -305,15 +309,15 @@
 	</LayoutRow>
 	<LayoutRow class="list-area" scrollableY={true}>
 		<LayoutCol class="list" bind:this={list} on:click={() => deselectAllLayers()} on:dragover={(e) => draggable && updateInsertLine(e)} on:dragend={() => draggable && drop()}>
-			{#each layers as listing, index (String(listing.entry.path.slice(-1)))}
+			{#each layers as listing, index (String(listing.entry.id))}
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight ? fakeHighlight.includes(listing.entry.path) : listing.entry.selected,
-						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertFolder === listing.entry.path,
+						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
+						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
-					styles={{ "--layer-indent-levels": `${listing.entry.path.length - 1}` }}
-					data-layer={String(listing.entry.path)}
+					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
+					data-layer
 					data-index={index}
 					tooltip={listing.entry.tooltip}
 					{draggable}
@@ -321,7 +325,7 @@
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if isNestingLayer(listing.entry.layerClassification)}
-						<button class="expand-arrow" class:expanded={listing.entry.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.path)} tabindex="0" />
+						<button class="expand-arrow" class:expanded={listing.entry.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)} tabindex="0" />
 						{#if listing.entry.layerClassification === "Artboard"}
 							<IconLabel icon="Artboard" class={"layer-type-icon"} />
 						{:else if listing.entry.layerClassification === "Folder"}
@@ -347,7 +351,7 @@
 					</LayoutRow>
 					<IconButton
 						class={"visibility"}
-						action={(e) => (toggleLayerVisibility(listing.entry.path), e?.stopPropagation())}
+						action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={(() => true)() ? "EyeVisible" : "EyeHidden"}
 						tooltip={(() => true)() ? "Visible" : "Hidden"}
@@ -356,7 +360,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertFolder.length * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
 		{/if}
 	</LayoutRow>
 </LayoutCol>
@@ -387,7 +391,7 @@
 			}
 		}
 
-		// Layer tree
+		// Layer hierarchy
 		.list-area {
 			margin: 4px 0;
 			position: relative;

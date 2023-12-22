@@ -3,9 +3,7 @@ use super::load_network_structure;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
-use crate::node_graph_executor::GraphIdentifier;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
@@ -99,13 +97,13 @@ pub struct FrontendNode {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
-	pub link_start: u64,
+	pub link_start: NodeId,
 	#[serde(rename = "linkStartOutputIndex")]
 	pub link_start_output_index: usize,
 	#[serde(rename = "linkEnd")]
-	pub link_end: u64,
+	pub link_end: NodeId,
 	#[serde(rename = "linkEndInputIndex")]
-	pub link_end_input_index: u64,
+	pub link_end_input_index: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -124,10 +122,9 @@ impl FrontendNodeType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGraphMessageHandler {
-	pub layer_path: Option<Vec<LayerId>>,
 	pub network: Vec<NodeId>,
 	has_selection: bool,
-	pub widgets: [LayoutGroup; 2],
+	widgets: [LayoutGroup; 2],
 }
 
 impl Default for NodeGraphMessageHandler {
@@ -137,7 +134,6 @@ impl Default for NodeGraphMessageHandler {
 		let add_nodes_label_row = LayoutGroup::Row { widgets: vec![add_nodes_label] };
 
 		Self {
-			layer_path: None,
 			network: Vec::new(),
 			has_selection: false,
 			widgets: [add_nodes_label_row, LayoutGroup::default()],
@@ -261,14 +257,12 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(network: &NodeNetwork, layer_path: &Option<Vec<LayerId>>, graph_view_overlay_open: bool, responses: &mut VecDeque<Message>) {
+	fn send_graph(network: &NodeNetwork, graph_view_overlay_open: bool, responses: &mut VecDeque<Message>) {
 		responses.add(PropertiesPanelMessage::Refresh);
 
 		if !graph_view_overlay_open {
 			return;
 		}
-
-		let layer_id = layer_path.as_ref().and_then(|path| path.last().copied());
 
 		// List of links in format (link_start, link_end, link_end_input_index)
 		let links = network
@@ -278,16 +272,16 @@ impl NodeGraphMessageHandler {
 			.filter_map(|(input, &link_end, link_end_input_index)| {
 				if let NodeInput::Node {
 					node_id: link_start,
-					output_index: link_start_index,
+					output_index: link_start_output_index,
 					// TODO: add ui for lambdas
 					lambda: _,
 				} = *input
 				{
 					Some(FrontendNodeLink {
 						link_start,
-						link_start_output_index: link_start_index,
+						link_start_output_index,
 						link_end,
-						link_end_input_index: link_end_input_index as u64,
+						link_end_input_index,
 					})
 				} else {
 					None
@@ -317,8 +311,6 @@ impl NodeGraphMessageHandler {
 				name: output_type.name.to_string(),
 			});
 			let primary_output = if node.has_primary_output { outputs.next() } else { None };
-
-			let _graph_identifier = GraphIdentifier::new(layer_id);
 
 			nodes.push(FrontendNode {
 				is_layer: node.is_layer(),
@@ -446,7 +438,7 @@ impl NodeGraphMessageHandler {
 pub struct NodeGraphHandlerData<'a> {
 	pub document_network: &'a mut NodeNetwork,
 	pub document_metadata: &'a mut DocumentMetadata,
-	pub document_id: u64,
+	pub document_id: DocumentId,
 	pub document_name: &'a str,
 	pub collapsed: &'a mut Vec<LayerNodeIdentifier>,
 	pub input: &'a InputPreprocessorMessageHandler,
@@ -495,7 +487,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("No network");
 					return;
 				};
-				let Some(input_node) = network.nodes.get(&input_node) else {
+				let Some(input_node) = network.nodes.get(&node_id) else {
 					error!("No to");
 					return;
 				};
@@ -569,11 +561,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network(&self.network) {
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if metadata.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
-						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-						} else {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 			}
@@ -612,7 +600,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selected(document_network, metadata, responses);
 			}
@@ -640,7 +628,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 					}
 
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 					self.update_selected(document_network, metadata, responses);
 					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 				}
@@ -653,7 +641,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selected(document_network, metadata, responses);
 			}
@@ -703,7 +691,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+				Self::send_graph(network, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -752,7 +740,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 			}
-			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id, layer_path: Vec::new() }),
+			NodeGraphMessage::RunDocumentGraph => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
 				metadata.add_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);
@@ -768,13 +756,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 					if should_rerender {
-						if let Some(layer_path) = self.layer_path.clone() {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-						} else {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 			}
@@ -787,11 +771,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 						responses.add(PropertiesPanelMessage::Refresh);
 						if (node.name != "Imaginate" || input_index == 0) && network.connected_to_output(node_id) {
-							if let Some(layer_path) = self.layer_path.clone() {
-								responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-							} else {
-								responses.add(NodeGraphMessage::RunDocumentGraph);
-							}
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
 					}
 				}
@@ -811,12 +791,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
-			NodeGraphMessage::SetQualifiedInputValue {
-				layer_path,
-				node_path,
-				input_index,
-				value,
-			} => {
+			NodeGraphMessage::SetQualifiedInputValue { node_path, input_index, value } => {
 				let Some((node_id, node_path)) = node_path.split_last() else {
 					error!("Node path is empty");
 					return;
@@ -832,7 +807,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 						if network.connected_to_output(*node_id) {
-							responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
+							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
 					}
 				}
@@ -908,7 +883,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
 						network.disabled.push(node_id);
 					}
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if network.connected_to_output(node_id) {
@@ -944,21 +919,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						return;
 					}
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selection_action_buttons(document_network, metadata, responses);
-				if let Some(layer_path) = self.layer_path.clone() {
-					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path });
-				} else {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
 					metadata.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					Self::send_graph(network, &self.layer_path, graph_view_overlay_open, responses);
+					Self::send_graph(network, graph_view_overlay_open, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });

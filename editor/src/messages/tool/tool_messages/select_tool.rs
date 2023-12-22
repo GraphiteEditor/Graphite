@@ -302,10 +302,10 @@ impl SelectToolData {
 
 		// Duplicate each previously selected layer and select the new ones.
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			let layer = layer_ancestors.last().unwrap();
+			let layer = *layer_ancestors.last().unwrap();
 			// Moves the original back to its starting position.
 			responses.add_front(GraphOperationMessage::TransformChange {
-				layer: layer.to_path(),
+				layer,
 				transform: DAffine2::from_translation(self.drag_start - self.drag_current),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -336,11 +336,6 @@ impl SelectToolData {
 			// 	layer_metadata,
 			// });
 		}
-
-		// // Since the selected layers have now moved back to their original transforms before the drag began, we rerender them to be displayed as if they weren't touched.
-		// for layer_path in self.not_duplicated_layers.iter().flatten() {
-		// 	responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer_path.clone() });
-		// }
 	}
 
 	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
@@ -361,7 +356,7 @@ impl SelectToolData {
 		// Move the original to under the mouse
 		for layer_ancestors in document.metadata().shallowest_unique_layers(originals.iter().copied()) {
 			responses.add_front(GraphOperationMessage::TransformChange {
-				layer: layer_ancestors.last().unwrap().to_path(),
+				layer: *layer_ancestors.last().unwrap(),
 				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -482,21 +477,10 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
 				} else if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
-
-					// let snap_x = selected_edges.2 || selected_edges.3;
-					// let snap_y = selected_edges.0 || selected_edges.1;
-					//
-					// tool_data
-					// 	.snap_manager
-					// 	.start_snap(document, input, document.bounding_boxes(Some(&selected), None, font_cache), snap_x, snap_y);
-					// tool_data
-					// 	.snap_manager
-					// 	.add_all_document_handles(document, input, &[], &selected.iter().map(|x| x.as_slice()).collect::<Vec<_>>(), &[]);
 
 					tool_data.layers_dragging = selected;
 
@@ -606,7 +590,7 @@ impl Fsm for SelectToolFsmState {
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
-						layer: layer_ancestors.last().unwrap().to_path(),
+						layer: *layer_ancestors.last().unwrap(),
 						transform: DAffine2::from_translation(mouse_delta + closest_move),
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,

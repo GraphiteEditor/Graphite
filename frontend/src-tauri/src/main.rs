@@ -4,36 +4,35 @@ use graphite_editor::application::Editor;
 use graphite_editor::messages::frontend::utility_types::FrontendImageData;
 use graphite_editor::messages::prelude::*;
 
-use axum::body::StreamBody;
-use axum::extract::Path;
-use axum::http;
-use axum::response::IntoResponse;
+// use axum::body::StreamBody;
+// use axum::extract::Path;
+// use axum::http;
+// use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use fern::colors::{Color, ColoredLevelConfig};
-use http::{Response, StatusCode};
+// use http::{Response, StatusCode};
 use std::cell::RefCell;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
+// use std::sync::Mutex;
 
-static IMAGES: Mutex<Option<HashMap<String, FrontendImageData>>> = Mutex::new(None);
 thread_local! {
 	static EDITOR: RefCell<Option<Editor>> = RefCell::new(None);
 }
 
-async fn respond_to(id: Path<String>) -> impl IntoResponse {
-	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
+// async fn respond_to(id: Path<String>) -> impl IntoResponse {
+// 	let builder = Response::builder().header("Access-Control-Allow-Origin", "*").status(StatusCode::OK);
 
-	let guard = IMAGES.lock().unwrap();
-	let images = guard;
-	let image = images.as_ref().unwrap().get(&id.0).unwrap();
+// 	let guard = IMAGES.lock().unwrap();
+// 	let images = guard;
+// 	let image = images.as_ref().unwrap().get(&id.0).unwrap();
 
-	println!("image: {:#?}", image.path);
-	let result: Result<Vec<u8>, &str> = Ok((*image.image_data).clone());
-	let stream = futures::stream::once(async move { result });
-	builder.body(StreamBody::new(stream)).unwrap()
-}
+// 	println!("image: {:#?}", image.path);
+// 	let result: Result<Vec<u8>, &str> = Ok((*image.image_data).clone());
+// 	let stream = futures::stream::once(async move { result });
+// 	builder.body(StreamBody::new(stream)).unwrap()
+// }
 
 #[tokio::main]
 async fn main() {
@@ -56,10 +55,10 @@ async fn main() {
 		.apply()
 		.unwrap();
 
-	*(IMAGES.lock().unwrap()) = Some(HashMap::new());
+	// *(IMAGES.lock().unwrap()) = Some(HashMap::new());
 	graphite_editor::application::set_uuid_seed(0);
 	EDITOR.with(|editor| editor.borrow_mut().replace(Editor::new()));
-	let app = Router::new().route("/", get(|| async { "Hello, World!" })).route("/image/:id", get(respond_to));
+	let app = Router::new().route("/", get(|| async { "Hello, World!" }))/*.route("/image/:id", get(respond_to))*/;
 
 	// run it with hyper on localhost:3000
 	tauri::async_runtime::spawn(async {
@@ -78,8 +77,7 @@ async fn main() {
 }
 #[tauri::command]
 fn set_random_seed(seed: f64) {
-	let seed = seed as u64;
-	graphite_editor::application::set_uuid_seed(seed);
+	graphite_editor::application::set_uuid_seed(seed as u64);
 }
 
 #[tauri::command]
@@ -96,20 +94,11 @@ fn handle_message(message: String) -> String {
 	fn send_frontend_message_to_js(message: FrontendMessage) -> FrontendMessage {
 		// Special case for update image data to avoid serialization times.
 		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
-			let mut guard = IMAGES.lock().unwrap();
-			let images = (*guard).as_mut().unwrap();
 			let mut stub_data = Vec::with_capacity(image_data.len());
 			for image in image_data {
-				let path = image.path.clone();
-				let mime = image.mime.clone();
-				let transform = image.transform;
-				images.insert(format!("{:?}_{}", image.path, document_id), image);
 				stub_data.push(FrontendImageData {
-					path,
-					node_id: None,
-					mime,
+					mime: image.mime.clone(),
 					image_data: Arc::new(Vec::new()),
-					transform,
 				});
 			}
 			FrontendMessage::UpdateImageData { document_id, image_data: stub_data }

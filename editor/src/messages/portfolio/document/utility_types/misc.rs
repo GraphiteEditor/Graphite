@@ -1,7 +1,4 @@
 pub use super::layer_panel::LayerPanelEntry;
-use crate::messages::portfolio::document::utility_types::LayerId;
-
-use graphene_core::raster::color::Color;
 
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
@@ -52,12 +49,6 @@ impl DocumentMode {
 			DocumentMode::GuideMode => "ViewportGuideMode".to_string(),
 		}
 	}
-}
-
-pub enum DocumentRenderMode<'a> {
-	Root,
-	OnlyBelowLayerInFolder(&'a [LayerId]),
-	LayerCutout(&'a [LayerId], Color),
 }
 
 #[derive(Clone, Debug)]

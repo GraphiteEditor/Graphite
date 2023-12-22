@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::utility_types::LayerId;
+use graph_craft::document::NodeId;
 
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
@@ -45,6 +45,9 @@ pub struct LayerPanelEntry {
 	pub layer_classification: LayerClassification,
 	pub selected: bool,
 	pub expanded: bool,
-	pub path: Vec<LayerId>,
+	#[serde(rename = "parentId")]
+	pub parent_id: Option<NodeId>,
+	pub id: NodeId,
+	pub depth: usize,
 	pub thumbnail: String,
 }

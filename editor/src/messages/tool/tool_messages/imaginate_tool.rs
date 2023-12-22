@@ -172,10 +172,6 @@ impl Fsm for ImaginateToolFsmState {
 				state
 			}
 			(ImaginateToolFsmState::Drawing, ImaginateToolMessage::DragStop) => {
-				if let Some(layer) = &shape_data.layer {
-					responses.add(DocumentMessage::InputFrameRasterizeRegionBelowLayer { layer_path: layer.to_path() });
-				}
-
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 				shape_data.cleanup(responses);
 

@@ -37,7 +37,6 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					persistent_data,
 					responses,
 					nested_path: &node_graph_message_handler.network,
-					layer_path: &[],
 					executor,
 					network: document_network,
 					metadata: document_metadata,

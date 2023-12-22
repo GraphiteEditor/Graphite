@@ -66,7 +66,7 @@ fn add_network() -> NodeNetwork {
 		}]
 		.into_iter()
 		.enumerate()
-		.map(|(i, n)| (i as u64, n))
+		.map(|(id, node)| (id as NodeId, node))
 		.collect(),
 	}
 }

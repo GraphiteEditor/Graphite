@@ -16,13 +16,13 @@ pub struct ToolMessageHandler {
 	pub shape_editor: ShapeState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor)> for ToolMessageHandler {
+impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor)> for ToolMessageHandler {
 	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: ToolMessage,
 		responses: &mut VecDeque<Message>,
-		(document, document_id, input, persistent_data, node_graph): (&DocumentMessageHandler, u64, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor),
+		(document, document_id, input, persistent_data, node_graph): (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor),
 	) {
 		let font_cache = &persistent_data.font_cache;
 

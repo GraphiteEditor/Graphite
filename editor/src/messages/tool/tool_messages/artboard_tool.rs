@@ -120,7 +120,6 @@ impl ArtboardToolData {
 		let snap_y = selected_edges.0 || selected_edges.1;
 
 		self.snap_manager.start_snap(document, input, document.bounding_boxes(), snap_x, snap_y);
-		self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = (bounds.bounds[0] + bounds.bounds[1]) / 2.;
@@ -139,7 +138,6 @@ impl ArtboardToolData {
 			self.selected_artboard = Some(intersection);
 
 			self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-			self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 			true
 		} else {
@@ -279,7 +277,6 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,

@@ -560,10 +560,10 @@ export class TriggerSavePreferences extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export class UpdateDocumentLayerTreeStructureJs extends JsMessage {
+export class UpdateDocumentLayerStructureJs extends JsMessage {
 	constructor(
 		readonly layerId: bigint,
-		readonly children: UpdateDocumentLayerTreeStructureJs[],
+		readonly children: UpdateDocumentLayerStructureJs[],
 	) {
 		super();
 	}
@@ -574,7 +574,7 @@ type DataBuffer = {
 	length: bigint;
 };
 
-export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerTreeStructureJs {
+export function newUpdateDocumentLayerStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerStructureJs {
 	const pointerNum = Number(input.dataBuffer.pointer);
 	const lengthNum = Number(input.dataBuffer.length);
 
@@ -591,7 +591,7 @@ export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuf
 	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
 
 	let layersEncountered = 0;
-	let currentFolder = new UpdateDocumentLayerTreeStructureJs(BigInt(-1), []);
+	let currentFolder = new UpdateDocumentLayerStructureJs(BigInt(-1), []);
 	const currentFolderStack = [currentFolder];
 
 	for (let i = 0; i < structureSectionLength; i += 1) {
@@ -606,7 +606,7 @@ export function newUpdateDocumentLayerTreeStructure(input: { dataBuffer: DataBuf
 			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
 			layersEncountered += 1;
 
-			const childLayer = new UpdateDocumentLayerTreeStructureJs(layerId, []);
+			const childLayer = new UpdateDocumentLayerStructureJs(layerId, []);
 			currentFolder.children.push(childLayer);
 		}
 
@@ -650,8 +650,8 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 export class UpdateImageData extends JsMessage {
 	readonly documentId!: bigint;
 
-	@Type(() => RenderedImageData)
-	readonly imageData!: RenderedImageData[];
+	@Type(() => FrontendImageData)
+	readonly imageData!: FrontendImageData[];
 }
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
@@ -669,8 +669,12 @@ export class LayerPanelEntry {
 
 	layerClassification!: LayerClassification;
 
-	@Transform(({ value }: { value: bigint[] }) => new BigUint64Array(value))
-	path!: BigUint64Array;
+	parentId!: bigint | undefined;
+
+	id!: bigint;
+
+	@Transform(({ value }: { value: bigint }) => Number(value))
+	depth!: number;
 
 	expanded!: boolean;
 
@@ -681,16 +685,10 @@ export class LayerPanelEntry {
 
 export type LayerClassification = "Folder" | "Artboard" | "Layer";
 
-export class RenderedImageData {
-	readonly path!: BigUint64Array;
-
-	readonly nodeId!: bigint;
-
+export class FrontendImageData {
 	readonly mime!: string;
 
 	readonly imageData!: Uint8Array;
-
-	readonly transform!: Float64Array;
 }
 
 export class DisplayDialogDismiss extends JsMessage {}
@@ -1381,7 +1379,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerTreeStructureJs: newUpdateDocumentLayerTreeStructure,
+	UpdateDocumentLayerStructureJs: newUpdateDocumentLayerStructure,
 	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,

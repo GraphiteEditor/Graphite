@@ -113,7 +113,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.label("Size")
 		.int()
 		.min(1.)
-		.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
 	vec![
@@ -298,11 +298,11 @@ impl TextToolData {
 				insert_index: -1,
 			});
 			responses.add(GraphOperationMessage::FillSet {
-				layer: self.layer.to_path(),
+				layer: self.layer,
 				fill: if editing_text.color.is_some() { Fill::Solid(editing_text.color.unwrap()) } else { Fill::None },
 			});
 			responses.add(GraphOperationMessage::TransformSet {
-				layer: self.layer.to_path(),
+				layer: self.layer,
 				transform: editing_text.transform,
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
@@ -310,7 +310,7 @@ impl TextToolData {
 
 			self.set_editing(true, font_cache, document, responses);
 
-			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: self.layer.to_path() });
+			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![self.layer.to_node()] });
 
 			TextToolFsmState::Editing
 		} else {
@@ -331,10 +331,11 @@ impl TextToolData {
 	}
 
 	fn fix_text_bounds(&self, new_text: &str, _document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> Option<()> {
-		let layer = self.layer.to_path();
-		let old_bounds = self.get_bounds(&self.editing_text.as_ref()?.text, font_cache)?;
-		let new_bounds = self.get_bounds(new_text, font_cache)?;
-		responses.add(GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds });
+		responses.add(GraphOperationMessage::UpdateBounds {
+			layer: self.layer,
+			old_bounds: self.get_bounds(&self.editing_text.as_ref()?.text, font_cache)?,
+			new_bounds: self.get_bounds(new_text, font_cache)?,
+		});
 
 		Some(())
 	}
@@ -437,7 +438,6 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					layer_path: Vec::new(),
 					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap()],
 					input_index: 1,
 					value: TaggedValue::String(new_text),

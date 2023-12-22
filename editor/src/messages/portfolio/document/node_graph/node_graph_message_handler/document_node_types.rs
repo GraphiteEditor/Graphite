@@ -2,7 +2,6 @@ use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -74,7 +73,6 @@ impl DocumentOutputType {
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
-	pub layer_path: &'a [LayerId],
 	pub nested_path: &'a [NodeId],
 	pub executor: &'a mut NodeGraphExecutor,
 	pub network: &'a NodeNetwork,
@@ -279,7 +277,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "Image Frame",
 				data_type: FrontendGraphDataType::Raster,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -1069,7 +1067,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "OutputBuffer",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -1137,7 +1135,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "CommandBuffer",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -1171,7 +1169,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "PipelineLayout",
 				data_type: FrontendGraphDataType::General,
 			}],
-			properties: node_properties::input_properties,
+			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -2377,7 +2375,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	name: "Imaginate",
 	category: "Image Synthesis",
 	implementation: NodeImplementation::DocumentNode(NodeNetwork {
-		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 		outputs: vec![NodeOutput::new(1, 0)],
 		nodes: [
 			(
@@ -2404,14 +2402,13 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 						NodeInput::Network(concrete!(String)),
 						NodeInput::Network(concrete!(bool)),
 						NodeInput::Network(concrete!(f32)),
-						NodeInput::Network(concrete!(Option<Vec<u64>>)),
 						NodeInput::Network(concrete!(bool)),
 						NodeInput::Network(concrete!(f32)),
 						NodeInput::Network(concrete!(ImaginateMaskStartingFill)),
 						NodeInput::Network(concrete!(bool)),
 						NodeInput::Network(concrete!(bool)),
 					],
-					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+					implementation: DocumentNodeImplementation::proto("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 					..Default::default()
 				},
 			),
@@ -2436,7 +2433,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 		DocumentInputType::value("Negative Prompt", TaggedValue::String(String::new()), false),
 		DocumentInputType::value("Adapt Input Image", TaggedValue::Bool(false), false),
 		DocumentInputType::value("Image Creativity", TaggedValue::F32(66.), false),
-		DocumentInputType::value("Masking Layer", TaggedValue::LayerPath(None), false),
 		DocumentInputType::value("Inpaint", TaggedValue::Bool(true), false),
 		DocumentInputType::value("Mask Blur", TaggedValue::F32(4.), false),
 		DocumentInputType::value("Mask Starting Fill", TaggedValue::ImaginateMaskStartingFill(ImaginateMaskStartingFill::Fill), false),

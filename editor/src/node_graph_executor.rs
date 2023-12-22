@@ -5,23 +5,22 @@ use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::layer_panel::LayerClassification;
 use crate::messages::portfolio::document::utility_types::misc::LayerPanelEntry;
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
-use graph_craft::{concrete, Type};
-use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
+use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
-use graphene_core::{Color, GraphicElement, SurfaceFrame, SurfaceId};
+use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -30,22 +29,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-
-/// Identifies a node graph, either the document graph or a node graph associated with a legacy layer.
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum GraphIdentifier {
-	DocumentGraph,
-	LayerGraph(LayerId),
-}
-
-impl GraphIdentifier {
-	pub const fn new(layer_id: Option<LayerId>) -> Self {
-		match layer_id {
-			Some(layer_id) => Self::LayerGraph(layer_id),
-			None => Self::DocumentGraph,
-		}
-	}
-}
 
 pub struct NodeRuntime {
 	pub(crate) executor: DynamicExecutor,
@@ -58,7 +41,6 @@ pub struct NodeRuntime {
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	graph_hash: Option<u64>,
-	canvas_cache: HashMap<Vec<LayerId>, SurfaceId>,
 	monitor_nodes: Vec<Vec<NodeId>>,
 }
 
@@ -81,7 +63,6 @@ pub struct ExportConfig {
 pub(crate) struct GenerationRequest {
 	generation_id: u64,
 	graph: NodeNetwork,
-	path: Vec<LayerId>,
 	render_config: RenderConfig,
 }
 
@@ -129,7 +110,6 @@ impl NodeRuntime {
 			imaginate_preferences: Default::default(),
 			thumbnails: Default::default(),
 			wasm_io: None,
-			canvas_cache: HashMap::new(),
 			click_targets: HashMap::new(),
 			graph_hash: None,
 			upstream_transforms: HashMap::new(),
@@ -142,7 +122,7 @@ impl NodeRuntime {
 		// This should be avoided in the future.
 		requests.reverse();
 		requests.dedup_by_key(|x| match x {
-			NodeRuntimeMessage::GenerationRequest(x) => Some(x.path.clone()),
+			NodeRuntimeMessage::GenerationRequest(x) => Some(x.graph.current_hash()),
 			_ => None,
 		});
 		requests.reverse();
@@ -151,17 +131,13 @@ impl NodeRuntime {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
 				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.imaginate_preferences = preferences,
 				NodeRuntimeMessage::GenerationRequest(GenerationRequest {
-					generation_id,
-					graph,
-					render_config,
-					path,
-					..
+					generation_id, graph, render_config, ..
 				}) => {
 					let transform = render_config.viewport.transform;
-					let result = self.execute_network(&path, graph, render_config).await;
+					let result = self.execute_network(graph, render_config).await;
 					let mut responses = VecDeque::new();
 
-					self.update_thumbnails(&path, &mut responses);
+					self.update_thumbnails(&mut responses);
 					self.update_upstream_transforms();
 
 					let response = GenerationResponse {
@@ -179,7 +155,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, path: &[LayerId], graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	async fn execute_network<'a>(&'a mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		if self.wasm_io.is_none() {
 			self.wasm_io = Some(WasmApplicationIo::new().await);
 		}
@@ -245,21 +221,21 @@ impl NodeRuntime {
 			Err(e) => return Err(e),
 		};
 
-		if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
-			let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
-			if let Some(old_id) = old_id {
-				if old_id != surface_id {
-					if let Some(io) = self.wasm_io.as_ref() {
-						io.destroy_surface(old_id)
-					}
-				}
-			}
-		}
+		// if let TaggedValue::SurfaceFrame(SurfaceFrame { surface_id, transform: _ }) = result {
+		// 	let old_id = self.canvas_cache.insert(path.to_vec(), surface_id);
+		// 	if let Some(old_id) = old_id {
+		// 		if old_id != surface_id {
+		// 			if let Some(io) = self.wasm_io.as_ref() {
+		// 				io.destroy_surface(old_id)
+		// 			}
+		// 		}
+		// 	}
+		// }
 		Ok(result)
 	}
 
 	/// Recomputes the thumbnails for the layers in the graph, modifying the state and updating the UI.
-	pub fn update_thumbnails(&mut self, layer_path: &[LayerId], responses: &mut VecDeque<Message>) {
+	pub fn update_thumbnails(&mut self, responses: &mut VecDeque<Message>) {
 		let mut image_data: Vec<_> = Vec::new();
 		self.thumbnails.retain(|id, _| self.monitor_nodes.iter().any(|node_path| node_path.contains(id)));
 		for node_path in &self.monitor_nodes {
@@ -299,8 +275,7 @@ impl NodeRuntime {
 			}
 
 			let resize = Some(DVec2::splat(100.));
-			let create_image_data = |(node_id, image)| NodeGraphExecutor::to_frontend_image_data(image, None, layer_path, Some(node_id), resize).ok();
-			image_data.extend(render.image_data.into_iter().filter_map(create_image_data))
+			image_data.extend(render.image_data.into_iter().filter_map(|(_, image)| NodeGraphExecutor::to_frontend_image_data(image, resize).ok()))
 		}
 		if !image_data.is_empty() {
 			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
@@ -370,15 +345,11 @@ pub async fn run_node_graph() {
 pub struct NodeGraphExecutor {
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<NodeGraphUpdate>,
-	// TODO: This is a memory leak since layers are never removed
-	pub(crate) last_output_type: HashMap<Vec<LayerId>, Option<Type>>,
-	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	futures: HashMap<u64, ExecutionContext>,
 }
 
 #[derive(Debug, Clone)]
 struct ExecutionContext {
-	layer_path: Vec<LayerId>,
 	export_config: Option<ExportConfig>,
 }
 
@@ -394,18 +365,15 @@ impl Default for NodeGraphExecutor {
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_receiver,
-			last_output_type: Default::default(),
-			thumbnails: Default::default(),
 		}
 	}
 }
 
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
-	fn queue_execution(&self, network: NodeNetwork, layer_path: Vec<LayerId>, render_config: RenderConfig) -> u64 {
+	fn queue_execution(&self, network: NodeNetwork, render_config: RenderConfig) -> u64 {
 		let generation_id = generate_uuid();
 		let request = GenerationRequest {
-			path: layer_path,
 			graph: network,
 			generation_id,
 			render_config,
@@ -470,23 +438,17 @@ impl NodeGraphExecutor {
 	}
 
 	/// Generate a new [`FrontendImageData`] from the [`Image`].
-	fn to_frontend_image_data(image: Image<Color>, transform: Option<[f64; 6]>, layer_path: &[LayerId], node_id: Option<u64>, resize: Option<DVec2>) -> Result<FrontendImageData, String> {
+	fn to_frontend_image_data(image: Image<Color>, resize: Option<DVec2>) -> Result<FrontendImageData, String> {
 		let (image_data, _size) = Self::encode_img(image, resize, image::ImageOutputFormat::Bmp)?;
 
 		let mime = "image/bmp".to_string();
 		let image_data = std::sync::Arc::new(image_data);
 
-		Ok(FrontendImageData {
-			path: layer_path.to_vec(),
-			node_id,
-			image_data,
-			mime,
-			transform,
-		})
+		Ok(FrontendImageData { image_data, mime })
 	}
 
 	/// Evaluates a node graph, computing the entire graph
-	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, layer_path: Vec<LayerId>, viewport_resolution: UVec2) -> Result<(), String> {
+	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
 		// Get the node graph layer
 		let network = document.network().clone();
 
@@ -506,9 +468,9 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, layer_path.clone(), render_config);
+		let generation_id = self.queue_execution(network, render_config);
 
-		self.futures.insert(generation_id, ExecutionContext { layer_path, export_config: None });
+		self.futures.insert(generation_id, ExecutionContext { export_config: None });
 
 		Ok(())
 	}
@@ -541,11 +503,8 @@ impl NodeGraphExecutor {
 		export_config.size = size;
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, Vec::new(), render_config);
-		let execution_context = ExecutionContext {
-			layer_path: Vec::new(),
-			export_config: Some(export_config),
-		};
+		let generation_id = self.queue_execution(network, render_config);
+		let execution_context = ExecutionContext { export_config: Some(export_config) };
 		self.futures.insert(generation_id, execution_context);
 
 		Ok(())
@@ -626,16 +585,17 @@ impl NodeGraphExecutor {
 								},
 								expanded: layer.has_children(document_metadata) && !collapsed.contains(&layer),
 								selected: document_metadata.selected_layers_contains(layer),
-								path: vec![node_id],
+								parent_id: layer.parent(document_metadata).map(|parent| parent.to_node()),
+								id: node_id,
+								depth: layer.ancestors(document_metadata).count() - 1,
 								thumbnail: svg.to_string(),
 							},
 						});
 					}
-					self.thumbnails = new_thumbnails;
 					document_metadata.update_transforms(new_upstream_transforms);
 					document_metadata.update_click_targets(new_click_targets);
 					responses.extend(updates);
-					self.process_node_graph_output(node_graph_output, execution_context.layer_path.clone(), transform, responses)?;
+					self.process_node_graph_output(node_graph_output, transform, responses)?;
 					responses.add(DocumentMessage::RenderDocument);
 					responses.add(DocumentMessage::DocumentStructureChanged);
 					responses.add(BroadcastEvent::DocumentIsDirty);
@@ -665,8 +625,7 @@ impl NodeGraphExecutor {
 		responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, layer_path: Vec<LayerId>, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		self.last_output_type.insert(layer_path.clone(), Some(node_graph_output.ty()));
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, transform: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		match node_graph_output {
 			TaggedValue::SurfaceFrame(SurfaceFrame { surface_id: _, transform: _ }) => {
 				// TODO: Reimplement this now that document-legacy is gone
@@ -708,20 +667,5 @@ impl NodeGraphExecutor {
 			}
 		};
 		Ok(())
-	}
-
-	/// When a blob url for a thumbnail is loaded, update the state and the UI.
-	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, node_id: NodeId, responses: &mut VecDeque<Message>) {
-		for segment_list in self.thumbnails.values_mut() {
-			if let Some(segment) = segment_list.iter_mut().find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
-				*segment = SvgSegment::String(blob_url);
-				responses.add(FrontendMessage::UpdateNodeThumbnail {
-					id: node_id,
-					value: segment_list.to_string(),
-				});
-				return;
-			}
-		}
-		warn!("Received blob url for invalid segment")
 	}
 }

@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::utility_types::LayerId;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -11,14 +10,13 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	ConnectNodesByLink {
-		output_node: u64,
+		output_node: NodeId,
 		output_node_connector_index: usize,
-		input_node: u64,
+		input_node: NodeId,
 		input_node_connector_index: usize,
 	},
 	Copy,
 	CreateNode {
-		// Having the caller generate the id means that we don't have to return it. This can be a random u64.
 		node_id: Option<NodeId>,
 		node_type: String,
 		x: i32,
@@ -83,7 +81,6 @@ pub enum NodeGraphMessage {
 		input: NodeInput,
 	},
 	SetQualifiedInputValue {
-		layer_path: Vec<LayerId>,
 		node_path: Vec<NodeId>,
 		input_index: usize,
 		value: TaggedValue,

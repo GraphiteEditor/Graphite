@@ -12,11 +12,12 @@ use std::hash::{Hash, Hasher};
 
 pub mod value;
 
+// TODO: Convert from a type alias to a newtype
 pub type NodeId = u64;
 
 /// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
 /// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
-fn merge_ids(a: u64, b: u64) -> u64 {
+fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);
 	b.hash(&mut hasher);
@@ -639,7 +640,7 @@ impl NodeNetwork {
 	}
 
 	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, u64)> {
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
 			network: self,
@@ -654,13 +655,13 @@ impl NodeNetwork {
 
 	/// Check there are no cycles in the graph (this should never happen).
 	pub fn is_acyclic(&self) -> bool {
-		let mut dependencies: HashMap<u64, Vec<u64>> = HashMap::new();
+		let mut dependencies: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (node_id, node) in &self.nodes {
 			dependencies.insert(
 				*node_id,
 				node.inputs
 					.iter()
-					.filter_map(|input| if let NodeInput::Node { node_id: ref_id, .. } = input { Some(*ref_id) } else { None })
+					.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None })
 					.collect(),
 			);
 		}
@@ -734,11 +735,12 @@ impl NodeNetwork {
 
 	/// Collect a hashmap of nodes with a list of the nodes that use it as input
 	pub fn collect_outwards_links(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut outwards_links: HashMap<u64, Vec<u64>> = HashMap::new();
-		for (node_id, node) in &self.nodes {
+		let mut outwards_links: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+		for (current_node_id, node) in &self.nodes {
 			for input in &node.inputs {
-				if let NodeInput::Node { node_id: ref_id, .. } = input {
-					outwards_links.entry(*ref_id).or_default().push(*node_id)
+				if let NodeInput::Node { node_id, .. } = input {
+					let outward_links_entry = outwards_links.entry(*node_id).or_default();
+					outward_links_entry.push(*current_node_id);
 				}
 			}
 		}

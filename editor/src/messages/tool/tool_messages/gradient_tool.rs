@@ -1,5 +1,4 @@
 use super::tool_prelude::*;
-use crate::application::generate_uuid;
 use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -235,9 +234,10 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
-		let fill = Fill::Gradient(self.gradient.clone());
-		let layer = self.layer.to_path();
-		responses.add(GraphOperationMessage::FillSet { layer, fill });
+		responses.add(GraphOperationMessage::FillSet {
+			layer: self.layer,
+			fill: Fill::Gradient(self.gradient.clone()),
+		});
 	}
 }
 
@@ -269,7 +269,6 @@ struct GradientToolData {
 
 pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 	snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-	snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -338,9 +337,10 @@ impl Fsm for GradientToolFsmState {
 
 				// The gradient has only one point and so should become a fill
 				if selected_gradient.gradient.positions.len() == 1 {
-					let fill = Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK));
-					let layer = selected_gradient.layer.to_path();
-					responses.add(GraphOperationMessage::FillSet { layer, fill });
+					responses.add(GraphOperationMessage::FillSet {
+						layer: selected_gradient.layer,
+						fill: Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK)),
+					});
 					return self;
 				}
 
@@ -467,7 +467,6 @@ impl Fsm for GradientToolFsmState {
 								DVec2::ONE,
 								global_tool_data.primary_color,
 								DAffine2::IDENTITY,
-								generate_uuid(),
 								tool_options.gradient_type,
 							)
 						};
