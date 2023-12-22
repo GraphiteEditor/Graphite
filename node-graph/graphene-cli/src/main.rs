@@ -124,7 +124,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
-		inputs: core::iter::repeat(NodeInput::node(0, 1)).take(len).collect(),
+		inputs: core::iter::repeat(NodeInput::node(NodeId(0), 1)).take(len).collect(),
 		..Default::default()
 	};
 
@@ -135,14 +135,14 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		DocumentNode {
 			name: "End Scope".to_string(),
 			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
-			inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
+			inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 			..Default::default()
 		},
 	];
 	NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(2, 0)],
-		nodes: nodes.into_iter().enumerate().map(|(id, node)| (id as NodeId, node)).collect(),
+		inputs: vec![NodeId(0)],
+		outputs: vec![NodeOutput::new(NodeId(2), 0)],
+		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
 }
@@ -151,8 +151,8 @@ fn begin_scope() -> DocumentNode {
 	DocumentNode {
 		name: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
+			inputs: vec![NodeId(0)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
 					name: "SetNode".to_string(),
@@ -162,21 +162,21 @@ fn begin_scope() -> DocumentNode {
 				},
 				DocumentNode {
 					name: "LetNode".to_string(),
-					inputs: vec![NodeInput::node(0, 0)],
+					inputs: vec![NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 					..Default::default()
 				},
 				DocumentNode {
 					name: "RefNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
-					inputs: vec![NodeInput::lambda(1, 0)],
+					inputs: vec![NodeInput::lambda(NodeId(1), 0)],
 					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 					..Default::default()
 				},
 			]
 			.into_iter()
 			.enumerate()
-			.map(|(id, node)| (id as NodeId, node))
+			.map(|(id, node)| (NodeId(id as u64), node))
 			.collect(),
 
 			..Default::default()

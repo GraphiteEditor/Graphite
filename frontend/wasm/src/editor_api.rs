@@ -1,8 +1,10 @@
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::non_snake_case)]
+//
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
 // on the dispatcher messaging system and more complex Rust data types.
+//
 use crate::helpers::translate_key;
 use crate::{Error, EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
@@ -14,6 +16,7 @@ use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseStat
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::utility_types::Platform;
 use editor::messages::prelude::*;
+use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 
@@ -276,6 +279,7 @@ impl JsEditorHandle {
 	/// Update layout of a given UI
 	#[wasm_bindgen(js_name = updateLayout)]
 	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
 				let message = LayoutMessage::UpdateLayout { layout_target, widget_id, value };
@@ -294,7 +298,8 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]
-	pub fn select_document(&self, document_id: DocumentId) {
+	pub fn select_document(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::SelectDocument { document_id };
 		self.dispatch(message);
 	}
@@ -327,7 +332,8 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: DocumentId, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
 			document_name,
@@ -339,13 +345,15 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = triggerAutoSave)]
-	pub fn trigger_auto_save(&self, document_id: DocumentId) {
+	pub fn trigger_auto_save(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::AutoSaveDocument { document_id };
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = closeDocumentWithConfirmation)]
-	pub fn close_document_with_confirmation(&self, document_id: DocumentId) {
+	pub fn close_document_with_confirmation(&self, document_id: u64) {
+		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
 		self.dispatch(message);
 	}
@@ -528,7 +536,8 @@ impl JsEditorHandle {
 
 	/// Modify the layer selection based on the layer which is clicked while holding down the <kbd>Ctrl</kbd> and/or <kbd>Shift</kbd> modifier keys used for range selection behavior
 	#[wasm_bindgen(js_name = selectLayer)]
-	pub fn select_layer(&self, id: NodeId, ctrl: bool, shift: bool) {
+	pub fn select_layer(&self, id: u64, ctrl: bool, shift: bool) {
+		let id = NodeId(id);
 		let message = DocumentMessage::SelectLayer { id, ctrl, shift };
 		self.dispatch(message);
 	}
@@ -544,7 +553,9 @@ impl JsEditorHandle {
 	/// If the folder is `None`, it is inserted into the document root.
 	/// If the insert index is `None`, it is inserted at the end of the folder (equivalent to index infinity).
 	#[wasm_bindgen(js_name = moveLayerInTree)]
-	pub fn move_layer_in_tree(&self, insert_parent_id: Option<NodeId>, insert_index: Option<usize>) {
+	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
+		let insert_parent_id = insert_parent_id.map(|id| NodeId(id));
+
 		let parent = insert_parent_id.map(|id| LayerNodeIdentifier::new_unchecked(id)).unwrap_or(LayerNodeIdentifier::default());
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
@@ -555,7 +566,8 @@ impl JsEditorHandle {
 
 	/// Set the name for the layer
 	#[wasm_bindgen(js_name = setLayerName)]
-	pub fn set_layer_name(&self, id: NodeId, name: String) {
+	pub fn set_layer_name(&self, id: u64, name: String) {
+		let id = NodeId(id);
 		let message = NodeGraphMessage::SetName { node_id: id, name };
 		self.dispatch(message);
 	}
@@ -576,7 +588,9 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
 	#[wasm_bindgen(js_name = connectNodesByLink)]
-	pub fn connect_nodes_by_link(&self, output_node: NodeId, output_node_connector_index: usize, input_node: NodeId, input_node_connector_index: usize) {
+	pub fn connect_nodes_by_link(&self, output_node: u64, output_node_connector_index: usize, input_node: u64, input_node_connector_index: usize) {
+		let output_node = NodeId(output_node);
+		let input_node = NodeId(input_node);
 		let message = NodeGraphMessage::ConnectNodesByLink {
 			output_node,
 			output_node_connector_index,
@@ -588,14 +602,16 @@ impl JsEditorHandle {
 
 	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
-	pub fn shift_node(&self, node_id: NodeId) {
+	pub fn shift_node(&self, node_id: u64) {
+		let node_id = NodeId(node_id);
 		let message = NodeGraphMessage::ShiftNode { node_id };
 		self.dispatch(message);
 	}
 
 	/// Notifies the backend that the user disconnected a node
 	#[wasm_bindgen(js_name = disconnectNodes)]
-	pub fn disconnect_nodes(&self, node_id: NodeId, input_index: usize) {
+	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
+		let node_id = NodeId(node_id);
 		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
 		self.dispatch(message);
 	}
@@ -614,16 +630,17 @@ impl JsEditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> NodeId {
-		let id = generate_uuid();
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> u64 {
+		let id = NodeId(generate_uuid());
 		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
 		self.dispatch(message);
-		id
+		id.0
 	}
 
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
-	pub fn select_nodes(&self, nodes: Option<Vec<NodeId>>) {
+	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
+		let nodes = nodes.map(|nodes| nodes.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>());
 		let nodes = nodes.unwrap_or_default();
 		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
@@ -638,7 +655,8 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user double clicked a node
 	#[wasm_bindgen(js_name = doubleClickNode)]
-	pub fn double_click_node(&self, node: NodeId) {
+	pub fn double_click_node(&self, node: u64) {
+		let node = NodeId(node);
 		let message = NodeGraphMessage::DoubleClickNode { node };
 		self.dispatch(message);
 	}
@@ -655,7 +673,8 @@ impl JsEditorHandle {
 
 	/// Toggle preview on node
 	#[wasm_bindgen(js_name = togglePreview)]
-	pub fn toggle_preview(&self, node_id: NodeId) {
+	pub fn toggle_preview(&self, node_id: u64) {
+		let node_id = NodeId(node_id);
 		let message = NodeGraphMessage::TogglePreview { node_id };
 		self.dispatch(message);
 	}
@@ -671,21 +690,24 @@ impl JsEditorHandle {
 
 	/// Toggle visibility of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerVisibility)]
-	pub fn toggle_layer_visibility(&self, id: NodeId) {
+	pub fn toggle_layer_visibility(&self, id: u64) {
+		let id = NodeId(id);
 		let message = NodeGraphMessage::ToggleHidden { node_id: id };
 		self.dispatch(message);
 	}
 
 	/// Toggle expansions state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerExpansion)]
-	pub fn toggle_layer_expansion(&self, id: NodeId) {
+	pub fn toggle_layer_expansion(&self, id: u64) {
+		let id = NodeId(id);
 		let message = DocumentMessage::ToggleLayerExpansion { id };
 		self.dispatch(message);
 	}
 
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
-	pub fn introspect_node(&self, node_path: Vec<NodeId>) -> JsValue {
+	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
+		let node_path = node_path.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
 			// Mutably borrow the editors, and if successful, we can access them in the closure
 			instances.try_borrow_mut().map(|mut editors| {

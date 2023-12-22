@@ -1,11 +1,12 @@
-use core::ops::{Deref, DerefMut};
-use serde::{Deserialize, Serialize};
-
 use alloc::vec;
 use alloc::vec::Vec;
+use core::iter::Zip;
+use core::ops::{Deref, DerefMut};
+use core::slice::Iter;
+use serde::{Deserialize, Serialize};
 
-/// Brief description: A vec that allows indexing elements by both index and an assigned unique ID
-/// Goals of this Data Structure:
+/// Brief description: A vec that allows indexing elements by both index and an assigned unique ID.
+/// Goals of this data structure:
 /// - Drop-in replacement for a Vec.
 /// - Provide an auto-assigned Unique ID per element upon insertion.
 /// - Add elements to the start or end.
@@ -16,8 +17,10 @@ use alloc::vec::Vec;
 /// This data structure is somewhat similar to a linked list in terms of invariants.
 /// The downside is that currently it requires a lot of iteration.
 
-// TODO: Convert from a type alias to a newtype
-pub type ElementId = u64;
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct ElementId(pub u64);
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Hash)]
 pub struct IdBackedVec<T> {
 	/// Contained elements
@@ -34,13 +37,13 @@ impl<T> IdBackedVec<T> {
 		IdBackedVec {
 			elements: vec![],
 			element_ids: vec![],
-			next_id: 0,
+			next_id: ElementId(0),
 		}
 	}
 
 	/// Push a new element to the start of the vector
 	pub fn push_front(&mut self, element: T) -> Option<ElementId> {
-		self.next_id += 1;
+		self.next_id = ElementId(self.next_id.0 + 1);
 		self.elements.insert(0, element);
 		self.element_ids.insert(0, self.next_id);
 		Some(self.next_id)
@@ -48,7 +51,7 @@ impl<T> IdBackedVec<T> {
 
 	/// Push an element to the end of the vector
 	pub fn push_end(&mut self, element: T) -> Option<ElementId> {
-		self.next_id += 1;
+		self.next_id = ElementId(self.next_id.0 + 1);
 		self.elements.push(element);
 		self.element_ids.push(self.next_id);
 		Some(self.next_id)
@@ -57,7 +60,7 @@ impl<T> IdBackedVec<T> {
 	/// Insert an element adjacent to the given ID
 	pub fn insert(&mut self, element: T, id: ElementId) -> Option<ElementId> {
 		if let Some(index) = self.index_from_id(id) {
-			self.next_id += 1;
+			self.next_id = ElementId(self.next_id.0 + 1);
 			self.elements.insert(index, element);
 			self.element_ids.insert(index, self.next_id);
 			return Some(self.next_id);
@@ -125,7 +128,7 @@ impl<T> IdBackedVec<T> {
 	}
 
 	/// Enumerate the ids and elements in this container `(&ElementId, &T)`
-	pub fn enumerate(&self) -> core::iter::Zip<core::slice::Iter<ElementId>, core::slice::Iter<T>> {
+	pub fn enumerate(&self) -> Zip<Iter<ElementId>, Iter<T>> {
 		self.element_ids.iter().zip(self.elements.iter())
 	}
 

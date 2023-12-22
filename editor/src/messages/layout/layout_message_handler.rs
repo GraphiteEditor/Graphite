@@ -14,7 +14,7 @@ pub struct LayoutMessageHandler {
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, id: u64) -> Option<(&WidgetHolder, Vec<usize>)> {
+	fn get_widget_path(widget_layout: &WidgetLayout, id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, group)) = stack.pop() {
 			match group {

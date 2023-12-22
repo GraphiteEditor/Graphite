@@ -121,11 +121,11 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 
 // 	fn inc_network() -> ProtoNetwork {
 // 		let mut construction_network = ProtoNetwork {
-// 			inputs: vec![10],
-// 			output: 1,
+// 			inputs: vec![NodeId(10)],
+// 			output: NodeId(1),
 // 			nodes: [
 // 				(
-// 					1,
+// 					NodeId(1),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode", &[generic!("u32")]),
 // 						input: ProtoNodeInput::Node(11),
@@ -133,7 +133,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 					},
 // 				),
 // 				(
-// 					10,
+// 					NodeId(10),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
 // 						input: ProtoNodeInput::Network,
@@ -141,7 +141,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 					},
 // 				),
 // 				(
-// 					11,
+// 					NodeId(11),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::ops::AddPairNode", &[generic!("u32"), generic!("u32")]),
 // 						input: ProtoNodeInput::Node(10),
@@ -149,7 +149,7 @@ fn create_buffer<T: Pod + Send + Sync>(data: Vec<T>, alloc: &StandardMemoryAlloc
 // 					},
 // 				),
 // 				(
-// 					14,
+// 					NodeId(14),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
 // 						input: ProtoNodeInput::None,

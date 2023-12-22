@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 
+use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
@@ -211,7 +212,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), parent, responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
 				tool_data.layer = Some(layer);
 
 				responses.add(GraphOperationMessage::FillSet {

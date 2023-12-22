@@ -120,7 +120,7 @@ impl Fsm for ImaginateToolFsmState {
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(responses, document, input);
 				responses.add(DocumentMessage::StartTransaction);
-				shape_data.layer = Some(LayerNodeIdentifier::new(generate_uuid(), document.network()));
+				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				use graph_craft::document::*;
@@ -140,15 +140,17 @@ impl Fsm for ImaginateToolFsmState {
 				let imaginate_node_type = &*IMAGINATE_NODE;
 
 				// Give them a unique ID
-				let [transform_node_id, imaginate_node_id] = [100, 101];
+				let transform_node_id = NodeId(100);
+				let imaginate_node_id = NodeId(101);
 
 				// Create the network based on the Input -> Output passthrough default network
 				let mut network = node_graph::new_image_network(16, imaginate_node_id);
 
 				// Insert the nodes into the default network
-				network
-					.nodes
-					.insert(transform_node_id, transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(0, 0))], next_pos()));
+				network.nodes.insert(
+					transform_node_id,
+					transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(NodeId(0), 0))], next_pos()),
+				);
 				network.nodes.insert(
 					imaginate_node_id,
 					imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),

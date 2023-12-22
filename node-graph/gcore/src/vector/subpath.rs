@@ -1,12 +1,14 @@
-use super::id_vec::IdBackedVec;
+use super::consts::ManipulatorType;
+use super::id_vec::{ElementId, IdBackedVec};
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
-use super::{consts::ManipulatorType, id_vec::ElementId};
 use crate::uuid::ManipulatorGroupId;
 
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::iter::Zip;
+use core::slice::Iter;
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathEl, Shape};
@@ -460,7 +462,7 @@ impl BezierId {
 
 /// An iterator over [`bezier_rs::Bezier`] segments constructable via [`Subpath::bezier_iter`].
 pub struct PathIter<'a> {
-	path: core::iter::Zip<core::slice::Iter<'a, u64>, core::slice::Iter<'a, ManipulatorGroup>>,
+	path: Zip<Iter<'a, ElementId>, Iter<'a, ManipulatorGroup>>,
 
 	last_anchor: Option<DVec2>,
 	last_out_handle: Option<DVec2>,
@@ -482,7 +484,8 @@ impl<'a> Iterator for PathIter<'a> {
 		let mut result = None;
 
 		while result.is_none() {
-			let (&id, manipulator_group) = self.path.next()?;
+			let (id, manipulator_group) = self.path.next()?;
+			let id = id.0;
 
 			let in_handle = manipulator_group.points[ManipulatorType::InHandle].as_ref().map(|point| point.position);
 			let anchor = manipulator_group.points[ManipulatorType::Anchor].as_ref().map(|point| point.position);

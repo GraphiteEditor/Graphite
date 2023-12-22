@@ -118,7 +118,7 @@ impl<'a> ModifyInputsContext<'a> {
 			} else {
 				// The user has connected another node to the output. Insert a layer node between the output and the node.
 				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				let node_id = self.insert_between(generate_uuid(), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
+				let node_id = self.insert_between(NodeId(generate_uuid()), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
 			}
 
@@ -182,7 +182,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
-		self.insert_node_before(generate_uuid(), layer, 0, artboard_node, IVec2::new(-8, 0))
+		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
 	fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
@@ -195,15 +195,15 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
-		let stroke_id = generate_uuid();
+		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
-		let fill_id = generate_uuid();
+		let fill_id = NodeId(generate_uuid());
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
-		let transform_id = generate_uuid();
+		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
-		let cull_id = generate_uuid();
+		let cull_id = NodeId(generate_uuid());
 		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
-		let shape_id = generate_uuid();
+		let shape_id = NodeId(generate_uuid());
 		self.insert_node_before(shape_id, cull_id, 0, shape, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
@@ -223,15 +223,15 @@ impl<'a> ModifyInputsContext<'a> {
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
-		let stroke_id = generate_uuid();
+		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
-		let fill_id = generate_uuid();
+		let fill_id = NodeId(generate_uuid());
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
-		let transform_id = generate_uuid();
+		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
-		let cull_id = generate_uuid();
+		let cull_id = NodeId(generate_uuid());
 		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
-		let text_id = generate_uuid();
+		let text_id = NodeId(generate_uuid());
 		self.insert_node_before(text_id, cull_id, 0, text, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
@@ -244,11 +244,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let sample = resolve_document_node_type("Sample").expect("Sample node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 
-		let transform_id = generate_uuid();
+		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, layer, 0, transform, IVec2::new(-8, 0));
-		let sample_id = generate_uuid();
+		let sample_id = NodeId(generate_uuid());
 		self.insert_node_before(sample_id, transform_id, 0, sample, IVec2::new(-8, 0));
-		let image_id = generate_uuid();
+		let image_id = NodeId(generate_uuid());
 		self.insert_node_before(image_id, sample_id, 0, image, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
@@ -283,7 +283,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let metadata = output_node.metadata.clone();
 		let new_input = output_node.inputs.first().cloned().filter(|input| input.as_node().is_some());
-		let node_id = generate_uuid();
+		let node_id = NodeId(generate_uuid());
 
 		output_node.inputs[0] = NodeInput::node(node_id, 0);
 
@@ -678,10 +678,10 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
-					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, crate::application::generate_uuid())).collect();
+					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
 					let shift = nodes
-						.get(&0)
+						.get(&NodeId(0))
 						.and_then(|node| {
 							modify_inputs
 								.document_network
@@ -704,7 +704,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 					}
 
 					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
-						if let Some(&input) = new_ids.get(&0) {
+						if let Some(&input) = new_ids.get(&NodeId(0)) {
 							layer_node.inputs[0] = NodeInput::node(input, 0)
 						}
 					}

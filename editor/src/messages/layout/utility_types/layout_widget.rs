@@ -10,6 +10,16 @@ use crate::messages::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WidgetId(pub u64);
+
+impl core::fmt::Display for WidgetId {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
+
 #[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
 #[repr(u8)]
@@ -419,14 +429,17 @@ impl LayoutGroup {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
-	pub widget_id: u64,
+	pub widget_id: WidgetId,
 	pub widget: Widget,
 }
 
 impl WidgetHolder {
 	#[deprecated(since = "0.0.0", note = "Please use the builder pattern, e.g. TextLabel::new(\"hello\").widget_holder()")]
 	pub fn new(widget: Widget) -> Self {
-		Self { widget_id: generate_uuid(), widget }
+		Self {
+			widget_id: WidgetId(generate_uuid()),
+			widget,
+		}
 	}
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.

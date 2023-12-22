@@ -16,11 +16,11 @@ mod tests {
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
-				inputs: vec![0, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					(
-						0,
+						NodeId(0),
 						DocumentNode {
 							name: "Cons".into(),
 							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(&u32))],
@@ -29,10 +29,10 @@ mod tests {
 						},
 					),
 					(
-						1,
+						NodeId(1),
 						DocumentNode {
 							name: "Add".into(),
-							inputs: vec![NodeInput::node(0, 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::AddPairNode")),
 							..Default::default()
 						},
@@ -45,10 +45,10 @@ mod tests {
 		}
 
 		let network = NodeNetwork {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(0, 0)],
+			inputs: vec![NodeId(0)],
+			outputs: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(
-				0,
+				NodeId(0),
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
@@ -86,12 +86,12 @@ mod tests {
 		use graph_craft::*;
 
 		let network = NodeNetwork {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(1, 0)],
+			inputs: vec![NodeId(0)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0)],
 			nodes: [
 				// Simple identity node taking a number as input from outside the graph
 				(
-					0,
+					NodeId(0),
 					DocumentNode {
 						name: "id".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
@@ -101,10 +101,10 @@ mod tests {
 				),
 				// An add node adding the result of the id node to its self
 				(
-					1,
+					NodeId(1),
 					DocumentNode {
 						name: "Add".into(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::AddNode<_>")),
 						..Default::default()
 					},

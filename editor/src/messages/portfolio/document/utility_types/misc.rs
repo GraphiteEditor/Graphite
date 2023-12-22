@@ -4,6 +4,10 @@ use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DocumentId(pub u64);
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
 pub enum FlipAxis {
 	X,

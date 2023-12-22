@@ -68,7 +68,7 @@ mod test {
 				preferences: r#"{"imaginate_server_hostname":"https://exchange-encoding-watched-insured.trycloudflare.com/","imaginate_refresh_frequency":1,"zoom_with_scroll":false}"#.to_string(),
 			}),
 			PortfolioMessage::OpenDocumentFileWithId {
-				document_id: 0,
+				document_id: DocumentId(0),
 				document_name: "".into(),
 				document_is_auto_saved: true,
 				document_is_saved: true,

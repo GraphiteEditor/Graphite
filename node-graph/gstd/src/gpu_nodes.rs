@@ -167,11 +167,11 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 
 	log::debug!("inner_network: {inner_network:?}");
 	let network = NodeNetwork {
-		inputs: vec![2, 1], //vec![0, 1],
+		inputs: vec![NodeId(2), NodeId(1)], //vec![0, 1],
 		#[cfg(feature = "quantization")]
-		outputs: vec![NodeOutput::new(5, 0)],
+		outputs: vec![NodeOutput::new(NodeId(5), 0)],
 		#[cfg(not(feature = "quantization"))]
-		outputs: vec![NodeOutput::new(3, 0)],
+		outputs: vec![NodeOutput::new(NodeId(3), 0)],
 		nodes: [
 			DocumentNode {
 				name: "Slice".into(),
@@ -201,30 +201,30 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 				/*
 			DocumentNode {
 				name: "GetNode".into(),
-				inputs: vec![NodeInput::node(1, 0), NodeInput::node(0, 0)],
+				inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 0)],
 				implementation: DocumentNodeImplementation::Unresolved("graphene_core::storage::GetNode".into()),
 				..Default::default()
 			},*/
 			#[cfg(feature = "quantization")]
 			DocumentNode {
 				name: "Dequantize".into(),
-				inputs: vec![NodeInput::node(0, 0), NodeInput::node(1, 0)],
+				inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::DeQuantizeNode"),
 				..Default::default()
 			},
 			DocumentNode {
 				name: "MapNode".into(),
 				#[cfg(feature = "quantization")]
-				inputs: vec![NodeInput::node(3, 0)],
+				inputs: vec![NodeInput::node(NodeId(3), 0)],
 				#[cfg(not(feature = "quantization"))]
-				inputs: vec![NodeInput::node(0, 0)],
+				inputs: vec![NodeInput::node(NodeId(0), 0)],
 				implementation: DocumentNodeImplementation::Network(inner_network),
 				..Default::default()
 			},
 			#[cfg(feature = "quantization")]
 			DocumentNode {
 				name: "Quantize".into(),
-				inputs: vec![NodeInput::node(4, 0), NodeInput::node(1, 0)],
+				inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(1), 0)],
 				implementation: DocumentNodeImplementation::proto("graphene_core::quantization::QuantizeNode"),
 				..Default::default()
 			},
@@ -232,7 +232,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			DocumentNode {
 				name: "SaveNode".into(),
 				inputs: vec![
-					NodeInput::node(5, 0),
+					NodeInput::node(NodeId(5), 0),
 					NodeInput::Inline(InlineRust::new(
 						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
 						//"|x|()".into(),
@@ -246,7 +246,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		]
 		.into_iter()
 		.enumerate()
-		.map(|(id, node)| (id as NodeId, node))
+		.map(|(id, node)| (NodeId(id as u64), node))
 		.collect(),
 		..Default::default()
 	};
@@ -386,12 +386,12 @@ fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 	let identifier = ProtoNodeIdentifier { name: std::borrow::Cow::Owned(node) };
 
 	let network = NodeNetwork {
-		inputs: vec![0],
+		inputs: vec![NodeId(0)],
 		disabled: vec![],
 		previous_outputs: None,
-		outputs: vec![NodeOutput::new(0, 0)],
+		outputs: vec![NodeOutput::new(NodeId(0), 0)],
 		nodes: [(
-			0,
+			NodeId(0),
 			DocumentNode {
 				name: "Image Filter".into(),
 				inputs: vec![NodeInput::Network(concrete!(Color))],
@@ -433,7 +433,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 
 	let network = NodeNetwork {
 		inputs: vec![],
-		outputs: vec![NodeOutput::new(0, 0)],
+		outputs: vec![NodeOutput::new(NodeId(0), 0)],
 		nodes: [DocumentNode {
 			name: "BlendOp".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(
@@ -464,7 +464,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		}]
 		.into_iter()
 		.enumerate()
-		.map(|(id, node)| (id as NodeId, node))
+		.map(|(id, node)| (NodeId(id as u64), node))
 		.collect(),
 		..Default::default()
 	};

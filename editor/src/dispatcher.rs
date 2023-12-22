@@ -256,7 +256,7 @@ impl Dispatcher {
 mod test {
 	use crate::application::Editor;
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-	use crate::messages::portfolio::document::utility_types::document_metadata::{self, LayerNodeIdentifier};
+	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use crate::messages::prelude::*;
 	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
@@ -359,7 +359,7 @@ mod test {
 	fn copy_paste_folder() {
 		let mut editor = create_editor_with_three_layers();
 
-		const FOLDER_ID: NodeId = 3;
+		const FOLDER_ID: NodeId = NodeId(3);
 
 		editor.handle_message(GraphOperationMessage::NewCustomLayer {
 			id: FOLDER_ID,
@@ -368,9 +368,6 @@ mod test {
 			insert_index: -1,
 		});
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
-
-		let document_before_added_shapes = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let folder_layer = LayerNodeIdentifier::new(FOLDER_ID, &document_before_added_shapes.network);
 
 		editor.drag_tool(ToolType::Line, 0., 0., 10., 10.);
 		editor.drag_tool(ToolType::Freehand, 10., 20., 30., 40.);
@@ -388,19 +385,20 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_added_shapes = document_before_added_shapes.metadata.all_layers().collect::<Vec<_>>();
 		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
 		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 		let [original_folder, original_freehand, original_line, original_ellipse, original_polygon, original_rect] = layers_before_copy[..] else {
 			panic!("Layers before incorrect");
 		};
-		let [duplicated_folder, freehand_dup, line_dup, folder, freehand, line, ellipse, polygon, rect] = layers_after_copy[..] else {
+		let [_, _, _, folder, freehand, line, ellipse, polygon, rect] = layers_after_copy[..] else {
 			panic!("Layers after incorrect");
 		};
 		assert_eq!(original_folder, folder);
+		assert_eq!(original_freehand, freehand);
+		assert_eq!(original_line, line);
 		assert_eq!(original_ellipse, ellipse);
-		assert_eq!(original_rect, rect);
 		assert_eq!(original_polygon, polygon);
+		assert_eq!(original_rect, rect);
 	}
 
 	#[test]

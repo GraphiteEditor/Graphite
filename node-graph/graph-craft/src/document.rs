@@ -12,8 +12,15 @@ use std::hash::{Hash, Hasher};
 
 pub mod value;
 
-// TODO: Convert from a type alias to a newtype
-pub type NodeId = u64;
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct NodeId(pub u64);
+
+impl core::fmt::Display for NodeId {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		write!(f, "{}", self.0)
+	}
+}
 
 /// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
 /// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
@@ -21,7 +28,7 @@ fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);
 	b.hash(&mut hasher);
-	hasher.finish()
+	NodeId(hasher.finish())
 }
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
@@ -468,9 +475,9 @@ impl NodeNetwork {
 
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
-			inputs: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network(_))).map(|_| 0).collect(),
-			outputs: vec![NodeOutput::new(0, 0)],
-			nodes: [(0, node)].into_iter().collect(),
+			inputs: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network(_))).map(|_| NodeId(0)).collect(),
+			outputs: vec![NodeOutput::new(NodeId(0), 0)],
+			nodes: [(NodeId(0), node)].into_iter().collect(),
 			disabled: vec![],
 			previous_outputs: None,
 		}
@@ -479,10 +486,10 @@ impl NodeNetwork {
 	/// A graph with just an input node
 	pub fn new_network() -> Self {
 		Self {
-			inputs: vec![0],
-			outputs: vec![NodeOutput::new(0, 0)],
+			inputs: vec![NodeId(0)],
+			outputs: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(
-				0,
+				NodeId(0),
 				DocumentNode {
 					name: "Input Frame".into(),
 					manual_composition: Some(concrete!(u32)),
@@ -499,7 +506,7 @@ impl NodeNetwork {
 
 	/// Appends a new node to the network after the output node and sets it as the new output
 	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
-		let id = self.nodes.len().try_into().expect("Too many nodes in network");
+		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
 			if let Some(pos) = self.original_outputs().first().and_then(|first| self.nodes.get(&first.node_id)).map(|n| n.metadata.position) {
@@ -536,11 +543,11 @@ impl NodeNetwork {
 			name: "Cache".into(),
 			inputs: vec![],
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: vec![
 					(
-						0,
+						NodeId(0),
 						DocumentNode {
 							name: "MemoNode".to_string(),
 							manual_composition: Some(concrete!(())),
@@ -550,10 +557,10 @@ impl NodeNetwork {
 						},
 					),
 					(
-						1,
+						NodeId(1),
 						DocumentNode {
 							name: "CloneNode".to_string(),
-							inputs: vec![NodeInput::node(0, 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
 							..Default::default()
 						},
@@ -819,7 +826,7 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_fns(node, merge_ids, generate_uuid)
+		self.flatten_with_fns(node, merge_ids, || NodeId(generate_uuid()))
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
@@ -1062,7 +1069,7 @@ impl NodeNetwork {
 				} = input
 				{
 					if *graphic_group == GraphicGroup::EMPTY {
-						*input = NodeInput::node(new_id, 0);
+						*input = NodeInput::node(NodeId(new_id), 0);
 						used = true;
 					}
 				}
@@ -1078,7 +1085,7 @@ impl NodeNetwork {
 				inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), false)],
 				..Default::default()
 			};
-			self.nodes.insert(new_id, new_node);
+			self.nodes.insert(NodeId(new_id), new_node);
 		}
 	}
 
@@ -1128,16 +1135,16 @@ mod test {
 
 	fn gen_node_id() -> NodeId {
 		static NODE_ID: AtomicU64 = AtomicU64::new(4);
-		NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+		NodeId(NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
 	}
 
 	fn add_network() -> NodeNetwork {
 		NodeNetwork {
-			inputs: vec![0, 0],
-			outputs: vec![NodeOutput::new(1, 0)],
+			inputs: vec![NodeId(0), NodeId(0)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0)],
 			nodes: [
 				(
-					0,
+					NodeId(0),
 					DocumentNode {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
@@ -1146,10 +1153,10 @@ mod test {
 					},
 				),
 				(
-					1,
+					NodeId(1),
 					DocumentNode {
 						name: "Add".into(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
 					},
@@ -1164,13 +1171,13 @@ mod test {
 	#[test]
 	fn map_ids() {
 		let mut network = add_network();
-		network.map_ids(|id| id + 1);
+		network.map_ids(|id| NodeId(id.0 + 1));
 		let mapped_add = NodeNetwork {
-			inputs: vec![1, 1],
-			outputs: vec![NodeOutput::new(2, 0)],
+			inputs: vec![NodeId(1), NodeId(1)],
+			outputs: vec![NodeOutput::new(NodeId(2), 0)],
 			nodes: [
 				(
-					1,
+					NodeId(1),
 					DocumentNode {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
@@ -1179,10 +1186,10 @@ mod test {
 					},
 				),
 				(
-					2,
+					NodeId(2),
 					DocumentNode {
 						name: "Add".into(),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
 						..Default::default()
 					},
@@ -1206,25 +1213,25 @@ mod test {
 		// TODO: Extend test cases to test nested network
 		let mut extraction_network = NodeNetwork {
 			inputs: vec![],
-			outputs: vec![NodeOutput::new(1, 0)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0)],
 			nodes: [
 				id_node.clone(),
 				DocumentNode {
 					name: "Extract".into(),
-					inputs: vec![NodeInput::lambda(0, 0)],
+					inputs: vec![NodeInput::lambda(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::Extract,
 					..Default::default()
 				},
 			]
 			.into_iter()
 			.enumerate()
-			.map(|(id, node)| (id as NodeId, node))
+			.map(|(id, node)| (NodeId(id as u64), node))
 			.collect(),
 			..Default::default()
 		};
 		extraction_network.resolve_extract_nodes();
 		assert_eq!(extraction_network.nodes.len(), 1);
-		let inputs = extraction_network.nodes.get(&1).unwrap().inputs.clone();
+		let inputs = extraction_network.nodes.get(&NodeId(1)).unwrap().inputs.clone();
 		assert_eq!(inputs.len(), 1);
 		assert!(matches!(&inputs[0], &NodeInput::Value{ tagged_value: TaggedValue::DocumentNode(ref network), ..} if network == &id_node));
 	}
@@ -1232,10 +1239,10 @@ mod test {
 	#[test]
 	fn flatten_add() {
 		let mut network = NodeNetwork {
-			inputs: vec![1],
-			outputs: vec![NodeOutput::new(1, 0)],
+			inputs: vec![NodeId(1)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0)],
 			nodes: [(
-				1,
+				NodeId(1),
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
@@ -1254,7 +1261,7 @@ mod test {
 			..Default::default()
 		};
 		network.generate_node_paths(&[]);
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, gen_node_id);
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
 		let flat_network = flat_network();
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
@@ -1266,7 +1273,7 @@ mod test {
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
 			name: "Cons".into(),
-			inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(0, 0)],
+			inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(NodeId(0), 0)],
 			implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
 			..Default::default()
 		};
@@ -1275,7 +1282,7 @@ mod test {
 		let reference = ProtoNode {
 			identifier: "graphene_core::structural::ConsNode".into(),
 			input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-			construction_args: ConstructionArgs::Nodes(vec![(0, false)]),
+			construction_args: ConstructionArgs::Nodes(vec![(NodeId(0), false)]),
 			..Default::default()
 		};
 		assert_eq!(proto_node, reference);
@@ -1284,30 +1291,30 @@ mod test {
 	#[test]
 	fn resolve_flatten_add_as_proto_network() {
 		let construction_network = ProtoNetwork {
-			inputs: vec![10],
-			output: 11,
+			inputs: vec![NodeId(10)],
+			output: NodeId(11),
 			nodes: [
 				(
-					10,
+					NodeId(10),
 					ProtoNode {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
-						document_node_path: vec![1, 0],
+						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
+						document_node_path: vec![NodeId(1), NodeId(0)],
 						..Default::default()
 					},
 				),
 				(
-					11,
+					NodeId(11),
 					ProtoNode {
 						identifier: "graphene_core::ops::AddPairNode".into(),
-						input: ProtoNodeInput::Node(10, false),
+						input: ProtoNodeInput::Node(NodeId(10), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![1, 1],
+						document_node_path: vec![NodeId(1), NodeId(1)],
 						..Default::default()
 					},
 				),
-				(14, ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)), vec![1, 4])),
+				(NodeId(14), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)), vec![NodeId(1), NodeId(4)])),
 			]
 			.into_iter()
 			.collect(),
@@ -1322,21 +1329,21 @@ mod test {
 
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
-			inputs: vec![10],
-			outputs: vec![NodeOutput::new(11, 0)],
+			inputs: vec![NodeId(10)],
+			outputs: vec![NodeOutput::new(NodeId(11), 0)],
 			nodes: [
 				(
-					10,
+					NodeId(10),
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(14, 0)],
+						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
-						path: Some(vec![1, 0]),
+						path: Some(vec![NodeId(1), NodeId(0)]),
 						..Default::default()
 					},
 				),
 				(
-					14,
+					NodeId(14),
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value {
@@ -1344,17 +1351,17 @@ mod test {
 							exposed: false,
 						}],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
-						path: Some(vec![1, 4]),
+						path: Some(vec![NodeId(1), NodeId(4)]),
 						..Default::default()
 					},
 				),
 				(
-					11,
+					NodeId(11),
 					DocumentNode {
 						name: "Add".into(),
-						inputs: vec![NodeInput::node(10, 0)],
+						inputs: vec![NodeInput::node(NodeId(10), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
-						path: Some(vec![1, 1]),
+						path: Some(vec![NodeId(1), NodeId(1)]),
 						..Default::default()
 					},
 				),
@@ -1367,11 +1374,11 @@ mod test {
 
 	fn two_node_identity() -> NodeNetwork {
 		NodeNetwork {
-			inputs: vec![1, 2],
-			outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
+			inputs: vec![NodeId(1), NodeId(2)],
+			outputs: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
 			nodes: [
 				(
-					1,
+					NodeId(1),
 					DocumentNode {
 						name: "Identity 1".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
@@ -1380,7 +1387,7 @@ mod test {
 					},
 				),
 				(
-					2,
+					NodeId(2),
 					DocumentNode {
 						name: "Identity 2".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32))],
@@ -1401,7 +1408,7 @@ mod test {
 			outputs: network_outputs,
 			nodes: [
 				(
-					1,
+					NodeId(1),
 					DocumentNode {
 						name: "Nested network".into(),
 						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
@@ -1410,7 +1417,7 @@ mod test {
 					},
 				),
 				(
-					2,
+					NodeId(2),
 					DocumentNode {
 						name: "Result".into(),
 						inputs: vec![result_node_input],
@@ -1424,61 +1431,67 @@ mod test {
 			..Default::default()
 		};
 		let _new_ids = 101..;
-		network.flatten_with_fns(1, |self_id, inner_id| self_id * 10 + inner_id, || 10000);
-		network.flatten_with_fns(2, |self_id, inner_id| self_id * 10 + inner_id, || 10001);
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
+		network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
 		network.remove_dead_nodes();
 		network
 	}
 
 	#[test]
 	fn simple_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(1, 0)], NodeInput::node(1, 0));
+		let result = output_duplicate(vec![NodeOutput::new(NodeId(1), 0)], NodeInput::node(NodeId(1), 0));
 		println!("{result:#?}");
 		assert_eq!(result.outputs.len(), 1, "The number of outputs should remain as 1");
-		assert_eq!(result.outputs[0], NodeOutput::new(11, 0), "The outer network output should be from a duplicated inner network");
+		assert_eq!(result.outputs[0], NodeOutput::new(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
-		assert_eq!(ids, vec![11, 10010], "Should only contain identity and values");
+		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain identity and values");
 	}
 
 	// TODO: Write more tests
-	/*
-	#[test]
-	fn out_of_order_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(10, 1), NodeOutput::new(10, 0)], NodeInput::node(10, 0));
-		assert_eq!(result.outputs[0], NodeOutput::new(101, 0), "The first network output should be from a duplicated nested network");
-		assert_eq!(result.outputs[1], NodeOutput::new(10, 0), "The second network output should be from the original nested network");
-		assert!(
-			result.nodes.contains_key(&10) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
-			"Network should contain two duplicated nodes"
-		);
-		for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
-			let nested_network_node = result.nodes.get(&node_id).unwrap();
-			assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-			assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
-			let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-			assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
-			assert_eq!(inner_network.outputs, vec![NodeOutput::new(inner_id, 0)], "The output should be node id");
-			assert_eq!(inner_network.nodes.get(&inner_id).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
-		}
-	}
-	#[test]
-	fn using_other_node_duplicate() {
-		let result = output_duplicate(vec![NodeOutput::new(11, 0)], NodeInput::node(10, 1));
-		assert_eq!(result.outputs, vec![NodeOutput::new(11, 0)], "The network output should be the result node");
-		assert!(
-			result.nodes.contains_key(&11) && result.nodes.contains_key(&101) && result.nodes.len() == 2,
-			"Network should contain a duplicated node and a result node"
-		);
-		let result_node = result.nodes.get(&11).unwrap();
-		assert_eq!(result_node.inputs, vec![NodeInput::node(101, 0)], "Result node should refer to duplicate node as input");
-		let nested_network_node = result.nodes.get(&101).unwrap();
-		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
-		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
-		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
-		assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
-		assert_eq!(inner_network.outputs, vec![NodeOutput::new(2, 0)], "The output should be node id 2");
-		assert_eq!(inner_network.nodes.get(&2).unwrap().name, "Identity 2", "The node should be identity 2");
-	}
-	*/
+	// #[test]
+	// fn out_of_order_duplicate() {
+	// 	let result = output_duplicate(vec![NodeOutput::new(NodeId(10), 1), NodeOutput::new(NodeId(10), 0)], NodeInput::node(NodeId(10), 0);
+	// 	assert_eq!(
+	// 		result.outputs[0],
+	// 		NodeOutput::new(NodeId(101), 0),
+	// 		"The first network output should be from a duplicated nested network"
+	// 	);
+	// 	assert_eq!(
+	// 		result.outputs[1],
+	// 		NodeOutput::new(NodeId(10), 0),
+	// 		"The second network output should be from the original nested network"
+	// 	);
+	// 	assert!(
+	// 		result.nodes.contains_key(&NodeId(10)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
+	// 		"Network should contain two duplicated nodes"
+	// 	);
+	// 	for (node_id, input_value, inner_id) in [(10, 1., 1), (101, 2., 2)] {
+	// 		let nested_network_node = result.nodes.get(&NodeId(node_id)).unwrap();
+	// 		assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+	// 		assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(input_value), false)], "Input should be stable");
+	// 		let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+	// 		assert_eq!(inner_network.inputs, vec![inner_id], "The input should be sent to the second node");
+	// 		assert_eq!(inner_network.outputs, vec![NodeOutput::new(NodeId(inner_id), 0)], "The output should be node id");
+	// 		assert_eq!(inner_network.nodes.get(&NodeId(inner_id)).unwrap().name, format!("Identity {inner_id}"), "The node should be identity");
+	// 	}
+	// }
+	// #[test]
+	// fn using_other_node_duplicate() {
+	// 	let result = output_duplicate(vec![NodeOutput::new(NodeId(11), 0)], NodeInput::node(NodeId(10), 1);
+	// 	assert_eq!(result.outputs, vec![NodeOutput::new(NodeId(11), 0)], "The network output should be the result node");
+	// 	assert!(
+	// 		result.nodes.contains_key(&NodeId(11)) && result.nodes.contains_key(&NodeId(101)) && result.nodes.len() == 2,
+	// 		"Network should contain a duplicated node and a result node"
+	// 	);
+	// 	let result_node = result.nodes.get(&NodeId(11)).unwrap();
+	// 	assert_eq!(result_node.inputs, vec![NodeInput::node(NodeId(101), 0)], "Result node should refer to duplicate node as input");
+	// 	let nested_network_node = result.nodes.get(&NodeId(101)).unwrap();
+	// 	assert_eq!(nested_network_node.name, "Nested network".to_string(), "Name should not change");
+	// 	assert_eq!(nested_network_node.inputs, vec![NodeInput::value(TaggedValue::F32(2.), false)], "Input should be 2");
+	// 	let inner_network = nested_network_node.implementation.get_network().expect("Implementation should be network");
+	// 	assert_eq!(inner_network.inputs, vec![2], "The input should be sent to the second node");
+	// 	assert_eq!(inner_network.outputs, vec![NodeOutput::new(NodeId(2), 0)], "The output should be node id 2");
+	// 	assert_eq!(inner_network.nodes.get(&NodeId(2)).unwrap().name, "Identity 2", "The node should be identity 2");
+	// }
 }

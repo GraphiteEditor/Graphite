@@ -187,7 +187,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									.network()
 									.upstream_flow_back_from_nodes(vec![node], false)
 									.enumerate()
-									.map(|(index, (_, node_id))| (node_id, index as NodeId))
+									.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 									.collect(),
 							)
 							.collect(),
@@ -327,7 +327,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let new_document = DocumentMessageHandler::with_name(name, ipp, responses);
-				let document_id = generate_uuid();
+				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
 					responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
@@ -353,7 +353,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				document_serialized_content,
 			} => {
 				responses.add(PortfolioMessage::OpenDocumentFileWithId {
-					document_id: generate_uuid(),
+					document_id: DocumentId(generate_uuid()),
 					document_name,
 					document_is_auto_saved: false,
 					document_is_saved: true,
@@ -389,7 +389,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-						let id = generate_uuid();
+						let id = NodeId(generate_uuid());
 						responses.add(GraphOperationMessage::NewCustomLayer {
 							id,
 							nodes: entry.nodes.clone(),
@@ -422,7 +422,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
-							let id = generate_uuid();
+							let id = NodeId(generate_uuid());
 							responses.add(GraphOperationMessage::NewCustomLayer {
 								id,
 								nodes: entry.nodes,

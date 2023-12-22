@@ -3,6 +3,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
@@ -205,7 +206,7 @@ impl Fsm for EllipseToolFsmState {
 				// Create a new ellipse vector shape
 				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
 				let manipulator_groups = subpath.manipulator_groups().to_vec();
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
 				graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, layer, true, responses);
 				shape_data.layer = Some(layer);
 
