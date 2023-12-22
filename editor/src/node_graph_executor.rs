@@ -15,7 +15,7 @@ use graph_craft::imaginate_input::ImaginatePreferences;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
-use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegment, SvgSegmentList};
+use graphene_core::renderer::{ClickTarget, GraphicElementRendered, SvgSegmentList};
 use graphene_core::text::FontCache;
 use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
@@ -345,8 +345,6 @@ pub async fn run_node_graph() {
 pub struct NodeGraphExecutor {
 	sender: Sender<NodeRuntimeMessage>,
 	receiver: Receiver<NodeGraphUpdate>,
-	// TODO: This is a memory leak since layers are never removed
-	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	futures: HashMap<u64, ExecutionContext>,
 }
 
@@ -367,7 +365,6 @@ impl Default for NodeGraphExecutor {
 			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_receiver,
-			thumbnails: Default::default(),
 		}
 	}
 }
@@ -590,12 +587,11 @@ impl NodeGraphExecutor {
 								selected: document_metadata.selected_layers_contains(layer),
 								parent_id: layer.parent(document_metadata).map(|parent| parent.to_node()),
 								id: node_id,
-								depth: layer.ancestors(document_metadata).count(),
+								depth: layer.ancestors(document_metadata).count() - 1,
 								thumbnail: svg.to_string(),
 							},
 						});
 					}
-					self.thumbnails = new_thumbnails;
 					document_metadata.update_transforms(new_upstream_transforms);
 					document_metadata.update_click_targets(new_click_targets);
 					responses.extend(updates);
@@ -671,20 +667,5 @@ impl NodeGraphExecutor {
 			}
 		};
 		Ok(())
-	}
-
-	/// When a blob url for a thumbnail is loaded, update the state and the UI.
-	pub fn insert_thumbnail_blob_url(&mut self, blob_url: String, node_id: NodeId, responses: &mut VecDeque<Message>) {
-		for segment_list in self.thumbnails.values_mut() {
-			if let Some(segment) = segment_list.iter_mut().find(|segment| **segment == SvgSegment::BlobUrl(node_id)) {
-				*segment = SvgSegment::String(blob_url);
-				responses.add(FrontendMessage::UpdateNodeThumbnail {
-					id: node_id,
-					value: segment_list.to_string(),
-				});
-				return;
-			}
-		}
-		warn!("Received blob url for invalid segment")
 	}
 }

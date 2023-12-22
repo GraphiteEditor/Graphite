@@ -273,17 +273,14 @@
 		// Build the new layer tree
 		const recurse = (folder: UpdateDocumentLayerTreeStructureJs) => {
 			folder.children.forEach((item, index) => {
-				// TODO: fix toString
-				const layerId = BigInt(item.layerId.toString());
-
-				const mapping = layerCache.get(`${layerId}`);
+				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
-					mapping.id = layerId;
+					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
 						bottomLayer: index === folder.children.length - 1,
 						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === layerId,
+						editingName: layerIdWithNameBeingEdited === item.layerId,
 					});
 				}
 
@@ -296,7 +293,7 @@
 	}
 
 	function updateLayerInTree(targetId: bigint, targetLayer: LayerPanelEntry) {
-		layerCache.set(`${targetId}`, targetLayer);
+		layerCache.set(String(targetId), targetLayer);
 
 		const layer = layers.find((layer: LayerListingInfo) => layer.entry.id === targetId);
 		if (layer) {

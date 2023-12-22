@@ -116,8 +116,8 @@
 			const from = connectorToNodeIndex(linkInProgressFromConnector);
 			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
 
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.isLayer;
-			const linkEnd = $nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.isLayer && to?.index !== 0;
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.isLayer || false;
+			const linkEnd = ($nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.isLayer && to?.index !== 0) || false;
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
@@ -158,8 +158,8 @@
 			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.isLayer;
-			const linkEnd = $nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n;
+			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.isLayer || false;
+			const linkEnd = ($nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -673,7 +673,7 @@
 	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
-			{@const clipPathId = `${Math.random()}`.substring(2)}
+			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDatainput = node.exposedInputs[0]}
 			<div
 				class="layer"
@@ -756,7 +756,7 @@
 		<!-- Nodes -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [] : [{ node, nodeIndex }])) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = [...node.exposedInputs, ...node.exposedOutputs]}
-			{@const clipPathId = `${Math.random()}`.substring(2)}
+			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
 				class:selected={selected.includes(node.id)}

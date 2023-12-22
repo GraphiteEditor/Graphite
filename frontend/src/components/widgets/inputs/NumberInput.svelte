@@ -176,7 +176,7 @@
 
 	function onTextFocused() {
 		if (value === undefined) text = "";
-		else if (unitIsHiddenWhenEditing) text = `${value}`;
+		else if (unitIsHiddenWhenEditing) text = String(value);
 		else text = `${value}${unPluralize(unit, value)}`;
 
 		editing = true;

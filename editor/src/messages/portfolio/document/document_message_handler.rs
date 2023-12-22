@@ -1058,9 +1058,7 @@ impl DocumentMessageHandler {
 	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
 		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
 		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
-		let new_insert_index = layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize;
-
-		new_insert_index
+		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize
 	}
 
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {

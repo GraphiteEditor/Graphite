@@ -15,7 +15,7 @@
 
 	let inputElement: HTMLInputElement | undefined;
 
-	let id = `${Math.random()}`.substring(2);
+	let id = String(Math.random()).substring(2);
 
 	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
 

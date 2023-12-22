@@ -29,7 +29,7 @@
 	export let hideContextMenu = false;
 
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
-	let id = `${Math.random()}`.substring(2);
+	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = platformIsMac();
 
 	$: inputValue = value;
