@@ -41,7 +41,7 @@ pub enum DocumentMessage {
 	BackupDocument {
 		network: NodeNetwork,
 	},
-	ClearLayerTree,
+	ClearLayersPanel,
 	CommitTransaction,
 	CreateEmptyFolder {
 		parent: LayerNodeIdentifier,

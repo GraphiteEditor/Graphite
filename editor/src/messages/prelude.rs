@@ -56,6 +56,7 @@ pub use graphite_proc_macros::*;
 
 pub use std::collections::{HashMap, HashSet, VecDeque};
 
+// TODO: Convert from a type alias to a newtype
 pub type DocumentId = u64;
 
 pub trait Responses {

@@ -4,7 +4,7 @@
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerTreeStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
+	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
 	import type { LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -55,8 +55,8 @@
 			layersPanelOptionsLayout = layersPanelOptionsLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerTreeStructureJs, (updateDocumentLayerTreeStructure) => {
-			rebuildLayerTree(updateDocumentLayerTreeStructure);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
+			rebuildLayerHierarchy(updateDocumentLayerStructure);
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
@@ -263,15 +263,15 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerTree(updateDocumentLayerTreeStructure: UpdateDocumentLayerTreeStructureJs) {
+	function rebuildLayerHierarchy(updateDocumentLayerStructure: UpdateDocumentLayerStructureJs) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
-		// Clear the layer tree before rebuilding it
+		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
-		// Build the new layer tree
-		const recurse = (folder: UpdateDocumentLayerTreeStructureJs) => {
+		// Build the new layer hierarchy
+		const recurse = (folder: UpdateDocumentLayerStructureJs) => {
 			folder.children.forEach((item, index) => {
 				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
@@ -288,7 +288,7 @@
 				if (item.children.length >= 1) recurse(item);
 			});
 		};
-		recurse(updateDocumentLayerTreeStructure);
+		recurse(updateDocumentLayerStructure);
 		layers = layers;
 	}
 
@@ -391,7 +391,7 @@
 			}
 		}
 
-		// Layer tree
+		// Layer hierarchy
 		.list-area {
 			margin: 4px 0;
 			position: relative;

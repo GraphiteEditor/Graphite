@@ -1,4 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +10,7 @@ pub struct FrontendDocumentDetails {
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
 	pub name: String,
-	pub id: u64,
+	pub id: DocumentId,
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]

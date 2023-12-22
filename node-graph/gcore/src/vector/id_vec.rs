@@ -16,6 +16,7 @@ use alloc::vec::Vec;
 /// This data structure is somewhat similar to a linked list in terms of invariants.
 /// The downside is that currently it requires a lot of iteration.
 
+// TODO: Convert from a type alias to a newtype
 pub type ElementId = u64;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Hash)]
 pub struct IdBackedVec<T> {
@@ -124,7 +125,7 @@ impl<T> IdBackedVec<T> {
 	}
 
 	/// Enumerate the ids and elements in this container `(&ElementId, &T)`
-	pub fn enumerate(&self) -> core::iter::Zip<core::slice::Iter<u64>, core::slice::Iter<T>> {
+	pub fn enumerate(&self) -> core::iter::Zip<core::slice::Iter<ElementId>, core::slice::Iter<T>> {
 		self.element_ids.iter().zip(self.elements.iter())
 	}
 

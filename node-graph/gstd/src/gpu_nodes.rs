@@ -246,7 +246,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		]
 		.into_iter()
 		.enumerate()
-		.map(|(i, n)| (i as u64, n))
+		.map(|(id, node)| (id as NodeId, node))
 		.collect(),
 		..Default::default()
 	};
@@ -464,7 +464,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 		}]
 		.into_iter()
 		.enumerate()
-		.map(|(i, n)| (i as u64, n))
+		.map(|(id, node)| (id as NodeId, node))
 		.collect(),
 		..Default::default()
 	};

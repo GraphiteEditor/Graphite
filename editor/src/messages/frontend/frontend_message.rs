@@ -139,11 +139,11 @@ pub enum FrontendMessage {
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
 	},
-	UpdateDocumentLayerTreeStructure {
+	UpdateDocumentLayerStructure {
 		#[serde(rename = "dataBuffer")]
 		data_buffer: RawBuffer,
 	},
-	UpdateDocumentLayerTreeStructureJs {
+	UpdateDocumentLayerStructureJs {
 		#[serde(rename = "dataBuffer")]
 		data_buffer: JsRawBuffer,
 	},

@@ -109,7 +109,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 					// Clear relevant UI layouts if there are no documents
 					responses.add(PropertiesPanelMessage::Clear);
-					responses.add(DocumentMessage::ClearLayerTree);
+					responses.add(DocumentMessage::ClearLayersPanel);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
@@ -133,7 +133,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if self.documents.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
 					responses.add(PropertiesPanelMessage::Clear);
-					responses.add(DocumentMessage::ClearLayerTree);
+					responses.add(DocumentMessage::ClearLayersPanel);
 					let hint_data = HintData(vec![HintGroup(vec![])]);
 					responses.add(FrontendMessage::UpdateInputHints { hint_data });
 				}
@@ -606,7 +606,7 @@ impl PortfolioMessageHandler {
 		self.active_document_id.and_then(|id| self.documents.get_mut(&id))
 	}
 
-	pub fn active_document_id(&self) -> Option<u64> {
+	pub fn active_document_id(&self) -> Option<DocumentId> {
 		self.active_document_id
 	}
 

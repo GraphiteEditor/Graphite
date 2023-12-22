@@ -359,7 +359,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 //TODO Generalize this instead of using a separate function per dropdown menu enum
-fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::RedGreenBlue(mode),
@@ -382,7 +382,7 @@ fn color_channel(document_node: &DocumentNode, node_id: u64, index: usize, name:
 }
 
 // TODO Generalize this instead of using a separate function per dropdown menu enum
-fn noise_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::NoiseType(noise_type),
@@ -403,7 +403,7 @@ fn noise_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 }
 
 // TODO Generalize this instead of using a separate function per dropdown menu enum
-fn fractal_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::FractalType(fractal_type),
@@ -424,7 +424,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 }
 
 // TODO Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_distance_function(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::CellularDistanceFunction(cellular_distance_function),
@@ -450,7 +450,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: u64, index:
 }
 
 // TODO Generalize this instead of using a separate function per dropdown menu enum
-fn cellular_return_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::CellularReturnType(cellular_return_type),
@@ -471,7 +471,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: u64, index: usize
 }
 
 // TODO Generalize this instead of using a separate function per dropdown menu enum
-fn domain_warp_type(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
+fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::DomainWarpType(domain_warp_type),
@@ -492,7 +492,7 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: u64, index: usize, na
 }
 
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
-fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::BlendMode(blend_mode),
@@ -520,7 +520,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: u64, index: usize, name: &s
 }
 
 // TODO: Generalize this for all dropdowns (also see blend_mode and channel_extration)
-fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::LuminanceCalculation(calculation),
@@ -542,7 +542,7 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: u64, index: usiz
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
 }
 
-fn line_cap_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::LineCap(line_cap),
@@ -562,7 +562,7 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: u64, index: usize, nam
 	LayoutGroup::Row { widgets }
 }
 
-fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::LineJoin(line_join),
@@ -582,7 +582,7 @@ fn line_join_widget(document_node: &DocumentNode, node_id: u64, index: usize, na
 	LayoutGroup::Row { widgets }
 }
 
-fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+fn fill_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, "Fill Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::FillType(fill_type),
@@ -607,7 +607,7 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) ->
 	LayoutGroup::Row { widgets }
 }
 
-fn gradient_type_widget(document_node: &DocumentNode, node_id: u64, index: usize) -> LayoutGroup {
+fn gradient_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, "Gradient Type", FrontendGraphDataType::General, true);
 	if let &NodeInput::Value {
 		tagged_value: TaggedValue::GradientType(gradient_type),
@@ -699,7 +699,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 	}
 }
 
-fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, name: &str, node_id: u64, input_index: usize) {
+fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, name: &str, node_id: NodeId, input_index: usize) {
 	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	if let NodeInput::Value {
@@ -742,7 +742,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 	}
 }
 
-fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
+fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
@@ -767,7 +767,7 @@ fn color_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: 
 	LayoutGroup::Row { widgets }
 }
 
-fn curves_widget(document_node: &DocumentNode, node_id: u64, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	if let NodeInput::Value {

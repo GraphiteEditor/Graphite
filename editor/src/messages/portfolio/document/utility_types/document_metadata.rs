@@ -392,22 +392,22 @@ impl LayerNodeIdentifier {
 		document_metadata.get_relations(self).and_then(|relations| relations.parent)
 	}
 
-	/// Access the previous sibling of this layer (up the layer tree)
+	/// Access the previous sibling of this layer (up the Layers panel)
 	pub fn previous_sibling(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		document_metadata.get_relations(self).and_then(|relations| relations.previous_sibling)
 	}
 
-	/// Access the next sibling of this layer (down the layer tree)
+	/// Access the next sibling of this layer (down the Layers panel)
 	pub fn next_sibling(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		document_metadata.get_relations(self).and_then(|relations| relations.next_sibling)
 	}
 
-	/// Access the first child of this layer (top most in layer tree)
+	/// Access the first child of this layer (top most in Layers panel)
 	pub fn first_child(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		document_metadata.get_relations(self).and_then(|relations| relations.first_child)
 	}
 
-	/// Access the last child of this layer (bottom most in layer tree)
+	/// Access the last child of this layer (bottom most in Layers panel)
 	pub fn last_child(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		document_metadata.get_relations(self).and_then(|relations| relations.last_child)
 	}
@@ -453,7 +453,7 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	/// Add a child towards the top of the layer tree
+	/// Add a child towards the top of the Layers panel
 	pub fn push_front_child(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
 		let parent = document_metadata.get_structure_mut(self);
@@ -466,7 +466,7 @@ impl LayerNodeIdentifier {
 		document_metadata.get_structure_mut(new).parent = Some(self);
 	}
 
-	/// Add a child towards the bottom of the layer tree
+	/// Add a child towards the bottom of the Layers panel
 	pub fn push_child(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
 		let parent = document_metadata.get_structure_mut(self);
@@ -479,7 +479,7 @@ impl LayerNodeIdentifier {
 		document_metadata.get_structure_mut(new).parent = Some(self);
 	}
 
-	/// Add sibling above in the layer tree
+	/// Add sibling above in the Layers panel
 	pub fn add_before(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
 		document_metadata.get_structure_mut(new).next_sibling = Some(self);
@@ -497,7 +497,7 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	/// Add sibling below in the layer tree
+	/// Add sibling below in the Layers panel
 	pub fn add_after(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
 		document_metadata.get_structure_mut(new).previous_sibling = Some(self);

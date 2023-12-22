@@ -1,5 +1,4 @@
 use super::tool_prelude::*;
-use crate::application::generate_uuid;
 use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -468,7 +467,6 @@ impl Fsm for GradientToolFsmState {
 								DVec2::ONE,
 								global_tool_data.primary_color,
 								DAffine2::IDENTITY,
-								generate_uuid(),
 								tool_options.gradient_type,
 							)
 						};

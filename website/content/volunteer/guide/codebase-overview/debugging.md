@@ -25,6 +25,6 @@ To show `trace!()` logs, activate *Help* > *Debug: Print Trace Logs*.
 
 To also view logs of the messages dispatched by the message bus system, activate *Help* > *Debug: Print Messages* > *Only Names*. Or use *Full Contents* for more verbose insight with the actual data being passed. This is an invaluable window into the activity of the message flow and works well together with `debug!()` printouts for tracking down message-related issues.
 
-## Layer paths and document IDs
+## Node/layer and document IDs
 
-In debug mode, hover over a layer's name in the Layer Tree panel to view a tooltip with its `u64` path. Likewise, document IDs may be read by hovering over their tabs.
+In debug mode, hover over a layer's name in the Layers panel, or a layer/node in the node graph, to view a tooltip with its ID. Likewise, document IDs may be read by hovering over their tabs.

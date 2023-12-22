@@ -12,11 +12,12 @@ use std::hash::{Hash, Hasher};
 
 pub mod value;
 
+// TODO: Convert from a type alias to a newtype
 pub type NodeId = u64;
 
 /// Hash two IDs together, returning a new ID that is always consistant for two input IDs in a specific order.
 /// This is used during [`NodeNetwork::flatten`] in order to ensure consistant yet non-conflicting IDs for inner networks.
-fn merge_ids(a: u64, b: u64) -> u64 {
+fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	let mut hasher = DefaultHasher::new();
 	a.hash(&mut hasher);
 	b.hash(&mut hasher);
@@ -639,7 +640,7 @@ impl NodeNetwork {
 	}
 
 	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, u64)> {
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
 			network: self,

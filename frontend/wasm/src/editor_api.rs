@@ -177,8 +177,8 @@ impl JsEditorHandle {
 			// }
 			return;
 		}
-		if let FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer } = message {
-			message = FrontendMessage::UpdateDocumentLayerTreeStructureJs { data_buffer: data_buffer.into() };
+		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
+			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
 
 		let message_type = message.to_discriminant().local_name();
@@ -576,7 +576,7 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
 	#[wasm_bindgen(js_name = connectNodesByLink)]
-	pub fn connect_nodes_by_link(&self, output_node: u64, output_node_connector_index: usize, input_node: u64, input_node_connector_index: usize) {
+	pub fn connect_nodes_by_link(&self, output_node: NodeId, output_node_connector_index: usize, input_node: NodeId, input_node_connector_index: usize) {
 		let message = NodeGraphMessage::ConnectNodesByLink {
 			output_node,
 			output_node_connector_index,
@@ -588,14 +588,14 @@ impl JsEditorHandle {
 
 	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
-	pub fn shift_node(&self, node_id: u64) {
+	pub fn shift_node(&self, node_id: NodeId) {
 		let message = NodeGraphMessage::ShiftNode { node_id };
 		self.dispatch(message);
 	}
 
 	/// Notifies the backend that the user disconnected a node
 	#[wasm_bindgen(js_name = disconnectNodes)]
-	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
+	pub fn disconnect_nodes(&self, node_id: NodeId, input_index: usize) {
 		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
 		self.dispatch(message);
 	}
@@ -614,7 +614,7 @@ impl JsEditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> u64 {
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> NodeId {
 		let id = generate_uuid();
 		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
 		self.dispatch(message);
@@ -638,7 +638,7 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user double clicked a node
 	#[wasm_bindgen(js_name = doubleClickNode)]
-	pub fn double_click_node(&self, node: u64) {
+	pub fn double_click_node(&self, node: NodeId) {
 		let message = NodeGraphMessage::DoubleClickNode { node };
 		self.dispatch(message);
 	}

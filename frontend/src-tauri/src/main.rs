@@ -77,8 +77,7 @@ async fn main() {
 }
 #[tauri::command]
 fn set_random_seed(seed: f64) {
-	let seed = seed as u64;
-	graphite_editor::application::set_uuid_seed(seed);
+	graphite_editor::application::set_uuid_seed(seed as u64);
 }
 
 #[tauri::command]

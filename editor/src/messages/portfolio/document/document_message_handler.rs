@@ -332,10 +332,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BackupDocument { network } => self.backup_with_document(network, responses),
-			ClearLayerTree => {
-				// Send an empty layer tree
+			ClearLayersPanel => {
+				// Send an empty layer list
 				let data_buffer: RawBuffer = Self::default().serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer });
+				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 
 				// Clear the options bar
 				responses.add(LayoutMessage::SendLayout {
@@ -382,7 +382,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				let data_buffer: RawBuffer = self.serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerTreeStructure { data_buffer })
+				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer })
 			}
 			DuplicateSelectedLayers => {
 				// TODO: Reimplement selected layer duplication
@@ -954,7 +954,7 @@ impl DocumentMessageHandler {
 		let mut data = Vec::new();
 		self.serialize_structure(self.metadata().root(), &mut structure, &mut data, &mut vec![]);
 
-		structure[0] = LayerNodeIdentifier::new_unchecked(structure.len() as u64 - 1);
+		structure[0] = LayerNodeIdentifier::new_unchecked(structure.len() as NodeId - 1);
 		structure.extend(data);
 
 		structure.iter().map(|id| id.to_node()).collect::<Vec<_>>().as_slice().into()

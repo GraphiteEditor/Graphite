@@ -19,6 +19,7 @@ use wasm_bindgen::prelude::*;
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
+	// TODO: Remove the concept of multiple editor instances to simplify all of this
 	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, editor::application::Editor>> = RefCell::new(HashMap::new());
 	pub static JS_EDITOR_HANDLES: RefCell<HashMap<u64, editor_api::JsEditorHandle>> = RefCell::new(HashMap::new());
 }

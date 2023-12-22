@@ -97,13 +97,13 @@ pub struct FrontendNode {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeLink {
 	#[serde(rename = "linkStart")]
-	pub link_start: u64,
+	pub link_start: NodeId,
 	#[serde(rename = "linkStartOutputIndex")]
 	pub link_start_output_index: usize,
 	#[serde(rename = "linkEnd")]
-	pub link_end: u64,
+	pub link_end: NodeId,
 	#[serde(rename = "linkEndInputIndex")]
-	pub link_end_input_index: u64,
+	pub link_end_input_index: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -272,16 +272,16 @@ impl NodeGraphMessageHandler {
 			.filter_map(|(input, &link_end, link_end_input_index)| {
 				if let NodeInput::Node {
 					node_id: link_start,
-					output_index: link_start_index,
+					output_index: link_start_output_index,
 					// TODO: add ui for lambdas
 					lambda: _,
 				} = *input
 				{
 					Some(FrontendNodeLink {
 						link_start,
-						link_start_output_index: link_start_index,
+						link_start_output_index,
 						link_end,
-						link_end_input_index: link_end_input_index as u64,
+						link_end_input_index,
 					})
 				} else {
 					None
@@ -487,7 +487,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("No network");
 					return;
 				};
-				let Some(input_node) = network.nodes.get(&input_node) else {
+				let Some(input_node) = network.nodes.get(&node_id) else {
 					error!("No to");
 					return;
 				};

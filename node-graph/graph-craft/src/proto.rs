@@ -207,7 +207,8 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub document_node_path: Vec<NodeId>,
 	pub skip_deduplication: bool,
-	/// Represents a global state on which the node depends. This is a hack, TODO: figure out a proper solution
+	// TODO: This is a hack, figure out a proper solution
+	/// Represents a global state on which the node depends.
 	pub world_state_hash: u64,
 }
 
