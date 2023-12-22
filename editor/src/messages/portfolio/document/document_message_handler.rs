@@ -223,7 +223,7 @@ fn root_network() -> NodeNetwork {
 }
 
 pub struct DocumentInputs<'a> {
-	pub document_id: u64,
+	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,

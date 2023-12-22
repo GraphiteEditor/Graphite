@@ -1,7 +1,7 @@
-use super::consts::ManipulatorType;
 use super::id_vec::IdBackedVec;
 use super::manipulator_group::ManipulatorGroup;
 use super::manipulator_point::ManipulatorPoint;
+use super::{consts::ManipulatorType, id_vec::ElementId};
 use crate::uuid::ManipulatorGroupId;
 
 use alloc::string::String;
@@ -204,7 +204,7 @@ impl Subpath {
 
 	/// Delete the selected points from the [Subpath]
 	pub fn delete_selected(&mut self) {
-		let mut ids_to_delete: Vec<u64> = vec![];
+		let mut ids_to_delete: Vec<ElementId> = vec![];
 		for (id, manipulator_group) in self.manipulator_groups_mut().enumerate_mut() {
 			if manipulator_group.is_anchor_selected() {
 				ids_to_delete.push(*id);

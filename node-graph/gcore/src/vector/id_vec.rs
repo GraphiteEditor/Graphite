@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 /// This data structure is somewhat similar to a linked list in terms of invariants.
 /// The downside is that currently it requires a lot of iteration.
 
-type ElementId = u64;
+pub type ElementId = u64;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type, Hash)]
 pub struct IdBackedVec<T> {
 	/// Contained elements

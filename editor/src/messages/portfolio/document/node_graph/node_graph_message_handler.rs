@@ -438,7 +438,7 @@ impl NodeGraphMessageHandler {
 pub struct NodeGraphHandlerData<'a> {
 	pub document_network: &'a mut NodeNetwork,
 	pub document_metadata: &'a mut DocumentMetadata,
-	pub document_id: u64,
+	pub document_id: DocumentId,
 	pub document_name: &'a str,
 	pub collapsed: &'a mut Vec<LayerNodeIdentifier>,
 	pub input: &'a InputPreprocessorMessageHandler,

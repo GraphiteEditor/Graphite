@@ -294,7 +294,7 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]
-	pub fn select_document(&self, document_id: u64) {
+	pub fn select_document(&self, document_id: DocumentId) {
 		let message = PortfolioMessage::SelectDocument { document_id };
 		self.dispatch(message);
 	}
@@ -327,7 +327,7 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = openAutoSavedDocument)]
-	pub fn open_auto_saved_document(&self, document_id: u64, document_name: String, document_is_saved: bool, document_serialized_content: String) {
+	pub fn open_auto_saved_document(&self, document_id: DocumentId, document_name: String, document_is_saved: bool, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
 			document_name,
@@ -339,13 +339,13 @@ impl JsEditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = triggerAutoSave)]
-	pub fn trigger_auto_save(&self, document_id: u64) {
+	pub fn trigger_auto_save(&self, document_id: DocumentId) {
 		let message = PortfolioMessage::AutoSaveDocument { document_id };
 		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = closeDocumentWithConfirmation)]
-	pub fn close_document_with_confirmation(&self, document_id: u64) {
+	pub fn close_document_with_confirmation(&self, document_id: DocumentId) {
 		let message = PortfolioMessage::CloseDocumentWithConfirmation { document_id };
 		self.dispatch(message);
 	}
@@ -623,7 +623,7 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
-	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
+	pub fn select_nodes(&self, nodes: Option<Vec<NodeId>>) {
 		let nodes = nodes.unwrap_or_default();
 		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);

@@ -56,6 +56,8 @@ pub use graphite_proc_macros::*;
 
 pub use std::collections::{HashMap, HashSet, VecDeque};
 
+pub type DocumentId = u64;
+
 pub trait Responses {
 	fn add(&mut self, message: impl Into<Message>);
 

@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 /// A dialog for confirming the closing a document with unsaved changes.
 pub struct CloseDocumentDialog {
 	pub document_name: String,
-	pub document_id: u64,
+	pub document_id: DocumentId,
 }
 
 impl DialogLayoutHolder for CloseDocumentDialog {

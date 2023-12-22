@@ -412,7 +412,7 @@ impl ProtoNetwork {
 	}
 
 	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
-	fn replace_node_id(&mut self, outwards_edges: &HashMap<u64, Vec<u64>>, node_id: u64, compose_node_id: u64, skip_lambdas: bool) {
+	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, compose_node_id: NodeId, skip_lambdas: bool) {
 		// Update references in other nodes to use the new compose node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {

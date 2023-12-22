@@ -22,21 +22,21 @@ pub enum PortfolioMessage {
 	// Messages
 	#[remain::unsorted]
 	DocumentPassMessage {
-		document_id: u64,
+		document_id: DocumentId,
 		message: DocumentMessage,
 	},
 	AutoSaveActiveDocument,
 	AutoSaveDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
 	CloseAllDocumentsWithConfirmation,
 	CloseDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	CloseDocumentWithConfirmation {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	Copy {
 		clipboard: Clipboard,
@@ -45,7 +45,7 @@ pub enum PortfolioMessage {
 		clipboard: Clipboard,
 	},
 	DeleteDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
 	FontLoaded {
@@ -65,7 +65,7 @@ pub enum PortfolioMessage {
 	ImaginateServerHostname,
 	Import,
 	LoadDocumentResources {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	LoadFont {
 		font: Font,
@@ -81,7 +81,7 @@ pub enum PortfolioMessage {
 		document_serialized_content: String,
 	},
 	OpenDocumentFileWithId {
-		document_id: u64,
+		document_id: DocumentId,
 		document_name: String,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
@@ -97,10 +97,10 @@ pub enum PortfolioMessage {
 	},
 	PrevDocument,
 	SelectDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	SetActiveDocument {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	SubmitDocumentExport {
 		file_name: String,
@@ -110,7 +110,7 @@ pub enum PortfolioMessage {
 		transparent_background: bool,
 	},
 	SubmitGraphRender {
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	ToggleRulers,
 	UpdateDocumentWidgets,

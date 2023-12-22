@@ -80,7 +80,7 @@ pub enum FrontendMessage {
 	TriggerImport,
 	TriggerIndexedDbRemoveDocument {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	TriggerIndexedDbWriteDocument {
 		document: String,
@@ -111,7 +111,7 @@ pub enum FrontendMessage {
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
@@ -180,7 +180,7 @@ pub enum FrontendMessage {
 	},
 	UpdateImageData {
 		#[serde(rename = "documentId")]
-		document_id: u64,
+		document_id: DocumentId,
 		#[serde(rename = "imageData")]
 		image_data: Vec<FrontendImageData>,
 	},

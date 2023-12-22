@@ -533,7 +533,6 @@ generate_imaginate_node! {
 	negative_prompt: NegativePrompt: String,
 	adapt_input_image: AdaptInputImage: bool,
 	image_creativity: ImageCreativity: f32,
-	masking_layer: MaskingLayer: Option<Vec<u64>>,
 	inpaint: Inpaint: bool,
 	mask_blur: MaskBlur: f32,
 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
