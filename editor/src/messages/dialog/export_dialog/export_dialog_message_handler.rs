@@ -78,7 +78,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
 				.min(0.)
-				.max((1u64 << std::f64::MANTISSA_DIGITS) as f64)
+				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor(number_input.value.unwrap()).into())
 				.min_width(200)
