@@ -9,6 +9,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
+use graph_craft::document::NodeId;
 use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
@@ -255,7 +256,7 @@ impl PenToolData {
 
 		// Create the initial shape with a `bez_path` (only contains a moveto initially)
 		let subpath = bezier_rs::Subpath::new(vec![bezier_rs::ManipulatorGroup::new(start_position, Some(start_position), Some(start_position))], false);
-		let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), parent, responses);
+		let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
 		self.layer = Some(layer);
 
 		responses.add(GraphOperationMessage::FillSet {

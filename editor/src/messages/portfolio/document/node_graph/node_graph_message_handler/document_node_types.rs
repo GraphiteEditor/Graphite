@@ -203,11 +203,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Layer",
 			category: "General",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 2],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(0), NodeId(2)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					(
-						0,
+						NodeId(0),
 						DocumentNode {
 							name: "To Graphic Element".to_string(),
 							inputs: vec![NodeInput::Network(generic!(T))],
@@ -217,19 +217,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					),
 					// The monitor node is used to display a thumbnail in the UI.
 					(
-						1,
+						NodeId(1),
 						DocumentNode {
-							inputs: vec![NodeInput::node(0, 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							..monitor_node()
 						},
 					),
 					(
-						2,
+						NodeId(2),
 						DocumentNode {
 							name: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
-								NodeInput::node(1, 0),
+								NodeInput::node(NodeId(1), 0),
 								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
@@ -284,8 +284,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Load Image",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Load Resource".to_string(),
@@ -295,14 +295,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Decode Image".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -329,8 +329,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Create Canvas",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
@@ -342,14 +342,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -368,8 +368,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Draw Canvas",
 			category: "Structural",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 2],
-				outputs: vec![NodeOutput::new(3, 0)],
+				inputs: vec![NodeId(0), NodeId(2)],
+				outputs: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Convert Image Frame".to_string(),
@@ -387,20 +387,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Draw Canvas".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::node(2, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DrawImageFrameNode<_>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -426,8 +426,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Begin Scope",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
@@ -437,21 +437,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "LetNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "RefNode".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::lambda(1, 0)],
+						inputs: vec![NodeInput::lambda(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 
 				..Default::default()
@@ -501,8 +501,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Output",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![3, 0],
-				outputs: vec![NodeOutput::new(4, 0)],
+				inputs: vec![NodeId(3), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(4), 0)],
 				nodes: [
 					DocumentNode {
 						name: "EditorApi".to_string(),
@@ -512,7 +512,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -520,7 +520,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -532,14 +532,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::node(3, 0), NodeInput::node(2, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0), NodeInput::node(NodeId(2), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -809,8 +809,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Split Channels",
 			category: "Image Adjustments",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0), NodeOutput::new(2, 0), NodeOutput::new(3, 0), NodeOutput::new(4, 0)],
+				inputs: vec![NodeId(0)],
+				outputs: vec![
+					NodeOutput::new(NodeId(1), 0),
+					NodeOutput::new(NodeId(2), 0),
+					NodeOutput::new(NodeId(3), 0),
+					NodeOutput::new(NodeId(4), 0),
+				],
 				nodes: [
 					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
 					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
@@ -823,32 +828,32 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "RedNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "GreenNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Green), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Green), false)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "BlueNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Blue), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Blue), false)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "AlphaNode".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 
 				..Default::default()
@@ -913,8 +918,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Uniform",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -924,21 +929,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Create Uniform".to_string(),
-						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::UniformNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -965,8 +970,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Storage",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -976,21 +981,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Create Storage".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(Vec<u8>)), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::Network(concrete!(Vec<u8>)), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::StorageNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1017,8 +1022,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateOutputBuffer",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1028,21 +1033,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Create Output Buffer".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(0, 0), NodeInput::Network(concrete!(Type))],
+						inputs: vec![NodeInput::Network(concrete!(usize)), NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(Type))],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::CreateOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1075,8 +1080,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateComputePass",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0, 1, 1],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0), NodeId(1), NodeId(1)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1088,7 +1093,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Create Compute Pass".to_string(),
 						inputs: vec![
 							NodeInput::Network(concrete!(gpu_executor::PipelineLayout<WgpuExecutor>)),
-							NodeInput::node(0, 0),
+							NodeInput::node(NodeId(0), 0),
 							NodeInput::Network(concrete!(ShaderInput<WgpuExecutor>)),
 							NodeInput::Network(concrete!(gpu_executor::ComputePassDimensions)),
 						],
@@ -1098,14 +1103,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1177,8 +1182,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "ExecuteComputePipeline",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1188,21 +1193,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Execute Compute Pipeline".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(<WgpuExecutor as GpuExecutor>::CommandBuffer)), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::Network(concrete!(<WgpuExecutor as GpuExecutor>::CommandBuffer)), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::ExecuteComputePipelineNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1229,8 +1234,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "ReadOutputBuffer",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1240,21 +1245,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Read Output Buffer".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(Arc<ShaderInput<WgpuExecutor>>)), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::Network(concrete!(Arc<ShaderInput<WgpuExecutor>>)), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::ReadOutputBufferNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1281,8 +1286,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateGpuSurface",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Create Gpu Surface".to_string(),
@@ -1293,14 +1298,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1320,8 +1325,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "RenderTexture",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 1, 0],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(1), NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1334,7 +1339,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						inputs: vec![
 							NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)),
 							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)),
-							NodeInput::node(0, 0),
+							NodeInput::node(NodeId(0), 0),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
 						..Default::default()
@@ -1342,7 +1347,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -1374,8 +1379,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "UploadTexture",
 			category: "Gpu",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![1, 0],
-				outputs: vec![NodeOutput::new(2, 0)],
+				inputs: vec![NodeId(1), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1385,21 +1390,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Upload Texture".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>)), NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::UploadTextureNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -2149,8 +2154,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Transform",
 			category: "Transform",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![0, 1, 1, 1, 1, 1],
-				outputs: vec![NodeOutput::new(1, 0)],
+				inputs: vec![NodeId(0), NodeId(1), NodeId(1), NodeId(1), NodeId(1), NodeId(1)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						inputs: vec![NodeInput::Network(concrete!(VectorData))],
@@ -2159,7 +2164,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Transform".to_string(),
 						inputs: vec![
-							NodeInput::node(0, 0),
+							NodeInput::node(NodeId(0), 0),
 							NodeInput::Network(concrete!(DVec2)),
 							NodeInput::Network(concrete!(f32)),
 							NodeInput::Network(concrete!(DVec2)),
@@ -2173,7 +2178,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -2375,22 +2380,40 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	name: "Imaginate",
 	category: "Image Synthesis",
 	implementation: NodeImplementation::DocumentNode(NodeNetwork {
-		inputs: vec![0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-		outputs: vec![NodeOutput::new(1, 0)],
+		inputs: vec![
+			NodeId(0),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+			NodeId(1),
+		],
+		outputs: vec![NodeOutput::new(NodeId(1), 0)],
 		nodes: [
 			(
-				0,
+				NodeId(0),
 				DocumentNode {
 					inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
 					..monitor_node()
 				},
 			),
 			(
-				1,
+				NodeId(1),
 				DocumentNode {
 					name: "Imaginate".into(),
 					inputs: vec![
-						NodeInput::node(0, 0),
+						NodeInput::node(NodeId(0), 0),
 						NodeInput::Network(concrete!(WasmEditorApi)),
 						NodeInput::Network(concrete!(ImaginateController)),
 						NodeInput::Network(concrete!(f64)),
@@ -2468,9 +2491,9 @@ impl DocumentNodeDefinition {
 			/*
 				NodeNetwork {
 					inputs: (0..num_inputs).map(|_| 0).collect(),
-					outputs: vec![NodeOutput::new(0, 0)],
+					outputs: vec![NodeOutput::new(NodeId(0), 0)],
 					nodes: [(
-						0,
+						NodeId(0),
 						DocumentNode {
 							name: format!("{}_impl", self.name),
 							// TODO: Allow inserting nodes that contain other nodes.
@@ -2483,8 +2506,6 @@ impl DocumentNodeDefinition {
 					.collect(),
 					..Default::default()
 				}
-
-			}
 			*/
 			NodeImplementation::Extract => return DocumentNodeImplementation::Extract,
 		};
@@ -2555,7 +2576,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
-		inputs: core::iter::repeat(NodeInput::node(0, 1)).take(len).collect(),
+		inputs: core::iter::repeat(NodeInput::node(NodeId(0), 1)).take(len).collect(),
 		..Default::default()
 	};
 
@@ -2563,7 +2584,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		.expect("Begin Scope node type not found")
 		.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default());
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
-		if let Some(node) = g.nodes.get_mut(&0) {
+		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
 		}
 	}
@@ -2574,20 +2595,20 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		inner_network,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(0, 0), NodeInput::node(1, 0)], DocumentNodeMetadata::default()),
+			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)], DocumentNodeMetadata::default()),
 	];
 
 	NodeNetwork {
-		inputs: vec![0],
-		outputs: vec![NodeOutput::new(2, 0)],
-		nodes: nodes.into_iter().enumerate().map(|(id, node)| (id as NodeId, node)).collect(),
+		inputs: vec![NodeId(0)],
+		outputs: vec![NodeOutput::new(NodeId(2), 0)],
+		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
 }
 
 pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
 	let mut network = NodeNetwork {
-		inputs: vec![0],
+		inputs: vec![NodeId(0)],
 		..Default::default()
 	};
 	network.push_node(
@@ -2611,7 +2632,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
 	let mut network = NodeNetwork {
-		inputs: vec![0],
+		inputs: vec![NodeId(0)],
 		..Default::default()
 	};
 	network.push_node(text_generator.to_document_node(

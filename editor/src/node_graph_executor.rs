@@ -278,7 +278,10 @@ impl NodeRuntime {
 			image_data.extend(render.image_data.into_iter().filter_map(|(_, image)| NodeGraphExecutor::to_frontend_image_data(image, resize).ok()))
 		}
 		if !image_data.is_empty() {
-			responses.add(FrontendMessage::UpdateImageData { document_id: 0, image_data });
+			responses.add(FrontendMessage::UpdateImageData {
+				document_id: DocumentId(0),
+				image_data,
+			});
 		}
 	}
 

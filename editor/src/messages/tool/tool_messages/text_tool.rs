@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
 
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
 use graphene_core::text::{load_face, Font, FontCache};
 use graphene_core::vector::style::Fill;
@@ -287,7 +288,7 @@ impl TextToolData {
 		else if let Some(editing_text) = self.editing_text.as_ref().filter(|_| state == TextToolFsmState::Ready) {
 			responses.add(DocumentMessage::StartTransaction);
 
-			self.layer = LayerNodeIdentifier::new_unchecked(generate_uuid());
+			self.layer = LayerNodeIdentifier::new_unchecked(NodeId(generate_uuid()));
 
 			responses.add(GraphOperationMessage::NewTextLayer {
 				id: self.layer.to_node(),

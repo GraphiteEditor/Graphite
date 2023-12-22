@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeMetadata, NodeInput};
+use graph_craft::document::{DocumentNodeMetadata, NodeId, NodeInput};
 use graphene_core::raster::BlendMode;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::brush_stroke::{BrushInputSample, BrushStroke, BrushStyle};
@@ -422,12 +422,12 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 		.to_document_node_default_inputs([], DocumentNodeMetadata::position((-8, 0)));
 	let cull_node = resolve_document_node_type("Cull")
 		.expect("Cull node does not exist")
-		.to_document_node_default_inputs([Some(NodeInput::node(1, 0))], DocumentNodeMetadata::default());
+		.to_document_node_default_inputs([Some(NodeInput::node(NodeId(1), 0))], DocumentNodeMetadata::default());
 
-	let id = generate_uuid();
+	let id = NodeId(generate_uuid());
 	responses.add(GraphOperationMessage::NewCustomLayer {
 		id,
-		nodes: HashMap::from([(1, brush_node), (0, cull_node)]),
+		nodes: HashMap::from([(NodeId(1), brush_node), (NodeId(0), cull_node)]),
 		parent: document.new_layer_parent(),
 		insert_index: -1,
 	});

@@ -203,11 +203,11 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 
 // 	fn inc_network() -> ProtoNetwork {
 // 		let mut construction_network = ProtoNetwork {
-// 			inputs: vec![10],
-// 			output: 1,
+// 			inputs: vec![NodeId(10)],
+// 			output: NodeId(1),
 // 			nodes: [
 // 				(
-// 					1,
+// 					NodeId(1),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode", &[generic!("u32")]),
 // 						input: ProtoNodeInput::Node(11),
@@ -215,7 +215,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 // 					},
 // 				),
 // 				(
-// 					10,
+// 					NodeId(10),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ConsNode", &[generic!("&ValueNode<u32>"), generic!("()")]),
 // 						input: ProtoNodeInput::Network,
@@ -223,7 +223,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 // 					},
 // 				),
 // 				(
-// 					11,
+// 					NodeId(11),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::ops::AddPairNode", &[generic!("u32"), generic!("u32")]),
 // 						input: ProtoNodeInput::Node(10),
@@ -231,7 +231,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 // 					},
 // 				),
 // 				(
-// 					14,
+// 					NodeId(14),
 // 					ProtoNode {
 // 						identifier: ProtoNodeIdentifier::new("graphene_core::value::ValueNode", &[concrete!("u32")]),
 // 						input: ProtoNodeInput::None,

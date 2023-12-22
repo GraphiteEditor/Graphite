@@ -174,8 +174,8 @@ fn root_network() -> NodeNetwork {
 			name: "Output".into(),
 			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
 			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-				inputs: vec![3, 0],
-				outputs: vec![NodeOutput::new(3, 0)],
+				inputs: vec![NodeId(3), NodeId(0)],
+				outputs: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
 						name: "EditorApi".to_string(),
@@ -185,7 +185,7 @@ fn root_network() -> NodeNetwork {
 					},
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(0, 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -193,16 +193,16 @@ fn root_network() -> NodeNetwork {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(1, 0)],
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
 						inputs: vec![
-							NodeInput::node(0, 0),
+							NodeInput::node(NodeId(0), 0),
 							NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
-							NodeInput::node(2, 0),
+							NodeInput::node(NodeId(2), 0),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
 						..Default::default()
@@ -210,7 +210,7 @@ fn root_network() -> NodeNetwork {
 				]
 				.into_iter()
 				.enumerate()
-				.map(|(id, node)| (id as NodeId, node))
+				.map(|(id, node)| (NodeId(id as u64), node))
 				.collect(),
 				..Default::default()
 			}),
@@ -345,7 +345,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			CommitTransaction => (),
 			CreateEmptyFolder { parent } => {
-				let id = generate_uuid();
+				let id = NodeId(generate_uuid());
 
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -416,7 +416,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers(), true).unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let folder_id = generate_uuid();
+				let folder_id = NodeId(generate_uuid());
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
@@ -547,7 +547,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let image_frame = ImageFrame { image, ..Default::default() };
 
 				use crate::messages::tool::common_functionality::graph_modification_utils;
-				let layer = graph_modification_utils::new_image_layer(image_frame, generate_uuid(), self.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(), responses);
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
@@ -907,14 +907,14 @@ impl DocumentMessageHandler {
 				path.push(layer_node);
 
 				// TODO: Skip if folder is not expanded.
-				structure.push(LayerNodeIdentifier::new_unchecked(space));
+				structure.push(LayerNodeIdentifier::new_unchecked(NodeId(space)));
 				self.serialize_structure(layer_node, structure, data, path);
 				space = 0;
 
 				path.pop();
 			}
 		}
-		structure.push(LayerNodeIdentifier::new_unchecked(space | 1 << 63));
+		structure.push(LayerNodeIdentifier::new_unchecked(NodeId(space | 1 << 63)));
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.
@@ -954,10 +954,10 @@ impl DocumentMessageHandler {
 		let mut data = Vec::new();
 		self.serialize_structure(self.metadata().root(), &mut structure, &mut data, &mut vec![]);
 
-		structure[0] = LayerNodeIdentifier::new_unchecked(structure.len() as NodeId - 1);
+		structure[0] = LayerNodeIdentifier::new_unchecked(NodeId(structure.len() as u64 - 1));
 		structure.extend(data);
 
-		structure.iter().map(|id| id.to_node()).collect::<Vec<_>>().as_slice().into()
+		structure.iter().map(|id| id.to_node().0).collect::<Vec<_>>().as_slice().into()
 	}
 
 	/// Places a document into the history system

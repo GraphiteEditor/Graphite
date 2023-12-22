@@ -38,7 +38,7 @@ fn main() {
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
 		inputs: vec![],
-		outputs: vec![NodeOutput::new(0, 0)],
+		outputs: vec![NodeOutput::new(NodeId(0), 0)],
 		disabled: vec![],
 		previous_outputs: None,
 		nodes: [DocumentNode {
@@ -66,7 +66,7 @@ fn add_network() -> NodeNetwork {
 		}]
 		.into_iter()
 		.enumerate()
-		.map(|(id, node)| (id as NodeId, node))
+		.map(|(id, node)| (NodeId(id as u64), node))
 		.collect(),
 	}
 }

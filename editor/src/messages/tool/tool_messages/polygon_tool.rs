@@ -3,6 +3,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 
+use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
@@ -246,7 +247,7 @@ impl Fsm for PolygonToolFsmState {
 					PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
 					PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
 				};
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], generate_uuid(), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
 				polygon_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();

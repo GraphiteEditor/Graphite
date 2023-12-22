@@ -191,7 +191,7 @@ impl ConstructionArgs {
 	// TODO: what? Used in the gpu_compiler crate for something.
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
+			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|(n, _)| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
 			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
@@ -277,7 +277,7 @@ impl ProtoNode {
 			}
 			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
 		};
-		Some(hasher.finish() as NodeId)
+		Some(NodeId(hasher.finish()))
 	}
 
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
@@ -349,8 +349,8 @@ impl ProtoNetwork {
 			let Some(sni) = self.nodes[index].1.stable_node_id() else {
 				panic!("failed to generate stable node id for node {:#?}", self.nodes[index].1);
 			};
-			self.replace_node_id(&outwards_edges, index as NodeId, sni, false);
-			self.nodes[index].0 = sni as NodeId;
+			self.replace_node_id(&outwards_edges, NodeId(index as u64), sni, false);
+			self.nodes[index].0 = sni;
 		}
 	}
 
@@ -377,20 +377,26 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		let max_id = self.nodes.len() as NodeId - 1;
+		let max_id = self.nodes.len() as u64 - 1;
 
 		// Collect outward edges once
 		let outwards_edges = self.collect_outwards_edges();
 
 		// Iterate over nodes in topological order
 		for node_id in 0..=max_id {
-			let node = &mut self.nodes[node_id as usize].1;
+			let node_id = NodeId(node_id);
+
+			let (_, node) = &mut self.nodes[node_id.0 as usize];
 
 			if let ProtoNodeInput::Node(input_node_id, false) = node.input {
 				// Create a new node that composes the current node and its input node
-				let compose_node_id = self.nodes.len() as NodeId;
-				let input = self.nodes[input_node_id as usize].1.input.clone();
-				let mut path = self.nodes[input_node_id as usize].1.document_node_path.clone();
+				let compose_node_id = NodeId(self.nodes.len() as u64);
+
+				let (_, input_node_id_proto) = &self.nodes[input_node_id.0 as usize];
+
+				let input = input_node_id_proto.input.clone();
+
+				let mut path = input_node_id_proto.document_node_path.clone();
 				path.push(node_id);
 
 				self.nodes.push((
@@ -417,7 +423,7 @@ impl ProtoNetwork {
 		// Update references in other nodes to use the new compose node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
 			for &referring_node_id in referring_nodes {
-				let referring_node = &mut self.nodes[referring_node_id as usize].1;
+				let (_, referring_node) = &mut self.nodes[referring_node_id.0 as usize];
 				referring_node.map_ids(|id| if id == node_id { compose_node_id } else { id }, skip_lambdas)
 			}
 		}
@@ -515,13 +521,13 @@ impl ProtoNetwork {
 		let current_positions: HashMap<_, _> = self.nodes.iter().enumerate().map(|(pos, (id, _))| (*id, pos)).collect();
 
 		// Map of node ids to their new index based on topological order
-		let new_positions: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, pos as NodeId)).collect();
+		let new_positions: HashMap<_, _> = order.iter().enumerate().map(|(pos, id)| (*id, NodeId(pos as u64))).collect();
 
 		// Create a new nodes vector based on the topological order
 		let mut new_nodes = Vec::with_capacity(order.len());
 		for (index, &id) in order.iter().enumerate() {
 			let current_pos = *current_positions.get(&id).unwrap();
-			new_nodes.push((index as NodeId, self.nodes[current_pos].1.clone()));
+			new_nodes.push((NodeId(index as u64), self.nodes[current_pos].1.clone()));
 		}
 
 		// Update node references to reflect the new order
@@ -733,7 +739,7 @@ mod test {
 		let construction_network = test_network();
 		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("{sorted:#?}");
-		assert_eq!(sorted, vec![14, 10, 11, 1]);
+		assert_eq!(sorted, vec![NodeId(14), NodeId(10), NodeId(11), NodeId(1)]);
 	}
 
 	#[test]
@@ -750,12 +756,12 @@ mod test {
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
 		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
 		println!("nodes: {:#?}", construction_network.nodes);
-		assert_eq!(sorted, vec![0, 1, 2, 3]);
+		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
 		println!("nodes: {:#?}", construction_network.nodes);
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
-		assert_eq!(ids, vec![0, 1, 2, 3]);
+		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
 	#[test]
@@ -764,11 +770,11 @@ mod test {
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
 		construction_network.reorder_ids().expect("Error when calling 'reorder_ids' on 'construction_network.");
 		let sorted = construction_network.topological_sort().expect("Error when calling 'topological_sort' on 'construction_network.");
-		assert_eq!(sorted, vec![0, 1, 2, 3]);
+		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
-		assert_eq!(ids, vec![0, 1, 2, 3]);
+		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
 	#[test]
@@ -778,7 +784,7 @@ mod test {
 		println!("{construction_network:#?}");
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		assert_eq!(construction_network.nodes.len(), 6);
-		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(3, false), (4, true)]));
+		assert_eq!(construction_network.nodes[5].1.construction_args, ConstructionArgs::Nodes(vec![(NodeId(3), false), (NodeId(4), true)]));
 	}
 
 	#[test]
@@ -791,59 +797,59 @@ mod test {
 		assert_eq!(
 			ids,
 			vec![
-				17957338642374791135,
-				1303972037140595827,
-				15485192931817078264,
-				9739645351331265115,
-				4165308598738454684,
-				5557529806312473178
+				NodeId(17957338642374791135),
+				NodeId(1303972037140595827),
+				NodeId(15485192931817078264),
+				NodeId(9739645351331265115),
+				NodeId(4165308598738454684),
+				NodeId(5557529806312473178)
 			]
 		);
 	}
 
 	fn test_network() -> ProtoNetwork {
 		ProtoNetwork {
-			inputs: vec![10],
-			output: 1,
+			inputs: vec![NodeId(10)],
+			output: NodeId(1),
 			nodes: [
 				(
-					7,
+					NodeId(7),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11, false),
+						input: ProtoNodeInput::Node(NodeId(11), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
 				),
 				(
-					1,
+					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(11, false),
+						input: ProtoNodeInput::Node(NodeId(11), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
 				),
 				(
-					10,
+					NodeId(10),
 					ProtoNode {
 						identifier: "cons".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
-						construction_args: ConstructionArgs::Nodes(vec![(14, false)]),
+						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
 						..Default::default()
 					},
 				),
 				(
-					11,
+					NodeId(11),
 					ProtoNode {
 						identifier: "add".into(),
-						input: ProtoNodeInput::Node(10, false),
+						input: ProtoNodeInput::Node(NodeId(10), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
 				),
 				(
-					14,
+					NodeId(14),
 					ProtoNode {
 						identifier: "value".into(),
 						input: ProtoNodeInput::None,
@@ -859,23 +865,23 @@ mod test {
 
 	fn test_network_with_cycles() -> ProtoNetwork {
 		ProtoNetwork {
-			inputs: vec![1],
-			output: 1,
+			inputs: vec![NodeId(1)],
+			output: NodeId(1),
 			nodes: [
 				(
-					1,
+					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(2, false),
+						input: ProtoNodeInput::Node(NodeId(2), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
 				),
 				(
-					2,
+					NodeId(2),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(1, false),
+						input: ProtoNodeInput::Node(NodeId(1), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},

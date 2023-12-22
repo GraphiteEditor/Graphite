@@ -1,5 +1,6 @@
 pub use self::document_node_types::*;
 use super::load_network_structure;
+use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -512,7 +513,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				// Collect the selected nodes
-				let new_ids = &metadata.selected_nodes().copied().enumerate().map(|(new, old)| (old, new as NodeId)).collect();
+				let new_ids = &metadata.selected_nodes().copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
 				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes
@@ -522,7 +523,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
-				let node_id = node_id.unwrap_or_else(crate::application::generate_uuid);
+				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
 					responses.add(DialogMessage::DisplayDialogError {
@@ -608,7 +609,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network(&self.network) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let new_ids = &metadata.selected_nodes().map(|&id| (id, crate::application::generate_uuid())).collect();
+					let new_ids = &metadata.selected_nodes().map(|&id| (id, NodeId(generate_uuid()))).collect();
 
 					metadata.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
@@ -722,7 +723,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, crate::application::generate_uuid())).collect();
+				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, NodeId(generate_uuid()))).collect();
 				for (old_id, mut document_node) in data {
 					// Shift copied node
 					document_node.metadata.position += shift;

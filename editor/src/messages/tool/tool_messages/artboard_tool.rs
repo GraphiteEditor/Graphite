@@ -7,6 +7,7 @@ use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use glam::{IVec2, Vec2Swizzles};
+use graph_craft::document::NodeId;
 
 #[derive(Default)]
 pub struct ArtboardTool {
@@ -273,7 +274,7 @@ impl Fsm for ArtboardToolFsmState {
 						dimensions: size.round().as_ivec2(),
 					});
 				} else {
-					let id = generate_uuid();
+					let id = NodeId(generate_uuid());
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
 					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
