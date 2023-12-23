@@ -850,7 +850,7 @@ impl NodeNetwork {
 		}
 
 		// replace value inputs with value nodes
-		for input in &mut node.inputs {
+		for (input_index, input) in node.inputs.iter_mut().enumerate() {
 			// Skip inputs that are already value nodes
 			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()) {
 				break;
@@ -861,7 +861,7 @@ impl NodeNetwork {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
 				let path = if let Some(mut new_path) = node.path.clone() {
-					new_path.push(value_node_id);
+					new_path.push(NodeId(input_index as u64));
 					Some(new_path)
 				} else {
 					None

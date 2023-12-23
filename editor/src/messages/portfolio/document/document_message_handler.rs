@@ -65,7 +65,7 @@ pub struct DocumentMessageHandler {
 	#[serde(default = "default_rulers_visible")]
 	pub rulers_visible: bool,
 	#[serde(default = "default_collapsed")]
-	pub collapsed: Vec<LayerNodeIdentifier>, // TODO: Is this actually used? Maybe or maybe not. Investigate and potentially remove.
+	pub collapsed: Vec<LayerNodeIdentifier>,
 	// =============================================
 	// Fields omitted from the saved document format
 	// =============================================
@@ -265,7 +265,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					node_graph_message_handler: &self.node_graph_handler,
 					executor,
 					document_name: self.name.as_str(),
-					document_network: &mut self.network,
+					document_network: &self.network,
 					document_metadata: &mut self.metadata,
 				};
 				self.properties_panel_message_handler

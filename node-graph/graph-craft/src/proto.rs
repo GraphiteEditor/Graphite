@@ -1,9 +1,7 @@
 use std::borrow::Cow;
-
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
-
 use std::hash::Hash;
+use std::ops::Deref;
 
 use crate::document::NodeId;
 use crate::document::{value, InlineRust};
@@ -545,6 +543,38 @@ impl ProtoNetwork {
 	}
 }
 
+#[derive(Clone, PartialEq)]
+pub struct NodeGraphError {
+	pub node_path: Vec<NodeId>,
+	pub identifier: Cow<'static, str>,
+	pub error: String,
+}
+impl NodeGraphError {
+	pub fn new(node: &ProtoNode, text: impl Into<String>) -> Self {
+		Self {
+			node_path: node.document_node_path.clone(),
+			identifier: node.identifier.name.clone(),
+			error: text.into(),
+		}
+	}
+}
+impl core::fmt::Debug for NodeGraphError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		struct T<'a>(&'a str);
+		impl<'a> core::fmt::Debug for T<'a> {
+			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+				f.write_str(self.0)
+			}
+		}
+		f.debug_struct("NodeGraphError")
+			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())
+			.field("identifier", &self.identifier.to_string())
+			.field("error", &T(&self.error))
+			.finish()
+	}
+}
+pub type GraphErrors = Vec<NodeGraphError>;
+
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone)]
 pub struct TypingContext {
@@ -565,7 +595,7 @@ impl TypingContext {
 	/// Updates the `TypingContext` wtih a given proto network. This will infer the types of the nodes
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
-	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), String> {
+	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
 		for (id, node) in network.nodes.iter() {
 			self.infer(*id, node)?;
 		}
@@ -583,9 +613,7 @@ impl TypingContext {
 	}
 
 	/// Returns the inferred types for a given node id.
-	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, String> {
-		let identifier = node.identifier.name.clone();
-
+	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, GraphErrors> {
 		// Return the inferred type if it is already known
 		if let Some(infered) = self.inferred.get(&node_id) {
 			return Ok(infered.clone());
@@ -606,10 +634,10 @@ impl TypingContext {
 				.map(|(id, _)| {
 					self.inferred
 						.get(id)
-						.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))
+						.ok_or_else(|| vec![NodeGraphError::new(node, format!("Input node {id} is not present in the typing context"))])
 						.map(|node| node.ty())
 				})
-				.collect::<Result<Vec<Type>, String>>()?,
+				.collect::<Result<Vec<Type>, GraphErrors>>()?,
 			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
@@ -621,20 +649,17 @@ impl TypingContext {
 				let input = self
 					.inferred
 					.get(&id)
-					.ok_or(format!("Inferring type of {node_id} depends on {id} which is not present in the typing context"))?;
+					.ok_or_else(|| vec![NodeGraphError::new(node, format!("Input node {id} is not present in the typing context"))])?;
 				input.output.clone()
 			}
 		};
-		let impls = self
-			.lookup
-			.get(&node.identifier)
-			.ok_or(format!("No implementations found for:\n\n{:?}\n\nOther implementations found:\n\n{:?}", node.identifier, self.lookup))?;
+		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![NodeGraphError::new(node, format!("No implementations found"))])?;
 
-		if parameters.iter().any(|p| {
+		if let Some(index) = parameters.iter().position(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(format!("Generic types are not supported in parameters: {:?} occurred in {:?}", parameters, node.identifier));
+			return Err(vec![NodeGraphError::new(node, format!("Generic parameters should not exist but found at {index}: {parameters:?}"))]);
 		}
 		fn covariant(from: &Type, to: &Type) -> bool {
 			match (from, to) {
@@ -651,7 +676,7 @@ impl TypingContext {
 		// List of all implementations that match the input and parameter types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| covariant(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1, p2) && covariant(p1, p2)))
+			.filter(|node_io| covariant(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -677,10 +702,35 @@ impl TypingContext {
 		match valid_impls.as_slice() {
 			[] => {
 				dbg!(&self.inferred);
-				Err(format!(
-					"No implementations found for:\n\n{identifier}\n\nwith input:\n\n{input:?}\n\nand parameters:\n\n{parameters:?}\n\nOther Implementations found:\n\n{:?}",
-					impls.keys().collect::<Vec<_>>(),
-				))
+				let mut best_errors = usize::MAX;
+				let mut valid_output_types = Vec::new();
+				for node_io in impls.keys() {
+					let current_errors = [&input]
+						.into_iter()
+						.chain(&parameters)
+						.zip([&node_io.input].into_iter().chain(&node_io.parameters))
+						.enumerate()
+						.filter(|(_, (p1, p2))| !covariant(p1, p2))
+						.map(|(index, (real, expected))| format!("Input index {index} expected {expected} found {real}"))
+						.collect::<Vec<_>>();
+					if current_errors.len() < best_errors {
+						best_errors = current_errors.len();
+						valid_output_types.clear();
+					}
+					if current_errors.len() <= best_errors {
+						valid_output_types.push(current_errors.join("\n"));
+					}
+				}
+				let formatted_parameters = parameters.iter().map(|t| format!(", {t}")).collect::<String>();
+				Err(vec![NodeGraphError::new(
+					node,
+					format!(
+						"Invalid types - no implementations with ({}{}).\n\nCaused by:\n{}",
+						input,
+						formatted_parameters,
+						valid_output_types.join("\nor\n")
+					),
+				)])
 			}
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
@@ -690,9 +740,14 @@ impl TypingContext {
 				self.constructor.insert(node_id, impls[org_nio]);
 				Ok(node_io)
 			}
-			_ => Err(format!(
-				"Multiple implementations found for {identifier} with input {input:?} and parameters {parameters:?} (valid types: {valid_output_types:?}"
-			)),
+
+			_ => {
+				let formatted_params = parameters.iter().map(|t| format!(", {t}")).collect::<String>();
+				Err(vec![NodeGraphError::new(
+					node,
+					format!("Multiple implementations found ({}{}):\n{:#?}", input, formatted_params, valid_output_types),
+				)])
+			}
 		}
 	}
 }

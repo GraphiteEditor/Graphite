@@ -88,12 +88,16 @@ export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly resolvedType!: string | undefined;
 }
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly resolvedType!: string | undefined;
 }
 
 export class FrontendNode {
@@ -119,6 +123,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly errors!: string | undefined;
 }
 
 export class FrontendNodeLink {

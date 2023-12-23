@@ -6,7 +6,7 @@ use dyn_any::StaticType;
 #[cfg(feature = "std")]
 pub use std::borrow::Cow;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NodeIOTypes {
 	pub input: Type,
 	pub output: Type,
@@ -20,6 +20,16 @@ impl NodeIOTypes {
 
 	pub fn ty(&self) -> Type {
 		Type::Fn(Box::new(self.input.clone()), Box::new(self.output.clone()))
+	}
+}
+
+impl core::fmt::Debug for NodeIOTypes {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		f.write_fmt(format_args!(
+			"node({}) -> {}",
+			[&self.input].into_iter().chain(&self.parameters).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
+			self.output
+		))
 	}
 }
 
@@ -193,6 +203,13 @@ impl Type {
 	}
 }
 
+fn format_type(ty: &str) -> String {
+	ty.split('<')
+		.map(|path| path.split(',').map(|path| path.split("::").last().unwrap_or(path)).collect::<Vec<_>>().join(","))
+		.collect::<Vec<_>>()
+		.join("<")
+}
+
 impl core::fmt::Debug for Type {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
@@ -200,7 +217,7 @@ impl core::fmt::Debug for Type {
 			#[cfg(feature = "type_id_logging")]
 			Self::Concrete(arg0) => write!(f, "Concrete({}, {:?})", arg0.name, arg0.id),
 			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(arg0) => write!(f, "Concrete({})", arg0.name),
+			Self::Concrete(arg0) => write!(f, "Concrete({})", format_type(&arg0.name)),
 			Self::Fn(arg0, arg1) => write!(f, "({arg0:?} -> {arg1:?})"),
 			Self::Future(arg0) => write!(f, "Future({arg0:?})"),
 		}
@@ -211,7 +228,7 @@ impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Type::Generic(name) => write!(f, "{name}"),
-			Type::Concrete(ty) => write!(f, "{}", ty.name),
+			Type::Concrete(ty) => write!(f, "{}", format_type(&ty.name)),
 			Type::Fn(input, output) => write!(f, "({input} -> {output})"),
 			Type::Future(ty) => write!(f, "Future<{ty}>"),
 		}

@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
+	import { fade } from "svelte/transition";
 
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -606,8 +607,8 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltip(dataType: FrontendGraphDataType): string {
-		const capitalized = dataType[0].toUpperCase() + dataType.slice(1);
+	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
+		const capitalized = value.resolvedType ? "Resolved " + value.resolvedType : "Unresolved " + value.dataType[0].toUpperCase() + value.dataType.slice(1);
 		return `${capitalized} Data`;
 	}
 
@@ -687,6 +688,7 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
+				{#if node.errors}<span class="node-error" transition:fade>{node.errors}</span>{/if}
 				<div class="node-chain" />
 				<!-- Layer input port (from left) -->
 				<div class="input ports">
@@ -701,7 +703,7 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryInput)}</title>
 						{/if}
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 					</svg>
@@ -721,7 +723,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryOutput)}</title>
 							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
 						</svg>
 					{/if}
@@ -735,7 +737,7 @@
 						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{dataTypeTooltip(stackDatainput.dataType)}</title>
+						<title>{dataTypeTooltip(stackDatainput)}</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 					</svg>
 				</div>
@@ -769,6 +771,7 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
+				{#if node.errors}<span class="node-error" transition:fade>{node.errors}</span>{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
@@ -798,7 +801,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryInput)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -814,7 +817,7 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 								bind:this={inputs[nodeIndex][index + 1]}
 							>
-								<title>{dataTypeTooltip(parameter.dataType)}</title>
+								<title>{dataTypeTooltip(parameter)}</title>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
 						{/if}
@@ -833,7 +836,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryOutput)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -848,7 +851,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + 1]}
 						>
-							<title>{dataTypeTooltip(parameter.dataType)}</title>
+							<title>{dataTypeTooltip(parameter)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/each}
@@ -979,6 +982,19 @@
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
 			// backdrop-filter: blur(4px);
 			background: rgba(0, 0, 0, 0.33);
+
+			.node-error {
+				position: absolute;
+				display: block;
+				translate: 0 -100%;
+				background-color: rebeccapurple;
+				padding: 3px;
+				margin-bottom: 5px;
+				width: max-content;
+				white-space: pre-wrap;
+				border-radius: 3px;
+				z-index: 10;
+			}
 
 			&::after {
 				content: "";
