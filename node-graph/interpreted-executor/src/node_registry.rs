@@ -676,115 +676,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Option<Color>, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => Vec<Color>, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Vec<Color>, () => Arc<WasmSurfaceHandle>]),
-		//register_node!(graphene_core::transform::TranformNode<_, _, _, _, _, _>, input: , output: RenderOutput, fn_params: [Footprint => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
-		vec![
-			(
-				ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
-				|mut args| {
-					Box::pin(async move {
-						args.reverse();
-						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
-							DowncastBothNode::<Footprint, VectorData>::new(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<f32>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-						);
-						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let params = vec![fn_type!(Footprint, VectorData), fn_type!(DVec2), fn_type!(f32), fn_type!(DVec2), fn_type!(DVec2), fn_type!(DVec2)];
-					NodeIOTypes::new(concrete!(Footprint), concrete!(VectorData), params)
-				},
-			),
-			(
-				ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
-				|mut args| {
-					Box::pin(async move {
-						args.reverse();
-						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
-							DowncastBothNode::<Footprint, WasmSurfaceHandleFrame>::new(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<f32>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-						);
-						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let params = vec![
-						fn_type!(Footprint, WasmSurfaceHandleFrame),
-						fn_type!(DVec2),
-						fn_type!(f32),
-						fn_type!(DVec2),
-						fn_type!(DVec2),
-						fn_type!(DVec2),
-					];
-					NodeIOTypes::new(concrete!(Footprint), concrete!(WasmSurfaceHandleFrame), params)
-				},
-			),
-			(
-				ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
-				|mut args| {
-					Box::pin(async move {
-						args.reverse();
-						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
-							DowncastBothNode::<Footprint, ImageFrame<Color>>::new(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<f32>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect("Not enough arguments provided to construct node")),
-						);
-						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let params = vec![
-						fn_type!(Footprint, ImageFrame<Color>),
-						fn_type!(DVec2),
-						fn_type!(f32),
-						fn_type!(DVec2),
-						fn_type!(DVec2),
-						fn_type!(DVec2),
-					];
-					NodeIOTypes::new(concrete!(Footprint), concrete!(ImageFrame<Color>), params)
-				},
-			),
-			(
-				ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>"),
-				|mut args| {
-					Box::pin(async move {
-						const EXPECT_MESSAGE: &str = "Not enough arguments provided to construct node";
-
-						args.reverse();
-
-						let node = <graphene_core::transform::TransformNode<_, _, _, _, _, _>>::new(
-							DowncastBothNode::<Footprint, GraphicGroup>::new(args.pop().expect(EXPECT_MESSAGE)),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
-							graphene_std::any::input_node::<f32>(args.pop().expect(EXPECT_MESSAGE)),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
-							graphene_std::any::input_node::<DVec2>(args.pop().expect(EXPECT_MESSAGE)),
-						);
-
-						let any: DynAnyNode<Footprint, _, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
-				},
-				{
-					let params = vec![fn_type!(Footprint, GraphicGroup), fn_type!(DVec2), fn_type!(f32), fn_type!(DVec2), fn_type!(DVec2), fn_type!(DVec2)];
-					NodeIOTypes::new(concrete!(Footprint), concrete!(GraphicGroup), params)
-				},
-			),
-		],
+		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => DVec2, () => f32, () => DVec2, () => DVec2, () => DVec2]),
+		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: WasmSurfaceHandleFrame, fn_params: [Footprint => WasmSurfaceHandleFrame, () => DVec2, () => f32, () => DVec2, () => DVec2, () => DVec2]),
+		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: WasmSurfaceHandleFrame, fn_params: [Footprint => WasmSurfaceHandleFrame, () => DVec2, () => f32, () => DVec2, () => DVec2, () => DVec2]),
+		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>, () => DVec2, () => f32, () => DVec2, () => DVec2, () => DVec2]),
+		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, () => DVec2, () => f32, () => DVec2, () => DVec2, () => DVec2]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [VectorData]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		register_node!(graphene_core::transform::SetTransformNode<_>, input: VectorData, params: [DAffine2]),
@@ -836,7 +732,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		)],
 		register_node!(graphene_std::raster::SampleNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
-		register_node!(graphene_core::vector::CopyToPoints<_>, input: VectorData, params: [VectorData]),
+		async_node!(graphene_core::vector::CopyToPoints<_, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData]),
 		register_node!(graphene_core::vector::ResamplePoints<_>, input: VectorData, params: [f64]),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
