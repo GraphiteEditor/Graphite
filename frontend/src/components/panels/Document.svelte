@@ -41,11 +41,6 @@
 	let showTextInput: boolean;
 	let textInputMatrix: number[];
 
-	// CSS properties
-	let canvasSvgWidth: number | undefined = undefined;
-	let canvasSvgHeight: number | undefined = undefined;
-	let canvasCursor = "default";
-
 	// Scrollbars
 	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
 	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
@@ -64,6 +59,9 @@
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
 	let rasterizedContext: CanvasRenderingContext2D | undefined = undefined;
 
+	// Cursor icon to display while hovering over the canvas
+	let canvasCursor = "default";
+
 	// Cursor position for cursor floating menus like the Eyedropper tool zoom
 	let cursorLeft = 0;
 	let cursorTop = 0;
@@ -73,8 +71,19 @@
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
 
-	$: canvasWidthCSS = canvasDimensionCSS(canvasSvgWidth);
-	$: canvasHeightCSS = canvasDimensionCSS(canvasSvgHeight);
+	// Canvas dimensions
+	let canvasSvgWidth: number | undefined = undefined;
+	let canvasSvgHeight: number | undefined = undefined;
+
+	// Used to set the canvas rendering dimensions.
+	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
+	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
+	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
+	// Used to set the canvas element size on the page.
+	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
+	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
+	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
@@ -345,15 +354,6 @@
 		rulerVertical?.resize();
 	}
 
-	function canvasDimensionCSS(dimension: number | undefined): string {
-		// Temporary placeholder until the first actual value is populated
-		// This at least gets close to the correct value but an actual number is required to prevent CSS from causing non-integer sizing making the SVG render with anti-aliasing
-		if (dimension === undefined) return "100%";
-
-		// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-		return `${dimension % 2 === 1 ? dimension + 1 : dimension}px`;
-	}
-
 	onMount(() => {
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
@@ -491,7 +491,8 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
 							{/if}
 						</div>
-						<canvas class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas></canvas>
+						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
+						</canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />

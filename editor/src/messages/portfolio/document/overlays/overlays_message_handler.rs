@@ -25,8 +25,6 @@ impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> f
 				});
 
 				let size = ipp.viewport_bounds.size().as_uvec2();
-				canvas.set_width(size.x);
-				canvas.set_height(size.y);
 
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
 
