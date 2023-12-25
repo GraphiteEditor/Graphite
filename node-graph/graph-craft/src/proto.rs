@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
 
-use crate::document::NodeId;
 use crate::document::{value, InlineRust};
+use crate::document::{NodeId, OriginalLocation};
 use dyn_any::DynAny;
 use graphene_core::*;
 #[cfg(feature = "serde")]
@@ -203,7 +204,7 @@ pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
 	pub identifier: ProtoNodeIdentifier,
-	pub document_node_path: Vec<NodeId>,
+	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
 	// TODO: This is a hack, figure out a proper solution
 	/// Represents a global state on which the node depends.
@@ -216,7 +217,7 @@ impl Default for ProtoNode {
 			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0)),
 			input: ProtoNodeInput::None,
-			document_node_path: vec![],
+			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
 			world_state_hash: 0,
 		}
@@ -264,7 +265,7 @@ impl ProtoNode {
 		self.identifier.name.hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		if self.skip_deduplication {
-			self.document_node_path.hash(&mut hasher);
+			self.original_location.path.hash(&mut hasher);
 		}
 		self.world_state_hash.hash(&mut hasher);
 		std::mem::discriminant(&self.input).hash(&mut hasher);
@@ -280,11 +281,19 @@ impl ProtoNode {
 
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
+		let inputs_exposed = match &value {
+			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
+			_ => 2,
+		};
 		Self {
 			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
 			construction_args: value,
 			input: ProtoNodeInput::None,
-			document_node_path: path,
+			original_location: OriginalLocation {
+				path: Some(path),
+				inputs_exposed: vec![false; inputs_exposed],
+				..Default::default()
+			},
 			skip_deduplication: false,
 			world_state_hash: 0,
 		}
@@ -394,8 +403,10 @@ impl ProtoNetwork {
 
 				let input = input_node_id_proto.input.clone();
 
-				let mut path = input_node_id_proto.document_node_path.clone();
-				path.push(node_id);
+				let mut path = input_node_id_proto.original_location.path.clone();
+				if let Some(path) = &mut path {
+					path.push(node_id);
+				}
 
 				self.nodes.push((
 					compose_node_id,
@@ -403,7 +414,7 @@ impl ProtoNetwork {
 						identifier: ProtoNodeIdentifier::new("graphene_core::structural::ComposeNode<_, _, _>"),
 						construction_args: ConstructionArgs::Nodes(vec![(input_node_id, false), (node_id, true)]),
 						input,
-						document_node_path: path,
+						original_location: OriginalLocation { path, ..Default::default() },
 						skip_deduplication: false,
 						world_state_hash: 0,
 					},
@@ -542,38 +553,60 @@ impl ProtoNetwork {
 		Ok(())
 	}
 }
-
 #[derive(Clone, PartialEq)]
-pub struct NodeGraphError {
+pub enum GraphErrorType {
+	NodeNotFound(NodeId),
+	InputNodeNotFound(NodeId),
+	UnexpectedGenerics { index: usize, parameters: Vec<Type> },
+	NoImplementations,
+	NoConstructor,
+	InvalidImplemntations { parameters: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
+	MultipleImplementations { parameters: String, valid: Vec<NodeIOTypes> },
+}
+impl core::fmt::Debug for GraphErrorType {
+	// TODO: format with the document graph context so the input index is the same as in the graph UI.
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
+			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
+			GraphErrorType::UnexpectedGenerics { index, parameters } => write!(f, "Generic parameters should not exist but found at {index}: {parameters:?}"),
+			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
+			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
+			GraphErrorType::InvalidImplemntations { parameters, error_inputs } => {
+				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("Input index {} expected {} found {}", index, expected, real);
+				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
+				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>().join("\nor\n");
+				write!(f, "Invalid types - no implementations with ({parameters}).\n\nCaused by:\n{errors}",)
+			}
+			GraphErrorType::MultipleImplementations { parameters, valid } => write!(f, "Multiple implementations found ({parameters}):\n{valid:#?}"),
+		}
+	}
+}
+#[derive(Clone, PartialEq)]
+pub struct GraphError {
 	pub node_path: Vec<NodeId>,
 	pub identifier: Cow<'static, str>,
-	pub error: String,
+	pub error: GraphErrorType,
 }
-impl NodeGraphError {
-	pub fn new(node: &ProtoNode, text: impl Into<String>) -> Self {
+impl GraphError {
+	pub fn new(node: &ProtoNode, text: impl Into<GraphErrorType>) -> Self {
 		Self {
-			node_path: node.document_node_path.clone(),
+			node_path: node.original_location.path.clone().unwrap_or_default(),
 			identifier: node.identifier.name.clone(),
 			error: text.into(),
 		}
 	}
 }
-impl core::fmt::Debug for NodeGraphError {
+impl core::fmt::Debug for GraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		struct T<'a>(&'a str);
-		impl<'a> core::fmt::Debug for T<'a> {
-			fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-				f.write_str(self.0)
-			}
-		}
 		f.debug_struct("NodeGraphError")
 			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())
 			.field("identifier", &self.identifier.to_string())
-			.field("error", &T(&self.error))
+			.field("error", &self.error)
 			.finish()
 	}
 }
-pub type GraphErrors = Vec<NodeGraphError>;
+pub type GraphErrors = Vec<GraphError>;
 
 /// The `TypingContext` is used to store the types of the nodes indexed by their stable node id.
 #[derive(Default, Clone)]
@@ -634,7 +667,7 @@ impl TypingContext {
 				.map(|(id, _)| {
 					self.inferred
 						.get(id)
-						.ok_or_else(|| vec![NodeGraphError::new(node, format!("Input node {id} is not present in the typing context"))])
+						.ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NodeNotFound(*id))])
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, GraphErrors>>()?,
@@ -646,20 +679,17 @@ impl TypingContext {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
 			ProtoNodeInput::Node(id, _) => {
-				let input = self
-					.inferred
-					.get(&id)
-					.ok_or_else(|| vec![NodeGraphError::new(node, format!("Input node {id} is not present in the typing context"))])?;
+				let input = self.inferred.get(&id).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::InputNodeNotFound(id))])?;
 				input.output.clone()
 			}
 		};
-		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![NodeGraphError::new(node, format!("No implementations found"))])?;
+		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 
 		if let Some(index) = parameters.iter().position(|p| {
 			matches!(p,
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
-			return Err(vec![NodeGraphError::new(node, format!("Generic parameters should not exist but found at {index}: {parameters:?}"))]);
+			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, parameters })]);
 		}
 		fn covariant(from: &Type, to: &Type) -> bool {
 			match (from, to) {
@@ -703,34 +733,27 @@ impl TypingContext {
 			[] => {
 				dbg!(&self.inferred);
 				let mut best_errors = usize::MAX;
-				let mut valid_output_types = Vec::new();
+				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
 					let current_errors = [&input]
 						.into_iter()
 						.chain(&parameters)
-						.zip([&node_io.input].into_iter().chain(&node_io.parameters))
+						.cloned()
+						.zip([&node_io.input].into_iter().chain(&node_io.parameters).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !covariant(p1, p2))
-						.map(|(index, (real, expected))| format!("Input index {index} expected {expected} found {real}"))
+						.map(|(index, ty)| (node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index), ty))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
-						valid_output_types.clear();
+						error_inputs.clear();
 					}
 					if current_errors.len() <= best_errors {
-						valid_output_types.push(current_errors.join("\n"));
+						error_inputs.push(current_errors);
 					}
 				}
-				let formatted_parameters = parameters.iter().map(|t| format!(", {t}")).collect::<String>();
-				Err(vec![NodeGraphError::new(
-					node,
-					format!(
-						"Invalid types - no implementations with ({}{}).\n\nCaused by:\n{}",
-						input,
-						formatted_parameters,
-						valid_output_types.join("\nor\n")
-					),
-				)])
+				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplemntations { parameters, error_inputs })])
 			}
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);
@@ -742,11 +765,9 @@ impl TypingContext {
 			}
 
 			_ => {
-				let formatted_params = parameters.iter().map(|t| format!(", {t}")).collect::<String>();
-				Err(vec![NodeGraphError::new(
-					node,
-					format!("Multiple implementations found ({}{}):\n{:#?}", input, formatted_params, valid_output_types),
-				)])
+				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let valid = valid_output_types.into_iter().cloned().collect();
+				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { parameters, valid })])
 			}
 		}
 	}

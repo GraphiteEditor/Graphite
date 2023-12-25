@@ -23,7 +23,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
 use glam::{DAffine2, DVec2, UVec2};
 use std::cell::RefCell;
@@ -41,7 +41,7 @@ pub struct NodeRuntime {
 	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
-	pub(crate) resolved_types: HashMap<Vec<NodeId>, graphene_core::NodeIOTypes>,
+	pub(crate) resolved_types: ResolvedDocumentNodeTypes,
 	pub(crate) node_graph_errors: GraphErrors,
 	graph_hash: Option<u64>,
 	monitor_nodes: Vec<Vec<NodeId>>,
@@ -76,7 +76,7 @@ pub(crate) struct GenerationResponse {
 	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
-	resolved_types: HashMap<Vec<NodeId>, graphene_core::NodeIOTypes>,
+	resolved_types: ResolvedDocumentNodeTypes,
 	node_graph_errors: GraphErrors,
 	transform: DAffine2,
 }
@@ -118,7 +118,7 @@ impl NodeRuntime {
 			click_targets: HashMap::new(),
 			graph_hash: None,
 			upstream_transforms: HashMap::new(),
-			resolved_types: HashMap::new(),
+			resolved_types: ResolvedDocumentNodeTypes::default(),
 			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
 		}
@@ -197,7 +197,7 @@ impl NodeRuntime {
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
 				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-				.map(|(_, node)| node.path.clone().unwrap_or_default())
+				.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
 				.collect::<Vec<_>>();
 
 			// We assume only one output

@@ -1,10 +1,11 @@
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, Source};
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::GraphErrors;
-use graph_craft::proto::{ConstructionArgs, LocalFuture, NodeContainer, NodeGraphError, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
+use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
+use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
+use log::info;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
@@ -31,6 +32,14 @@ impl Default for DynamicExecutor {
 			orphaned_nodes: Vec::new(),
 		}
 	}
+}
+
+#[derive(PartialEq, Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+
+pub struct ResolvedDocumentNodeTypes {
+	pub inputs: HashMap<Source, Type>,
+	pub outputs: HashMap<Source, Type>,
 }
 
 impl DynamicExecutor {
@@ -75,13 +84,20 @@ impl DynamicExecutor {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.output.clone())
 	}
 
-	pub fn document_node_types(&self) -> HashMap<Vec<NodeId>, graphene_core::NodeIOTypes> {
-		let mut document_node_types = HashMap::new();
-		for (document_path, &protonode_id) in self.tree.source_map() {
-			let Some(typing) = self.typing_context.type_of(protonode_id) else { continue };
-			document_node_types.insert(document_path.clone(), typing.clone());
+	pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes {
+		let mut resolved_document_node_types = ResolvedDocumentNodeTypes::default();
+		for (source, &(protonode_id, protonode_index)) in self.tree.inputs_source_map() {
+			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
+			let Some(ty) = [&node_io.input].into_iter().chain(&node_io.parameters).nth(protonode_index) else {
+				continue;
+			};
+			resolved_document_node_types.inputs.insert(source.clone(), ty.clone());
 		}
-		document_node_types
+		for (source, &protonode_id) in self.tree.outputs_source_map() {
+			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
+			resolved_document_node_types.outputs.insert(source.clone(), node_io.output.clone());
+		}
+		resolved_document_node_types
 	}
 }
 
@@ -98,6 +114,10 @@ pub struct BorrowTree {
 	nodes: HashMap<NodeId, SharedNodeContainer>,
 	/// A hashmap from the document path to the protonode ID.
 	source_map: HashMap<Vec<NodeId>, NodeId>,
+	/// Each document input source maps to one protonode input (however one protonode input may come from several sources)
+	inputs_source_map: HashMap<Source, (NodeId, usize)>,
+	/// A mapping of document input sources to the (single) protonode output
+	outputs_source_map: HashMap<Source, NodeId>,
 }
 
 impl BorrowTree {
@@ -119,6 +139,8 @@ impl BorrowTree {
 			old_nodes.remove(&id);
 		}
 		self.source_map.retain(|_, nid| !old_nodes.contains(nid));
+		self.inputs_source_map.retain(|_, (nid, _)| !old_nodes.contains(nid));
+		self.outputs_source_map.retain(|_, nid| !old_nodes.contains(nid));
 		self.nodes.retain(|nid, _| !old_nodes.contains(nid));
 		Ok(old_nodes.into_iter().collect())
 	}
@@ -162,7 +184,18 @@ impl BorrowTree {
 
 	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
 	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
-		self.source_map.insert(proto_node.document_node_path.clone(), id);
+		self.source_map.insert(proto_node.original_location.path.clone().unwrap_or_default(), id);
+
+		let params = match &proto_node.construction_args {
+			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
+			_ => 2,
+		};
+		self.inputs_source_map
+			.extend((0..params).flat_map(|i| proto_node.original_location.inputs(i).map(move |source| (source, (id, i)))));
+		self.outputs_source_map.extend(proto_node.original_location.outputs(0).map(|source| (source, id)));
+		for x in proto_node.original_location.outputs_source.values() {
+			assert_eq!(*x, 0, "protonodes should refer to output index 0");
+		}
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
@@ -175,9 +208,7 @@ impl BorrowTree {
 			ConstructionArgs::Nodes(ids) => {
 				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
 				let construction_nodes = self.node_deps(&ids);
-				let constructor = typing_context
-					.constructor(id)
-					.ok_or_else(|| vec![NodeGraphError::new(&proto_node, format!("No constructor found for node {:?}", proto_node.identifier))])?;
+				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;
 				let node = NodeContainer::new(node);
 				self.store_node(node, id);
@@ -186,8 +217,12 @@ impl BorrowTree {
 		Ok(())
 	}
 
-	pub fn source_map(&self) -> &HashMap<Vec<NodeId>, NodeId> {
-		&self.source_map
+	pub fn inputs_source_map(&self) -> impl Iterator<Item = (&Source, &(NodeId, usize))> {
+		self.inputs_source_map.iter()
+	}
+
+	pub fn outputs_source_map(&self) -> impl Iterator<Item = (&Source, &NodeId)> {
+		self.outputs_source_map.iter()
 	}
 }
 

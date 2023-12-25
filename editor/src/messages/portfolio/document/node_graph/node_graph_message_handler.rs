@@ -6,9 +6,10 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 mod document_node_types;
 mod node_properties;
 
@@ -129,7 +130,7 @@ impl FrontendNodeType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGraphMessageHandler {
 	pub network: Vec<NodeId>,
-	pub resolved_types: HashMap<Vec<NodeId>, graphene_core::NodeIOTypes>,
+	pub resolved_types: ResolvedDocumentNodeTypes,
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
@@ -151,7 +152,7 @@ impl Default for NodeGraphMessageHandler {
 
 		Self {
 			network: Vec::new(),
-			resolved_types: HashMap::new(),
+			resolved_types: ResolvedDocumentNodeTypes::default(),
 			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
@@ -315,23 +316,26 @@ impl NodeGraphMessageHandler {
 			};
 
 			// Inputs
-			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().map(|input_type| FrontendGraphInput {
-				data_type: input_type.data_type,
-				name: input_type.name.to_string(),
-				resolved_type: self.resolved_types.iter().find(|(path, _)| &node_path == *path).map(|(_, io)| io.input.to_string()),
+			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().enumerate().map(|(index, input_type)| {
+				let index = node.inputs.iter().take(index).filter(|input| input.is_exposed()).count();
+				FrontendGraphInput {
+					data_type: input_type.data_type,
+					name: input_type.name.to_string(),
+					resolved_type: self.resolved_types.inputs.get(&Source { node: node_path.clone(), index }).map(|input| format!("{input:?}")),
+				}
 			}));
 			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
 			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
 			// Outputs
-			let mut outputs = node_type.outputs.iter().map(|output_type| FrontendGraphOutput {
+			let mut outputs = node_type.outputs.iter().enumerate().map(|(index, output_type)| FrontendGraphOutput {
 				data_type: output_type.data_type,
 				name: output_type.name.to_string(),
-				resolved_type: self.resolved_types.iter().find(|(path, _)| &node_path == *path).map(|(_, io)| io.output.to_string()),
+				resolved_type: self.resolved_types.outputs.get(&Source { node: node_path.clone(), index }).map(|output| format!("{output:?}")),
 			});
 			let primary_output = if node.has_primary_output { outputs.next() } else { None };
 
-			info!("{:#?}", self.resolved_types);
+			let errors = self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone());
 			nodes.push(FrontendNode {
 				is_layer: node.is_layer(),
 				id: *id,
@@ -344,7 +348,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
-				errors: self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone()),
+				errors: errors.map(|e| format!("{e:?}")),
 			})
 		}
 		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });

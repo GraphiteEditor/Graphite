@@ -2,6 +2,7 @@ use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 #[impl_message(Message, DocumentMessage, NodeGraph)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -113,7 +114,7 @@ pub enum NodeGraphMessage {
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]
-		resolved_types: HashMap<Vec<NodeId>, graphene_core::NodeIOTypes>,
+		resolved_types: ResolvedDocumentNodeTypes,
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
 	},

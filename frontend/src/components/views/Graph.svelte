@@ -849,7 +849,7 @@
 							data-datatype={parameter.dataType}
 							style:--data-color={`var(--color-data-${parameter.dataType})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-							bind:this={outputs[nodeIndex][outputIndex + 1]}
+							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
 							<title>{dataTypeTooltip(parameter)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
