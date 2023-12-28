@@ -264,6 +264,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
 		//
 		// DocumentMessage
+		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::GraphViewOverlay { open: false }),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
@@ -337,8 +339,6 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
-		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=PortfolioMessage::GraphViewOverlayToggle),
-		entry!(KeyUp(Escape); action_dispatch=PortfolioMessage::GraphViewOverlay { open: false }),
 		entry!(KeyDown(Tab); modifiers=[Control], action_dispatch=PortfolioMessage::NextDocument),
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),

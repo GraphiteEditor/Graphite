@@ -173,11 +173,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
-	UpdateGraphViewOverlayButtonLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateImageData {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,

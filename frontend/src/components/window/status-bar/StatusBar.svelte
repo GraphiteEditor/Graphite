@@ -57,7 +57,8 @@
 			overflow: hidden;
 
 			.separator.section {
-				margin: 0;
+				// Width of section separator (12px) minus the margin of the surrounding user input labels (8px)
+				margin: 0 calc(12px - 8px);
 			}
 
 			.plus,

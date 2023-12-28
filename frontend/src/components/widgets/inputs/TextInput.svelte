@@ -16,7 +16,6 @@
 	// Styling
 	export let centered = false;
 	export let minWidth = 0;
-	export let sharpRightCorners = false;
 
 	let self: FieldInput | undefined;
 	let editing = false;
@@ -67,7 +66,6 @@
 	{disabled}
 	{tooltip}
 	{placeholder}
-	{sharpRightCorners}
 	bind:this={self}
 />
 

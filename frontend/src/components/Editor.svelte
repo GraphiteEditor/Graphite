@@ -189,11 +189,6 @@
 		display: block;
 	}
 
-	.sharp-right-corners.sharp-right-corners.sharp-right-corners.sharp-right-corners {
-		border-top-right-radius: 0;
-		border-bottom-right-radius: 0;
-	}
-
 	.layout-row,
 	.layout-col {
 		.scrollable-x,
@@ -265,7 +260,7 @@
 	.popover-button,
 	.color-button > button,
 	.color-picker .preset-color,
-	.working-colors-button .swatch > button,
+	.working-colors-input .swatch > button,
 	.radio-input button,
 	.menu-list,
 	.menu-list-button .entry,

@@ -11,7 +11,6 @@ import {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
-	UpdateGraphViewOverlayButtonLayout,
 	UpdateNodeGraphBarLayout,
 	TriggerGraphViewOverlay,
 } from "@graphite/wasm-communication/messages";
@@ -24,7 +23,6 @@ export function createDocumentState(editor: Editor) {
 		toolOptionsLayout: defaultWidgetLayout(),
 		documentBarLayout: defaultWidgetLayout(),
 		toolShelfLayout: defaultWidgetLayout(),
-		graphViewOverlayButtonLayout: defaultWidgetLayout(),
 		workingColorsLayout: defaultWidgetLayout(),
 		nodeGraphBarLayout: defaultWidgetLayout(),
 		// Graph view overlay
@@ -66,14 +64,6 @@ export function createDocumentState(editor: Editor) {
 		update((state) => {
 			// `state.documentModeLayout` is mutated in the function
 			patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlayButtonLayout, async (updateGraphViewOverlayButtonLayout) => {
-		await tick();
-
-		update((state) => {
-			patchWidgetLayout(state.graphViewOverlayButtonLayout, updateGraphViewOverlayButtonLayout);
 			return state;
 		});
 	});

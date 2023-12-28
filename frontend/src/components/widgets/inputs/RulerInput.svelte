@@ -135,7 +135,7 @@
 
 			path {
 				stroke-width: 1px;
-				stroke: var(--color-7-middlegray);
+				stroke: var(--color-6-lowergray);
 			}
 
 			text {

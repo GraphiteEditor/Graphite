@@ -3,7 +3,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
+import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
 
 import type MenuList from "@graphite/components/floating-menus/MenuList.svelte";
@@ -918,18 +918,9 @@ export class NumberInput extends WidgetProps {
 	minWidth!: number;
 }
 
-export class OptionalInput extends WidgetProps {
-	checked!: boolean;
-
-	disabled!: boolean;
-
-	icon!: IconName;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-}
-
 export class PopoverButton extends WidgetProps {
+	style!: PopoverButtonStyle | undefined;
+
 	icon!: IconName | undefined;
 
 	disabled!: boolean;
@@ -965,7 +956,7 @@ export class RadioInput extends WidgetProps {
 }
 
 export type SeparatorDirection = "Horizontal" | "Vertical";
-export type SeparatorType = "Related" | "Unrelated" | "Section" | "List";
+export type SeparatorType = "Related" | "Unrelated" | "Section";
 
 export class Separator extends WidgetProps {
 	direction!: SeparatorDirection;
@@ -973,7 +964,7 @@ export class Separator extends WidgetProps {
 	type!: SeparatorType;
 }
 
-export class WorkingColorsButton extends WidgetProps {
+export class WorkingColorsInput extends WidgetProps {
 	@Type(() => Color)
 	primary!: Color;
 
@@ -1008,7 +999,7 @@ export class TextButton extends WidgetProps {
 
 	emphasized!: boolean;
 
-	noBackground!: boolean;
+	flush!: boolean;
 
 	minWidth!: number;
 
@@ -1029,7 +1020,7 @@ export type TextButtonWidget = {
 		label: string;
 		icon?: IconName;
 		emphasized?: boolean;
-		noBackground?: boolean;
+		flush?: boolean;
 		minWidth?: number;
 		disabled?: boolean;
 		tooltip?: string;
@@ -1103,13 +1094,12 @@ const widgetSubTypes = [
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: ImageLabel, name: "ImageLabel" },
 	{ value: NumberInput, name: "NumberInput" },
-	{ value: OptionalInput, name: "OptionalInput" },
 	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
 	{ value: PivotInput, name: "PivotInput" },
 	{ value: PopoverButton, name: "PopoverButton" },
 	{ value: RadioInput, name: "RadioInput" },
 	{ value: Separator, name: "Separator" },
-	{ value: WorkingColorsButton, name: "WorkingColorsButton" },
+	{ value: WorkingColorsInput, name: "WorkingColorsInput" },
 	{ value: TextAreaInput, name: "TextAreaInput" },
 	{ value: TextButton, name: "TextButton" },
 	{ value: TextInput, name: "TextInput" },
@@ -1293,8 +1283,6 @@ export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
 
-export class UpdateGraphViewOverlayButtonLayout extends WidgetDiffUpdate {}
-
 export class UpdateLayersPanelOptionsLayout extends WidgetDiffUpdate {}
 
 // Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
@@ -1384,7 +1372,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,
-	UpdateGraphViewOverlayButtonLayout,
 	UpdateImageData,
 	UpdateInputHints,
 	UpdateLayersPanelOptionsLayout,

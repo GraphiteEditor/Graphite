@@ -175,23 +175,20 @@ impl LayoutHolder for SelectTool {
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		widgets.push(PopoverButton::new("Align", "Coming soon").disabled(disabled).widget_holder());
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.flip_widgets(disabled));
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		widgets.push(PopoverButton::new("Flip", "Coming soon").disabled(disabled).widget_holder());
 
 		// Boolean
 		if self.tool_data.selected_layers_count >= 2 {
-			widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.extend(self.boolean_widgets());
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 			widgets.push(PopoverButton::new("Boolean", "Coming soon").widget_holder());
 		}
 

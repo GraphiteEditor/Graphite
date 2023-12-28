@@ -103,7 +103,7 @@ impl LayoutHolder for FreehandTool {
 			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value)).into(),
 		);
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",

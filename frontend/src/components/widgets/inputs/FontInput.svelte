@@ -24,7 +24,6 @@
 	export let isStyle = false;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 
 	let open = false;
 	let entries: MenuListEntry[] = [];
@@ -107,7 +106,7 @@
 <LayoutRow class="font-input">
 	<LayoutRow
 		class="dropdown-box"
-		classes={{ disabled, "sharp-right-corners": sharpRightCorners }}
+		classes={{ disabled }}
 		styles={{ "min-width": `${minWidth}px` }}
 		{tooltip}
 		tabindex={disabled ? -1 : 0}

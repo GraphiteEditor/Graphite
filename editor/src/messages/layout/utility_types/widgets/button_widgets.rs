@@ -35,6 +35,8 @@ pub struct IconButton {
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct PopoverButton {
+	pub style: Option<String>,
+
 	pub icon: Option<String>,
 
 	pub disabled: bool,
@@ -85,8 +87,7 @@ pub struct TextButton {
 
 	pub icon: Option<String>,
 
-	#[serde(rename = "noBackground")]
-	pub no_background: bool,
+	pub flush: bool,
 
 	pub emphasized: bool,
 
@@ -107,16 +108,6 @@ pub struct TextButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
-}
-
-#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
-pub struct WorkingColorsButton {
-	#[widget_builder(constructor)]
-	pub primary: Color,
-
-	#[widget_builder(constructor)]
-	pub secondary: Color,
 }
 
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]

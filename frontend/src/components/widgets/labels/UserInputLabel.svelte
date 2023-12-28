@@ -248,11 +248,11 @@
 
 		.floating-menu-content .row:hover > & {
 			.input-key {
-				border-color: var(--color-7-middlegray);
+				border-color: var(--color-8-uppergray);
 			}
 
 			.input-mouse .dim {
-				fill: var(--color-7-middlegray);
+				fill: var(--color-8-uppergray);
 			}
 		}
 	}

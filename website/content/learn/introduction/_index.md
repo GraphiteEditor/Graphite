@@ -13,7 +13,7 @@ Before taking the time to read the coming chapters, let's build some context by 
 
 You can follow along with this starter project either by watching the tutorial video or referencing the step-by-step breakdown.
 
-***The tutorial isn't ready quite yet, sorry! Please check back very soon. It should be posted by mid-December.***
+***The tutorial isn't ready quite yet, sorry! Please check back very soon. It should be posted by late December.***
 
 <!-- TODO -->
 <!-- - Video tutorial -->

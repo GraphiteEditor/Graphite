@@ -44,6 +44,10 @@
 		flex: 0 0 auto;
 		margin: 0 4px;
 
+		+ .widget-section {
+			margin-top: 4px;
+		}
+
 		.header {
 			text-align: left;
 			align-items: center;
@@ -107,7 +111,6 @@
 			padding: 0 7px;
 			padding-top: 1px;
 			margin-top: -1px;
-			margin-bottom: 4px;
 			border: 1px solid var(--color-2-mildblack);
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
@@ -130,8 +133,8 @@
 					margin-left: 16px;
 				}
 
-				> .parameter-expose-button ~ .text-label:first-of-type {
-					margin-left: 0;
+				> .parameter-expose-button + .text-label:first-of-type {
+					margin-left: 8px;
 				}
 
 				> .text-button {

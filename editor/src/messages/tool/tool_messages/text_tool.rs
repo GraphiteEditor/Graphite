@@ -130,7 +130,7 @@ impl LayoutHolder for TextTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",

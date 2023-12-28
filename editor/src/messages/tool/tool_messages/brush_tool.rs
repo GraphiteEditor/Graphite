@@ -141,7 +141,7 @@ impl LayoutHolder for BrushTool {
 				.widget_holder(),
 		];
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
@@ -149,7 +149,7 @@ impl LayoutHolder for BrushTool {
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",

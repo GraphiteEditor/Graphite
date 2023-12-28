@@ -505,7 +505,6 @@
 						&::placeholder {
 							opacity: 1;
 							color: inherit;
-							font-style: italic;
 						}
 					}
 				}

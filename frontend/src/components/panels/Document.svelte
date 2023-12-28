@@ -450,8 +450,7 @@
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="shelf-bottom-widgets">
-				<WidgetLayout class={"graph-overlay-button-area"} layout={$document.graphViewOverlayButtonLayout} />
-				<WidgetLayout class={"working-colors-button-area"} layout={$document.workingColorsLayout} />
+				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="table">
@@ -519,6 +518,10 @@
 	.document {
 		height: 100%;
 
+		&.document.document {
+			padding-bottom: 0;
+		}
+
 		.options-bar {
 			height: 32px;
 			flex: 0 0 auto;
@@ -537,12 +540,14 @@
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
 			// Be sure to recalculate this if the items below the tools (working colors and graph overlay buttons) change height in the future.
-			--height-of-elements-below-tools: 104px;
+			--height-of-elements-below-tools: 64px;
 			// Target height for the tools within the container above the lower elements.
 			--available-height: calc(100cqh - var(--height-of-elements-below-tools));
+			// Be sure to update this if the height changes as set in `Separator.svelte`.
+			--separator-height: calc(12px + 1px + 12px);
 			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest number of columns to be used.
-			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
-			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
+			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * 32px + var(--total-separators) * var(--separator-height));
+			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * 32px + var(--total-separators) * var(--separator-height));
 			// Evaluates to 0px (if false) or 1px (if true). We multiply by 1000000 to force the result to be an integer 0 or 1 and not interpolate values in-between.
 			--needs-at-least-2-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--1-col-required-height))) * 1000000), 1px));
 			--needs-at-least-3-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--2-col-required-height))) * 1000000), 1px));
@@ -563,7 +568,7 @@
 					// Remove this when the Firefox bug is fixed.
 					@-moz-document url-prefix() {
 						--available-height-plus-1: calc(var(--available-height) + 1px);
-						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * 32px + var(--total-separators) * (1px + 8px * 2));
+						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * 32px + var(--total-separators) * var(--separator-height));
 						--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
 						--firefox-scrollbar-width-space-occupied: 8; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
 						padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
@@ -610,17 +615,12 @@
 					flex: 0 0 auto;
 					align-items: center;
 
-					.graph-overlay-button-area {
-						height: auto;
-						align-items: center;
-					}
-
-					.working-colors-button-area {
+					.working-colors-input-area {
 						height: auto;
 						margin: 0;
 						min-height: 0;
 
-						.working-colors-button {
+						.working-colors-input {
 							margin: 0;
 						}
 

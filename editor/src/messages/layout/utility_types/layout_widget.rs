@@ -34,8 +34,6 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
-	/// The button below the tool shelf and directly above the working colors which lets the user toggle the node graph overlaid on the canvas.
-	GraphViewOverlayButton,
 	/// Options for opacity seen at the top of the Layers panel.
 	LayersPanelOptions,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
@@ -337,7 +335,6 @@ impl LayoutGroup {
 				Widget::IconLabel(x) => &mut x.tooltip,
 				Widget::ImageLabel(x) => &mut x.tooltip,
 				Widget::NumberInput(x) => &mut x.tooltip,
-				Widget::OptionalInput(x) => &mut x.tooltip,
 				Widget::ParameterExposeButton(x) => &mut x.tooltip,
 				Widget::PopoverButton(x) => &mut x.tooltip,
 				Widget::TextAreaInput(x) => &mut x.tooltip,
@@ -345,7 +342,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip,
 				Widget::TextLabel(x) => &mut x.tooltip,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
-				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsButton(_) => continue,
+				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) => continue,
 			};
 			if val.is_empty() {
 				*val = tooltip.clone();
@@ -491,7 +488,6 @@ pub enum Widget {
 	ImageLabel(ImageLabel),
 	InvisibleStandinInput(InvisibleStandinInput),
 	NumberInput(NumberInput),
-	OptionalInput(OptionalInput),
 	ParameterExposeButton(ParameterExposeButton),
 	PivotInput(PivotInput),
 	PopoverButton(PopoverButton),
@@ -501,7 +497,7 @@ pub enum Widget {
 	TextButton(TextButton),
 	TextInput(TextInput),
 	TextLabel(TextLabel),
-	WorkingColorsButton(WorkingColorsButton),
+	WorkingColorsInput(WorkingColorsInput),
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
@@ -560,7 +556,6 @@ impl DiffUpdate {
 				Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::NumberInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::OptionalInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
 				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
@@ -574,7 +569,7 @@ impl DiffUpdate {
 				| Widget::TextAreaInput(_)
 				| Widget::TextInput(_)
 				| Widget::TextLabel(_)
-				| Widget::WorkingColorsButton(_) => None,
+				| Widget::WorkingColorsInput(_) => None,
 			};
 			if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
 				apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);

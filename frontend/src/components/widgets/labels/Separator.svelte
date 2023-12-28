@@ -6,7 +6,7 @@
 </script>
 
 <div class={`separator ${direction.toLowerCase()} ${type.toLowerCase()}`}>
-	{#if ["Section", "List"].includes(type)}
+	{#if type === "Section"}
 		<div />
 	{/if}
 </div>
@@ -21,27 +21,20 @@
 			}
 
 			&.unrelated {
-				height: 8px;
-			}
-
-			&.section,
-			&.list {
-				width: 100%;
-
-				div {
-					height: 1px;
-					width: calc(100% - 8px);
-					margin: 0 4px;
-					background: var(--color-7-middlegray);
-				}
+				height: 16px;
 			}
 
 			&.section {
-				margin: 8px 0;
-			}
+				// If changing this, update `--separator-height` in `Document.svelte`
+				margin: 12px 0;
+				width: 100%;
 
-			&.list {
-				margin: 4px 0;
+				div {
+					margin: 0 4px;
+					height: 1px;
+					width: calc(100% - 8px);
+					background: var(--color-5-dullgray);
+				}
 			}
 		}
 
@@ -53,27 +46,19 @@
 			}
 
 			&.unrelated {
-				width: 8px;
-			}
-
-			&.section,
-			&.list {
-				height: 100%;
-
-				div {
-					height: calc(100% - 8px);
-					width: 1px;
-					margin: 4px 0;
-					background: var(--color-7-middlegray);
-				}
+				width: 16px;
 			}
 
 			&.section {
-				margin: 0 8px;
-			}
+				margin: 0 12px;
+				height: 100%;
 
-			&.list {
-				margin: 0 4px;
+				div {
+					margin: 4px 0;
+					height: calc(100% - 8px);
+					width: 1px;
+					background: var(--color-5-dullgray);
+				}
 			}
 		}
 	}

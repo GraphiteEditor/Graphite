@@ -130,14 +130,22 @@ pub struct NodeGraphMessageHandler {
 
 impl Default for NodeGraphMessageHandler {
 	fn default() -> Self {
-		// TODO: Replace this with an "Add Node" button, also next to an "Add Layer" button
-		let add_nodes_label = TextLabel::new("Right Click Graph to Add Nodes").italic(true).widget_holder();
-		let add_nodes_label_row = LayoutGroup::Row { widgets: vec![add_nodes_label] };
+		let right_side_widgets = vec![
+			// TODO: Replace this with an "Add Node" button, also next to an "Add Layer" button
+			TextLabel::new("Right Click in Graph to Add Nodes").italic(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextButton::new("Node Graph")
+				.icon(Some("GraphViewOpen".into()))
+				.tooltip("Hide Node Graph")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
+				.widget_holder(),
+		];
 
 		Self {
 			network: Vec::new(),
 			has_selection: false,
-			widgets: [add_nodes_label_row, LayoutGroup::default()],
+			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 		}
 	}
 }
@@ -161,8 +169,6 @@ impl NodeGraphMessageHandler {
 
 			// If there is at least one other selected node then show the hide or show button
 			if selected_nodes.next().is_some() {
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
 				// Check if any of the selected nodes are disabled
 				let is_hidden = document_metadata.selected_nodes().any(|id| network.disabled.contains(id));
 
@@ -178,13 +184,13 @@ impl NodeGraphMessageHandler {
 					.on_update(move |_| NodeGraphMessage::ToggleSelectedHidden.into())
 					.widget_holder();
 				widgets.push(hide_button);
+
+				widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 			}
 
 			// If only one node is selected then show the preview or stop previewing button
 			let mut selected_nodes = document_metadata.selected_nodes();
 			if let (Some(&node_id), None) = (selected_nodes.next(), selected_nodes.next()) {
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
 
@@ -199,7 +205,7 @@ impl NodeGraphMessageHandler {
 				}
 			}
 
-			self.widgets[1] = LayoutGroup::Row { widgets };
+			self.widgets[0] = LayoutGroup::Row { widgets };
 		}
 		self.send_node_bar_layout(responses);
 	}

@@ -537,7 +537,7 @@
 				width: 208px;
 				height: 32px;
 				border-radius: 2px;
-				border: 1px solid var(--color-0-black);
+				border: 1px solid var(--color-1-nearblack);
 				box-sizing: border-box;
 				overflow: hidden;
 

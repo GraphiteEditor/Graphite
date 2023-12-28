@@ -1,7 +1,7 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 
-use graphene_core::raster::curve::Curve;
+use graphene_core::{raster::curve::Curve, Color};
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
@@ -255,28 +255,6 @@ pub enum NumberInputMode {
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-pub struct OptionalInput {
-	#[widget_builder(constructor)]
-	pub checked: bool,
-
-	pub disabled: bool,
-
-	#[widget_builder(constructor)]
-	pub icon: String,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<OptionalInput>,
-}
-
-#[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	#[widget_builder(constructor)]
 	pub entries: Vec<RadioEntryData>,
@@ -308,6 +286,16 @@ pub struct RadioEntryData {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct WorkingColorsInput {
+	#[widget_builder(constructor)]
+	pub primary: Color,
+
+	#[widget_builder(constructor)]
+	pub secondary: Color,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]

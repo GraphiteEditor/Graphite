@@ -51,7 +51,6 @@
 
 	// Styling
 	export let minWidth = 0;
-	export let sharpRightCorners = false;
 
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
@@ -581,7 +580,6 @@
 	{label}
 	{disabled}
 	{tooltip}
-	{sharpRightCorners}
 	{styles}
 	hideContextMenu={true}
 	spellcheck={false}
@@ -658,7 +656,7 @@
 				background: none;
 
 				&:hover {
-					background: var(--color-5-dullgray);
+					background: var(--color-4-dimgray);
 				}
 
 				&.right {

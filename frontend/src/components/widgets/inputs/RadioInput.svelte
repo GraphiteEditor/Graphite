@@ -12,7 +12,6 @@
 	export let entries: RadioEntries;
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
-	export let sharpRightCorners = false;
 
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
@@ -28,7 +27,6 @@
 			class:active={index === selectedIndex}
 			class:mixed={selectedIndex === undefined}
 			class:disabled
-			class:sharp-right-corners={index === entries.length - 1 && sharpRightCorners}
 			on:click={() => handleEntryClick(entry)}
 			title={entry.tooltip}
 			tabindex={index === selectedIndex ? -1 : 0}
@@ -38,7 +36,7 @@
 				<IconLabel icon={entry.icon} />
 			{/if}
 			{#if entry.label}
-				<TextLabel>{entry.label}</TextLabel>
+				<TextLabel italic={selectedIndex === undefined}>{entry.label}</TextLabel>
 			{/if}
 		</button>
 	{/each}

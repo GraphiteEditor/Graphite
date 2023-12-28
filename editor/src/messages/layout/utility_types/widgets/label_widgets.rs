@@ -46,7 +46,6 @@ pub enum SeparatorType {
 	#[default]
 	Unrelated,
 	Section,
-	List,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
