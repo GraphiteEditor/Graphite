@@ -51,6 +51,16 @@
 
 		.sections {
 			flex: 1 1 100%;
+
+			// Used as a placeholder for empty assist widgets
+			.separator.section.horizontal {
+				margin: 0;
+				margin-left: 24px;
+
+				div {
+					width: 0;
+				}
+			}
 		}
 
 		.text-button {

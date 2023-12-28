@@ -24,7 +24,6 @@
 	export let disabled = false;
 	export let textarea = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 	export let placeholder: string | undefined = undefined;
 	export let hideContextMenu = false;
 
@@ -69,7 +68,7 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, "sharp-right-corners": sharpRightCorners, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class={`field-input ${className}`} classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
 	{#if !textarea}
 		<input
 			type="text"
@@ -154,14 +153,14 @@
 			caret-color: var(--color-e-nearwhite);
 
 			&::selection {
-				background-color: var(--color-5-dullgray);
+				background-color: var(--color-4-dimgray);
 
 				// Target only Safari
 				@supports (background: -webkit-named-image(i)) {
 					& {
 						// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
 						// https://stackoverflow.com/a/71753552/775283
-						background-color: rgba(var(--color-5-dullgray-rgb), calc(254 / 255));
+						background-color: rgba(var(--color-4-dimgray-rgb), calc(254 / 255));
 					}
 				}
 			}

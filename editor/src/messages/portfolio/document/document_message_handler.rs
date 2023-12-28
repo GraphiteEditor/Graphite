@@ -81,6 +81,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	undo_in_progress: bool,
 	#[serde(skip)]
+	graph_view_overlay_open: bool,
+	#[serde(skip)]
 	pub snapping_state: SnappingState,
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
@@ -119,6 +121,7 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			undo_in_progress: false,
+			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			layer_range_selection_reference: None,
 			metadata: Default::default(),
@@ -227,7 +230,6 @@ pub struct DocumentInputs<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub persistent_data: &'a PersistentData,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub graph_view_overlay_open: bool,
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
@@ -238,7 +240,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			ipp,
 			persistent_data,
 			executor,
-			graph_view_overlay_open,
 		} = document_inputs;
 		use DocumentMessage::*;
 
@@ -282,7 +283,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						document_name: self.name.as_str(),
 						collapsed: &mut self.collapsed,
 						input: ipp,
-						graph_view_overlay_open,
+						graph_view_overlay_open: self.graph_view_overlay_open,
 					},
 				);
 			}
@@ -382,7 +383,11 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				let data_buffer: RawBuffer = self.serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer })
+				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+
+				if self.graph_view_overlay_open {
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				}
 			}
 			DuplicateSelectedLayers => {
 				// TODO: Reimplement selected layer duplication
@@ -411,6 +416,17 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					}
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
+			}
+			GraphViewOverlay { open } => {
+				self.graph_view_overlay_open = open;
+
+				if open {
+					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+				}
+				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
+			}
+			GraphViewOverlayToggle => {
+				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
@@ -1089,9 +1105,10 @@ impl DocumentMessageHandler {
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
 		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
-			OptionalInput::new(snapping_state.snapping_enabled, "Snapping")
+			CheckboxInput::new(snapping_state.snapping_enabled)
+				.icon("Snapping")
 				.tooltip("Snapping")
-				.on_update(move |optional_input: &OptionalInput| {
+				.on_update(move |optional_input: &CheckboxInput| {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
@@ -1105,6 +1122,8 @@ impl DocumentMessageHandler {
 				.options_widget(vec![
 					LayoutGroup::Row {
 						widgets: vec![
+							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(true).min_width(96).widget_holder(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
 							CheckboxInput::new(snapping_state.bounding_box_snapping)
 								.tooltip(SnappingOptions::BoundingBoxes.to_string())
 								.on_update(move |input: &CheckboxInput| {
@@ -1116,13 +1135,13 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							Separator::new(SeparatorType::Unrelated).widget_holder(),
-							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(false).min_width(60).widget_holder(),
 							Separator::new(SeparatorType::Related).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
+							TextLabel::new(SnappingOptions::Points.to_string()).table_align(true).min_width(96).widget_holder(),
+							Separator::new(SeparatorType::Unrelated).widget_holder(),
 							CheckboxInput::new(self.snapping_state.node_snapping)
 								.tooltip(SnappingOptions::Points.to_string())
 								.on_update(|input: &CheckboxInput| {
@@ -1134,22 +1153,22 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							Separator::new(SeparatorType::Unrelated).widget_holder(),
-							TextLabel::new(SnappingOptions::Points.to_string()).table_align(false).min_width(60).widget_holder(),
 						],
 					},
 				])
 				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			OptionalInput::new(true, "Grid")
+			Separator::new(SeparatorType::Related).widget_holder(),
+			CheckboxInput::new(true)
+				.icon("Grid")
 				.tooltip("Grid")
 				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into())
 				.widget_holder(),
 			PopoverButton::new("Grid", "Coming soon").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			OptionalInput::new(self.overlays_visible, "Overlays")
+			Separator::new(SeparatorType::Related).widget_holder(),
+			CheckboxInput::new(self.overlays_visible)
+				.icon("Overlays")
 				.tooltip("Overlays")
-				.on_update(|optional_input: &OptionalInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -1176,7 +1195,7 @@ impl DocumentMessageHandler {
 			})
 			.widget_holder(),
 			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
-			Separator::new(SeparatorType::Section).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
@@ -1192,6 +1211,11 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
 				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
 				.widget_holder(),
+			PopoverButton::new(
+				"Canvas Navigation",
+				"Interactive controls in this\nmenu are coming soon.\n\nPan:\n• Middle Click Drag\n\nTilt:\n• Alt + Middle Click Drag\n\nZoom:\n• Shift + Middle Click Drag\n• Ctrl + Scroll Wheel Roll",
+			)
+			.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
 				.unit("%")
@@ -1207,6 +1231,13 @@ impl DocumentMessageHandler {
 				.increment_behavior(NumberInputIncrementBehavior::Callback)
 				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
 				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextButton::new("Node Graph")
+				.icon(Some(if self.graph_view_overlay_open { "GraphViewOpen".into() } else { "GraphViewClosed".into() }))
+				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
 				.widget_holder(),
 		];
 		let rotation_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
@@ -1225,14 +1256,6 @@ impl DocumentMessageHandler {
 					.widget_holder(),
 			]);
 		}
-		widgets.extend([
-			Separator::new(SeparatorType::Related).widget_holder(),
-			PopoverButton::new(
-				"Canvas Navigation",
-				"Interactive options in this popover\nmenu are coming soon.\n\nZoom:\n• Shift + Middle Click Drag\n• Ctrl + Scroll Wheel Roll\nRotate:\n• Alt + Left Click Drag",
-			)
-			.widget_holder(),
-		]);
 		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
@@ -1339,7 +1362,7 @@ impl DocumentMessageHandler {
 						}
 					})
 					.widget_holder(),
-				Separator::new(SeparatorType::Section).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				IconButton::new("Folder", 24)
 					.tooltip("New Folder")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
@@ -1398,7 +1421,7 @@ impl DocumentMessageHandler {
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
 
-	pub fn actions_with_graph_open(&self, graph_open: bool) -> ActionList {
+	pub fn actions_with_graph_open(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
 			Undo,
 			Redo,
@@ -1411,8 +1434,14 @@ impl DocumentMessageHandler {
 			ZoomCanvasToFitAll,
 			ZoomCanvasTo100Percent,
 			ZoomCanvasTo200Percent,
+			GraphViewOverlayToggle,
 			CreateEmptyFolder,
 		);
+
+		if self.graph_view_overlay_open {
+			let escape = actions!(DocumentMessageDiscriminant; GraphViewOverlay);
+			common.extend(escape);
+		}
 
 		if self.metadata().selected_layers().next().is_some() {
 			let select = actions!(DocumentMessageDiscriminant;
@@ -1429,7 +1458,7 @@ impl DocumentMessageHandler {
 			common.extend(select);
 		}
 		common.extend(self.navigation_handler.actions());
-		common.extend(self.node_graph_handler.actions_with_node_graph_open(graph_open));
+		common.extend(self.node_graph_handler.actions_with_node_graph_open(self.graph_view_overlay_open));
 		common
 	}
 }

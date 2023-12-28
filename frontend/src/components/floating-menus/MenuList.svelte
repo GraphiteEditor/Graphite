@@ -212,7 +212,7 @@
 		{/if}
 		{#each entries as section, sectionIndex (sectionIndex)}
 			{#if sectionIndex > 0}
-				<Separator type="List" direction="Vertical" />
+				<Separator type="Section" direction="Vertical" />
 			{/if}
 			{#each virtualScrollingEntryHeight ? section.slice(virtualScrollingStartIndex, virtualScrollingEndIndex) : section as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
@@ -264,8 +264,12 @@
 		.floating-menu-container .floating-menu-content.floating-menu-content {
 			padding: 4px 0;
 
-			.separator div {
-				background: var(--color-4-dimgray);
+			.separator {
+				margin: 4px 0;
+
+				div {
+					background: var(--color-4-dimgray);
+				}
 			}
 
 			.scroll-spacer {
@@ -333,7 +337,7 @@
 
 				&:hover,
 				&.open {
-					background: var(--color-5-dullgray);
+					background: var(--color-4-dimgray);
 				}
 
 				&.active {

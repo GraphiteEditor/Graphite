@@ -171,12 +171,6 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						},
 						_ => {} // If it's some other type we could just ignore it and leave the value as is
 					},
-					Widget::OptionalInput(optional_input) => {
-						let update_value = value.as_bool().expect("OptionalInput update was not of type: bool");
-						optional_input.checked = update_value;
-						let callback_message = (optional_input.on_update.callback)(optional_input);
-						responses.add(callback_message);
-					}
 					Widget::ParameterExposeButton(parameter_expose_button) => {
 						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
 						responses.add(callback_message);
@@ -212,7 +206,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 						responses.add(callback_message);
 					}
 					Widget::TextLabel(_) => {}
-					Widget::WorkingColorsButton(_) => {}
+					Widget::WorkingColorsInput(_) => {}
 				};
 				responses.add(ResendActiveWidget { layout_target, dirty_id: widget_id });
 			}
@@ -273,7 +267,6 @@ impl LayoutMessageHandler {
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::GraphViewOverlayButton => FrontendMessage::UpdateGraphViewOverlayButtonLayout { layout_target, diff },
 			LayoutTarget::LayersPanelOptions => FrontendMessage::UpdateLayersPanelOptionsLayout { layout_target, diff },
 			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
 			LayoutTarget::NodeGraphBar => FrontendMessage::UpdateNodeGraphBarLayout { layout_target, diff },

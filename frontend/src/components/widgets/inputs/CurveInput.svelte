@@ -218,7 +218,7 @@
 		max-width: calc(8 * var(--widget-height));
 
 		.grid {
-			stroke: var(--color-7-middlegray);
+			stroke: var(--color-5-dullgray);
 			stroke-width: 0.005;
 			pointer-events: none;
 		}
@@ -251,7 +251,7 @@
 		}
 
 		.handle-line {
-			stroke: var(--color-7-middlegray);
+			stroke: var(--color-5-dullgray);
 			stroke-width: 0.005;
 			pointer-events: none;
 		}

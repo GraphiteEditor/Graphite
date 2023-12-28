@@ -21,7 +21,6 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
@@ -64,7 +63,7 @@
 <LayoutRow class="dropdown-input" bind:this={self} data-dropdown-input>
 	<LayoutRow
 		class="dropdown-box"
-		classes={{ disabled, open, "sharp-right-corners": sharpRightCorners }}
+		classes={{ disabled, open }}
 		styles={{ "min-width": `${minWidth}px` }}
 		{tooltip}
 		on:click={() => !disabled && (open = true)}
@@ -128,7 +127,7 @@
 
 			&:hover,
 			&.open {
-				background: var(--color-5-dullgray);
+				background: var(--color-4-dimgray);
 			}
 
 			&.disabled {

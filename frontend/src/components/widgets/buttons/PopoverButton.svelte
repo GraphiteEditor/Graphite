@@ -1,11 +1,13 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/utility-functions/icons";
+	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
-	export let icon: IconName = "DropdownArrow";
+	export let style: PopoverButtonStyle = "DropdownArrow";
+	export let icon: IconName | undefined = undefined;
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
 
@@ -20,8 +22,11 @@
 	}
 </script>
 
-<LayoutRow class="popover-button">
-	<IconButton classes={{ open }} {disabled} action={() => onClick()} icon={icon || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+<LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined }}>
+	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+	{#if icon !== undefined}
+		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
+	{/if}
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
 		<slot />
@@ -35,38 +40,40 @@
 		height: 24px;
 		flex: 0 0 auto;
 
-		.floating-menu {
-			left: 50%;
-			bottom: 0;
+		&.has-icon {
+			width: 36px;
+
+			.dropdown-icon {
+				padding-left: calc(36px - 16px);
+				box-sizing: content-box;
+			}
 		}
 
-		.icon-button.icon-button {
-			width: 100%;
+		.dropdown-icon {
+			width: 16px;
 			height: 100%;
 			padding: 0;
 			border: none;
 			border-radius: 2px;
-			background: var(--color-1-nearblack);
 			fill: var(--color-e-nearwhite);
 
-			&:hover,
-			&.open {
+			&:hover:not(.disabled),
+			&.open:not(.disabled) {
 				background: var(--color-5-dullgray);
-			}
-
-			&.disabled {
-				background: var(--color-2-mildblack);
-				fill: var(--color-8-uppergray);
 			}
 		}
 
-		// TODO: Refactor this and other complicated cases dealing with joined widget margins and border-radius by adding a single standard set of classes: joined-first, joined-inner, and joined-last
-		div[class*="-input"] + & {
-			margin-left: 1px;
+		.descriptive-icon {
+			width: 16px;
+			height: 16px;
+			margin: auto 0;
+			margin-left: calc(-16px - 16px);
+			pointer-events: none;
+		}
 
-			.icon-button {
-				border-radius: 0 2px 2px 0;
-			}
+		.floating-menu {
+			left: 50%;
+			bottom: 0;
 		}
 	}
 </style>

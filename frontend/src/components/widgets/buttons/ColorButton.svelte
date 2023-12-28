@@ -16,10 +16,9 @@
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 </script>
 
-<LayoutCol class="color-button" classes={{ disabled, none: value.none, open, "sharp-right-corners": sharpRightCorners }} {tooltip}>
+<LayoutCol class="color-button" classes={{ disabled, none: value.none, open }} {tooltip}>
 	<button {disabled} style:--chosen-color={value.toHexOptionalAlpha()} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
 	{#if disabled && !value.none}
 		<TextLabel>sRGB</TextLabel>
@@ -57,11 +56,6 @@
 				background: var(--color-4-dimgray);
 				color: var(--color-8-uppergray);
 			}
-		}
-
-		&.sharp-right-corners {
-			border-top-right-radius: 0;
-			border-bottom-right-radius: 0;
 		}
 
 		> button {

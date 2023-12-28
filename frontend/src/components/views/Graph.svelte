@@ -741,7 +741,7 @@
 				</div>
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.alias}>{node.alias || "Layer"}</TextLabel>
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || "Layer"}</TextLabel>
 				</div>
 
 				<svg class="border-mask" width="0" height="0">
@@ -773,14 +773,13 @@
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} italic={!node.alias}>{node.alias || node.name}</TextLabel>
+					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || node.name}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}
 					<div class="parameters">
 						{#each exposedInputsOutputs as parameter, index}
 							<div class={`parameter expanded ${index < node.exposedInputs.length ? "input" : "output"}`}>
-								<div class="expand-arrow" />
 								<TextLabel tooltip={parameter.name}>{parameter.name}</TextLabel>
 							</div>
 						{/each}
@@ -1005,10 +1004,6 @@
 				.icon-label {
 					fill: var(--color-a-softgray);
 				}
-
-				.expand-arrow::after {
-					background: var(--icon-expand-collapse-arrow-disabled);
-				}
 			}
 
 			&.previewed::after {
@@ -1033,34 +1028,6 @@
 				margin: calc(24px - 8px) 0;
 				width: 8px;
 				height: 8px;
-			}
-
-			.expand-arrow {
-				width: 16px;
-				height: 16px;
-				margin: 0;
-				padding: 0;
-				position: relative;
-				flex: 0 0 auto;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-
-				&::after {
-					content: "";
-					position: absolute;
-					width: 8px;
-					height: 8px;
-					background: var(--icon-expand-collapse-arrow);
-				}
-
-				&:hover::after {
-					background: var(--icon-expand-collapse-arrow-hover);
-				}
-			}
-
-			.expanded .expand-arrow::after {
-				transform: rotate(90deg);
 			}
 
 			.text-label {
@@ -1201,8 +1168,8 @@
 				}
 
 				.text-label {
-					margin-left: 8px; // Remove after reenabling icon-label
-					margin-right: 4px;
+					// margin-right: 4px; // Restore after reenabling icon-label
+					margin: 0 8px;
 				}
 			}
 
@@ -1216,7 +1183,8 @@
 					position: relative;
 					display: flex;
 					align-items: center;
-					width: 100%;
+					margin: 0 8px;
+					width: calc(100% - 8px - 8px);
 					height: 24px;
 
 					&:last-of-type {
@@ -1227,19 +1195,10 @@
 						width: 100%;
 					}
 
-					&.input {
-						.expand-arrow {
-							margin-left: 4px;
-						}
-					}
-
 					&.output {
 						flex-direction: row-reverse;
 						text-align: right;
 
-						.expand-arrow {
-							margin-right: 4px;
-						}
 						svg {
 							width: 30px;
 							height: 20px;

@@ -52,22 +52,19 @@ fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType
 		.widget_holder()
 }
 
+// TODO: Remove this when we have proper entry row formatting that includes room for Assists.
 fn add_blank_assist(widgets: &mut Vec<WidgetHolder>) {
 	widgets.extend_from_slice(&[
-		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
-		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
-		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-		Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: This last one is the separator after the 24px assist.
+		// Custom CSS specific to the Properties panel converts this Section separator into the width of an assist (24px).
+		Separator::new(SeparatorType::Section).widget_holder(),
+		// This last one is the separator after the 24px assist.
+		Separator::new(SeparatorType::Unrelated).widget_holder(),
 	]);
 }
 
 fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, data_type: FrontendGraphDataType, blank_assist: bool) -> Vec<WidgetHolder> {
 	let input = document_node.inputs.get(index).expect("A widget failed to be built because its node's input index is invalid.");
-	let mut widgets = vec![
-		expose_widget(node_id, index, data_type, input.is_exposed()),
-		Separator::new(SeparatorType::Unrelated).widget_holder(),
-		TextLabel::new(name).widget_holder(),
-	];
+	let mut widgets = vec![expose_widget(node_id, index, data_type, input.is_exposed()), TextLabel::new(name).widget_holder()];
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
@@ -291,18 +288,17 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.on_update(update_value(from_font_input, node_id, index))
 				.widget_holder(),
 		]);
-		second_widgets = Some(vec![
-			TextLabel::new("").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+
+		let mut second_row = vec![TextLabel::new("").widget_holder()];
+		add_blank_assist(&mut second_row);
+		second_row.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.is_style_picker(true)
 				.on_update(update_value(from_font_input, node_id, index))
 				.widget_holder(),
 		]);
+		second_widgets = Some(second_row);
 	}
 	(first_widgets, second_widgets)
 }
@@ -1559,16 +1555,10 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let transform_not_connected = false;
 
 	let progress = {
+		let mut widgets = vec![TextLabel::new("Progress").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
+		add_blank_assist(&mut widgets);
 		let status = imaginate_status.to_text();
-		let widgets = vec![
-			TextLabel::new("Progress").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new(status.as_ref()).bold(true).widget_holder(),
-		];
+		widgets.push(TextLabel::new(status.as_ref()).bold(true).widget_holder());
 		LayoutGroup::Row { widgets }.with_tooltip(match imaginate_status {
 			ImaginateStatus::Failed(_) => status.as_ref(),
 			_ => "When generating, the percentage represents how many sampling steps have so far been processed out of the target number",
@@ -1577,20 +1567,14 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 
 	let image_controls = {
 		let mut widgets = vec![TextLabel::new("Image").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-		let assist_separators = [
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: These three separators add up to 24px,
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: which is the width of the Assist area.
-			Separator::new(SeparatorType::Unrelated).widget_holder(), // TODO: Remove these when we have proper entry row formatting that includes room for Assists.
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-		];
 
 		match &imaginate_status {
 			ImaginateStatus::Beginning | ImaginateStatus::Uploading => {
-				widgets.extend_from_slice(&assist_separators);
+				add_blank_assist(&mut widgets);
 				widgets.push(TextButton::new("Beginning...").tooltip("Sending image generation request to the server").disabled(true).widget_holder());
 			}
 			ImaginateStatus::Generating(_) => {
-				widgets.extend_from_slice(&assist_separators);
+				add_blank_assist(&mut widgets);
 				widgets.push(
 					TextButton::new("Terminate")
 						.tooltip("Cancel the in-progress image generation and keep the latest progress")
@@ -1605,7 +1589,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 				);
 			}
 			ImaginateStatus::Terminating => {
-				widgets.extend_from_slice(&assist_separators);
+				add_blank_assist(&mut widgets);
 				widgets.push(
 					TextButton::new("Terminating...")
 						.tooltip("Waiting on the final image generated after termination")
@@ -1755,7 +1739,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						resolution_index,
 					))
 					.widget_holder(),
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(vec2.x))
 					.label("W")
 					.min(64.)

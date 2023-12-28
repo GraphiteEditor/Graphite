@@ -15,11 +15,10 @@
 	export let label: string;
 	export let icon: IconName | undefined = undefined;
 	export let emphasized = false;
-	export let noBackground = false;
+	export let flush = false;
 	export let minWidth = 0;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
 
 	// Callbacks
@@ -57,8 +56,7 @@
 		class:open={self?.open}
 		class:emphasized
 		class:disabled
-		class:no-background={noBackground}
-		class:sharp-right-corners={sharpRightCorners}
+		class:flush
 		style:min-width={minWidth > 0 ? `${minWidth}px` : ""}
 		title={tooltip}
 		data-emphasized={emphasized || undefined}
@@ -73,7 +71,7 @@
 			<IconLabel {icon} />
 		{/if}
 		{#if icon && label}
-			<Separator type={noBackground ? "Unrelated" : "Related"} />
+			<Separator type={flush ? "Unrelated" : "Related"} />
 		{/if}
 		{#if label}
 			<TextLabel>{label}</TextLabel>
@@ -140,7 +138,7 @@
 			}
 		}
 
-		&.no-background {
+		&.flush {
 			background: none;
 
 			&:hover,

@@ -314,6 +314,7 @@ export const ICON_SVG_STRINGS = Object.fromEntries(Object.entries(ICONS).map(([n
 
 export type IconName = keyof typeof ICONS;
 export type IconSize = undefined | 12 | 16 | 24 | 32;
+export type PopoverButtonStyle = "DropdownArrow" | "VerticalEllipsis";
 
 // The following helper type declarations allow us to avoid manually maintaining the `IconName` type declaration as a string union paralleling the keys of the
 // icon definitions. It lets TypeScript do that for us. Our goal is to define the big key-value pair of icons by constraining its values, but inferring its keys.

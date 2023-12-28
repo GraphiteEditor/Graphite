@@ -28,7 +28,7 @@ impl DialogLayoutHolder for LicensesDialog {
 			.map(|(icon, label, url)| {
 				TextButton::new(label)
 					.icon(Some(icon.into()))
-					.no_background(true)
+					.flush(true)
 					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
 					.widget_holder()
 			})

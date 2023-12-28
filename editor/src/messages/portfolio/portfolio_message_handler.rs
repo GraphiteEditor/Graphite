@@ -3,7 +3,6 @@ use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
-use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::DocumentInputs;
@@ -22,7 +21,6 @@ pub struct PortfolioMessageHandler {
 	documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
 	active_document_id: Option<DocumentId>,
-	graph_view_overlay_open: bool,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
@@ -55,7 +53,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							ipp,
 							persistent_data: &self.persistent_data,
 							executor: &mut self.executor,
-							graph_view_overlay_open: self.graph_view_overlay_open,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -71,7 +68,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						ipp,
 						persistent_data: &self.persistent_data,
 						executor: &mut self.executor,
-						graph_view_overlay_open: self.graph_view_overlay_open,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -256,29 +252,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
-			}
-			PortfolioMessage::GraphViewOverlay { open } => {
-				self.graph_view_overlay_open = open;
-
-				let layout = WidgetLayout::new(vec![LayoutGroup::Row {
-					widgets: vec![IconButton::new(if open { "GraphViewOpen" } else { "GraphViewClosed" }, 32)
-						.tooltip(if open { "Hide Node Graph" } else { "Show Node Graph" })
-						.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::GraphViewOverlayToggle))
-						.on_update(move |_| PortfolioMessage::GraphViewOverlay { open: !open }.into())
-						.widget_holder()],
-				}]);
-				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(layout),
-					layout_target: LayoutTarget::GraphViewOverlayButton,
-				});
-
-				if open {
-					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-				}
-				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
-			}
-			PortfolioMessage::GraphViewOverlayToggle => {
-				responses.add(PortfolioMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
 				let server_status = self.persistent_data.imaginate.server_status().clone();
@@ -473,9 +446,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-				if self.graph_view_overlay_open {
-					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-				}
 			}
 			PortfolioMessage::SetActiveDocument { document_id } => {
 				self.active_document_id = Some(document_id);
@@ -553,7 +523,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			GraphViewOverlayToggle,
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			CloseAllDocumentsWithConfirmation,
@@ -565,11 +534,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			ToggleRulers,
 		);
 
-		if self.graph_view_overlay_open {
-			let escape = actions!(PortfolioMessageDiscriminant; GraphViewOverlay);
-			common.extend(escape);
-		}
-
 		if let Some(document) = self.active_document() {
 			if document.metadata().selected_layers().next().is_some() {
 				let select = actions!(PortfolioMessageDiscriminant;
@@ -578,7 +542,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				);
 				common.extend(select);
 			}
-			common.extend(document.actions_with_graph_open(self.graph_view_overlay_open));
+
+			common.extend(document.actions_with_graph_open());
 		}
 
 		common
@@ -652,7 +617,6 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::SelectDocument { document_id });
 		responses.add(PortfolioMessage::LoadDocumentResources { document_id });
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
-		responses.add(PortfolioMessage::GraphViewOverlay { open: self.graph_view_overlay_open });
 		responses.add(ToolMessage::InitTools);
 		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });

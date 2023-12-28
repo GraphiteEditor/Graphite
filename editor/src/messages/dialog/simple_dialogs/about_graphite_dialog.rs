@@ -29,7 +29,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 			.map(|(icon, label, url)| {
 				TextButton::new(label)
 					.icon(Some(icon.into()))
-					.no_background(true)
+					.flush(true)
 					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
 					.widget_holder()
 			})
@@ -40,7 +40,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 		widgets.push(
 			TextButton::new("Licenses")
 				.icon(Some("License".into()))
-				.no_background(true)
+				.flush(true)
 				.on_update(move |_| {
 					DialogMessage::RequestLicensesDialogWithLocalizedCommitDate {
 						localized_commit_year: localized_commit_year.clone(),

@@ -12,24 +12,21 @@
 	import ParameterExposeButton from "@graphite/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import WorkingColorsButton from "@graphite/components/widgets/buttons/WorkingColorsButton.svelte";
 	import CheckboxInput from "@graphite/components/widgets/inputs/CheckboxInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
 	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import OptionalInput from "@graphite/components/widgets/inputs/OptionalInput.svelte";
 	import PivotInput from "@graphite/components/widgets/inputs/PivotInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextAreaInput from "@graphite/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
+	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
-
-	const SUFFIX_WIDGETS = ["PopoverButton"];
 
 	const editor = getContext<Editor>("editor");
 
@@ -47,7 +44,6 @@
 
 	$: direction = watchDirection(widgetData);
 	$: widgets = watchWidgets(widgetData);
-	$: widgetsAndNextSiblingIsSuffix = watchWidgetsAndNextSiblingIsSuffix(widgets);
 
 	function watchDirection(widgetData: WidgetSpanRow | WidgetSpanColumn): "row" | "column" | undefined {
 		if (isWidgetSpanRow(widgetData)) return "row";
@@ -59,17 +55,6 @@
 		if (isWidgetSpanRow(widgetData)) widgets = widgetData.rowWidgets;
 		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.columnWidgets;
 		return widgets;
-	}
-
-	function watchWidgetsAndNextSiblingIsSuffix(widgets: Widget[]): [Widget, boolean][] {
-		return widgets.map((widget, index): [Widget, boolean] => {
-			// A suffix widget is one that joins up with this widget at the end with only a 1px gap.
-			// It uses the CSS sibling selector to give its own left edge corners zero radius.
-			// But this JS is needed to set its preceding sibling widget's right edge corners to zero radius.
-			const nextSiblingIsSuffix = SUFFIX_WIDGETS.includes(widgets[index + 1]?.props.kind);
-
-			return [widget, nextSiblingIsSuffix];
-		});
 	}
 
 	function updateLayout(index: number, value: unknown) {
@@ -88,14 +73,14 @@
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 
 <div class={`widget-span ${className} ${extraClasses}`.trim()} class:row={direction === "row"} class:column={direction === "column"}>
-	{#each widgetsAndNextSiblingIsSuffix as [component, nextIsSuffix], index}
+	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
 			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
 		{#if colorInput}
-			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
@@ -103,11 +88,11 @@
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
-			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
@@ -115,7 +100,7 @@
 		{/if}
 		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
 		{#if iconButton}
-			<IconButton {...exclude(iconButton)} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+			<IconButton {...exclude(iconButton)} action={() => updateLayout(index, undefined)} />
 		{/if}
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
@@ -132,12 +117,7 @@
 				on:value={({ detail }) => debouncer((value) => updateLayout(index, value)).debounceUpdateValue(detail)}
 				incrementCallbackIncrease={() => updateLayout(index, "Increment")}
 				incrementCallbackDecrease={() => updateLayout(index, "Decrement")}
-				sharpRightCorners={nextIsSuffix}
 			/>
-		{/if}
-		{@const optionalInput = narrowWidgetProps(component.props, "OptionalInput")}
-		{#if optionalInput}
-			<OptionalInput {...exclude(optionalInput)} on:checked={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const pivotInput = narrowWidgetProps(component.props, "PivotInput")}
 		{#if pivotInput}
@@ -156,15 +136,15 @@
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}
-			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const separator = narrowWidgetProps(component.props, "Separator")}
 		{#if separator}
 			<Separator {...exclude(separator)} />
 		{/if}
-		{@const workingColorsButton = narrowWidgetProps(component.props, "WorkingColorsButton")}
-		{#if workingColorsButton}
-			<WorkingColorsButton {...exclude(workingColorsButton)} />
+		{@const workingColorsInput = narrowWidgetProps(component.props, "WorkingColorsInput")}
+		{#if workingColorsInput}
+			<WorkingColorsInput {...exclude(workingColorsInput)} />
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
@@ -172,7 +152,7 @@
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...exclude(textButton)} action={() => updateLayout(index, undefined)} sharpRightCorners={nextIsSuffix} />
+			<TextButton {...exclude(textButton)} action={() => updateLayout(index, undefined)} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}
@@ -180,7 +160,7 @@
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}
-			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => updateLayout(index, detail)} sharpRightCorners={nextIsSuffix} />
+			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => updateLayout(index, detail)} />
 		{/if}
 		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
 		{#if textLabel}
@@ -216,31 +196,6 @@
 
 			&.icon-label.size-16 {
 				--widget-height: 16px;
-			}
-		}
-
-		// TODO: Target this in a better way than using the tooltip, which will break if changed, or when localized/translated
-		.checkbox-input [title="Preserve Aspect Ratio"] {
-			margin-bottom: -32px;
-			position: relative;
-
-			&::before,
-			&::after {
-				content: "";
-				pointer-events: none;
-				position: absolute;
-				left: 8px;
-				width: 1px;
-				height: 16px;
-				background: var(--color-7-middlegray);
-			}
-
-			&::before {
-				top: calc(-4px - 16px);
-			}
-
-			&::after {
-				bottom: calc(-4px - 16px);
 			}
 		}
 	}

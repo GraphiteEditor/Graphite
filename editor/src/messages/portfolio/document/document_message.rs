@@ -59,6 +59,10 @@ pub enum DocumentMessage {
 	FlipSelectedLayers {
 		flip_axis: FlipAxis,
 	},
+	GraphViewOverlay {
+		open: bool,
+	},
+	GraphViewOverlayToggle,
 	GroupSelectedLayers,
 	ImaginateGenerate,
 	ImaginateRandom {

@@ -125,7 +125,7 @@ impl LayoutHolder for PolygonTool {
 			create_sides_widget(self.options.vertices),
 		];
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",
@@ -135,7 +135,7 @@ impl LayoutHolder for PolygonTool {
 			|color: &ColorButton| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::FillColor(color.value)).into(),
 		));
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",

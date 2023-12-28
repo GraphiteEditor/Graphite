@@ -3,7 +3,6 @@
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import PopoverButton from "@graphite/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
 	const PANEL_COMPONENTS = {
@@ -102,10 +101,10 @@
 				</LayoutRow>
 			{/each}
 		</LayoutRow>
-		<PopoverButton icon="VerticalEllipsis">
+		<!-- <PopoverButton style="VerticalEllipsis">
 			<TextLabel bold={true}>Panel Options</TextLabel>
 			<TextLabel multiline={true}>Coming soon</TextLabel>
-		</PopoverButton>
+		</PopoverButton> -->
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
@@ -120,7 +119,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton label="New Document" icon="File" noBackground={true} action={() => editor.instance.newDocumentDialog()} />
+									<TextButton label="New Document" icon="File" flush={true} action={() => editor.instance.newDocumentDialog()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -128,7 +127,7 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton label="Open Document" icon="Folder" noBackground={true} action={() => editor.instance.openDocument()} />
+									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.instance.openDocument()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
@@ -136,7 +135,7 @@
 							</tr>
 							<tr>
 								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" noBackground={true} action={() => editor.instance.demoArtworkDialog()} />
+									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.instance.demoArtworkDialog()} />
 								</td>
 							</tr>
 						</table>
@@ -252,15 +251,19 @@
 				}
 			}
 
-			.popover-button {
-				margin: 2px 4px;
-			}
+			// .popover-button {
+			// 	margin: 2px 4px;
+			// }
 		}
 
 		.panel-body {
 			background: var(--color-3-darkgray);
 			flex: 1 1 100%;
 			flex-direction: column;
+
+			> div {
+				padding-bottom: 4px;
+			}
 
 			.empty-panel {
 				background: var(--color-2-mildblack);

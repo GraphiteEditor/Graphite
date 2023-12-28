@@ -96,7 +96,7 @@ impl LayoutHolder for EllipseTool {
 			|color: &ColorButton| EllipseToolMessage::UpdateOptions(EllipseOptionsUpdate::FillColor(color.value)).into(),
 		);
 
-		widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",

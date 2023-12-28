@@ -5,7 +5,7 @@ title = "Features and limitations"
 order = 1
 +++
 
-Please keep in mind that Graphite is alpha software, meaning it is actively changing and improving. Remember to save you work frequently because crashes are not unheard of.
+Please keep in mind that Graphite is alpha software, meaning it is actively changing and improving. Remember to save your work frequently because crashes are not unheard of.
 
 ## Current capabilities
 

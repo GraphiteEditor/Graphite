@@ -8,7 +8,6 @@
 	export let disabled = false;
 	export let active = false;
 	export let tooltip: string | undefined = undefined;
-	export let sharpRightCorners = false;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 
@@ -21,17 +20,7 @@
 		.join(" ");
 </script>
 
-<button
-	class={`icon-button size-${size} ${className} ${extraClasses}`.trim()}
-	class:disabled
-	class:active
-	class:sharp-right-corners={sharpRightCorners}
-	on:click={action}
-	{disabled}
-	title={tooltip}
-	tabindex={active ? -1 : 0}
-	{...$$restProps}
->
+<button class={`icon-button size-${size} ${className} ${extraClasses}`.trim()} class:disabled class:active on:click={action} {disabled} title={tooltip} tabindex={active ? -1 : 0} {...$$restProps}>
 	<IconLabel {icon} />
 </button>
 
