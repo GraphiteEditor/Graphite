@@ -24,22 +24,22 @@ pub enum FrontendGraphDataType {
 	Raster,
 	#[serde(rename = "color")]
 	Color,
-	#[serde(rename = "number")]
+	#[serde(rename = "general")]
 	Text,
 	#[serde(rename = "vector")]
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
-	#[serde(rename = "number")]
+	#[serde(rename = "general")]
 	Boolean,
 	/// Refers to the mathematical vector, with direction and magnitude.
-	#[serde(rename = "vec2")]
+	#[serde(rename = "number")]
 	Vector,
-	#[serde(rename = "graphic")]
+	#[serde(rename = "raster")]
 	GraphicGroup,
 	#[serde(rename = "artboard")]
 	Artboard,
-	#[serde(rename = "palette")]
+	#[serde(rename = "color")]
 	Palette,
 }
 impl FrontendGraphDataType {

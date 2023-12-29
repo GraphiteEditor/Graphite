@@ -1,3 +1,5 @@
+use crate::node_registry;
+
 use dyn_any::StaticType;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::document::{NodeId, Source};
@@ -5,12 +7,10 @@ use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
-use log::info;
+
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::sync::Arc;
-
-use crate::node_registry;
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 pub struct DynamicExecutor {
@@ -36,7 +36,6 @@ impl Default for DynamicExecutor {
 
 #[derive(PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-
 pub struct ResolvedDocumentNodeTypes {
 	pub inputs: HashMap<Source, Type>,
 	pub outputs: HashMap<Source, Type>,

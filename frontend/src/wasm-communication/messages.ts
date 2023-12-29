@@ -82,7 +82,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
+export type FrontendGraphDataType = "general" | "number" | "raster" | "vector" | "color" | "artboard";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;

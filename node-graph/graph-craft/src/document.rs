@@ -891,7 +891,6 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		//self.resolve_extract_nodes();
 		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
 			return;
@@ -945,8 +944,6 @@ impl NodeNetwork {
 		}
 
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
-			// Resolve all extract nodes in the inner network
-			//inner_network.resolve_extract_nodes();
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();

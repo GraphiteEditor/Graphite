@@ -2,6 +2,7 @@
 	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
+	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
@@ -29,7 +30,7 @@
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
 
-	let transform = { scale: 1, x: 0, y: 0 };
+	let transform = { scale: 1, x: 1200, y: 0 };
 	let panning = false;
 	let selected: bigint[] = [];
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
@@ -293,6 +294,8 @@
 	function pointerDown(e: PointerEvent) {
 		const [lmb, rmb] = [e.button === 0, e.button === 2];
 
+		const nodeError = (e.target as SVGSVGElement).closest("[data-node-error]") as HTMLElement;
+		if (nodeError && lmb) return;
 		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
@@ -608,8 +611,8 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		const capitalized = value.resolvedType ? "Resolved " + value.resolvedType : "Unresolved " + value.dataType[0].toUpperCase() + value.dataType.slice(1);
-		return `${capitalized} Data`;
+		const dataTypeCapitalized = `${value.dataType[0].toUpperCase()}${value.dataType.slice(1)}`;
+		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${dataTypeCapitalized}`;
 	}
 
 	onMount(() => {
@@ -675,7 +678,7 @@
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const stackDatainput = node.exposedInputs[0]}
+			{@const stackDataInput = node.exposedInputs[0]}
 			<div
 				class="layer"
 				class:selected={selected.includes(node.id)}
@@ -688,7 +691,9 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
-				{#if node.errors}<span class="node-error" transition:fade>{node.errors}</span>{/if}
+				{#if node.errors}
+					<span class="node-error" data-node-error transition:fade={FADE_TRANSITION}>{node.errors}</span>
+				{/if}
 				<div class="node-chain" />
 				<!-- Layer input port (from left) -->
 				<div class="input ports">
@@ -732,12 +737,12 @@
 						viewBox="0 0 8 8"
 						class="port bottom"
 						data-port="input"
-						data-datatype={stackDatainput.dataType}
-						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
-						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+						data-datatype={stackDataInput.dataType}
+						style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
+						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{dataTypeTooltip(stackDatainput)}</title>
+						<title>{dataTypeTooltip(stackDataInput)}</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 					</svg>
 				</div>
@@ -771,7 +776,9 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
-				{#if node.errors}<span class="node-error" transition:fade>{node.errors}</span>{/if}
+				{#if node.errors}
+					<span class="node-error" data-node-error transition:fade={FADE_TRANSITION}>{node.errors}</span>
+				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
@@ -985,15 +992,35 @@
 
 			.node-error {
 				position: absolute;
-				display: block;
-				translate: 0 -100%;
-				background-color: rebeccapurple;
-				padding: 3px;
-				margin-bottom: 5px;
 				width: max-content;
 				white-space: pre-wrap;
-				border-radius: 3px;
+				user-select: text;
+				line-height: 18px;
+				color: var(--color-2-mildblack);
+				background: var(--color-error-red);
+				padding: 8px;
+				border-radius: 2px;
+				bottom: calc(100% + 8px);
 				z-index: 10;
+				transition: opacity 0.2s ease-in-out;
+				opacity: 0.5;
+
+				&::selection {
+					background-color: var(--color-e-nearwhite);
+
+					// Target only Safari
+					@supports (background: -webkit-named-image(i)) {
+						& {
+							// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+							// https://stackoverflow.com/a/71753552/775283
+							background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
+						}
+					}
+				}
+
+				&:hover {
+					opacity: 1;
+				}
 			}
 
 			&::after {

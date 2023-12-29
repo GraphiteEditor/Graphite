@@ -1,15 +1,16 @@
+use crate::document::{value, InlineRust};
+use crate::document::{NodeId, OriginalLocation};
+
+use dyn_any::DynAny;
+use graphene_core::*;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-
-use crate::document::{value, InlineRust};
-use crate::document::{NodeId, OriginalLocation};
-use dyn_any::DynAny;
-use graphene_core::*;
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
 pub type DynFuture<'n, T> = Pin<Box<dyn core::future::Future<Output = T> + 'n>>;
@@ -560,7 +561,7 @@ pub enum GraphErrorType {
 	UnexpectedGenerics { index: usize, parameters: Vec<Type> },
 	NoImplementations,
 	NoConstructor,
-	InvalidImplemntations { parameters: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
+	InvalidImplementations { parameters: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
 	MultipleImplementations { parameters: String, valid: Vec<NodeIOTypes> },
 }
 impl core::fmt::Debug for GraphErrorType {
@@ -572,11 +573,20 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::UnexpectedGenerics { index, parameters } => write!(f, "Generic parameters should not exist but found at {index}: {parameters:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
-			GraphErrorType::InvalidImplemntations { parameters, error_inputs } => {
-				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("Input index {} expected {} found {}", index, expected, real);
+			GraphErrorType::InvalidImplementations { parameters, error_inputs } => {
+				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• Input index {} expected {} but found {}", index, expected, real);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
-				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>().join("\nor\n");
-				write!(f, "Invalid types - no implementations with ({parameters}).\n\nCaused by:\n{errors}",)
+				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>().join("\n");
+				write!(
+					f,
+					"Node graph type error! If this just appeared from editing the graph,\n\
+					consider undoing and finding another valid way to connect the nodes.\n\
+					\n\
+					No node implementation exists for type ({parameters}).\n\
+					\n\
+					Caused by one of:\n\
+					{errors}",
+				)
 			}
 			GraphErrorType::MultipleImplementations { parameters, valid } => write!(f, "Multiple implementations found ({parameters}):\n{valid:#?}"),
 		}
@@ -625,7 +635,7 @@ impl TypingContext {
 		}
 	}
 
-	/// Updates the `TypingContext` wtih a given proto network. This will infer the types of the nodes
+	/// Updates the `TypingContext` with a given proto network. This will infer the types of the nodes
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
@@ -648,8 +658,8 @@ impl TypingContext {
 	/// Returns the inferred types for a given node id.
 	pub fn infer(&mut self, node_id: NodeId, node: &ProtoNode) -> Result<NodeIOTypes, GraphErrors> {
 		// Return the inferred type if it is already known
-		if let Some(infered) = self.inferred.get(&node_id) {
-			return Ok(infered.clone());
+		if let Some(inferred) = self.inferred.get(&node_id) {
+			return Ok(inferred.clone());
 		}
 
 		let parameters = match node.construction_args {
@@ -753,7 +763,7 @@ impl TypingContext {
 					}
 				}
 				let parameters = [&input].into_iter().chain(&parameters).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
-				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplemntations { parameters, error_inputs })])
+				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { parameters, error_inputs })])
 			}
 			[(org_nio, output)] => {
 				let node_io = NodeIOTypes::new(input, (*output).clone(), parameters);

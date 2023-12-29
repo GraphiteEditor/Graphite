@@ -627,7 +627,6 @@
 					width: 24px;
 					font-size: 0;
 					overflow: hidden;
-					transition: background-color 0.5s ease;
 
 					div {
 						display: inline-block;
@@ -636,6 +635,7 @@
 						// For the least jarring luminance conversion, these colors are derived by placing a black layer with the "desaturate" blend mode over the colors.
 						// We don't use the CSS `filter: grayscale(1);` property because it produces overly dark tones for bright colors with a noticeable jump on hover.
 						background: var(--pure-color-gray);
+						transition: background-color 0.2s ease;
 					}
 
 					&:hover div,
