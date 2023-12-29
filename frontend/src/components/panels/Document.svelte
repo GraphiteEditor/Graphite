@@ -583,7 +583,7 @@
 
 							&[title^="Coming Soon"] {
 								opacity: 0.25;
-								transition: opacity 0.25s;
+								transition: opacity 0.2s;
 
 								&:hover {
 									opacity: 1;
@@ -703,7 +703,7 @@
 
 					.graph-view {
 						pointer-events: none;
-						transition: opacity 0.1s ease-in-out;
+						transition: opacity 0.2s ease-in-out;
 						opacity: 0;
 
 						&.open {

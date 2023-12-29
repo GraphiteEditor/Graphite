@@ -112,6 +112,7 @@ body > h2 {
 
 svg text {
 	pointer-events: none;
+	-webkit-user-select: none;
 	user-select: none;
 }
 

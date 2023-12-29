@@ -6,7 +6,7 @@ use graph_craft::document::NodeNetwork;
 
 pub struct PropertiesPanelMessageHandlerData<'a> {
 	pub document_name: &'a str,
-	pub document_network: &'a mut NodeNetwork,
+	pub document_network: &'a NodeNetwork,
 	pub document_metadata: &'a mut DocumentMetadata,
 	pub node_graph_message_handler: &'a NodeGraphMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,

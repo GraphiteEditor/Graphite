@@ -101,22 +101,19 @@
 		--color-e-nearwhite-rgb: 238, 238, 238;
 		--color-f-white: #fff;
 		--color-f-white-rgb: 255, 255, 255;
+		--color-error-red: #d6536e;
+		--color-error-red-rgb: 214, 83, 110;
 
 		--color-data-general: #c5c5c5;
 		--color-data-general-dim: #767676;
-		--color-data-vector: #65bbe5;
-		--color-data-vector-dim: #4b778c;
+		--color-data-number: #cbbab4;
+		--color-data-number-dim: #87736b;
 		--color-data-raster: #e4bb72;
 		--color-data-raster-dim: #8b7752;
-		--color-data-mask: #8d85c7;
-		--color-data-number: #d6536e;
-		--color-data-number-dim: #803242;
-		--color-data-vec2: #cc00ff;
-		--color-data-vec2-dim: #71008d;
-		--color-data-color: #70a898;
-		--color-data-color-dim: #43645b;
-		--color-data-graphic: #e4bb72;
-		--color-data-graphic-dim: #8b7752;
+		--color-data-vector: #65bbe5;
+		--color-data-vector-dim: #4b778c;
+		--color-data-color: #dce472;
+		--color-data-color-dim: #898d55;
 		--color-data-artboard: #70a898;
 		--color-data-artboard-dim: #3a6156;
 

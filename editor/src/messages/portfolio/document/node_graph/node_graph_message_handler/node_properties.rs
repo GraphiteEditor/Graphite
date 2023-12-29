@@ -214,7 +214,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -243,7 +243,7 @@ fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -739,7 +739,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 }
 
 fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
 
 	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
 		if let &TaggedValue::Color(x) = tagged_value {
@@ -1452,9 +1452,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", None, add_blank_assist);
 
-	let vector_data = start_widgets(document_node, node_id, 0, "Data", FrontendGraphDataType::Vector, false);
-	let vector_data = LayoutGroup::Row { widgets: vector_data };
-	vec![vector_data, translation, rotation, scale]
+	vec![translation, rotation, scale]
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

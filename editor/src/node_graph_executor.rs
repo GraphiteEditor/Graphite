@@ -12,6 +12,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
+use graph_craft::proto::GraphErrors;
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
@@ -22,7 +23,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
 use glam::{DAffine2, DVec2, UVec2};
 use std::cell::RefCell;
@@ -40,6 +41,8 @@ pub struct NodeRuntime {
 	pub(crate) thumbnails: HashMap<NodeId, SvgSegmentList>,
 	pub(crate) click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub(crate) upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub(crate) resolved_types: ResolvedDocumentNodeTypes,
+	pub(crate) node_graph_errors: GraphErrors,
 	graph_hash: Option<u64>,
 	monitor_nodes: Vec<Vec<NodeId>>,
 }
@@ -73,6 +76,8 @@ pub(crate) struct GenerationResponse {
 	new_thumbnails: HashMap<NodeId, SvgSegmentList>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	resolved_types: ResolvedDocumentNodeTypes,
+	node_graph_errors: GraphErrors,
 	transform: DAffine2,
 }
 
@@ -113,6 +118,8 @@ impl NodeRuntime {
 			click_targets: HashMap::new(),
 			graph_hash: None,
 			upstream_transforms: HashMap::new(),
+			resolved_types: ResolvedDocumentNodeTypes::default(),
+			node_graph_errors: Vec::new(),
 			monitor_nodes: Vec::new(),
 		}
 	}
@@ -147,6 +154,8 @@ impl NodeRuntime {
 						new_thumbnails: self.thumbnails.clone(),
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
+						resolved_types: self.resolved_types.clone(),
+						node_graph_errors: core::mem::take(&mut self.node_graph_errors),
 						transform,
 					};
 					self.sender.send_generation_response(response);
@@ -188,7 +197,7 @@ impl NodeRuntime {
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
 				.filter(|(_, node)| node.implementation == DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"))
-				.map(|(_, node)| node.path.clone().unwrap_or_default())
+				.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
 				.collect::<Vec<_>>();
 
 			// We assume only one output
@@ -201,11 +210,11 @@ impl NodeRuntime {
 
 			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 			if let Err(e) = self.executor.update(proto_network).await {
-				error!("Failed to update executor:\n{e}");
-				return Err(e);
+				self.node_graph_errors = e;
+			} else {
+				self.graph_hash = Some(hash_code);
 			}
-
-			self.graph_hash = Some(hash_code);
+			self.resolved_types = self.executor.document_node_types();
 		}
 
 		use graph_craft::graphene_compiler::Executor;
@@ -560,8 +569,11 @@ impl NodeGraphExecutor {
 					new_thumbnails,
 					new_click_targets,
 					new_upstream_transforms,
+					resolved_types,
+					node_graph_errors,
 					transform,
 				}) => {
+					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 

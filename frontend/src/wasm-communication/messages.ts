@@ -82,18 +82,22 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "raster" | "color" | "vector" | "vec2" | "graphic" | "artboard";
+export type FrontendGraphDataType = "general" | "number" | "raster" | "vector" | "color" | "artboard";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly resolvedType!: string | undefined;
 }
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
+
+	readonly resolvedType!: string | undefined;
 }
 
 export class FrontendNode {
@@ -119,6 +123,8 @@ export class FrontendNode {
 	readonly previewed!: boolean;
 
 	readonly disabled!: boolean;
+
+	readonly errors!: string | undefined;
 }
 
 export class FrontendNodeLink {

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { getContext, onMount, tick } from "svelte";
+	import { fade } from "svelte/transition";
 
+	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
-	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -28,7 +30,7 @@
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
 
-	let transform = { scale: 1, x: 0, y: 0 };
+	let transform = { scale: 1, x: 1200, y: 0 };
 	let panning = false;
 	let selected: bigint[] = [];
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
@@ -292,6 +294,8 @@
 	function pointerDown(e: PointerEvent) {
 		const [lmb, rmb] = [e.button === 0, e.button === 2];
 
+		const nodeError = (e.target as SVGSVGElement).closest("[data-node-error]") as HTMLElement;
+		if (nodeError && lmb) return;
 		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
@@ -606,9 +610,9 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltip(dataType: FrontendGraphDataType): string {
-		const capitalized = dataType[0].toUpperCase() + dataType.slice(1);
-		return `${capitalized} Data`;
+	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
+		const dataTypeCapitalized = `${value.dataType[0].toUpperCase()}${value.dataType.slice(1)}`;
+		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${dataTypeCapitalized}`;
 	}
 
 	onMount(() => {
@@ -674,7 +678,7 @@
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const stackDatainput = node.exposedInputs[0]}
+			{@const stackDataInput = node.exposedInputs[0]}
 			<div
 				class="layer"
 				class:selected={selected.includes(node.id)}
@@ -687,6 +691,10 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
+				{#if node.errors}
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+				{/if}
 				<div class="node-chain" />
 				<!-- Layer input port (from left) -->
 				<div class="input ports">
@@ -701,7 +709,7 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryInput)}</title>
 						{/if}
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 					</svg>
@@ -721,7 +729,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryOutput)}</title>
 							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
 						</svg>
 					{/if}
@@ -730,12 +738,12 @@
 						viewBox="0 0 8 8"
 						class="port bottom"
 						data-port="input"
-						data-datatype={stackDatainput.dataType}
-						style:--data-color={`var(--color-data-${stackDatainput.dataType})`}
-						style:--data-color-dim={`var(--color-data-${stackDatainput.dataType}-dim)`}
+						data-datatype={stackDataInput.dataType}
+						style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
+						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{dataTypeTooltip(stackDatainput.dataType)}</title>
+						<title>{dataTypeTooltip(stackDataInput)}</title>
 						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
 					</svg>
 				</div>
@@ -769,6 +777,10 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
 			>
+				{#if node.errors}
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
@@ -798,7 +810,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryInput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryInput)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -814,7 +826,7 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 								bind:this={inputs[nodeIndex][index + 1]}
 							>
-								<title>{dataTypeTooltip(parameter.dataType)}</title>
+								<title>{dataTypeTooltip(parameter)}</title>
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 							</svg>
 						{/if}
@@ -833,7 +845,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput.dataType)}</title>
+							<title>{dataTypeTooltip(node.primaryOutput)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/if}
@@ -846,9 +858,9 @@
 							data-datatype={parameter.dataType}
 							style:--data-color={`var(--color-data-${parameter.dataType})`}
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-							bind:this={outputs[nodeIndex][outputIndex + 1]}
+							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{dataTypeTooltip(parameter.dataType)}</title>
+							<title>{dataTypeTooltip(parameter)}</title>
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
 						</svg>
 					{/each}
@@ -979,6 +991,68 @@
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
 			// backdrop-filter: blur(4px);
 			background: rgba(0, 0, 0, 0.33);
+
+			.node-error {
+				position: absolute;
+				width: max-content;
+				white-space: pre-wrap;
+				max-width: 600px;
+				line-height: 18px;
+				color: var(--color-2-mildblack);
+				background: var(--color-error-red);
+				padding: 8px;
+				border-radius: 4px;
+				bottom: calc(100% + 12px);
+				z-index: -1;
+				transition: opacity 0.2s ease-in-out;
+				opacity: 0.5;
+
+				// Tail
+				&::after {
+					content: "";
+					position: absolute;
+					left: 6px;
+					bottom: -8px;
+					width: 0;
+					height: 0;
+					border-style: solid;
+					border-width: 8px 6px 0 6px;
+					border-color: var(--color-error-red) transparent transparent transparent;
+				}
+
+				&.hover {
+					opacity: 0;
+					z-index: 1;
+					pointer-events: none;
+				}
+
+				&.faded:hover + .hover {
+					opacity: 1;
+				}
+
+				&.faded:hover {
+					z-index: 2;
+					opacity: 1;
+					-webkit-user-select: text;
+					user-select: text;
+					transition:
+						opacity 0.2s ease-in-out,
+						z-index 0s 0.2s;
+
+					&::selection {
+						background-color: var(--color-e-nearwhite);
+
+						// Target only Safari
+						@supports (background: -webkit-named-image(i)) {
+							& {
+								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+								// https://stackoverflow.com/a/71753552/775283
+								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
+							}
+						}
+					}
+				}
+			}
 
 			&::after {
 				content: "";

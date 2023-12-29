@@ -5,10 +5,11 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
-
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput, Source};
+use graph_craft::proto::GraphErrors;
 use graphene_core::*;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 mod document_node_types;
 mod node_properties;
 
@@ -23,22 +24,22 @@ pub enum FrontendGraphDataType {
 	Raster,
 	#[serde(rename = "color")]
 	Color,
-	#[serde(rename = "number")]
+	#[serde(rename = "general")]
 	Text,
 	#[serde(rename = "vector")]
 	Subpath,
 	#[serde(rename = "number")]
 	Number,
-	#[serde(rename = "number")]
+	#[serde(rename = "general")]
 	Boolean,
 	/// Refers to the mathematical vector, with direction and magnitude.
-	#[serde(rename = "vec2")]
+	#[serde(rename = "number")]
 	Vector,
-	#[serde(rename = "graphic")]
+	#[serde(rename = "raster")]
 	GraphicGroup,
 	#[serde(rename = "artboard")]
 	Artboard,
-	#[serde(rename = "palette")]
+	#[serde(rename = "color")]
 	Palette,
 }
 impl FrontendGraphDataType {
@@ -65,6 +66,8 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
+	#[serde(rename = "resolvedType")]
+	resolved_type: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -72,6 +75,8 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	data_type: FrontendGraphDataType,
 	name: String,
+	#[serde(rename = "resolvedType")]
+	resolved_type: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -92,6 +97,7 @@ pub struct FrontendNode {
 	pub position: (i32, i32),
 	pub disabled: bool,
 	pub previewed: bool,
+	pub errors: Option<String>,
 }
 
 // (link_start, link_end, link_end_input_index)
@@ -124,6 +130,8 @@ impl FrontendNodeType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeGraphMessageHandler {
 	pub network: Vec<NodeId>,
+	pub resolved_types: ResolvedDocumentNodeTypes,
+	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 }
@@ -144,6 +152,8 @@ impl Default for NodeGraphMessageHandler {
 
 		Self {
 			network: Vec::new(),
+			resolved_types: ResolvedDocumentNodeTypes::default(),
+			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 		}
@@ -264,7 +274,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(network: &NodeNetwork, graph_view_overlay_open: bool, responses: &mut VecDeque<Message>) {
+	fn send_graph(&self, network: &NodeNetwork, graph_view_overlay_open: bool, responses: &mut VecDeque<Message>) {
 		responses.add(PropertiesPanelMessage::Refresh);
 
 		if !graph_view_overlay_open {
@@ -298,6 +308,7 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (id, node) in &network.nodes {
+			let node_path = vec![*id];
 			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
 			let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
 				warn!("Node '{}' does not exist in library", node.name);
@@ -305,20 +316,26 @@ impl NodeGraphMessageHandler {
 			};
 
 			// Inputs
-			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().map(|input_type| FrontendGraphInput {
-				data_type: input_type.data_type,
-				name: input_type.name.to_string(),
+			let mut inputs = node.inputs.iter().zip(node_type.inputs.iter().enumerate().map(|(index, input_type)| {
+				let index = node.inputs.iter().take(index).filter(|input| input.is_exposed()).count();
+				FrontendGraphInput {
+					data_type: input_type.data_type,
+					name: input_type.name.to_string(),
+					resolved_type: self.resolved_types.inputs.get(&Source { node: node_path.clone(), index }).map(|input| format!("{input:?}")),
+				}
 			}));
 			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
 			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
 			// Outputs
-			let mut outputs = node_type.outputs.iter().map(|output_type| FrontendGraphOutput {
+			let mut outputs = node_type.outputs.iter().enumerate().map(|(index, output_type)| FrontendGraphOutput {
 				data_type: output_type.data_type,
 				name: output_type.name.to_string(),
+				resolved_type: self.resolved_types.outputs.get(&Source { node: node_path.clone(), index }).map(|output| format!("{output:?}")),
 			});
 			let primary_output = if node.has_primary_output { outputs.next() } else { None };
 
+			let errors = self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone());
 			nodes.push(FrontendNode {
 				is_layer: node.is_layer(),
 				id: *id,
@@ -331,6 +348,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(*id),
 				disabled: network.disabled.contains(id),
+				errors: errors.map(|e| format!("{e:?}")),
 			})
 		}
 		responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
@@ -607,7 +625,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selected(document_network, metadata, responses);
 			}
@@ -635,7 +653,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 					}
 
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 					self.update_selected(document_network, metadata, responses);
 					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 				}
@@ -648,7 +666,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selected(document_network, metadata, responses);
 			}
@@ -698,7 +716,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				Self::send_graph(network, graph_view_overlay_open, responses);
+				self.send_graph(network, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -763,7 +781,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SendGraph { should_rerender } => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 					if should_rerender {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
@@ -890,7 +908,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
 						network.disabled.push(node_id);
 					}
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if network.connected_to_output(node_id) {
@@ -926,7 +944,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						return;
 					}
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 				}
 				self.update_selection_action_buttons(document_network, metadata, responses);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -936,12 +954,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					metadata.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					Self::send_graph(network, graph_view_overlay_open, responses);
+					self.send_graph(network, graph_view_overlay_open, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 				}
 				self.update_selected(document_network, metadata, responses);
+			}
+			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
+				let changed = self.resolved_types != resolved_types || self.node_graph_errors != node_graph_errors;
+
+				self.resolved_types = resolved_types;
+				self.node_graph_errors = node_graph_errors;
+
+				if changed {
+					if let Some(network) = document_network.nested_network(&self.network) {
+						self.send_graph(network, graph_view_overlay_open, responses)
+					}
+				}
 			}
 		}
 		self.has_selection = metadata.has_selected_nodes();

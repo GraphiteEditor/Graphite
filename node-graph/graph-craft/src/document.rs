@@ -166,9 +166,32 @@ pub struct DocumentNode {
 	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub world_state_hash: u64,
-	/// The path to this node as of when [`NodeNetwork::generate_node_paths`] was called.
-	/// For example if this node was ID 6 inside a node with ID 4 and with a [`DocumentNodeImplementation::Network`], the path would be [4, 6].
+	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
+	#[serde(skip)]
+	pub original_location: OriginalLocation,
+}
+
+/// Represents the original location of a node input/output when [`NodeNetwork::generate_node_paths`] was called, allowing the types and errors to be derived.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Source {
+	pub node: Vec<NodeId>,
+	pub index: usize,
+}
+
+/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
+#[derive(Clone, Debug, PartialEq, Eq, DynAny, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct OriginalLocation {
+	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
 	pub path: Option<Vec<NodeId>>,
+	/// Each document input source maps to one protonode input (however one protonode input may come from several sources)
+	pub inputs_source: HashMap<Source, usize>,
+	/// A list of document sources for the node's output
+	pub outputs_source: HashMap<Source, usize>,
+	pub inputs_exposed: Vec<bool>,
+	/// Skipping inputs is useful for the manual composition thing - whereby a hidden `Footprint` input is added as the first input.
+	pub skip_inputs: usize,
 }
 
 impl Default for DocumentNode {
@@ -183,14 +206,42 @@ impl Default for DocumentNode {
 			metadata: Default::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
-			path: Default::default(),
+			original_location: OriginalLocation::default(),
 		}
 	}
 }
 
+impl Hash for OriginalLocation {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.path.hash(state);
+		self.inputs_source.iter().for_each(|val| val.hash(state));
+		self.outputs_source.iter().for_each(|val| val.hash(state));
+		self.inputs_exposed.hash(state);
+		self.skip_inputs.hash(state);
+	}
+}
+impl OriginalLocation {
+	pub fn inputs<'a>(&'a self, index: usize) -> impl Iterator<Item = Source> + 'a {
+		[(index >= self.skip_inputs).then(|| Source {
+			node: self.path.clone().unwrap_or_default(),
+			index: self.inputs_exposed.iter().take(index - self.skip_inputs).filter(|&&exposed| exposed).count(),
+		})]
+		.into_iter()
+		.flatten()
+		.chain(self.inputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
+	}
+	pub fn outputs<'a>(&'a self, index: usize) -> impl Iterator<Item = Source> + 'a {
+		[Source {
+			node: self.path.clone().unwrap_or_default(),
+			index,
+		}]
+		.into_iter()
+		.chain(self.outputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
+	}
+}
 impl DocumentNode {
 	/// Locate the input that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool) {
+	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, lambda: bool, source: impl Iterator<Item = Source>, skip: usize) {
 		let (index, _) = self
 			.inputs
 			.iter()
@@ -200,6 +251,10 @@ impl DocumentNode {
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
 		self.inputs[index] = NodeInput::Node { node_id, output_index, lambda };
+		let input_source = &mut self.original_location.inputs_source;
+		for source in source {
+			input_source.insert(source, index + self.original_location.skip_inputs - skip);
+		}
 	}
 
 	fn resolve_proto_node(mut self) -> ProtoNode {
@@ -246,7 +301,7 @@ impl DocumentNode {
 			identifier: fqn,
 			input,
 			construction_args: args,
-			document_node_path: self.path.unwrap_or_default(),
+			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
 			world_state_hash: self.world_state_hash,
 		}
@@ -762,10 +817,15 @@ impl NodeNetwork {
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
 				network.generate_node_paths(new_path.as_slice());
 			}
-			if node.path.is_some() {
+			if node.original_location.path.is_some() {
 				log::warn!("Attempting to overwrite node path");
 			} else {
-				node.path = Some(new_path);
+				node.original_location = OriginalLocation {
+					path: Some(new_path),
+					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
+					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
+					..Default::default()
+				}
 			}
 		}
 	}
@@ -831,7 +891,6 @@ impl NodeNetwork {
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		self.resolve_extract_nodes();
 		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
 			return;
@@ -850,7 +909,7 @@ impl NodeNetwork {
 		}
 
 		// replace value inputs with value nodes
-		for input in &mut node.inputs {
+		for input in node.inputs.iter_mut() {
 			// Skip inputs that are already value nodes
 			if node.implementation == DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()) {
 				break;
@@ -860,20 +919,17 @@ impl NodeNetwork {
 			if let NodeInput::Value { tagged_value, exposed } = previous_input {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
-				let path = if let Some(mut new_path) = node.path.clone() {
-					new_path.push(value_node_id);
-					Some(new_path)
-				} else {
-					None
-				};
-
+				let mut original_location = node.original_location.clone();
+				if let Some(path) = &mut original_location.path {
+					path.push(value_node_id);
+				}
 				self.nodes.insert(
 					merged_node_id,
 					DocumentNode {
 						name: "Value".into(),
 						inputs: vec![NodeInput::Value { tagged_value, exposed }],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
-						path,
+						original_location,
 						..Default::default()
 					},
 				);
@@ -888,8 +944,6 @@ impl NodeNetwork {
 		}
 
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
-			// Resolve all extract nodes in the inner network
-			inner_network.resolve_extract_nodes();
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
@@ -914,14 +968,15 @@ impl NodeNetwork {
 				"Document Nodes with a Network implementation should have the same number of inner network inputs as inputs declared on the Document Node"
 			);
 			// Match the document node input and the inputs of the inner network
-			for (document_input, network_input) in node.inputs.into_iter().zip(inner_network.inputs.iter()) {
+			for (input_index, (document_input, network_input)) in node.inputs.into_iter().zip(inner_network.inputs.iter()).enumerate() {
 				// Keep track of how many network inputs we have already connected for each node
 				let offset = network_offsets.entry(network_input).or_insert(0);
 				match document_input {
 					// If the input to self is a node, connect the corresponding output of the inner network to it
 					NodeInput::Node { node_id, output_index, lambda } => {
 						let network_input = self.nodes.get_mut(network_input).unwrap();
-						network_input.populate_first_network_input(node_id, output_index, *offset, lambda);
+						let skip = node.original_location.skip_inputs;
+						network_input.populate_first_network_input(node_id, output_index, *offset, lambda, node.original_location.inputs(input_index), skip);
 					}
 					NodeInput::Network(_) => {
 						*network_offsets.get_mut(network_input).unwrap() += 1;
@@ -940,6 +995,13 @@ impl NodeNetwork {
 
 				self.replace_node_inputs(node_input(id, i, false), node_input(output.node_id, output.node_output_index, false));
 				self.replace_node_inputs(node_input(id, i, true), node_input(output.node_id, output.node_output_index, true));
+
+				if let Some(new_output_node) = self.nodes.get_mut(&output.node_id) {
+					for source in node.original_location.outputs(i) {
+						info!("{:?} {}", source, output.node_output_index);
+						new_output_node.original_location.outputs_source.insert(source, output.node_output_index);
+					}
+				}
 
 				self.replace_network_outputs(NodeOutput::new(id, i), output);
 			}
@@ -960,9 +1022,15 @@ impl NodeNetwork {
 			if ident.name == "graphene_core::ops::IdentityNode" {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
+					if let Some(input_node) = self.nodes.get_mut(&node_id) {
+						for source in node.original_location.outputs(0) {
+							input_node.original_location.outputs_source.insert(source, output_index);
+						}
+					}
+
 					let input_node_id = node_id;
 					for output in self.nodes.values_mut() {
-						for input in &mut output.inputs {
+						for (index, input) in output.inputs.iter_mut().enumerate() {
 							if let NodeInput::Node {
 								node_id: output_node_id,
 								output_index: output_output_index,
@@ -972,6 +1040,11 @@ impl NodeNetwork {
 								if *output_node_id == id {
 									*output_node_id = input_node_id;
 									*output_output_index = output_index;
+
+									let input_source = &mut output.original_location.inputs_source;
+									for source in node.original_location.inputs(index) {
+										input_source.insert(source, index + output.original_location.skip_inputs - node.original_location.skip_inputs);
+									}
 								}
 							}
 						}
@@ -1300,7 +1373,14 @@ mod test {
 						identifier: "graphene_core::structural::ConsNode".into(),
 						input: ProtoNodeInput::ManualComposition(concrete!(u32)),
 						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
-						document_node_path: vec![NodeId(1), NodeId(0)],
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(0)]),
+							inputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 1)].into(),
+							outputs_source: HashMap::new(),
+							inputs_exposed: vec![false, false],
+							skip_inputs: 0,
+						},
+
 						..Default::default()
 					},
 				),
@@ -1310,7 +1390,13 @@ mod test {
 						identifier: "graphene_core::ops::AddPairNode".into(),
 						input: ProtoNodeInput::Node(NodeId(10), false),
 						construction_args: ConstructionArgs::Nodes(vec![]),
-						document_node_path: vec![NodeId(1), NodeId(1)],
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(1)]),
+							inputs_source: HashMap::new(),
+							outputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 0)].into(),
+							inputs_exposed: vec![true],
+							skip_inputs: 0,
+						},
 						..Default::default()
 					},
 				),
@@ -1338,7 +1424,13 @@ mod test {
 						name: "Cons".into(),
 						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::structural::ConsNode".into()),
-						path: Some(vec![NodeId(1), NodeId(0)]),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(0)]),
+							inputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 1)].into(),
+							outputs_source: HashMap::new(),
+							inputs_exposed: vec![false, false],
+							skip_inputs: 0,
+						},
 						..Default::default()
 					},
 				),
@@ -1351,7 +1443,13 @@ mod test {
 							exposed: false,
 						}],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::ClonedNode".into()),
-						path: Some(vec![NodeId(1), NodeId(4)]),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(4)]),
+							inputs_source: HashMap::new(),
+							outputs_source: HashMap::new(),
+							inputs_exposed: vec![false, false],
+							skip_inputs: 0,
+						},
 						..Default::default()
 					},
 				),
@@ -1361,7 +1459,13 @@ mod test {
 						name: "Add".into(),
 						inputs: vec![NodeInput::node(NodeId(10), 0)],
 						implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::AddPairNode".into()),
-						path: Some(vec![NodeId(1), NodeId(1)]),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(1)]),
+							inputs_source: HashMap::new(),
+							outputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 0)].into(),
+							inputs_exposed: vec![true],
+							skip_inputs: 0,
+						},
 						..Default::default()
 					},
 				),
