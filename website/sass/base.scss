@@ -280,6 +280,7 @@ pre {
 			font-size: 0.75em;
 			font-weight: bold;
 			font-style: italic;
+			-webkit-user-select: none;
 			user-select: none;
 			pointer-events: none;
 			position: fixed;
@@ -326,6 +327,7 @@ pre {
 				&:first-child {
 					padding-left: 20px;
 					padding-right: 10px;
+					-webkit-user-select: none;
 					user-select: none;
 					vertical-align: top;
 					text-align: right;

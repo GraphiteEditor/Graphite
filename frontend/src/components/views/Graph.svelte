@@ -692,7 +692,8 @@
 				data-node={node.id}
 			>
 				{#if node.errors}
-					<span class="node-error" data-node-error transition:fade={FADE_TRANSITION}>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
 				<div class="node-chain" />
 				<!-- Layer input port (from left) -->
@@ -777,7 +778,8 @@
 				data-node={node.id}
 			>
 				{#if node.errors}
-					<span class="node-error" data-node-error transition:fade={FADE_TRANSITION}>{node.errors}</span>
+					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
+					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
@@ -994,32 +996,61 @@
 				position: absolute;
 				width: max-content;
 				white-space: pre-wrap;
-				user-select: text;
+				max-width: 600px;
 				line-height: 18px;
 				color: var(--color-2-mildblack);
 				background: var(--color-error-red);
 				padding: 8px;
-				border-radius: 2px;
-				bottom: calc(100% + 8px);
-				z-index: 10;
+				border-radius: 4px;
+				bottom: calc(100% + 12px);
+				z-index: -1;
 				transition: opacity 0.2s ease-in-out;
 				opacity: 0.5;
 
-				&::selection {
-					background-color: var(--color-e-nearwhite);
-
-					// Target only Safari
-					@supports (background: -webkit-named-image(i)) {
-						& {
-							// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
-							// https://stackoverflow.com/a/71753552/775283
-							background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
-						}
-					}
+				// Tail
+				&::after {
+					content: "";
+					position: absolute;
+					left: 6px;
+					bottom: -8px;
+					width: 0;
+					height: 0;
+					border-style: solid;
+					border-width: 8px 6px 0 6px;
+					border-color: var(--color-error-red) transparent transparent transparent;
 				}
 
-				&:hover {
+				&.hover {
+					opacity: 0;
+					z-index: 1;
+					pointer-events: none;
+				}
+
+				&.faded:hover + .hover {
 					opacity: 1;
+				}
+
+				&.faded:hover {
+					z-index: 2;
+					opacity: 1;
+					-webkit-user-select: text;
+					user-select: text;
+					transition:
+						opacity 0.2s ease-in-out,
+						z-index 0s 0.2s;
+
+					&::selection {
+						background-color: var(--color-e-nearwhite);
+
+						// Target only Safari
+						@supports (background: -webkit-named-image(i)) {
+							& {
+								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+								// https://stackoverflow.com/a/71753552/775283
+								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
+							}
+						}
+					}
 				}
 			}
 

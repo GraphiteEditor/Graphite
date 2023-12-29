@@ -574,18 +574,27 @@ impl core::fmt::Debug for GraphErrorType {
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
 			GraphErrorType::InvalidImplementations { parameters, error_inputs } => {
-				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• Input index {} expected {} but found {}", index, expected, real);
+				let ordinal = |x: usize| match x.to_string().as_str() {
+					x if x.ends_with('1') && !x.ends_with("11") => format!("{x}st"),
+					x if x.ends_with('2') && !x.ends_with("12") => format!("{x}nd"),
+					x if x.ends_with('3') && !x.ends_with("13") => format!("{x}rd"),
+					x => format!("{x}th parameter"),
+				};
+				let format_index = |index: usize| if index == 0 { "primary".to_string() } else { format!("{} parameter", ordinal(index - 1)) };
+				let format_error = |(index, (real, expected)): &(usize, (Type, Type))| format!("• The {} input expected {} but found {}", format_index(*index), expected, real);
 				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
-				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>().join("\n");
+				let errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
 				write!(
 					f,
-					"Node graph type error! If this just appeared from editing the graph,\n\
-					consider undoing and finding another valid way to connect the nodes.\n\
+					"Node graph type error! If this just appeared while editing the graph,\n\
+					consider using undo to go back and trying another way to connect the nodes.\n\
 					\n\
 					No node implementation exists for type ({parameters}).\n\
 					\n\
-					Caused by one of:\n\
-					{errors}",
+					Caused by{}:\n\
+					{}",
+					if errors.len() > 1 { " one of" } else { "" },
+					errors.join("\n")
 				)
 			}
 			GraphErrorType::MultipleImplementations { parameters, valid } => write!(f, "Multiple implementations found ({parameters}):\n{valid:#?}"),
