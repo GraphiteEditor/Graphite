@@ -1353,7 +1353,7 @@ impl DocumentMessageHandler {
 					.max(100.)
 					.range_min(Some(0.))
 					.range_max(Some(100.))
-					.mode(NumberInputMode::Range)
+					.mode_range()
 					.on_update(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {
 							DocumentMessage::SetOpacityForSelectedLayers { opacity: value / 100. }.into()

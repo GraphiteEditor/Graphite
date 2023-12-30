@@ -420,14 +420,11 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 	let brush_node = resolve_document_node_type("Brush")
 		.expect("Brush node does not exist")
 		.to_document_node_default_inputs([], DocumentNodeMetadata::position((-8, 0)));
-	let cull_node = resolve_document_node_type("Cull")
-		.expect("Cull node does not exist")
-		.to_document_node_default_inputs([Some(NodeInput::node(NodeId(1), 0))], DocumentNodeMetadata::default());
 
 	let id = NodeId(generate_uuid());
 	responses.add(GraphOperationMessage::NewCustomLayer {
 		id,
-		nodes: HashMap::from([(NodeId(1), brush_node), (NodeId(0), cull_node)]),
+		nodes: HashMap::from([(NodeId(0), brush_node)]),
 		parent: document.new_layer_parent(),
 		insert_index: -1,
 	});

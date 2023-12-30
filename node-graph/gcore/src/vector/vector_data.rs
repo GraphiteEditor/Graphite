@@ -16,7 +16,8 @@ pub struct VectorData {
 	pub transform: DAffine2,
 	pub style: PathStyle,
 	pub alpha_blending: AlphaBlending,
-	// TODO: Keavon asks: what is this for? Is it dead code? It seems to only be set, never read.
+	/// A list of all manipulator groups (referenced in `subpaths`) that have smooth handles (where their handles are colinear, or locked to 180° angles from one another)
+	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have subpath and mirror angle inputs"` to find it).
 	pub mirror_angle: Vec<ManipulatorGroupId>,
 }
 

@@ -998,7 +998,6 @@ impl NodeNetwork {
 
 				if let Some(new_output_node) = self.nodes.get_mut(&output.node_id) {
 					for source in node.original_location.outputs(i) {
-						info!("{:?} {}", source, output.node_output_index);
 						new_output_node.original_location.outputs_source.insert(source, output.node_output_index);
 					}
 				}

@@ -782,11 +782,11 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 pub fn levels_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let input_shadows = number_widget(document_node, node_id, 1, "Shadows", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let input_midtones = number_widget(document_node, node_id, 2, "Midtones", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let input_highlights = number_widget(document_node, node_id, 3, "Highlights", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let output_minimums = number_widget(document_node, node_id, 4, "Output Minimums", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let output_maximums = number_widget(document_node, node_id, 5, "Output Maximums", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![
 		LayoutGroup::Row { widgets: input_shadows },
@@ -802,12 +802,12 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 	const MAX: f64 = 300.;
 	// TODO: Add tint color (blended above using the "Color" blend mode)
 	let tint = color_widget(document_node, node_id, 1, "Tint", ColorButton::default(), true);
-	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
-	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().min(MIN).max(MAX).unit("%"), true);
+	let r_weight = number_widget(document_node, node_id, 2, "Reds", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
+	let y_weight = number_widget(document_node, node_id, 3, "Yellows", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
+	let g_weight = number_widget(document_node, node_id, 4, "Greens", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
+	let c_weight = number_widget(document_node, node_id, 5, "Cyans", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
+	let b_weight = number_widget(document_node, node_id, 6, "Blues", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
+	let m_weight = number_widget(document_node, node_id, 7, "Magentas", NumberInput::default().mode_range().min(MIN).max(MAX).unit("%"), true);
 
 	vec![
 		tint,
@@ -823,7 +823,7 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
@@ -1043,8 +1043,8 @@ pub fn noise_pattern_properties(document_node: &DocumentNode, node_id: NodeId, _
 
 pub fn adjust_hsl_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let hue_shift = number_widget(document_node, node_id, 1, "Hue Shift", NumberInput::default().min(-180.).max(180.).unit("°"), true);
-	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let saturation_shift = number_widget(document_node, node_id, 2, "Saturation Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+	let lightness_shift = number_widget(document_node, node_id, 3, "Lightness Shift", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 
 	vec![
 		LayoutGroup::Row { widgets: hue_shift },
@@ -1079,15 +1079,15 @@ pub fn _blur_image_properties(document_node: &DocumentNode, node_id: NodeId, _co
 }
 
 pub fn adjust_threshold_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
-	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().min(0.).max(100.).unit("%"), true);
+	let thereshold_min = number_widget(document_node, node_id, 1, "Min Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let thereshold_max = number_widget(document_node, node_id, 2, "Max Luminance", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 	let luminance_calc = luminance_calculation(document_node, node_id, 3, "Luminance Calc", true);
 
 	vec![LayoutGroup::Row { widgets: thereshold_min }, LayoutGroup::Row { widgets: thereshold_max }, luminance_calc]
 }
 
 pub fn adjust_vibrance_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let vibrance = number_widget(document_node, node_id, 1, "Vibrance", NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 
 	vec![LayoutGroup::Row { widgets: vibrance }]
 }
@@ -1140,10 +1140,38 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 		(false, RedGreenBlue::Green) => ((10, "(Green) Red", 0.), (11, "(Green) Green", 100.), (12, "(Green) Blue", 0.), (13, "(Green) Constant", 0.)),
 		(false, RedGreenBlue::Blue) => ((14, "(Blue) Red", 0.), (15, "(Blue) Green", 0.), (16, "(Blue) Blue", 100.), (17, "(Blue) Constant", 0.)),
 	};
-	let red = number_widget(document_node, node_id, r.0, r.1, NumberInput::default().min(-200.).max(200.).value(Some(r.2)).unit("%"), true);
-	let green = number_widget(document_node, node_id, g.0, g.1, NumberInput::default().min(-200.).max(200.).value(Some(g.2)).unit("%"), true);
-	let blue = number_widget(document_node, node_id, b.0, b.1, NumberInput::default().min(-200.).max(200.).value(Some(b.2)).unit("%"), true);
-	let constant = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-200.).max(200.).value(Some(c.2)).unit("%"), true);
+	let red = number_widget(
+		document_node,
+		node_id,
+		r.0,
+		r.1,
+		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(r.2)).unit("%"),
+		true,
+	);
+	let green = number_widget(
+		document_node,
+		node_id,
+		g.0,
+		g.1,
+		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(g.2)).unit("%"),
+		true,
+	);
+	let blue = number_widget(
+		document_node,
+		node_id,
+		b.0,
+		b.1,
+		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(b.2)).unit("%"),
+		true,
+	);
+	let constant = number_widget(
+		document_node,
+		node_id,
+		c.0,
+		c.1,
+		NumberInput::default().mode_range().min(-200.).max(200.).value(Some(c.2)).unit("%"),
+		true,
+	);
 
 	// Monochrome
 	let mut layout = vec![LayoutGroup::Row { widgets: monochrome }];
@@ -1206,10 +1234,10 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 		SelectiveColorChoice::Neutrals => ((30, "(Neutrals) Cyan"), (31, "(Neutrals) Magenta"), (32, "(Neutrals) Yellow"), (33, "(Neutrals) Black")),
 		SelectiveColorChoice::Blacks => ((34, "(Blacks) Cyan"), (35, "(Blacks) Magenta"), (36, "(Blacks) Yellow"), (37, "(Blacks) Black")),
 	};
-	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
-	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().min(-100.).max(100.).unit("%"), true);
+	let cyan = number_widget(document_node, node_id, c.0, c.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+	let magenta = number_widget(document_node, node_id, m.0, m.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+	let yellow = number_widget(document_node, node_id, y.0, y.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
+	let black = number_widget(document_node, node_id, k.0, k.1, NumberInput::default().mode_range().min(-100.).max(100.).unit("%"), true);
 
 	// Mode
 	let mode_index = 1;
