@@ -157,6 +157,7 @@ async fn copy_to_points<FP: Future<Output = VectorData>, FI: Future<Output = Vec
 	points: impl Node<Footprint, Output = FP>,
 	instance: impl Node<Footprint, Output = FI>,
 ) -> VectorData {
+	// TODO: https://github.com/GraphiteEditor/Graphite/pull/1536#discussion_r1436422419
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
 
