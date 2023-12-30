@@ -190,7 +190,6 @@ impl<'a> ModifyInputsContext<'a> {
 			let node_type = resolve_document_node_type("Shape").expect("Shape node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
 		};
-		let cull = resolve_document_node_type("Cull").expect("Cull node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
@@ -201,10 +200,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
 		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
-		let cull_id = NodeId(generate_uuid());
-		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
 		let shape_id = NodeId(generate_uuid());
-		self.insert_node_before(shape_id, cull_id, 0, shape, IVec2::new(-8, 0));
+		self.insert_node_before(shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
@@ -218,7 +215,6 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		let cull = resolve_document_node_type("Cull").expect("Cull node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
@@ -229,10 +225,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
 		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
-		let cull_id = NodeId(generate_uuid());
-		self.insert_node_before(cull_id, transform_id, 0, cull, IVec2::new(-8, 0));
 		let text_id = NodeId(generate_uuid());
-		self.insert_node_before(text_id, cull_id, 0, text, IVec2::new(-8, 0));
+		self.insert_node_before(text_id, transform_id, 0, text, IVec2::new(-8, 0));
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
@@ -241,15 +235,14 @@ impl<'a> ModifyInputsContext<'a> {
 			let node_type = resolve_document_node_type("Image").expect("Image node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))], Default::default())
 		};
-		let sample = resolve_document_node_type("Sample").expect("Sample node does not exist").default_document_node();
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 
 		let transform_id = NodeId(generate_uuid());
 		self.insert_node_before(transform_id, layer, 0, transform, IVec2::new(-8, 0));
-		let sample_id = NodeId(generate_uuid());
-		self.insert_node_before(sample_id, transform_id, 0, sample, IVec2::new(-8, 0));
+
 		let image_id = NodeId(generate_uuid());
-		self.insert_node_before(image_id, sample_id, 0, image, IVec2::new(-8, 0));
+		self.insert_node_before(image_id, transform_id, 0, image, IVec2::new(-8, 0));
+
 		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 

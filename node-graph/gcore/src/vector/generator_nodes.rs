@@ -99,7 +99,6 @@ fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 #[derive(Debug, Clone)]
 pub struct PathGenerator<Mirror> {
-	// TODO: Keavon asks: what is this for? Is it dead code? It seems to only be set, never read.
 	mirror: Mirror,
 }
 
