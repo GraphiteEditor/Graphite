@@ -77,7 +77,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 pub const COLOR_ACCENT: Color = Color::from_rgbf32_unchecked(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
 
 // Fonts
-pub const DEFAULT_FONT_FAMILY: &str = "Merriweather";
+pub const DEFAULT_FONT_FAMILY: &str = "Cabin";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
 // Document

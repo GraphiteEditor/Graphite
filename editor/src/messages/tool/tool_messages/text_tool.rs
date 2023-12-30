@@ -2,6 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
+use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -32,8 +33,8 @@ impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
 			font_size: 24,
-			font_name: "Merriweather".into(),
-			font_style: "Normal (400)".into(),
+			font_name: DEFAULT_FONT_FAMILY.into(),
+			font_style: DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 		}
 	}
