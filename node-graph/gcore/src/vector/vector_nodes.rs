@@ -1,6 +1,8 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
+use crate::transform::Footprint;
 use crate::{Color, Node};
+use core::future::Future;
 
 use bezier_rs::{Subpath, SubpathTValue};
 use glam::{DAffine2, DVec2};
@@ -144,12 +146,21 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CopyToPoints<Instance> {
+pub struct CopyToPoints<Points, Instance> {
+	points: Points,
 	instance: Instance,
 }
 
 #[node_macro::node_fn(CopyToPoints)]
-fn copy_to_points(points: VectorData, instance: VectorData) -> VectorData {
+async fn copy_to_points<FP: Future<Output = VectorData>, FI: Future<Output = VectorData>>(
+	footprint: Footprint,
+	points: impl Node<Footprint, Output = FP>,
+	instance: impl Node<Footprint, Output = FI>,
+) -> VectorData {
+	// TODO: https://github.com/GraphiteEditor/Graphite/pull/1536#discussion_r1436422419
+	let points = self.points.eval(footprint).await;
+	let instance = self.instance.eval(footprint).await;
+
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
 
 	let instance_bounding_box = instance.bounding_box().unwrap_or_default();

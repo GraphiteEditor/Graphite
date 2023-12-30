@@ -2281,7 +2281,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Copy to Points",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_>"),
+			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _>"),
+			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Points", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
