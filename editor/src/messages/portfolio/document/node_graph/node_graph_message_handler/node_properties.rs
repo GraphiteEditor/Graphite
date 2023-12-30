@@ -697,7 +697,6 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 
 fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, name: &str, node_id: NodeId, input_index: usize) {
 	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::GradientPositions(gradient_positions),
 		exposed: false,

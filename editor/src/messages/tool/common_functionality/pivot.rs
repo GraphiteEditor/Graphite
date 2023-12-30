@@ -1,7 +1,7 @@
 //! Handler for the pivot overlay visible on the selected layer(s) whilst using the Select tool which controls the center of rotation/scale and origin of the layer.
 
 use super::graph_modification_utils;
-use crate::consts::PIVOT_OUTER;
+use crate::consts::PIVOT_DIAMETER;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -117,6 +117,6 @@ impl Pivot {
 
 	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
-		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_OUTER / 2.).powi(2)).is_some()
+		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
 	}
 }

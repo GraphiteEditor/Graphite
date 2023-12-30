@@ -1,5 +1,3 @@
-use graphene_core::raster::color::Color;
-
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;
@@ -46,9 +44,9 @@ pub const BIG_NUDGE_AMOUNT: f64 = 10.;
 // Select tool
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
-pub const PIVOT_OUTER_OUTLINE_THICKNESS: f64 = 1.;
-pub const PIVOT_OUTER: f64 = 9.;
-pub const PIVOT_INNER: f64 = 3.;
+pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
+pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
+pub const PIVOT_DIAMETER: f64 = 5.;
 
 // Transformation cage
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
@@ -74,7 +72,9 @@ pub const ASYMPTOTIC_EFFECT: f64 = 0.5;
 pub const SCALE_EFFECT: f64 = 0.5;
 
 // Colors
-pub const COLOR_ACCENT: Color = Color::from_rgbf32_unchecked(0x00 as f32 / 255., 0xA8 as f32 / 255., 0xFF as f32 / 255.);
+pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
+pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 
 // Fonts
 pub const DEFAULT_FONT_FAMILY: &str = "Cabin";
