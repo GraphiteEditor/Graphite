@@ -570,7 +570,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Image Frame",
 			category: "General",
-			// implementation: NodeImplementation::proto("graphene_std::raster::ImageFrameNode<_, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -606,7 +605,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Noise Pattern",
 			category: "General",
-			// implementation: NodeImplementation::proto("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![
 					NodeId(0),
@@ -965,7 +963,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Brush",
 			category: "Brush",
-			// implementation: NodeImplementation::proto("graphene_std::brush::BrushNode<_, _, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -1030,7 +1027,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Image",
 			category: "Ignore",
-			// implementation: NodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2160,7 +2156,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Circle",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::CircleGenerator<_>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2193,7 +2188,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Ellipse",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2230,7 +2224,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Rectangle",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2267,7 +2260,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Regular Polygon",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2304,7 +2296,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Star",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2347,7 +2338,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Line",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2384,7 +2374,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Spline",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2420,7 +2409,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Shape",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
@@ -2464,35 +2452,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
 			..Default::default()
 		},
-		// TODO: Fix this node from crashing after the Cull node was built into it
 		DocumentNodeDefinition {
 			name: "Mandelbrot",
 			category: "Generators",
-			// implementation: NodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
-			implementation: NodeImplementation::DocumentNode(NodeNetwork {
-				inputs: vec![],
-				outputs: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Mandelbrot".to_string(),
-						inputs: vec![],
-						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_std::raster::MandelbrotNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: NodeImplementation::proto("graphene_std::raster::MandelbrotNode"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![],
 			outputs: vec![DocumentOutputType::new("Raster", FrontendGraphDataType::Raster)],
@@ -2510,7 +2473,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Text",
 			category: "Vector",
-			// implementation: NodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
 				inputs: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				outputs: vec![NodeOutput::new(NodeId(1), 0)],
