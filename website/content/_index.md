@@ -66,19 +66,19 @@ js = ["image-interaction.js", "video-embed.js"]
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
