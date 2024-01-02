@@ -327,14 +327,14 @@ impl WasmBezier {
 	}
 
 	pub fn local_extrema(&self) -> String {
-		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
+		let local_extrema = self.0.local_extrema();
 
 		let bezier = self.get_bezier_path();
 		let circles: String = local_extrema
-			.iter()
+			.into_iter()
 			.zip([RED, GREEN])
 			.flat_map(|(t_value_list, color)| {
-				t_value_list.iter().map(|&t_value| {
+				t_value_list.map(move |t_value| {
 					let point = self.0.evaluate(TValue::Parametric(t_value));
 					draw_circle(point, 3., color, 1.5, WHITE)
 				})
