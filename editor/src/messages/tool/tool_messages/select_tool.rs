@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
-use crate::messages::tool::common_functionality::snapping::{self, SnapManager};
+use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::NodeNetwork;
@@ -381,7 +381,7 @@ impl Fsm for SelectToolFsmState {
 		};
 		match (self, event) {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
-				tool_data.snap_manager.draw_overlays(document, &mut overlay_context);
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				let selected_layers_count = document.metadata().selected_layers().count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
@@ -475,7 +475,8 @@ impl Fsm for SelectToolFsmState {
 				let state = if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
 				} else if let Some(_selected_edges) = dragging_bounds {
@@ -578,15 +579,15 @@ impl Fsm for SelectToolFsmState {
 
 				let mouse_delta = mouse_position - tool_data.drag_current;
 
-				let snap = tool_data
-					.layers_dragging
-					.iter()
-					.filter_map(|&layer| document.metadata().bounding_box_viewport(layer))
-					.flat_map(snapping::expand_bounds)
-					.collect();
+				// let snap = tool_data
+				// 	.layers_dragging
+				// 	.iter()
+				// 	.filter_map(|&layer| document.metadata().bounding_box_viewport(layer))
+				// 	.flat_map(snapping::expand_bounds)
+				// 	.collect();
 
-				let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
-				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+				let closest_move = mouse_delta; //tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
+								// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer: *layer_ancestors.last().unwrap(),
@@ -616,7 +617,7 @@ impl Fsm for SelectToolFsmState {
 
 						let mouse_position = input.mouse.position;
 
-						let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+						let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, );
 
 						let (position, size) = movement.new_size(snapped_mouse_position, bounds.original_bound_transform, center, bounds.center_of_transformation, axis_align);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
@@ -679,7 +680,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { .. }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
 				SelectToolFsmState::DraggingPivot

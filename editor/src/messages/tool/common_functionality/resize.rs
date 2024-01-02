@@ -3,27 +3,30 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-
 use glam::{DAffine2, DVec2, Vec2Swizzles};
+
+use super::snapping::{SnapCandidatePoint, SnapData};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
 	drag_start: ViewportPosition,
 	pub layer: Option<LayerNodeIdentifier>,
-	snap_manager: SnapManager,
+	pub snap_manager: SnapManager,
 }
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
 	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 		let root_transform = document.metadata().document_to_viewport;
-		self.drag_start = root_transform.inverse().transform_point2(self.snap_manager.snap_position(responses, document, input.mouse.position));
+		let point = SnapCandidatePoint::new_handle(root_transform.inverse().transform_point2(input.mouse.position));
+		let snapped = self.snap_manager.free_snap(SnapData::new(document, input), &point, None, false);
+		self.drag_start = snapped.snapped_point_document;
 	}
 
 	/// Recalculates snap targets without snapping the starting position.
-	pub fn recalculate_snaps(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-		self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+	pub fn recalculate_snaps(&mut self, _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
+		//	self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+		//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 	}
 
 	/// Calculate the drag start position in viewport space.
@@ -50,7 +53,11 @@ impl Resize {
 		}
 
 		let mut start = self.viewport_drag_start(document);
-		let stop = self.snap_manager.snap_position(responses, document, ipp.mouse.position);
+		let point = SnapCandidatePoint::new_handle(document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position));
+		let ignore = if let Some(x) = self.layer { vec![x] } else { vec![] };
+		let snapped_point = self.snap_manager.free_snap(SnapData::ignore(document, ipp, &ignore), &point, None, false);
+		let stop = document.metadata().document_to_viewport.transform_point2(snapped_point.snapped_point_document);
+		self.snap_manager.update_indicator(snapped_point);
 
 		let mut size = stop - start;
 		if ipp.keyboard.get(lock_ratio as usize) {

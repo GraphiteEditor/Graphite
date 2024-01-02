@@ -17,10 +17,13 @@ impl Quad {
 	}
 
 	/// Get all the edges in the quad.
-	pub fn bezier_lines(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
+	pub fn edges(&self) -> [[DVec2; 2]; 4] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]
-			.into_iter()
-			.map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
+	}
+
+	/// Get all the edges in the quad as linear bezier curves
+	pub fn bezier_lines(&self) -> impl Iterator<Item = bezier_rs::Bezier> + '_ {
+		self.edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
 	}
 
 	/// Generates a [crate::vector::Subpath] of the quad
@@ -66,11 +69,32 @@ impl Quad {
 	pub fn contains(&self, p: DVec2) -> bool {
 		let mut inside = false;
 		for (i, j) in (0..4).zip([3, 0, 1, 2]) {
-			if (self.0[i].y > p.y) != (self.0[j].y > p.y) && p.x < (self.0[j].x - self.0[i].x * (p.y - self.0[i].y) / (self.0[j].y - self.0[i].y) + self.0[i].x) {
+			if (self.0[i].y > p.y) != (self.0[j].y > p.y) && p.x < ((self.0[j].x - self.0[i].x) * (p.y - self.0[i].y) / (self.0[j].y - self.0[i].y) + self.0[i].x) {
 				inside = !inside;
 			}
 		}
 		inside
+	}
+
+	/// https://www.cs.rpi.edu/~cutler/classes/computationalgeometry/F23/lectures/02_line_segment_intersections.pdf
+	fn intersect_lines(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
+		let t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / ((a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x));
+		let u = ((a.x - c.x) * (a.y - b.y) - (a.y - c.y) * (a.x - b.x)) / ((a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x));
+
+		if (0. ..=1.).contains(&t) && (0. ..=1.).contains(&u) {
+			let l1 = a + t * (b - a);
+			Some(l1)
+		} else {
+			None
+		}
+	}
+
+	pub fn intersects(&self, other: Quad) -> bool {
+		let intersects = self
+			.edges()
+			.into_iter()
+			.any(|[a, b]| other.edges().into_iter().any(|[c, d]| Self::intersect_lines(a, b, c, d).is_some()));
+		self.contains(other.center()) || other.contains(self.center()) || intersects
 	}
 }
 
@@ -98,9 +122,26 @@ fn offset_quad() {
 fn quad_contains() {
 	assert!(Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::splat(0.5)));
 	assert!(Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::splat(0.5)));
+	assert!(Quad::from_box([DVec2::splat(300.), DVec2::splat(500.)]).contains(DVec2::splat(350.)));
 	assert!((DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::new(-0.5, 0.5)));
 
 	assert!(!Quad::from_box([DVec2::ZERO, DVec2::ONE]).contains(DVec2::new(1., 1.1)));
 	assert!(!Quad::from_box([DVec2::ONE, DVec2::ZERO]).contains(DVec2::new(0.5, -0.01)));
 	assert!(!(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(DVec2::splat(0.5)));
+}
+
+#[test]
+fn intersect_lines() {
+	assert_eq!(
+		Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)),
+		Some(DVec2::new(2., 5.))
+	);
+	assert_eq!(Quad::intersect_lines(DVec2::new(4., 6.), DVec2::new(4., 5.), DVec2::new(2., 7.), DVec2::new(2., 3.)), None);
+	assert_eq!(Quad::intersect_lines(DVec2::new(-5., 5.), DVec2::new(5., 5.), DVec2::new(2., 7.), DVec2::new(2., 9.)), None);
+}
+#[test]
+fn intersect_quad() {
+	assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(7.)])));
+	assert!(Quad::from_box([DVec2::ZERO, DVec2::splat(5.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
+	assert!(!Quad::from_box([DVec2::ZERO, DVec2::splat(3.)]).intersects(Quad::from_box([DVec2::splat(4.), DVec2::splat(4.2)])));
 }

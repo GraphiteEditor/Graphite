@@ -1,7 +1,9 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -48,7 +50,7 @@ pub enum RectangleOptionsUpdate {
 pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]
-	CanvasTransformed,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -136,6 +138,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 		match self.fsm_state {
 			Ready => actions!(RectangleToolMessageDiscriminant;
 				DragStart,
+				Resize,
 			),
 			Drawing => actions!(RectangleToolMessageDiscriminant;
 				DragStop,
@@ -161,7 +164,7 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(RectangleToolMessage::CanvasTransformed.into()),
+			overlay_provider: Some(|overlay_context| RectangleToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
 			working_color_changed: Some(RectangleToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -205,8 +208,8 @@ impl Fsm for RectangleToolFsmState {
 		};
 
 		match (self, event) {
-			(Drawing, CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input);
+			(_, Overlays(mut overlay_context)) => {
+				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
 			(Ready, DragStart) => {
@@ -232,12 +235,17 @@ impl Fsm for RectangleToolFsmState {
 
 				Drawing
 			}
-			(state, Resize { center, lock_ratio }) => {
+			(RectangleToolFsmState::Drawing, Resize { center, lock_ratio }) => {
 				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 
-				state
+				self
+			}
+			(_, Resize { .. }) => {
+				shape_data.snap_manager.preview_draw(SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(Drawing, DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);

@@ -130,9 +130,9 @@ impl Bezier {
 
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
 	/// The local extrema are defined to be points at which the derivative of the curve is equal to zero.
-	fn unrestricted_local_extrema(&self) -> [Vec<f64>; 2] {
+	fn unrestricted_local_extrema(&self) -> [[Option<f64>; 3]; 2] {
 		match self.handles {
-			BezierHandles::Linear => [Vec::new(), Vec::new()],
+			BezierHandles::Linear => [[None; 3]; 2],
 			BezierHandles::Quadratic { handle } => {
 				let a = handle - self.start;
 				let b = self.end - handle;
@@ -156,13 +156,8 @@ impl Bezier {
 	/// Returns two lists of `t`-values representing the local extrema of the `x` and `y` parametric curves respectively.
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/local-extrema/solo" title="Local Extrema Demo"></iframe>
-	pub fn local_extrema(&self) -> [Vec<f64>; 2] {
-		self.unrestricted_local_extrema()
-			.into_iter()
-			.map(|t_values| t_values.into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>())
-			.collect::<Vec<Vec<f64>>>()
-			.try_into()
-			.unwrap()
+	pub fn local_extrema(&self) -> [impl Iterator<Item = f64>; 2] {
+		self.unrestricted_local_extrema().map(|t_values| t_values.into_iter().flatten().filter(|&t| t > 0. && t < 1.))
 	}
 
 	/// Return the min and max corners that represent the bounding box of the curve.
@@ -223,17 +218,18 @@ impl Bezier {
 			}
 		}
 		.into_iter()
+		.flatten()
 		.filter(|&t| utils::f64_approximately_in_range(t, 0., 1., MAX_ABSOLUTE_DIFFERENCE))
 	}
 
 	// TODO: Use an `impl Iterator` return type instead of a `Vec`
 	/// Returns list of `t`-values representing the inflection points of the curve.
 	/// The inflection points are defined to be points at which the second derivative of the curve is equal to zero.
-	pub fn unrestricted_inflections(&self) -> Vec<f64> {
+	pub fn unrestricted_inflections(&self) -> impl Iterator<Item = f64> {
 		match self.handles {
 			// There exists no inflection points for linear and quadratic beziers.
-			BezierHandles::Linear => Vec::new(),
-			BezierHandles::Quadratic { .. } => Vec::new(),
+			BezierHandles::Linear => [None; 3],
+			BezierHandles::Quadratic { .. } => [None; 3],
 			BezierHandles::Cubic { .. } => {
 				// Axis align the curve.
 				let translated_bezier = self.translate(-self.start);
@@ -257,6 +253,8 @@ impl Bezier {
 				}
 			}
 		}
+		.into_iter()
+		.flatten()
 	}
 
 	/// Returns list of parametric `t`-values representing the inflection points of the curve.
@@ -491,7 +489,7 @@ impl Bezier {
 
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
-				for t in solve_quadratic(discriminant, two_times_a, b, c) {
+				for t in solve_quadratic(discriminant, two_times_a, b, c).into_iter().flatten() {
 					if (0.0..=1.).contains(&t) {
 						let x = self.evaluate(TValue::Parametric(t)).x;
 						if target_point.x >= x {
@@ -514,7 +512,7 @@ impl Bezier {
 				let b = 3. * (p2.y - 2. * p1.y + self.start.y);
 				let c = 3. * (p1.y - self.start.y);
 				let d = self.start.y - target_point.y;
-				for t in solve_cubic(a, b, c, d) {
+				for t in solve_cubic(a, b, c, d).into_iter().flatten() {
 					if (0.0..=1.).contains(&t) {
 						let x = self.evaluate(TValue::Parametric(t)).x;
 						if target_point.x >= x {

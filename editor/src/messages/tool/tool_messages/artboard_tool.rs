@@ -120,7 +120,8 @@ impl ArtboardToolData {
 		let snap_x = selected_edges.2 || selected_edges.3;
 		let snap_y = selected_edges.0 || selected_edges.1;
 
-		self.snap_manager.start_snap(document, input, document.bounding_boxes(), snap_x, snap_y);
+		//self.snap_manager.start_snap(document, input, document.bounding_boxes(), snap_x, snap_y);
+		//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = (bounds.bounds[0] + bounds.bounds[1]) / 2.;
@@ -138,7 +139,8 @@ impl ArtboardToolData {
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
 
-			self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+			//elf.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+			//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 			true
 		} else {
@@ -158,7 +160,7 @@ impl ArtboardToolData {
 			return;
 		};
 
-		let snapped_mouse_position: DVec2 = self.snap_manager.snap_position(responses, document, mouse_position);
+		let snapped_mouse_position = mouse_position; //self.snap_manager.snap_position(responses, document, mouse_position);
 
 		let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
 		responses.add(GraphOperationMessage::ResizeArtboard {
@@ -227,8 +229,9 @@ impl Fsm for ArtboardToolFsmState {
 					let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
 					let mouse_delta = mouse_position - tool_data.drag_current;
 
-					let snap = bounds.evaluate_transform_handle_positions().into_iter().collect();
-					let closest_move = tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
+					//let snap = bounds.evaluate_transform_handle_positions().into_iter().collect();
+					let closest_move = mouse_delta;
+					//	tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 
@@ -248,7 +251,7 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = tool_data.snap_manager.snap_position(responses, document, mouse_position);
+				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
 
 				let root_transform = document.metadata().document_to_viewport.inverse();
 
@@ -277,7 +280,8 @@ impl Fsm for ArtboardToolFsmState {
 					let id = NodeId(generate_uuid());
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
-					tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,

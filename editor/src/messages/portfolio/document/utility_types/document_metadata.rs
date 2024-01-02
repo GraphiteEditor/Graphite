@@ -139,7 +139,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
-		self.folders.contains(&layer)
+		layer == LayerNodeIdentifier::ROOT || self.folders.contains(&layer)
 	}
 
 	pub fn is_artboard(&self, layer: LayerNodeIdentifier) -> bool {

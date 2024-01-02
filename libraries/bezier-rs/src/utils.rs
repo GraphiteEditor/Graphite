@@ -100,30 +100,28 @@ pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (usize, f64) {
 		.unwrap()
 }
 
-// TODO: Use an `Option` return type instead of a `Vec`
 /// Find the roots of the linear equation `ax + b`.
-pub fn solve_linear(a: f64, b: f64) -> Vec<f64> {
-	let mut roots = Vec::new();
+pub fn solve_linear(a: f64, b: f64) -> [Option<f64>; 3] {
 	// There exist roots when `a` is not 0
 	if a.abs() > MAX_ABSOLUTE_DIFFERENCE {
-		roots.push(-b / a);
+		[Some(-b / a), None, None]
+	} else {
+		[None; 3]
 	}
-	roots
 }
 
-// TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Find the roots of the linear equation `ax^2 + bx + c`.
 /// Precompute the `discriminant` (`b^2 - 4ac`) and `two_times_a` arguments prior to calling this function for efficiency purposes.
-pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> Vec<f64> {
-	let mut roots = Vec::new();
+pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> [Option<f64>; 3] {
+	let mut roots = [None; 3];
 	if two_times_a.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 		roots = solve_linear(b, c);
 	} else if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		roots.push(-b / (two_times_a));
+		roots[0] = Some(-b / (two_times_a));
 	} else if discriminant > 0. {
 		let root_discriminant = discriminant.sqrt();
-		roots.push((-b + root_discriminant) / (two_times_a));
-		roots.push((-b - root_discriminant) / (two_times_a));
+		roots[0] = Some((-b + root_discriminant) / (two_times_a));
+		roots[1] = Some((-b - root_discriminant) / (two_times_a));
 	}
 	roots
 }
@@ -139,8 +137,8 @@ fn cube_root(f: f64) -> f64 {
 
 // TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
-pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec<f64> {
-	let mut roots = Vec::new();
+pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> [Option<f64>; 3] {
+	let mut roots = [None; 3];
 	if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 		// When discriminant is 0 (check for approximation because of floating point errors), all roots are real, and 2 are repeated
 		// filter out repeated roots (ie. roots whose distance is less than some epsilon)
@@ -149,15 +147,15 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 		let root_1 = 2. * cube_root(-q_divided_by_2) - a_divided_by_3;
 		let root_2 = cube_root(q_divided_by_2) - a_divided_by_3;
 		if (root_1 - root_2).abs() > MIN_SEPARATION_VALUE {
-			roots.push(root_1);
+			roots[0] = Some(root_1);
 		}
-		roots.push(root_2);
+		roots[1] = Some(root_2);
 	} else if discriminant > 0. {
 		// When discriminant > 0, there is one real and two imaginary roots
 		let q_divided_by_2 = q / 2.;
 		let square_root_discriminant = discriminant.powf(1. / 2.);
 
-		roots.push(cube_root(-q_divided_by_2 + square_root_discriminant) - cube_root(q_divided_by_2 + square_root_discriminant) - a / 3.);
+		roots[0] = Some(cube_root(-q_divided_by_2 + square_root_discriminant) - cube_root(q_divided_by_2 + square_root_discriminant) - a / 3.);
 	} else {
 		// Otherwise, discriminant < 0 and there are three real roots
 		let p_divided_by_3 = p / 3.;
@@ -166,16 +164,16 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> Vec
 		let phi = (-q / (2. * cube_root_r.powi(3))).acos();
 
 		let two_times_cube_root_r = 2. * cube_root_r;
-		roots.push(two_times_cube_root_r * (phi / 3.).cos() - a_divided_by_3);
-		roots.push(two_times_cube_root_r * ((phi + 2. * PI) / 3.).cos() - a_divided_by_3);
-		roots.push(two_times_cube_root_r * ((phi + 4. * PI) / 3.).cos() - a_divided_by_3);
+		roots[0] = Some(two_times_cube_root_r * (phi / 3.).cos() - a_divided_by_3);
+		roots[1] = Some(two_times_cube_root_r * ((phi + 2. * PI) / 3.).cos() - a_divided_by_3);
+		roots[2] = Some(two_times_cube_root_r * ((phi + 4. * PI) / 3.).cos() - a_divided_by_3);
 	}
 	roots
 }
 
 // TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Solve a cubic of the form `ax^3 + bx^2 + ct + d`.
-pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> Vec<f64> {
+pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 	if a.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 		if b.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
 			// If both a and b are approximately 0, treat as a linear problem

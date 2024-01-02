@@ -250,7 +250,7 @@ impl PenToolData {
 
 		// Get the position and set properties
 		let transform = document.metadata().transform_to_viewport(parent);
-		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
+		let snapped_position = input.mouse.position; // self.snap_manager.snap_position(responses, document, input.mouse.position);
 		let start_position = transform.inverse().transform_point2(snapped_position);
 		self.weight = line_weight;
 
@@ -409,7 +409,7 @@ impl PenToolData {
 		// Get manipulator points
 		let last_anchor = last_manipulator_group.anchor;
 
-		let mouse = self.snap_manager.snap_position(responses, document, mouse);
+		let mouse = mouse; // self.snap_manager.snap_position(responses, document, mouse);
 		let pos = transform.inverse().transform_point2(mouse);
 
 		let pos = compute_snapped_angle(&mut self.angle, modifiers.lock_angle, modifiers.snap_angle, pos, last_anchor);
@@ -463,7 +463,7 @@ impl PenToolData {
 		// Get manipulator points
 		let first_anchor = first_manipulator_group.anchor;
 
-		let mouse = self.snap_manager.snap_position(responses, document, mouse);
+		let mouse = mouse; //self.snap_manager.snap_position(responses, document, mouse);
 		let mut pos = transform.inverse().transform_point2(mouse);
 
 		// Snap to the first point (to show close path)
@@ -568,7 +568,7 @@ impl Fsm for PenToolFsmState {
 		};
 		match (self, event) {
 			(_, PenToolMessage::CanvasTransformed) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 				self
 			}
 			(_, PenToolMessage::SelectionChanged) => {
@@ -591,7 +591,8 @@ impl Fsm for PenToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Initialize snapping
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				// Disable this tool's mirroring
 				tool_data.should_mirror = false;

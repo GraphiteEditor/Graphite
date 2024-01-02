@@ -65,6 +65,8 @@ pub struct SnappingState {
 	pub bounds: BoundsSnapping,
 	pub nodes: NodeSnapping,
 	pub grid: GridSnapping,
+	pub tolerance: f64,
+	pub artboards: bool,
 }
 impl Default for SnappingState {
 	fn default() -> Self {
@@ -72,7 +74,7 @@ impl Default for SnappingState {
 			snapping_enabled: true,
 			bounding_box_snapping: true,
 			node_snapping: true,
-			grid_snapping: true,
+			grid_snapping: false,
 			bounds: BoundsSnapping {
 				edges: true,
 				corners: true,
@@ -82,8 +84,8 @@ impl Default for SnappingState {
 			nodes: NodeSnapping {
 				paths: true,
 				path_intersections: true,
-				cusp_nodes: true,
-				smooth_nodes: false,
+				sharp_nodes: true,
+				smooth_nodes: true,
 				line_midpoints: true,
 				perpendicular: true,
 				tangents: true,
@@ -93,6 +95,34 @@ impl Default for SnappingState {
 				size: DVec2::ONE,
 				dots: false,
 			},
+			tolerance: 20.,
+			artboards: true,
+		}
+	}
+}
+impl SnappingState {
+	pub const fn target_enabled(&self, target: SnapTarget) -> bool {
+		if !self.snapping_enabled {
+			return false;
+		}
+		match target {
+			SnapTarget::BoundingBox(bounding_box) if self.bounding_box_snapping => match bounding_box {
+				BoundingBoxSnapTarget::Corner => self.bounds.corners,
+				BoundingBoxSnapTarget::Edge => self.bounds.edges,
+				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
+				BoundingBoxSnapTarget::Centre => self.bounds.centres,
+			},
+			SnapTarget::Node(nodes) if self.node_snapping => match nodes {
+				NodeSnapTarget::Smooth => self.nodes.smooth_nodes,
+				NodeSnapTarget::Sharp => self.nodes.sharp_nodes,
+				NodeSnapTarget::LineMidpoint => self.nodes.line_midpoints,
+				NodeSnapTarget::Path => self.nodes.paths,
+				NodeSnapTarget::Parpendicular => self.nodes.perpendicular,
+				NodeSnapTarget::Tangent => self.nodes.tangents,
+				NodeSnapTarget::Intersection => self.nodes.path_intersections,
+			},
+			SnapTarget::Board(_) => self.artboards,
+			_ => false,
 		}
 	}
 }
@@ -107,7 +137,7 @@ pub struct BoundsSnapping {
 pub struct NodeSnapping {
 	pub paths: bool,
 	pub path_intersections: bool,
-	pub cusp_nodes: bool,
+	pub sharp_nodes: bool,
 	pub smooth_nodes: bool,
 	pub line_midpoints: bool,
 	pub perpendicular: bool,
@@ -118,6 +148,74 @@ pub struct GridSnapping {
 	pub origin: DVec2,
 	pub size: DVec2,
 	pub dots: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoundingBoxSnapSource {
+	Corner,
+	Centre,
+	EdgeMidpoint,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoardSnapSource {
+	Centre,
+	Corner,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeSnapSource {
+	Smooth,
+	Sharp,
+	LineMidpoint,
+	PathIntersection,
+}
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapSource {
+	#[default]
+	None,
+	BoundingBox(BoundingBoxSnapSource),
+	Board(BoardSnapSource),
+	Node(NodeSnapSource),
+}
+impl SnapSource {
+	pub fn is_some(&self) -> bool {
+		self != &Self::None
+	}
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoundingBoxSnapTarget {
+	Corner,
+	Edge,
+	EdgeMidpoint,
+	Centre,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeSnapTarget {
+	Smooth,
+	Sharp,
+	LineMidpoint,
+	Path,
+	Parpendicular,
+	Tangent,
+	Intersection,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoardSnapTarget {
+	Edge,
+	Corner,
+	Centre,
+}
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapTarget {
+	#[default]
+	None,
+	BoundingBox(BoundingBoxSnapTarget),
+	Node(NodeSnapTarget),
+	Board(BoardSnapTarget),
+}
+impl SnapTarget {
+	pub fn is_some(&self) -> bool {
+		self != &Self::None
+	}
 }
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {

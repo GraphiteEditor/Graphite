@@ -205,7 +205,7 @@ impl Fsm for SplineToolFsmState {
 		};
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//	tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 				self
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart) => {
@@ -215,8 +215,9 @@ impl Fsm for SplineToolFsmState {
 				let parent = document.new_layer_parent();
 				let transform = document.metadata().transform_to_viewport(parent);
 
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+				let snapped_position = input.mouse.position; //tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let pos = transform.inverse().transform_point2(snapped_position);
 
@@ -244,7 +245,7 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let snapped_position = input.mouse.position; //tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
@@ -263,7 +264,7 @@ impl Fsm for SplineToolFsmState {
 				let Some(layer) = tool_data.layer else {
 					return SplineToolFsmState::Ready;
 				};
-				let snapped_position = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let snapped_position = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				let transform = document.metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;

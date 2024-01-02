@@ -297,7 +297,7 @@ impl PathToolData {
 		}
 
 		// Move the selected points with the mouse
-		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
+		let snapped_position = input.mouse.position; // self.snap_manager.snap_position(responses, document, input.mouse.position);
 		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_position - self.previous_mouse_position, shift, responses);
 		self.previous_mouse_position = snapped_position;
 	}

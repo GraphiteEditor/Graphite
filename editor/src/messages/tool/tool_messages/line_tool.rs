@@ -175,9 +175,10 @@ impl Fsm for LineToolFsmState {
 		};
 		match (self, event) {
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+				//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
-				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				let viewport_start = input.mouse.position; //tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 				tool_data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(viewport_start);
 
 				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
@@ -196,7 +197,7 @@ impl Fsm for LineToolFsmState {
 				LineToolFsmState::Drawing
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::Redraw { center, snap_angle, lock_angle }) => {
-				tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let keyboard = &input.keyboard;
 				let transform = document.metadata().document_to_viewport;

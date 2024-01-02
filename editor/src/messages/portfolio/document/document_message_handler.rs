@@ -53,7 +53,7 @@ pub struct DocumentMessageHandler {
 	#[serde(default = "default_commit_hash")]
 	commit_hash: String,
 	#[serde(default = "default_pan_tilt_zoom")]
-	navigation: PTZ,
+	pub navigation: PTZ,
 	#[serde(default = "default_document_mode")]
 	document_mode: DocumentMode,
 	#[serde(default = "default_view_mode")]

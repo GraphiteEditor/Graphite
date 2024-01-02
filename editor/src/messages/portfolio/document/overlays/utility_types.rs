@@ -132,4 +132,20 @@ impl OverlayContext {
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}
+
+	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64) {
+		let pos = pos.round();
+		let metrics = self.render_context.measure_text(text).expect("measure text");
+		self.render_context.set_fill_style(&background.into());
+		self.render_context.fill_rect(
+			pos.x + metrics.actual_bounding_box_left(),
+			pos.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent() - padding * 2.,
+			metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left() + padding * 2.,
+			metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent() + padding * 2.,
+		);
+		self.render_context.set_fill_style(&"white".into());
+		self.render_context
+			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
+			.expect("draw text");
+	}
 }

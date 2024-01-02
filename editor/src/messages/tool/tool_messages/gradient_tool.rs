@@ -268,7 +268,8 @@ struct GradientToolData {
 }
 
 pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-	snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+	//snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+	//snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 }
 
 impl Fsm for GradientToolFsmState {
@@ -484,7 +485,7 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-					let mouse = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 				}
 				GradientToolFsmState::Drawing
