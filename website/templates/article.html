@@ -5,9 +5,9 @@
 {% block head %}
 {% set this = section | default(value = page) %}
 <link rel="stylesheet" href="/article.css">
-<meta property="og:title" content="{{ this.title }}.">
 <meta property="og:type" content="article" />
-<meta property="og:image" content="{{ this.extra.banner | safe }}">
+<meta property="og:title" content="{{ this.title | safe }}.">
+<meta property="og:image" content="{{ this.extra.banner_png | safe }}">
 <meta property="og:url" content="{{ current_url | safe }}">
 {% endblock head %}
 

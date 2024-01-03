@@ -127,7 +127,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>WebGPU accelerated rendering</span>
 		</div>
-		<div class="informational">
+		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Snapping between layers</span>
 		</div>
