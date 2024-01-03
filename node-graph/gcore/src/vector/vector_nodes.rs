@@ -1,7 +1,8 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::VectorData;
-use crate::transform::Footprint;
-use crate::{Color, Node};
+use crate::renderer::GraphicElementRendered;
+use crate::transform::{Footprint, Transform, TransformMut};
+use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
 use bezier_rs::{Subpath, SubpathTValue};
@@ -145,6 +146,34 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 	)])
 }
 
+pub trait ConcatElement {
+	fn concat(&mut self, other: &Self, transform: DAffine2);
+}
+
+impl ConcatElement for VectorData {
+	fn concat(&mut self, other: &Self, transform: DAffine2) {
+		for mut subpath in other.subpaths.iter().cloned() {
+			subpath.apply_transform(transform * other.transform);
+			self.subpaths.push(subpath);
+		}
+		// TODO: properly deal with fills such as gradients
+		self.style = other.style.clone();
+		self.mirror_angle.extend(other.mirror_angle.iter().copied());
+		self.alpha_blending = other.alpha_blending;
+	}
+}
+
+impl ConcatElement for GraphicGroup {
+	fn concat(&mut self, other: &Self, transform: DAffine2) {
+		// TODO: Decide if we want to keep this behaviour whereby the layers are flattened
+		for mut element in other.iter().cloned() {
+			*element.transform_mut() = transform * element.transform() * other.transform();
+			self.push(element);
+		}
+		self.alpha_blending = other.alpha_blending;
+	}
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CopyToPoints<Points, Instance> {
 	points: Points,
@@ -152,37 +181,26 @@ pub struct CopyToPoints<Points, Instance> {
 }
 
 #[node_macro::node_fn(CopyToPoints)]
-async fn copy_to_points<FP: Future<Output = VectorData>, FI: Future<Output = VectorData>>(
+async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + TransformMut, FP: Future<Output = VectorData>, FI: Future<Output = I>>(
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = FP>,
 	instance: impl Node<Footprint, Output = FI>,
-) -> VectorData {
-	// TODO: https://github.com/GraphiteEditor/Graphite/pull/1536#discussion_r1436422419
+) -> I {
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
 
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
 
-	let instance_bounding_box = instance.bounding_box_with_transform(instance.transform).unwrap_or_default();
-	let instance_center = DAffine2::from_translation(-0.5 * (instance_bounding_box[0] + instance_bounding_box[1]));
+	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
+	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut instanced_subpaths: Vec<Subpath<_>> = Vec::new();
+	let mut result = I::default();
 	for point in points_list {
-		let transform = DAffine2::from_translation(points.transform.transform_point2(point)) * instance_center;
-
-		for mut subpath in instance.subpaths.clone() {
-			subpath.apply_transform(transform * instance.transform);
-			instanced_subpaths.push(subpath);
-		}
+		let translation = points.transform.transform_point2(point) + instance_center;
+		result.concat(&instance, DAffine2::from_translation(translation));
 	}
 
-	VectorData {
-		subpaths: instanced_subpaths,
-		transform: DAffine2::IDENTITY,
-		style: instance.style,
-		alpha_blending: instance.alpha_blending,
-		mirror_angle: instance.mirror_angle,
-	}
+	result
 }
 
 #[derive(Debug, Clone, Copy)]

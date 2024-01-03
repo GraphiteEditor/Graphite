@@ -733,6 +733,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::raster::SampleNode<_>, input: Footprint, params: [ImageFrame<Color>]),
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
 		async_node!(graphene_core::vector::CopyToPoints<_, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData]),
+		async_node!(graphene_core::vector::CopyToPoints<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => VectorData, Footprint => GraphicGroup]),
 		register_node!(graphene_core::vector::ResamplePoints<_>, input: VectorData, params: [f64]),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
