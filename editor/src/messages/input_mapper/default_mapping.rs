@@ -174,7 +174,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=LineToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=LineToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=LineToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=LineToolMessage::Redraw { center: Alt, lock_angle: Control, snap_angle: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=LineToolMessage::PointerMove { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
