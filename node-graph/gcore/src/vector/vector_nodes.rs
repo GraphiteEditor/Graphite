@@ -163,15 +163,15 @@ async fn copy_to_points<FP: Future<Output = VectorData>, FI: Future<Output = Vec
 
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
 
-	let instance_bounding_box = instance.bounding_box().unwrap_or_default();
+	let instance_bounding_box = instance.bounding_box_with_transform(instance.transform).unwrap_or_default();
 	let instance_center = DAffine2::from_translation(-0.5 * (instance_bounding_box[0] + instance_bounding_box[1]));
 
 	let mut instanced_subpaths: Vec<Subpath<_>> = Vec::new();
 	for point in points_list {
-		let transform = DAffine2::from_translation(point) * instance_center;
+		let transform = DAffine2::from_translation(points.transform.transform_point2(point)) * instance_center;
 
 		for mut subpath in instance.subpaths.clone() {
-			subpath.apply_transform(transform);
+			subpath.apply_transform(transform * instance.transform);
 			instanced_subpaths.push(subpath);
 		}
 	}
