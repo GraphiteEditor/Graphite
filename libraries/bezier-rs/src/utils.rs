@@ -325,43 +325,47 @@ mod tests {
 		a.len() == b.len() && a.into_iter().zip(b).all(|(a, b)| f64_compare(a, b, max_abs_diff))
 	}
 
+	fn collect_roots(roots: [Option<f64>; 3]) -> Vec<f64> {
+		roots.into_iter().flatten().collect()
+	}
+
 	#[test]
 	fn test_solve_linear() {
 		// Line that is on the x-axis
-		assert!(solve_linear(0., 0.).is_empty());
+		assert!(collect_roots(solve_linear(0., 0.)).is_empty());
 		// Line that is parallel to but not on the x-axis
-		assert!(solve_linear(0., 1.).is_empty());
+		assert!(collect_roots(solve_linear(0., 1.)).is_empty());
 		// Line with a non-zero slope
-		assert!(solve_linear(2., -8.) == vec![4.]);
+		assert!(collect_roots(solve_linear(2., -8.)) == vec![4.]);
 	}
 
 	#[test]
 	fn test_solve_cubic() {
 		// discriminant == 0
-		let roots1 = solve_cubic(1., 0., 0., 0.);
+		let roots1 = collect_roots(solve_cubic(1., 0., 0., 0.));
 		assert!(roots1 == vec![0.]);
 
-		let roots2 = solve_cubic(1., 3., 0., -4.);
+		let roots2 = collect_roots(solve_cubic(1., 3., 0., -4.));
 		assert!(roots2 == vec![1., -2.]);
 
 		// p == 0
-		let roots3 = solve_cubic(1., 0., 0., -1.);
+		let roots3 = collect_roots(solve_cubic(1., 0., 0., -1.));
 		assert!(roots3 == vec![1.]);
 
 		// discriminant > 0
-		let roots4 = solve_cubic(1., 3., 0., 2.);
+		let roots4 = collect_roots(solve_cubic(1., 3., 0., 2.));
 		assert!(f64_compare_vector(roots4, vec![-3.196], MAX_ABSOLUTE_DIFFERENCE));
 
 		// discriminant < 0
-		let roots5 = solve_cubic(1., 3., 0., -1.);
+		let roots5 = collect_roots(solve_cubic(1., 3., 0., -1.));
 		assert!(f64_compare_vector(roots5, vec![0.532, -2.879, -0.653], MAX_ABSOLUTE_DIFFERENCE));
 
 		// quadratic
-		let roots6 = solve_cubic(0., 3., 0., -3.);
+		let roots6 = collect_roots(solve_cubic(0., 3., 0., -3.));
 		assert!(roots6 == vec![1., -1.]);
 
 		// linear
-		let roots7 = solve_cubic(0., 0., 1., -1.);
+		let roots7 = collect_roots(solve_cubic(0., 0., 1., -1.));
 		assert!(roots7 == vec![1.]);
 	}
 

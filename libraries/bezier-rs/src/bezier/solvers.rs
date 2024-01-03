@@ -714,8 +714,8 @@ mod tests {
 		// Linear bezier cannot have extrema
 		let line = Bezier::from_linear_dvec2(DVec2::new(10., 10.), DVec2::new(50., 50.));
 		let [x_extrema, y_extrema] = line.local_extrema();
-		assert!(x_extrema.is_empty());
-		assert!(y_extrema.is_empty());
+		assert_eq!(y_extrema.count(), 0);
+		assert_eq!(x_extrema.count(), 0);
 	}
 
 	#[test]
@@ -723,26 +723,26 @@ mod tests {
 		// Test with no x-extrema, no y-extrema
 		let bezier1 = Bezier::from_quadratic_coordinates(40., 35., 149., 54., 155., 170.);
 		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
-		assert!(x_extrema1.is_empty());
-		assert!(y_extrema1.is_empty());
+		assert_eq!(x_extrema1.count(), 0);
+		assert_eq!(y_extrema1.count(), 0);
 
 		// Test with 1 x-extrema, no y-extrema
 		let bezier2 = Bezier::from_quadratic_coordinates(45., 30., 170., 90., 45., 150.);
 		let [x_extrema2, y_extrema2] = bezier2.local_extrema();
-		assert_eq!(x_extrema2.len(), 1);
-		assert!(y_extrema2.is_empty());
+		assert_eq!(x_extrema2.count(), 1);
+		assert_eq!(y_extrema2.count(), 0);
 
 		// Test with no x-extrema, 1 y-extrema
 		let bezier3 = Bezier::from_quadratic_coordinates(30., 130., 100., 25., 150., 130.);
 		let [x_extrema3, y_extrema3] = bezier3.local_extrema();
-		assert!(x_extrema3.is_empty());
-		assert_eq!(y_extrema3.len(), 1);
+		assert_eq!(x_extrema3.count(), 0);
+		assert_eq!(y_extrema3.count(), 1);
 
 		// Test with 1 x-extrema, 1 y-extrema
 		let bezier4 = Bezier::from_quadratic_coordinates(50., 70., 170., 35., 60., 150.);
 		let [x_extrema4, y_extrema4] = bezier4.local_extrema();
-		assert_eq!(x_extrema4.len(), 1);
-		assert_eq!(y_extrema4.len(), 1);
+		assert_eq!(x_extrema4.count(), 1);
+		assert_eq!(y_extrema4.count(), 1);
 	}
 
 	#[test]
@@ -750,44 +750,44 @@ mod tests {
 		// 0 x-extrema, 0 y-extrema
 		let bezier1 = Bezier::from_cubic_coordinates(100., 105., 250., 250., 110., 150., 260., 260.);
 		let [x_extrema1, y_extrema1] = bezier1.local_extrema();
-		assert!(x_extrema1.is_empty());
-		assert!(y_extrema1.is_empty());
+		assert_eq!(x_extrema1.count(), 0);
+		assert_eq!(y_extrema1.count(), 0);
 
 		// 1 x-extrema, 0 y-extrema
 		let bezier2 = Bezier::from_cubic_coordinates(55., 145., 40., 40., 110., 110., 180., 40.);
 		let [x_extrema2, y_extrema2] = bezier2.local_extrema();
-		assert_eq!(x_extrema2.len(), 1);
-		assert!(y_extrema2.is_empty());
+		assert_eq!(x_extrema2.count(), 1);
+		assert_eq!(y_extrema2.count(), 0);
 
 		// 1 x-extrema, 1 y-extrema
 		let bezier3 = Bezier::from_cubic_coordinates(100., 105., 170., 10., 25., 20., 20., 120.);
 		let [x_extrema3, y_extrema3] = bezier3.local_extrema();
-		assert_eq!(x_extrema3.len(), 1);
-		assert_eq!(y_extrema3.len(), 1);
+		assert_eq!(x_extrema3.count(), 1);
+		assert_eq!(y_extrema3.count(), 1);
 
 		// 1 x-extrema, 2 y-extrema
 		let bezier4 = Bezier::from_cubic_coordinates(50., 90., 120., 16., 150., 190., 45., 150.);
 		let [x_extrema4, y_extrema4] = bezier4.local_extrema();
-		assert_eq!(x_extrema4.len(), 1);
-		assert_eq!(y_extrema4.len(), 2);
+		assert_eq!(x_extrema4.count(), 1);
+		assert_eq!(y_extrema4.count(), 2);
 
 		// 2 x-extrema, 0 y-extrema
 		let bezier5 = Bezier::from_cubic_coordinates(40., 170., 150., 160., 10., 10., 170., 10.);
 		let [x_extrema5, y_extrema5] = bezier5.local_extrema();
-		assert_eq!(x_extrema5.len(), 2);
-		assert!(y_extrema5.is_empty());
+		assert_eq!(x_extrema5.count(), 2);
+		assert_eq!(y_extrema5.count(), 0);
 
 		// 2 x-extrema, 1 y-extrema
 		let bezier6 = Bezier::from_cubic_coordinates(40., 170., 150., 160., 10., 10., 160., 45.);
 		let [x_extrema6, y_extrema6] = bezier6.local_extrema();
-		assert_eq!(x_extrema6.len(), 2);
-		assert_eq!(y_extrema6.len(), 1);
+		assert_eq!(x_extrema6.count(), 2);
+		assert_eq!(y_extrema6.count(), 1);
 
 		// 2 x-extrema, 2 y-extrema
 		let bezier7 = Bezier::from_cubic_coordinates(46., 60., 140., 10., 50., 160., 120., 120.);
 		let [x_extrema7, y_extrema7] = bezier7.local_extrema();
-		assert_eq!(x_extrema7.len(), 2);
-		assert_eq!(y_extrema7.len(), 2);
+		assert_eq!(x_extrema7.count(), 2);
+		assert_eq!(y_extrema7.count(), 2);
 	}
 
 	#[test]
