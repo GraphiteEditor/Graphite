@@ -38,12 +38,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let mut accumulator = 0.;
 		for (index, length) in lengths.iter().enumerate() {
 			let length_ratio = length / total_length;
-			if accumulator <= global_t && global_t <= accumulator + length_ratio {
-				return (index, (global_t - accumulator) / length_ratio);
+			if (index == 0 || accumulator <= global_t) && global_t <= accumulator + length_ratio {
+				return (index, ((global_t - accumulator) / length_ratio).clamp(0., 1.));
 			}
 			accumulator += length_ratio;
 		}
-		(0, 0.)
+		(self.len() - 2, 1.)
 	}
 
 	/// Convert a [SubpathTValue] to a parametric `(segment_index, t)` tuple.
