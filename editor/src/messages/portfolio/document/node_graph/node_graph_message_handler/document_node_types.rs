@@ -2656,10 +2656,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Resample Points",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_>"),
+			implementation: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Spacing", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Start Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Stop Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Adaptive Spacing", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::resample_points_properties,

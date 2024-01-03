@@ -2044,8 +2044,16 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 
 pub fn resample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.), true);
+	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.), true);
+	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.), true);
+	let adaptive_spacing = bool_widget(document_node, node_id, 4, "Adaptive Spacing", true);
 
-	vec![LayoutGroup::Row { widgets: spacing }]
+	vec![
+		LayoutGroup::Row { widgets: spacing }.with_tooltip("Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled)"),
+		LayoutGroup::Row { widgets: start_offset }.with_tooltip("Exclude some distance from the start of the path before the first instance"),
+		LayoutGroup::Row { widgets: stop_offset }.with_tooltip("Exclude some distance from the end of the path after the last instance"),
+		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip("Round 'Spacing' to a nearby value that divides into the path length evenly"),
+	]
 }
 
 /// Fill Node Widgets LayoutGroup

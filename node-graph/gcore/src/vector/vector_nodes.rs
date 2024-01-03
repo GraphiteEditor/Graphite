@@ -204,12 +204,15 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ResamplePoints<Spacing> {
+pub struct ResamplePoints<Spacing, StartOffset, StopOffset, AdaptiveSpacing> {
 	spacing: Spacing,
+	start_offset: StartOffset,
+	stop_offset: StopOffset,
+	adaptive_spacing: AdaptiveSpacing,
 }
 
 #[node_macro::node_fn(ResamplePoints)]
-fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
+fn resample_points(mut vector_data: VectorData, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
 		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
 			continue;
@@ -217,11 +220,30 @@ fn resample_points(mut vector_data: VectorData, spacing: f64) -> VectorData {
 
 		subpath.apply_transform(vector_data.transform);
 		let length = subpath.length(None);
-		let rounded_count = (length / spacing).round();
+		let used_length = length - start_offset - stop_offset;
+		if used_length <= 0. {
+			continue;
+		}
+		let used_length_without_remainder = used_length - used_length % spacing;
 
-		if rounded_count >= 1. {
-			let new_anchors = (0..=rounded_count as usize).map(|c| subpath.evaluate(SubpathTValue::GlobalEuclidean(c as f64 / rounded_count)));
-			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && rounded_count as usize > 1);
+		let count = if adaptive_spacing {
+			(used_length / spacing).round()
+		} else {
+			(used_length / spacing + f64::EPSILON).floor()
+		};
+
+		if count >= 1. {
+			let new_anchors = (0..=count as usize).map(|c| {
+				let ratio = c as f64 / count;
+
+				// With adaptive spacing, we widen or narrow the points (that's the rounding performed above) as necessary to ensure the last point is always at the end of the path
+				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path
+
+				let used_length_here = if adaptive_spacing { used_length } else { used_length_without_remainder };
+				let t = ratio * used_length_here + start_offset;
+				subpath.evaluate(SubpathTValue::GlobalEuclidean(t / length))
+			});
+			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && count as usize > 1);
 		}
 
 		subpath.apply_transform(vector_data.transform.inverse());
