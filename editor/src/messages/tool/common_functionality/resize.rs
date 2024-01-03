@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
-use super::snapping::{SnapCandidatePoint, SnapData};
+use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData};
 
 #[derive(Clone, Debug, Default)]
 pub struct Resize {
@@ -16,17 +16,11 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		let root_transform = document.metadata().document_to_viewport;
-		let point = SnapCandidatePoint::new_handle(root_transform.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(SnapData::new(document, input), &point, None, false);
+		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 		self.drag_start = snapped.snapped_point_document;
-	}
-
-	/// Recalculates snap targets without snapping the starting position.
-	pub fn recalculate_snaps(&mut self, _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
-		//	self.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-		//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 	}
 
 	/// Calculate the drag start position in viewport space.
@@ -39,7 +33,7 @@ impl Resize {
 		&mut self,
 		responses: &mut VecDeque<Message>,
 		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
+		input: &InputPreprocessorMessageHandler,
 		center: Key,
 		lock_ratio: Key,
 		skip_rerender: bool,
@@ -53,25 +47,53 @@ impl Resize {
 		}
 
 		let mut start = self.viewport_drag_start(document);
-		let point = SnapCandidatePoint::new_handle(document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position));
+		let mouse = input.mouse.position;
+		let to_viewport = document.metadata().document_to_viewport;
+		let document_mouse = to_viewport.inverse().transform_point2(mouse);
+		let mut points = [start, mouse];
 		let ignore = if let Some(x) = self.layer { vec![x] } else { vec![] };
-		let snapped_point = self.snap_manager.free_snap(SnapData::ignore(document, ipp, &ignore), &point, None, false);
-		let stop = document.metadata().document_to_viewport.transform_point2(snapped_point.snapped_point_document);
-		self.snap_manager.update_indicator(snapped_point);
-
-		let mut size = stop - start;
-		if ipp.keyboard.get(lock_ratio as usize) {
-			size = size.abs().max(size.abs().yx()) * size.signum();
-		}
-		if ipp.keyboard.get(center as usize) {
-			start -= size;
-			size *= 2.;
+		let ratio = input.keyboard.get(lock_ratio as usize);
+		let centre = input.keyboard.get(center as usize);
+		let snap_data = SnapData::ignore(document, input, &ignore);
+		if ratio {
+			let size = points[1] - points[0];
+			let size = size.abs().max(size.abs().yx()) * size.signum();
+			points[1] = points[0] + size;
+			let end_document = to_viewport.inverse().transform_point2(points[1]);
+			let c = SnapConstraint::Line {
+				origin: self.drag_start,
+				direction: end_document - self.drag_start,
+			};
+			if centre {
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), c, None);
+				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
+				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, c, None);
+				let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+				points[0] = to_viewport.transform_point2(best.snapped_point_document);
+				points[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+				self.snap_manager.update_indicator(best);
+			} else {
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), c, None);
+				points[1] = to_viewport.transform_point2(snapped.snapped_point_document);
+				self.snap_manager.update_indicator(snapped);
+			}
+		} else if centre {
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
+			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * self.drag_start - document_mouse), None, false);
+			let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+			points[0] = to_viewport.transform_point2(best.snapped_point_document);
+			points[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
+			self.snap_manager.update_indicator(best);
+		} else {
+			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
+			points[1] = to_viewport.transform_point2(snapped.snapped_point_document);
+			self.snap_manager.update_indicator(snapped);
 		}
 
 		Some(
 			GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_scale_angle_translation(size, 0., start),
+				transform: DAffine2::from_scale_angle_translation(points[1] - points[0], 0., points[0]),
 				transform_in: TransformIn::Viewport,
 				skip_rerender,
 			}

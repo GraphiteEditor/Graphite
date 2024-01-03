@@ -118,7 +118,7 @@ impl Fsm for ImaginateToolFsmState {
 				self
 			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
-				shape_data.start(responses, document, input);
+				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);

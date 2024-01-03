@@ -12,12 +12,6 @@ use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::uuid::ManipulatorGroupId;
 
-enum SnapConstraint {
-	None,
-	Line { point: DVec2, direction: DVec2 },
-	Circle { point: DVec2, radius: f64 },
-}
-
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
 pub struct SnapManager {
@@ -57,7 +51,7 @@ impl SnapCandidatePoint {
 	pub fn new_source(document_point: DVec2, source: SnapSource) -> Self {
 		Self::new(document_point, source, SnapTarget::None)
 	}
-	pub fn new_handle(document_point: DVec2) -> Self {
+	pub fn handle(document_point: DVec2) -> Self {
 		Self::new_source(document_point, SnapSource::Node(NodeSnapSource::Sharp))
 	}
 }
@@ -108,6 +102,9 @@ impl SnappedPoint {
 		let self_better_contraint = contrained_at_same_pos && other.at_intersection && !self.at_intersection;
 
 		(other_closer || other_more_contrained || other_better_contraint) && !self_more_contrained && !self_better_contraint
+	}
+	pub fn is_snapped(&self) -> bool {
+		self.distance.is_finite()
 	}
 }
 #[derive(Default)]
@@ -226,13 +223,13 @@ pub struct SnappedCurve {
 	pub document_curve: Bezier,
 }
 #[derive(Clone, Debug, Default)]
-struct InterimSnapResults {
+struct SnapResults {
 	pub points: Vec<SnappedPoint>,
 	pub grid_lines: Vec<SnappedLine>,
 	pub curves: Vec<SnappedCurve>,
 }
 #[derive(Clone, Copy, Debug, Default)]
-pub enum SnapContraint {
+pub enum SnapConstraint {
 	#[default]
 	None,
 	Line {
@@ -240,19 +237,34 @@ pub enum SnapContraint {
 		direction: DVec2,
 	},
 	Direction(DVec2),
+	Circle {
+		centre: DVec2,
+		radius: f64,
+	},
 }
-impl SnapContraint {
+impl SnapConstraint {
 	pub fn projection(&self, point: DVec2) -> DVec2 {
 		match *self {
-			Self::None => point,
-			Self::Line { origin, direction } => (point - origin).project_onto(direction) + origin,
-			Self::Direction(direction) => point.project_onto(direction),
+			Self::Line { origin, direction } if direction != DVec2::ZERO => (point - origin).project_onto(direction) + origin,
+			Self::Circle { centre, radius } => {
+				let from_centre = point - centre;
+				let distance = from_centre.length();
+				if distance > 0. {
+					centre + radius * from_centre / distance
+				} else {
+					// Point is exactly at the centre, so project right
+					centre + DVec2::new(radius, 0.)
+				}
+			}
+			_ => point,
 		}
 	}
-}
-#[derive(Clone, Debug, Default)]
-struct Ignore {
-	layers: HashSet<LayerNodeIdentifier>,
+	pub fn direction(&self) -> DVec2 {
+		match *self {
+			Self::Line { direction, .. } | Self::Direction(direction) => direction,
+			_ => DVec2::ZERO,
+		}
+	}
 }
 #[derive(Clone, Debug, Default)]
 struct ObjectSnapper {
@@ -315,7 +327,7 @@ impl ObjectSnapper {
 			self.add_layer_bounds(document, layer, SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge));
 		}
 	}
-	pub fn snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, isr: &mut InterimSnapResults, c: SnapContraint) {
+	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
 		self.collect_paths(snap_data, point.source_index == 0);
 
 		let document = snap_data.document;
@@ -329,7 +341,7 @@ impl ObjectSnapper {
 			let distance = snapped_point_document.distance(point.document_point);
 
 			if distance < snap_tollerance(document) {
-				isr.curves.push(SnappedCurve {
+				snap_results.curves.push(SnappedCurve {
 					layer: path.layer,
 					start: path.start,
 					document_curve: path.document_curve,
@@ -345,6 +357,46 @@ impl ObjectSnapper {
 					},
 				});
 				if perp || tang {}
+			}
+		}
+	}
+
+	pub fn snap_paths_constrained(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+		let document = snap_data.document;
+		self.collect_paths(snap_data, point.source_index == 0);
+
+		let tollerance = snap_tollerance(document);
+		let constraint_path = if let SnapConstraint::Circle { centre, radius } = constraint {
+			Subpath::new_ellipse(centre - DVec2::splat(radius), centre + DVec2::splat(radius))
+		} else {
+			let constrained_point = constraint.projection(point.document_point);
+			let direction = constraint.direction().normalize_or_zero();
+			let start = constrained_point - tollerance * direction;
+			let end = constrained_point + tollerance * direction;
+			Subpath::<ManipulatorGroupId>::new_line(start, end)
+		};
+
+		for path in &self.paths_to_snap {
+			for constraint_path in constraint_path.iter() {
+				for time in path.document_curve.intersections(&constraint_path, None, None) {
+					let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
+
+					let distance = snapped_point_document.distance(point.document_point);
+
+					if distance < tollerance {
+						snap_results.points.push(SnappedPoint {
+							snapped_point_document,
+							target: path.target,
+							distance,
+							tollerance,
+							curves: [path.bounds.is_none().then(|| path.document_curve), Some(constraint_path)],
+							source: point.source,
+							target_bounds: path.bounds,
+							at_intersection: true,
+							..Default::default()
+						});
+					}
+				}
 			}
 		}
 	}
@@ -386,9 +438,8 @@ impl ObjectSnapper {
 			let values = BBoxSnapValues::new(target_enabled(BoardSnapTarget::Corner), target_enabled(BoardSnapTarget::Edge), target_enabled(BoardSnapTarget::Centre));
 			get_bbox_points(quad, &mut self.points_to_snap, values);
 		}
-		// TODO bounding box corner
 	}
-	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, isr: &mut InterimSnapResults, c: SnapContraint, constrained_point: DVec2) {
+	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, c: SnapConstraint, constrained_point: DVec2) {
 		self.collect_anchors(snap_data, point.source_index == 0);
 		//info!("Points to snap {:#?}", self.points_to_snap);
 		let mut best = None;
@@ -421,33 +472,36 @@ impl ObjectSnapper {
 			}
 		}
 		if let Some(result) = best {
-			isr.points.push(result);
+			snap_results.points.push(result);
 		}
 	}
-	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, isr: &mut InterimSnapResults, quad: Option<Quad>, to_paths_only: bool) -> Option<SnappedPoint> {
-		self.snap_anchors(snap_data, point, isr, SnapContraint::None, point.document_point);
-		self.snap_paths(snap_data, point, isr, SnapContraint::None);
-		None
+	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
+		self.snap_anchors(snap_data, point, snap_results, SnapConstraint::None, point.document_point);
+		self.free_snap_paths(snap_data, point, snap_results);
+	}
+
+	pub fn contrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+		self.snap_anchors(snap_data, point, snap_results, constraint, constraint.projection(point.document_point));
+		self.snap_paths_constrained(snap_data, point, snap_results, constraint);
+	}
+}
+
+fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
+	if (a.target.bounding_box() && !b.target.bounding_box()) || (a.at_intersection && !b.at_intersection) {
+		Ordering::Greater
+	} else if (!a.target.bounding_box() && b.target.bounding_box()) || (!a.at_intersection && b.at_intersection) {
+		Ordering::Less
+	} else {
+		a.distance.partial_cmp(&b.distance).unwrap()
 	}
 }
 
 fn get_closest_point(points: &[SnappedPoint]) -> Option<&SnappedPoint> {
-	points.iter().min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap())
+	points.iter().min_by(compare_points)
 }
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
-	curves
-		.iter()
-		.filter(|curve| !exclude_paths || curve.point.target != SnapTarget::Node(NodeSnapTarget::Path))
-		.map(|curve| &curve.point)
-		.min_by(|a, b| {
-			if matches!(a.target, SnapTarget::BoundingBox(_)) && !matches!(b.target, SnapTarget::BoundingBox(_)) {
-				Ordering::Greater
-			} else if !matches!(a.target, SnapTarget::BoundingBox(_)) && matches!(b.target, SnapTarget::BoundingBox(_)) {
-				Ordering::Less
-			} else {
-				a.distance.partial_cmp(&b.distance).unwrap()
-			}
-		})
+	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Node(NodeSnapTarget::Path);
+	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
@@ -511,30 +565,30 @@ impl<'a> SnapData<'a> {
 }
 impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
-		self.indicator = snapped_point.distance.is_finite().then(|| snapped_point);
+		self.indicator = snapped_point.is_snapped().then(|| snapped_point);
 	}
-	pub fn preview_draw(&mut self, snap_data: SnapData, mouse: DVec2) {
-		let mut point = SnapCandidatePoint::new_handle(snap_data.document.metadata.document_to_viewport.inverse().transform_point2(mouse));
+	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
+		let mut point = SnapCandidatePoint::handle(snap_data.document.metadata.document_to_viewport.inverse().transform_point2(mouse));
 		point.source_index = 0;
 		let point = self.free_snap(snap_data, &point, None, false);
 		self.update_indicator(point);
 	}
 
-	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, isr: InterimSnapResults, contrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
+	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, contrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
 		let mut snapped_points = Vec::new();
 		let document = snap_data.document;
 
-		if let Some(closest_point) = get_closest_point(&isr.points) {
+		if let Some(closest_point) = get_closest_point(&snap_results.points) {
 			snapped_points.push(closest_point.clone());
 		}
 		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Path));
-		if let Some(closest_curve) = get_closest_curve(&isr.curves, exclude_paths) {
+		if let Some(closest_curve) = get_closest_curve(&snap_results.curves, exclude_paths) {
 			snapped_points.push(closest_curve.clone());
 		}
 
 		if !contrained {
 			if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Intersection)) {
-				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &isr.curves) {
+				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
 					snapped_points.push(closest_curves_intersection);
 				}
 			}
@@ -613,19 +667,36 @@ impl SnapManager {
 		candidates
 	}
 
-	pub fn free_snap(&mut self, snap_data: SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>, to_paths: bool) -> SnappedPoint {
-		let mut isr = InterimSnapResults::default();
+	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>, to_paths: bool) -> SnappedPoint {
+		let mut snap_results = SnapResults::default();
 		if point.source_index == 0 {
 			self.candidates = None;
 		}
 
 		let candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
 
-		let mut snap_data = SnapData { candidates, ..snap_data };
-		self.object_snapper.free_snap(&mut snap_data, point, &mut isr, bbox, to_paths);
+		let SnapData { document, input, ignore, .. } = snap_data;
+		let mut snap_data = SnapData { document, input, ignore, candidates };
+		self.object_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 
-		//info!("ISR {isr:#?}");
-		Self::find_best_snap(&mut snap_data, point, isr, false, false, to_paths)
+		//info!("SR {snap_results:#?}");
+		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
+	}
+
+	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, contraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
+		let mut snap_results = SnapResults::default();
+		if point.source_index == 0 {
+			self.candidates = None;
+		}
+
+		let candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
+
+		let SnapData { document, input, ignore, .. } = snap_data;
+		let mut snap_data = SnapData { document, input, ignore, candidates };
+		self.object_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, contraint);
+
+		info!("SR {snap_results:#?}");
+		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}
 
 	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
@@ -661,7 +732,7 @@ impl SnapManager {
 		if snap_data.document.snapping_state.grid_snapping {
 			self.grid_overlay(snap_data.document, overlay_context);
 		}
-		// let mut isr = InterimSnapResults::default();
+		// let mut snap_results = InterimSnapResults::default();
 		let to_viewport = snap_data.document.metadata.document_to_viewport;
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
@@ -680,6 +751,8 @@ impl SnapManager {
 
 	/// Removes snap target data and overlays. Call this when snapping is done.
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+		self.candidates = None;
+		self.indicator = None;
 		responses.add(OverlaysMessage::Draw);
 	}
 }

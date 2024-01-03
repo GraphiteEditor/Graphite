@@ -146,7 +146,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=RectangleToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=RectangleToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=RectangleToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=RectangleToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// ImaginateToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=ImaginateToolMessage::DragStart),
@@ -160,14 +160,14 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=EllipseToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=EllipseToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=EllipseToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=EllipseToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=EllipseToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// PolygonToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=PolygonToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=PolygonToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=PolygonToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=PolygonToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PolygonToolMessage::Resize { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PolygonToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		//
 		// LineToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=LineToolMessage::DragStart),

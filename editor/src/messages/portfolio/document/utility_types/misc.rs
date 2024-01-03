@@ -216,6 +216,9 @@ impl SnapTarget {
 	pub fn is_some(&self) -> bool {
 		self != &Self::None
 	}
+	pub fn bounding_box(&self) -> bool {
+		matches!(self, Self::BoundingBox(_))
+	}
 }
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {

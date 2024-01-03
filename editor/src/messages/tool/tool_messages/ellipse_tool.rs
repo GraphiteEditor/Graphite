@@ -1,7 +1,9 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -48,7 +50,7 @@ pub enum EllipseOptionsUpdate {
 pub enum EllipseToolMessage {
 	// Standard messages
 	#[remain::unsorted]
-	CanvasTransformed,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -57,7 +59,7 @@ pub enum EllipseToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize {
+	PointerMove {
 		center: Key,
 		lock_ratio: Key,
 	},
@@ -147,11 +149,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 		match self.fsm_state {
 			Ready => actions!(EllipseToolMessageDiscriminant;
 				DragStart,
+				PointerMove,
 			),
 			Drawing => actions!(EllipseToolMessageDiscriminant;
 				DragStop,
 				Abort,
-				Resize,
+				PointerMove,
 			),
 		}
 	}
@@ -160,7 +163,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 impl ToolTransition for EllipseTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(EllipseToolMessage::CanvasTransformed.into()),
+			overlay_provider: Some(|overlay_context| EllipseToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(EllipseToolMessage::Abort.into()),
 			working_color_changed: Some(EllipseToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -195,12 +198,12 @@ impl Fsm for EllipseToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(EllipseToolFsmState::Drawing, EllipseToolMessage::CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input);
+			(_, EllipseToolMessage::Overlays(mut overlay_context)) => {
+				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
 			(EllipseToolFsmState::Ready, EllipseToolMessage::DragStart) => {
-				shape_data.start(responses, document, input);
+				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Create a new ellipse vector shape
@@ -223,12 +226,17 @@ impl Fsm for EllipseToolFsmState {
 
 				EllipseToolFsmState::Drawing
 			}
-			(state, EllipseToolMessage::Resize { center, lock_ratio }) => {
+			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 
-				state
+				self
+			}
+			(_, EllipseToolMessage::PointerMove { .. }) => {
+				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);

@@ -1,7 +1,9 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -41,7 +43,7 @@ impl Default for PolygonOptions {
 pub enum PolygonToolMessage {
 	// Standard messages
 	#[remain::unsorted]
-	CanvasTransformed,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -50,7 +52,7 @@ pub enum PolygonToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize {
+	PointerMove {
 		center: Key,
 		lock_ratio: Key,
 	},
@@ -187,11 +189,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Polygon
 		match self.fsm_state {
 			Ready => actions!(PolygonToolMessageDiscriminant;
 				DragStart,
+				PointerMove,
 			),
 			Drawing => actions!(PolygonToolMessageDiscriminant;
 				DragStop,
 				Abort,
-				Resize,
+				PointerMove,
 			),
 		}
 	}
@@ -200,7 +203,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Polygon
 impl ToolTransition for PolygonTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(PolygonToolMessage::CanvasTransformed.into()),
+			overlay_provider: Some(|overlay_context| PolygonToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(PolygonToolMessage::Abort.into()),
 			working_color_changed: Some(PolygonToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -235,12 +238,12 @@ impl Fsm for PolygonToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(PolygonToolFsmState::Drawing, PolygonToolMessage::CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input);
+			(_, PolygonToolMessage::Overlays(mut overlay_context)) => {
+				polygon_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
 			(PolygonToolFsmState::Ready, PolygonToolMessage::DragStart) => {
-				polygon_data.start(responses, document, input);
+				polygon_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
 				let subpath = match tool_options.primitive_shape_type {
@@ -263,12 +266,17 @@ impl Fsm for PolygonToolFsmState {
 
 				PolygonToolFsmState::Drawing
 			}
-			(state, PolygonToolMessage::Resize { center, lock_ratio }) => {
+			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(message) = polygon_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 
-				state
+				self
+			}
+			(_, PolygonToolMessage::PointerMove { .. }) => {
+				polygon_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::DragStop) => {
 				input.mouse.finish_transaction(polygon_data.viewport_drag_start(document), responses);
