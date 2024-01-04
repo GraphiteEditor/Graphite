@@ -8,7 +8,7 @@ pub static LOGGER: WasmLog = WasmLog;
 
 /// Initialize the backend
 #[wasm_bindgen(start)]
-pub fn init_graphite() {
+pub fn init() {
 	// Set up the logger with a default level of debug
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Trace);

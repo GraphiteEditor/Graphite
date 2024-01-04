@@ -1,8 +1,8 @@
 import { WasmSubpath } from "@/../wasm/pkg";
-import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
+import type { SubpathFeatureKey } from "@/features/subpath-features";
+import subpathFeatures from "@/features/subpath-features";
 import { renderDemo } from "@/utils/render";
-
-import { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, InputOption } from "@/utils/types";
+import type { SubpathCallback, WasmSubpathInstance, WasmSubpathManipulatorKey, InputOption } from "@/utils/types";
 
 const SELECTABLE_RANGE = 10;
 const POINT_INDEX_TO_MANIPULATOR: WasmSubpathManipulatorKey[] = ["set_anchor", "set_in_handle", "set_out_handle"];
@@ -48,8 +48,7 @@ class SubpathDemo extends HTMLElement {
 		this.render();
 
 		const figure = this.querySelector("figure") as HTMLElement;
-		const wasm = await import("@/../wasm/pkg");
-		this.subpath = wasm.WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
+		this.subpath = WasmSubpath.from_triples(this.triples, this.closed) as WasmSubpathInstance;
 		this.drawDemo(figure);
 	}
 

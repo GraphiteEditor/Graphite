@@ -1,4 +1,6 @@
-export type WasmRawInstance = typeof import("@/../wasm/pkg");
+import type * as WasmPkg from "@/../wasm/pkg";
+
+export type WasmRawInstance = typeof WasmPkg;
 export type WasmBezierInstance = InstanceType<WasmRawInstance["WasmBezier"]>;
 
 export type WasmBezierKey = keyof WasmBezierInstance;
@@ -9,7 +11,7 @@ export type WasmSubpathInstance = InstanceType<WasmRawInstance["WasmSubpath"]>;
 export type WasmSubpathManipulatorKey = "set_anchor" | "set_in_handle" | "set_out_handle";
 
 export const BEZIER_CURVE_TYPE = ["Linear", "Quadratic", "Cubic"] as const;
-export type BezierCurveType = typeof BEZIER_CURVE_TYPE[number];
+export type BezierCurveType = (typeof BEZIER_CURVE_TYPE)[number];
 
 export type BezierCallback = (bezier: WasmBezierInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
 export type SubpathCallback = (subpath: WasmSubpathInstance, options: Record<string, number>, mouseLocation?: [number, number]) => string;
@@ -59,22 +61,22 @@ export function getConstructorKey(bezierCurveType: BezierCurveType): WasmBezierC
 	return mapping[bezierCurveType];
 }
 
-export interface DemoArgs {
+export type DemoArgs = {
 	title: string;
 	disabled?: boolean;
-}
+};
 
-export interface BezierDemoArgs extends DemoArgs {
+export type BezierDemoArgs = {
 	points: number[][];
 	inputOptions: InputOption[];
-}
+} & DemoArgs;
 
-export interface SubpathDemoArgs extends DemoArgs {
+export type SubpathDemoArgs = {
 	triples: (number[] | undefined)[][];
 	closed: boolean;
-}
+} & DemoArgs;
 
-export interface Demo extends HTMLElement {
+export type Demo = {
 	inputOptions: InputOption[];
 	sliderData: Record<string, number>;
 	sliderUnits: Record<string, string | string[]>;
@@ -84,14 +86,14 @@ export interface Demo extends HTMLElement {
 	onMouseUp(): void;
 	onMouseMove(event: MouseEvent): void;
 	getSliderUnit(sliderValue: number, variable: string): string;
-}
+} & HTMLElement;
 
-export interface DemoPane extends HTMLElement {
+export type DemoPane = {
 	name: string;
 	demos: DemoArgs[];
 	id: string;
-	buildDemo(demo: DemoArgs): Demo;
-}
+	buildDemo(demo: DemoArgs): HTMLElement;
+} & HTMLElement;
 
 export const BEZIER_T_VALUE_VARIANTS = ["Parametric", "Euclidean"] as const;
 export const SUBPATH_T_VALUE_VARIANTS = ["GlobalParametric", "GlobalEuclidean"] as const;

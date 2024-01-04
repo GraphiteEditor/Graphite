@@ -22,6 +22,6 @@ mkdir dist/libraries
 mkdir dist/libraries/bezier-rs
 cd bezier-rs-demos
 npm ci
-NODE_ENV=production npm run build-prod-unix
-mv public/* ../dist/libraries/bezier-rs
+NODE_ENV=production npm run build
+mv dist/* ../dist/libraries/bezier-rs
 cd ..

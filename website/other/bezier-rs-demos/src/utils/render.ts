@@ -1,4 +1,4 @@
-import { Demo, DemoPane, InputOption } from "@/utils/types";
+import type { Demo, DemoPane, InputOption } from "@/utils/types";
 
 export function renderDemo(demo: Demo) {
 	const header = document.createElement("h4");

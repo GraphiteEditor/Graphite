@@ -12,18 +12,7 @@ From this directory, first execute `npm install` to install the required Node de
   ```
   npm start
   ```
-- To compile an unoptimized development build (like above, but it writes the files instead of serving them):
+- To compile an optimized production build:
   ```
   npm run build
   ```
-- To compile an optimized production build:
-  
-  ```
-  # WSL/Mac/Linux terminals:
-  npm run build-prod-unix
-
-  # Windows terminals:
-  npm run build-prod-windows
-  ```
-
-When a build is compiled, the entire `./public` folder is the output containing both the static `index.html`, etc., plus the generated `build/` folder.

@@ -1,6 +1,8 @@
-import bezierFeatures, { BezierFeatureKey } from "@/features/bezier-features";
+import type { BezierFeatureKey } from "@/features/bezier-features";
+import bezierFeatures from "@/features/bezier-features";
 import { renderDemoPane } from "@/utils/render";
-import { BezierCurveType, BEZIER_CURVE_TYPE, BezierDemoOptions, InputOption, Demo, DemoPane, BezierDemoArgs } from "@/utils/types";
+import type { BezierCurveType, BezierDemoOptions, InputOption, DemoPane, BezierDemoArgs } from "@/utils/types";
+import { BEZIER_CURVE_TYPE } from "@/utils/types";
 
 const demoDefaults = {
 	Linear: {
@@ -66,7 +68,7 @@ class BezierDemoPane extends HTMLElement implements DemoPane {
 		renderDemoPane(this);
 	}
 
-	buildDemo(demo: BezierDemoArgs): Demo {
+	buildDemo(demo: BezierDemoArgs): HTMLElement {
 		const bezierDemo = document.createElement("bezier-demo");
 		bezierDemo.setAttribute("title", demo.title);
 		bezierDemo.setAttribute("points", JSON.stringify(demo.points));

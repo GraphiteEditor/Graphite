@@ -1,6 +1,7 @@
 import { WasmBezier } from "@/../wasm/pkg";
 import { capOptions, tSliderOptions, bezierTValueVariantOptions, errorOptions, minimumSeparationOptions } from "@/utils/options";
-import { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption, BEZIER_T_VALUE_VARIANTS } from "@/utils/types";
+import type { BezierDemoOptions, WasmBezierInstance, BezierCallback, InputOption } from "@/utils/types";
+import { BEZIER_T_VALUE_VARIANTS } from "@/utils/types";
 
 const bezierFeatures = {
 	constructor: {

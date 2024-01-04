@@ -2,31 +2,39 @@
 	"name": "bezier-rs-demos",
 	"version": "0.1.0",
 	"private": true,
+	"type": "module",
 	"scripts": {
-		"start": "webpack serve || (npm run print-building-help && exit 1)",
-		"serve": "webpack serve || (npm run print-building-help && exit 1)",
-		"build": "webpack build || (npm run print-building-help && exit 1)",
-		"build-prod-unix": "NODE_ENV=production webpack build || (npm run print-building-help && exit 1)",
-		"build-prod-windows": "set NODE_ENV=production && webpack build || (npm run print-building-help && exit 1)",
-		"print-building-help": "echo 'bezier-rs interactive demos project failed to build. Did you remember to `npm install` the node dependencies?'"
-	},
-	"dependencies": {
-		"core-js": "^3.30.2"
+		"start": "npm run build-wasm && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
+		"profiling": "npm run build-wasm-profiling && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm-profiling\" || (npm run print-building-help && exit 1)",
+		"production": "npm run build-wasm-prod && concurrently -k -n \"VITE,RUST\" \"vite\" \"npm run watch:wasm\" || (npm run print-building-help && exit 1)",
+		"build": "npm run build-wasm-prod && vite build || (npm run print-building-help && exit 1)",
+		"build-profiling": "npm run build-wasm-profiling && vite build || (npm run print-building-help && exit 1)",
+		"lint": "eslint .",
+		"lint-fix": "eslint . --fix",
+		"--------------------": "",
+		"build-wasm": "wasm-pack build ./wasm --dev --target=web",
+		"build-wasm-profiling": "wasm-pack build ./wasm --profiling --target=web",
+		"build-wasm-prod": "wasm-pack build ./wasm --release --target=web",
+		"watch:wasm": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --dev --target=web -- --color=always\"",
+		"watch:wasm-profiling": "cargo watch --postpone --watch-when-idle --workdir=wasm --shell \"wasm-pack build . --profiling --target=web -- --color=always\"",
+		"print-building-help": "echo 'Graphite project failed to build. Did you remember to `npm install` the dependencies in `/frontend`?'",
+		"print-linting-help": "echo 'Graphite project had lint errors, or may have otherwise failed. In the latter case, did you remember to `npm install` the dependencies in `/frontend`?'"
 	},
 	"devDependencies": {
-		"@types/webpack": "^5.28.1",
-		"@types/webpack-dev-server": "^4.7.2",
-		"@wasm-tool/wasm-pack-plugin": "^1.7.0",
-		"css-loader": "^6.7.4",
-		"sass": "^1.62.1",
-		"sass-loader": "^13.3.0",
-		"ts-loader": "^9.4.3",
+		"@types/node": "^18.16.2",
+		"@typescript-eslint/eslint-plugin": "^6.11.0",
+		"@typescript-eslint/parser": "^6.11.0",
+		"concurrently": "^8.0.1",
+		"eslint-config-prettier": "^9.0.0",
+		"eslint-import-resolver-typescript": "^3.6.1",
+		"eslint-plugin-import": "^2.29.0",
+		"eslint-plugin-prettier": "^5.0.1",
+		"prettier": "^3.1.0",
+		"ts-node": "^10.9.1",
 		"typescript": "^5.0.4",
-		"webpack": "^5.84.1",
-		"webpack-cli": "^5.1.1",
-		"webpack-dev-server": "^4.15.0"
+		"vite": "^4.4.5"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "0.10.3"
+		"wasm-pack": "0.12.1"
 	}
 }

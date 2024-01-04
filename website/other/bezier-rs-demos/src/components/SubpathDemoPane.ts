@@ -1,6 +1,7 @@
-import subpathFeatures, { SubpathFeatureKey } from "@/features/subpath-features";
+import type { SubpathFeatureKey } from "@/features/subpath-features";
+import subpathFeatures from "@/features/subpath-features";
 import { renderDemoPane } from "@/utils/render";
-import { Demo, DemoPane, SubpathDemoArgs, SubpathInputOption } from "@/utils/types";
+import type { DemoPane, SubpathDemoArgs, SubpathInputOption } from "@/utils/types";
 
 class SubpathDemoPane extends HTMLElement implements DemoPane {
 	// Props
@@ -56,7 +57,7 @@ class SubpathDemoPane extends HTMLElement implements DemoPane {
 		renderDemoPane(this);
 	}
 
-	buildDemo(demo: SubpathDemoArgs): Demo {
+	buildDemo(demo: SubpathDemoArgs): HTMLElement {
 		const subpathDemo = document.createElement("subpath-demo");
 		subpathDemo.setAttribute("title", demo.title);
 		subpathDemo.setAttribute("triples", JSON.stringify(demo.triples));

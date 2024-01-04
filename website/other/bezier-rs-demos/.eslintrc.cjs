@@ -1,15 +1,7 @@
 module.exports = {
 	root: true,
 	env: { browser: true, node: true },
-	extends: [
-		"eslint:recommended",
-		"plugin:import/recommended",
-		"plugin:@typescript-eslint/recommended",
-		"plugin:import/typescript",
-		"plugin:svelte/recommended",
-		"plugin:svelte/prettier",
-		"prettier",
-	],
+	extends: ["eslint:recommended", "plugin:import/recommended", "plugin:@typescript-eslint/recommended", "plugin:import/typescript", "prettier"],
 	plugins: ["import", "@typescript-eslint", "prettier"],
 	settings: {
 		"import/parsers": { "@typescript-eslint/parser": [".ts"] },
@@ -19,8 +11,13 @@ module.exports = {
 	parserOptions: {
 		ecmaVersion: "latest",
 		project: "./tsconfig.json",
-		extraFileExtensions: [".svelte"],
 	},
+	overrides: [
+		{
+			extends: ["plugin:@typescript-eslint/disable-type-checked"],
+			files: [".eslintrc.cjs"],
+		},
+	],
 	ignorePatterns: [
 		// Ignore generated directories
 		"node_modules/",
@@ -30,18 +27,6 @@ module.exports = {
 		// Don't ignore JS and TS dotfiles in this folder
 		"!.*.js",
 		"!.*.ts",
-	],
-	overrides: [
-		{
-			files: ["*.svelte"],
-			parser: "svelte-eslint-parser",
-			// Parse the `<script>` in `.svelte` as TypeScript by adding the following configuration.
-			parserOptions: { parser: "@typescript-eslint/parser" },
-		},
-		{
-			extends: ["plugin:@typescript-eslint/disable-type-checked"],
-			files: [".eslintrc.cjs"],
-		},
 	],
 	rules: {
 		// Standard ESLint config (for ordinary JS syntax linting)
@@ -58,7 +43,7 @@ module.exports = {
 		"no-bitwise": "off",
 		"no-shadow": "off",
 		"no-use-before-define": "off",
-		"no-restricted-imports": ["error", { patterns: [".*", "!@graphite/*"] }],
+		"no-restricted-imports": ["error", { patterns: [".*", "!@/*"] }],
 
 		// TypeScript plugin config (for TS-specific linting)
 		"@typescript-eslint/indent": "off",
@@ -75,10 +60,6 @@ module.exports = {
 		// Prettier plugin config (for validating and fixing formatting)
 		"prettier/prettier": "error",
 
-		// Svelte plugin config (for validating Svelte-specific syntax)
-		"svelte/no-at-html-tags": "off",
-		"svelte/valid-compile": ["error", { ignoreWarnings: true }],
-
 		// Import plugin config (for intelligently validating module import statements)
 		"import/no-unresolved": "error",
 		"import/prefer-default-export": "off",
@@ -87,7 +68,6 @@ module.exports = {
 			"error",
 			{
 				alphabetize: { order: "asc", caseInsensitive: true },
-				pathGroups: [{ pattern: "**/*.svelte", group: "unknown", position: "after" }],
 				"newlines-between": "always-and-inside-groups",
 				warnOnUnassignedImports: true,
 			},

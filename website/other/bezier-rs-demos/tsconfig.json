@@ -3,7 +3,6 @@
 		"target": "ES2020",
 		"module": "esnext",
 		"strict": true,
-		"jsx": "preserve",
 		"importHelpers": true,
 		"moduleResolution": "node",
 		"experimentalDecorators": true,
@@ -12,14 +11,28 @@
 		"allowSyntheticDefaultImports": true,
 		"sourceMap": true,
 		"baseUrl": ".",
-		"types": ["node"],
 		"paths": {
-			"@/*": ["src/*"]
+			"@/*": [
+				"src/*"
+			]
 		},
-		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
+		"lib": [
+			"esnext",
+			"dom",
+			"dom.iterable",
+			"scripthost"
+		]
 	},
-	"include": ["src/**/*.ts", "src/**/*.d.ts"],
-	"exclude": ["node_modules"],
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.d.ts",
+		"*.ts",
+		"*.js",
+		"*.cjs"
+	],
+	"exclude": [
+		"node_modules"
+	],
 	"ts-node": {
 		"compilerOptions": {
 			"module": "commonjs",

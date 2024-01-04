@@ -21,7 +21,7 @@
 		// Configured in `.prettierrc`
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
-	"[yaml][github-actions-workflow]": {
+	"[json][jsonc][yaml][github-actions-workflow]": {
 		"editor.formatOnSave": true,
 		// Configured in `.prettierrc`
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
