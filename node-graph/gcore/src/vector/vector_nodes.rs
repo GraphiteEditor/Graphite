@@ -212,7 +212,11 @@ pub struct ResamplePoints<Spacing, StartOffset, StopOffset, AdaptiveSpacing> {
 }
 
 #[node_macro::node_fn(ResamplePoints)]
-fn resample_points(mut vector_data: VectorData, spacing: f64, start_offset: f64, stop_offset: f64, adaptive_spacing: bool) -> VectorData {
+fn resample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, stop_offset: f32, adaptive_spacing: bool) -> VectorData {
+	let spacing = spacing as f64;
+	let start_offset = start_offset as f64;
+	let stop_offset = stop_offset as f64;
+
 	for subpath in &mut vector_data.subpaths {
 		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
 			continue;

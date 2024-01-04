@@ -1327,19 +1327,19 @@ pub fn subtract_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 }
 
 pub fn divide_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Divisor", NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Divisor", NumberInput::new(Some(1.)), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn multiply_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Multiplicand", NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Multiplicand", NumberInput::new(Some(1.)), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }
 
 pub fn exponent_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let widgets = number_widget(document_node, node_id, 1, "Power", NumberInput::default(), true);
+	let widgets = number_widget(document_node, node_id, 1, "Power", NumberInput::new(Some(2.)), true);
 
 	vec![LayoutGroup::Row { widgets }]
 }

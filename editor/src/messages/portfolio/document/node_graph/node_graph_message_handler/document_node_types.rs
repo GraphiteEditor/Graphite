@@ -1936,7 +1936,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: NodeImplementation::proto("graphene_core::ops::DivideNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Divisor", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Divisor", TaggedValue::F32(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::divide_properties,
@@ -1948,7 +1948,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: NodeImplementation::proto("graphene_core::ops::MultiplyNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Multiplicand", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Multiplicand", TaggedValue::F32(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::multiply_properties,
@@ -1960,7 +1960,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: NodeImplementation::proto("graphene_core::ops::ExponentNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
-				DocumentInputType::value("Power", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Power", TaggedValue::F32(2.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::exponent_properties,
@@ -2506,7 +2506,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
-				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
+				DocumentInputType::value("Size", TaggedValue::F32(24.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_section_font,
@@ -2659,9 +2659,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Spacing", TaggedValue::F64(100.), false),
-				DocumentInputType::value("Start Offset", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Stop Offset", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Spacing", TaggedValue::F32(100.), false),
+				DocumentInputType::value("Start Offset", TaggedValue::F32(0.), false),
+				DocumentInputType::value("Stop Offset", TaggedValue::F32(0.), false),
 				DocumentInputType::value("Adaptive Spacing", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
@@ -2814,7 +2814,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 			default: NodeInput::Network(concrete!(WasmEditorApi)),
 		},
 		DocumentInputType::value("Controller", TaggedValue::ImaginateController(Default::default()), false),
-		DocumentInputType::value("Seed", TaggedValue::F64(0.), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
+		DocumentInputType::value("Seed", TaggedValue::U64(0), false), // Remember to keep index used in `ImaginateRandom` updated with this entry's index
 		DocumentInputType::value("Resolution", TaggedValue::OptionalDVec2(None), false),
 		DocumentInputType::value("Samples", TaggedValue::U32(30), false),
 		DocumentInputType::value("Sampling Method", TaggedValue::ImaginateSamplingMethod(ImaginateSamplingMethod::EulerA), false),
@@ -3007,7 +3007,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 			NodeInput::Network(concrete!(WasmEditorApi)),
 			NodeInput::value(TaggedValue::String(text), false),
 			NodeInput::value(TaggedValue::Font(font), false),
-			NodeInput::value(TaggedValue::F64(size), false),
+			NodeInput::value(TaggedValue::F32(size as f32), false),
 		],
 		DocumentNodeMetadata::position((0, 4)),
 	));
