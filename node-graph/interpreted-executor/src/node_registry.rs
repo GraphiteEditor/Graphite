@@ -623,7 +623,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					vec![
 						fn_type!(WasmEditorApi),
 						fn_type!(ImaginateController),
-						fn_type!(f64),
+						fn_type!(u64),
 						fn_type!(Option<DVec2>),
 						fn_type!(u32),
 						fn_type!(ImaginateSamplingMethod),
@@ -734,7 +734,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
 		async_node!(graphene_core::vector::CopyToPoints<_, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData]),
 		async_node!(graphene_core::vector::CopyToPoints<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => VectorData, Footprint => GraphicGroup]),
-		register_node!(graphene_core::vector::ResamplePoints<_, _, _, _>, input: VectorData, params: [f64, f64, f64, bool]),
+		register_node!(graphene_core::vector::ResamplePoints<_, _, _, _>, input: VectorData, params: [f32, f32, f32, bool]),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
 		register_node!(graphene_core::vector::generator_nodes::EllipseGenerator<_, _>, input: (), params: [f32, f32]),
@@ -748,7 +748,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
 			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
 		),
-		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
+		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f32]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
 		async_node!(graphene_core::ConstructLayerNode<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => graphene_core::GraphicElement, Footprint => GraphicGroup]),
