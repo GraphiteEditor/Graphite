@@ -5,9 +5,10 @@ use crate::messages::prelude::*;
 pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
-const ARTWORK: [(&str, &str, &str); 2] = [
+const ARTWORK: [(&str, &str, &str); 3] = [
 	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
 	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus.graphite"),
+	("Procedural String Lights", "ThumbnailProceduralStringLights", "procedural-string-lights.graphite"),
 ];
 
 impl DialogLayoutHolder for DemoArtworkDialog {

@@ -69,8 +69,9 @@ export function createEditor() {
 		if (!demoArtwork) return;
 
 		try {
-			const url = new URL(`https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/demo-artwork/${demoArtwork}.graphite`);
+			const url = new URL(`/${demoArtwork}.graphite`, document.location.href);
 			const data = await fetch(url);
+			if (!data.ok) throw new Error();
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();

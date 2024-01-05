@@ -24,7 +24,7 @@ I am grateful to everyone who has placed their faith in my vision for Graphite s
 	</video>
 </div>
 
-<center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.</em></center>
+<center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.<br /><a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> — drag the wire layer's points with the Path tool.</em></center>
 
 ## The Alpha Milestone 2 release series
 

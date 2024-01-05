@@ -2,10 +2,12 @@
 
 // Demo artwork
 import ThumbnailJustAPottedCactus from "@graphite-frontend/assets/images/demo-artwork/thumbnail-just-a-potted-cactus.png";
+import ThumbnailProceduralStringLights from "@graphite-frontend/assets/images/demo-artwork/thumbnail-procedural-string-lights.png";
 import ThumbnailValleyOfSpires from "@graphite-frontend/assets/images/demo-artwork/thumbnail-valley-of-spires.png";
 
 const DEMO_ARTWORK = {
 	ThumbnailJustAPottedCactus,
+	ThumbnailProceduralStringLights,
 	ThumbnailValleyOfSpires,
 } as const;
 

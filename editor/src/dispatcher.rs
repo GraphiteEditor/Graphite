@@ -478,6 +478,7 @@ mod test {
 
 		let test_files = [
 			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus.graphite")),
+			("Valley of Spires", include_str!("../../demo-artwork/procedural-string-lights.graphite")),
 			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires.graphite")),
 		];
 
