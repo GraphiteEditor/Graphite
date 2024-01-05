@@ -204,21 +204,21 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ResamplePoints<Spacing, StartOffset, StopOffset, AdaptiveSpacing> {
+pub struct SamplePoints<Spacing, StartOffset, StopOffset, AdaptiveSpacing> {
 	spacing: Spacing,
 	start_offset: StartOffset,
 	stop_offset: StopOffset,
 	adaptive_spacing: AdaptiveSpacing,
 }
 
-#[node_macro::node_fn(ResamplePoints)]
-fn resample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, stop_offset: f32, adaptive_spacing: bool) -> VectorData {
+#[node_macro::node_fn(SamplePoints)]
+fn sample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, stop_offset: f32, adaptive_spacing: bool) -> VectorData {
 	let spacing = spacing as f64;
 	let start_offset = start_offset as f64;
 	let stop_offset = stop_offset as f64;
 
 	for subpath in &mut vector_data.subpaths {
-		if subpath.is_empty() || spacing.is_zero() || !spacing.is_finite() {
+		if subpath.is_empty() || !spacing.is_finite() || spacing <= 0. {
 			continue;
 		}
 

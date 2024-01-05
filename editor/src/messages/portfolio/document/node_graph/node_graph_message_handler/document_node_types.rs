@@ -2654,9 +2654,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Resample Points",
+			name: "Sample Points",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::ResamplePoints<_, _, _, _>"),
+			implementation: NodeImplementation::proto("graphene_core::vector::SamplePoints<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Spacing", TaggedValue::F32(100.), false),
@@ -2665,7 +2665,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Adaptive Spacing", TaggedValue::Bool(false), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
-			properties: node_properties::resample_points_properties,
+			properties: node_properties::sample_points_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
