@@ -19,7 +19,7 @@ where
 	for<'a> <CachedNode as Node<'a, ()>>::Output: core::future::Future<Output = T> + 'a,
 {
 	// TODO: This should return a reference to the cached cached_value
-	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty acurate xD
+	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
 	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
 	fn eval(&'i self, input: ()) -> Pin<Box<dyn Future<Output = T> + 'i>> {
 		Box::pin(async move {

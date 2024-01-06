@@ -2643,6 +2643,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Copy to Points",
 			category: "Vector",
+			// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
 			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
@@ -2656,7 +2657,44 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Sample Points",
 			category: "Vector",
-			implementation: NodeImplementation::proto("graphene_core::vector::SamplePoints<_, _, _, _>"),
+			implementation: NodeImplementation::DocumentNode(NodeNetwork {
+				inputs: vec![NodeId(0), NodeId(2), NodeId(2), NodeId(2), NodeId(2)], // First is given to Identity, the rest are given to Sample Points
+				outputs: vec![NodeOutput::new(NodeId(2), 0)],                        // Taken from output 0 of Sample Points
+				nodes: [
+					DocumentNode {
+						name: "Identity".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(graphene_core::vector::VectorData))], // From the document node's parameters
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Lengths of Segments of Subpaths".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0)], // From output 0 of Identity
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::vector::LengthsOfSegmentsOfSubpaths")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Sample Points".to_string(),
+						inputs: vec![
+							NodeInput::node(NodeId(0), 0),       // From output 0 of Identity
+							NodeInput::Network(concrete!(f32)),  // From the document node's parameters
+							NodeInput::Network(concrete!(f32)),  // From the document node's parameters
+							NodeInput::Network(concrete!(f32)),  // From the document node's parameters
+							NodeInput::Network(concrete!(bool)), // From the document node's parameters
+							NodeInput::node(NodeId(1), 0),       // From output 0 of Lengths of Segments of Subpaths
+						],
+						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::vector::SamplePoints<_, _, _, _, _, _>")),
+						manual_composition: Some(concrete!(Footprint)),
+						..Default::default()
+					},
+					// TODO: Add a cache node here?
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Spacing", TaggedValue::F32(100.), false),

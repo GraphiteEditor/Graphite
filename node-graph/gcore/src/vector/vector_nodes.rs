@@ -203,27 +203,39 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SamplePoints<Spacing, StartOffset, StopOffset, AdaptiveSpacing> {
+pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSpacing, LengthsOfSegmentsOfSubpaths> {
+	vector_data: VectorData,
 	spacing: Spacing,
 	start_offset: StartOffset,
 	stop_offset: StopOffset,
 	adaptive_spacing: AdaptiveSpacing,
+	lengths_of_segments_of_subpaths: LengthsOfSegmentsOfSubpaths,
 }
 
 #[node_macro::node_fn(SamplePoints)]
-fn sample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, stop_offset: f32, adaptive_spacing: bool) -> VectorData {
+async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<Vec<f64>>>>(
+	footprint: Footprint,
+	mut vector_data: impl Node<Footprint, Output = FV>,
+	spacing: f32,
+	start_offset: f32,
+	stop_offset: f32,
+	adaptive_spacing: bool,
+	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = FL>,
+) -> VectorData {
+	let mut vector_data = self.vector_data.eval(footprint).await;
+	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
 	let spacing = spacing as f64;
 	let start_offset = start_offset as f64;
 	let stop_offset = stop_offset as f64;
 
-	for subpath in &mut vector_data.subpaths {
+	for (index, subpath) in &mut vector_data.subpaths.iter_mut().enumerate() {
 		if subpath.is_empty() || !spacing.is_finite() || spacing <= 0. {
 			continue;
 		}
 
 		subpath.apply_transform(vector_data.transform);
 
-		let segment_lengths = subpath.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>();
+		let segment_lengths = &lengths_of_segments_of_subpaths[index];
 		let total_length: f64 = segment_lengths.iter().sum();
 
 		let mut used_length = total_length - start_offset - stop_offset;
@@ -265,7 +277,22 @@ fn sample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, s
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SplinesFromPointsNode {}
+pub struct LengthsOfSegmentsOfSubpaths;
+
+#[node_macro::node_fn(LengthsOfSegmentsOfSubpaths)]
+fn lengths_of_segments_of_subpaths(mut vector_data: VectorData) -> Vec<Vec<f64>> {
+	vector_data
+		.subpaths
+		.iter_mut()
+		.map(|subpath| {
+			subpath.apply_transform(vector_data.transform);
+			subpath.iter().map(|bezier| bezier.length(None)).collect()
+		})
+		.collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SplinesFromPointsNode;
 
 #[node_macro::node_fn(SplinesFromPointsNode)]
 fn splines_from_points(mut vector_data: VectorData) -> VectorData {
