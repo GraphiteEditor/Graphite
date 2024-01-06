@@ -135,6 +135,18 @@ const bezierFeatures = {
 			},
 		},
 	},
+	"tangent-to-point": {
+		name: "Tangent To Point",
+		callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
+			mouseLocation ? bezier.tangent_to_point(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
+		triggerOnMouseMove: true,
+	},
+	"normal-to-point": {
+		name: "Normal To Point",
+		callback: (bezier: WasmBezierInstance, _: Record<string, number>, mouseLocation?: [number, number]): string =>
+			mouseLocation ? bezier.normal_to_point(mouseLocation[0], mouseLocation[1]) : bezier.to_svg(),
+		triggerOnMouseMove: true,
+	},
 	curvature: {
 		name: "Curvature",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>, _: undefined): string => bezier.curvature(options.t, BEZIER_T_VALUE_VARIANTS[options.TVariant]),

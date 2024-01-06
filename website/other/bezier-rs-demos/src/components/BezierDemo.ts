@@ -39,6 +39,9 @@ class BezierDemo extends HTMLElement implements Demo {
 
 	sliderUnits!: Record<string, string | string[]>;
 
+	// Avoids "recursive use of an object detected which would lead to unsafe aliasing in rust" error when moving mouse fast.
+	locked!: boolean;
+
 	async connectedCallback() {
 		this.title = this.getAttribute("title") || "";
 		this.points = JSON.parse(this.getAttribute("points") || "[]");
@@ -85,6 +88,8 @@ class BezierDemo extends HTMLElement implements Demo {
 	}
 
 	onMouseMove(event: MouseEvent) {
+		if (this.locked) return;
+		this.locked = true;
 		const mx = event.offsetX;
 		const my = event.offsetY;
 		const figure = event.currentTarget as HTMLElement;
@@ -96,6 +101,7 @@ class BezierDemo extends HTMLElement implements Demo {
 		} else if (this.triggerOnMouseMove) {
 			this.drawDemo(figure, [mx, my]);
 		}
+		this.locked = false;
 	}
 
 	getSliderUnit(sliderValue: number, variable: string): string {

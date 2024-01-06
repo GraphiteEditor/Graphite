@@ -5,13 +5,23 @@ mod utils;
 
 use wasm_bindgen::prelude::*;
 pub static LOGGER: WasmLog = WasmLog;
-
+thread_local! { pub static HAS_CRASHED: std::cell::RefCell<bool> = std::cell::RefCell::new(false); }
 /// Initialize the backend
 #[wasm_bindgen(start)]
 pub fn init() {
 	// Set up the logger with a default level of debug
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Trace);
+
+	fn panic_hook(info: &core::panic::PanicInfo) {
+		// Skip if we have already panicked
+		if HAS_CRASHED.with(|cell| cell.replace(true)) {
+			return;
+		}
+		log::error!("{}", info);
+	}
+
+	std::panic::set_hook(Box::new(panic_hook));
 }
 
 /// Logging to the JS console
