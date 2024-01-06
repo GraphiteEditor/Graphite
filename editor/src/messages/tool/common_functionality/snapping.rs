@@ -143,11 +143,16 @@ fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBo
 		points.push(SnapCandidatePoint::new_quad(quad.center(), values.centre_source, values.centre_target, Some(quad)));
 	}
 }
-fn subpath_anchor_snap_points(subpath: &Subpath<ManipulatorGroupId>, document: &DocumentMessageHandler, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
+fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<ManipulatorGroupId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
 	let handle_not_under = |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
+	let document = snap_data.document;
 	// Midpoints of linear segments
 	if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::LineMidpoint)) {
-		for curve in subpath.iter() {
+		for (index, curve) in subpath.iter().enumerate() {
+			if snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[index].id) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(index + 1) % subpath.len()].id) {
+				continue;
+			}
+
 			let in_handle = curve.handle_start().map(|handle| handle - curve.start).filter(handle_not_under);
 			let out_handle = curve.handle_end().map(|handle| handle - curve.end).filter(handle_not_under);
 			if in_handle.is_none() && out_handle.is_none() {
@@ -161,6 +166,10 @@ fn subpath_anchor_snap_points(subpath: &Subpath<ManipulatorGroupId>, document: &
 	}
 	// Anchors
 	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
+		if snap_data.ignore_manipulator(layer, group.id) {
+			continue;
+		}
+
 		let anchor = group.anchor;
 		let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under);
 		let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under);
@@ -185,11 +194,12 @@ fn subpath_anchor_snap_points(subpath: &Subpath<ManipulatorGroupId>, document: &
 		}
 	}
 }
-fn get_layer_snap_points(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, points: &mut Vec<SnapCandidatePoint>) {
+fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
+	let document = snap_data.document;
 	if document.metadata().is_artboard(layer) {
 	} else if document.metadata().is_folder(layer) {
 		for child in layer.decendants(document.metadata()) {
-			get_layer_snap_points(child, document, points);
+			get_layer_snap_points(child, snap_data, points);
 		}
 	} else {
 		// Skip empty paths
@@ -198,15 +208,15 @@ fn get_layer_snap_points(layer: LayerNodeIdentifier, document: &DocumentMessageH
 		}
 		let to_document = document.metadata.transform_to_document(layer);
 		for subpath in document.metadata.layer_outline(layer) {
-			subpath_anchor_snap_points(subpath, document, points, to_document);
+			subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
 		}
 	}
 }
 
-fn get_selected_snap_points(document: &DocumentMessageHandler) -> Vec<SnapCandidatePoint> {
+fn get_selected_snap_points(snap_data: &SnapData) -> Vec<SnapCandidatePoint> {
 	let mut points = Vec::new();
-	for layer in document.selected_visible_layers() {
-		get_layer_snap_points(layer, document, &mut points);
+	for layer in snap_data.document.selected_visible_layers() {
+		get_layer_snap_points(layer, snap_data, &mut points);
 	}
 	points
 }
@@ -314,6 +324,9 @@ impl ObjectSnapper {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
 						let start = subpath.manipulator_groups()[start_index].id;
+						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
+							continue;
+						}
 						self.paths_to_snap.push(SnapCandidatePath {
 							document_curve,
 							layer,
@@ -324,7 +337,9 @@ impl ObjectSnapper {
 					}
 				}
 			}
-			self.add_layer_bounds(document, layer, SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge));
+			if !snap_data.ignore_bounds(layer) {
+				self.add_layer_bounds(document, layer, SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge));
+			}
 		}
 	}
 	pub fn free_snap_paths(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
@@ -428,8 +443,11 @@ impl ObjectSnapper {
 			}
 		}
 		for &layer in snap_data.get_candidates() {
-			get_layer_snap_points(layer, document, &mut self.points_to_snap);
+			get_layer_snap_points(layer, &snap_data, &mut self.points_to_snap);
 
+			if snap_data.ignore_bounds(layer) {
+				continue;
+			}
 			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
@@ -541,10 +559,12 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 	}
 	best
 }
+#[derive(Clone)]
 pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
+	pub manipulators: Vec<(LayerNodeIdentifier, ManipulatorGroupId)>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
 impl<'a> SnapData<'a> {
@@ -557,15 +577,25 @@ impl<'a> SnapData<'a> {
 			input,
 			ignore,
 			candidates: None,
+			manipulators: Vec::new(),
 		}
 	}
 	fn get_candidates(&self) -> &[LayerNodeIdentifier] {
 		self.candidates.map_or([].as_slice(), |candidates| candidates.as_slice())
 	}
+	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
+		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
+	}
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: ManipulatorGroupId) -> bool {
+		self.manipulators.contains(&(layer, manipulator))
+	}
 }
 impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
 		self.indicator = snapped_point.is_snapped().then(|| snapped_point);
+	}
+	pub fn clear_indicator(&mut self) {
+		self.indicator = None;
 	}
 	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
 		let mut point = SnapCandidatePoint::handle(snap_data.document.metadata.document_to_viewport.inverse().transform_point2(mouse));
@@ -673,13 +703,10 @@ impl SnapManager {
 			self.candidates = None;
 		}
 
-		let candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-
-		let SnapData { document, input, ignore, .. } = snap_data;
-		let mut snap_data = SnapData { document, input, ignore, candidates };
+		let mut snap_data = snap_data.clone();
+		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
 		self.object_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 
-		//info!("SR {snap_results:#?}");
 		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
 	}
 
@@ -689,10 +716,8 @@ impl SnapManager {
 			self.candidates = None;
 		}
 
-		let candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-
-		let SnapData { document, input, ignore, .. } = snap_data;
-		let mut snap_data = SnapData { document, input, ignore, candidates };
+		let mut snap_data = snap_data.clone();
+		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
 		self.object_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, contraint);
 
 		info!("SR {snap_results:#?}");

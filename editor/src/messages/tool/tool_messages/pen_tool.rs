@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};
@@ -43,8 +43,6 @@ impl Default for PenOptions {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenToolMessage {
 	// Standard messages
-	#[remain::unsorted]
-	CanvasTransformed,
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -171,6 +169,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 				DragStop,
 				Confirm,
 				Abort,
+				PointerMove,
 			),
 			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
 				DragStart,
@@ -186,7 +185,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PenTool
 impl ToolTransition for PenTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(PenToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(PenToolMessage::Abort.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
@@ -249,9 +247,11 @@ impl PenToolData {
 		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Get the position and set properties
-		let transform = document.metadata().transform_to_viewport(parent);
-		let snapped_position = input.mouse.position; // self.snap_manager.snap_position(responses, document, input.mouse.position);
-		let start_position = transform.inverse().transform_point2(snapped_position);
+		let transform = document.metadata().transform_to_document(parent);
+		let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+		let start_position = transform.inverse().transform_point2(snapped.snapped_point_document);
+		self.snap_manager.update_indicator(snapped);
 		self.weight = line_weight;
 
 		// Create the initial shape with a `bez_path` (only contains a moveto initially)
@@ -293,6 +293,7 @@ impl PenToolData {
 		let previous_anchor = previous_manipulator_group.anchor;
 
 		// Break the control
+		let transform = document.metadata.document_to_viewport * transform;
 		let on_top = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(previous_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if !on_top {
 			return None;
@@ -347,6 +348,7 @@ impl PenToolData {
 		let first_anchor = first_manipulator_group.anchor;
 		let last_in = inwards_handle.get_position(last_manipulator_group)?;
 
+		let transform = document.metadata.document_to_viewport * transform;
 		let transformed_distance_between_squared = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(first_anchor));
 		let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		let should_close_path = transformed_distance_between_squared < snap_point_tolerance_squared && previous_manipulator_group.is_some();
@@ -394,7 +396,8 @@ impl PenToolData {
 		Some(PenToolFsmState::PlacingAnchor)
 	}
 
-	fn drag_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let document = snap_data.document;
 		// Get subpath
 		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
 
@@ -409,10 +412,12 @@ impl PenToolData {
 		// Get manipulator points
 		let last_anchor = last_manipulator_group.anchor;
 
-		let mouse = mouse; // self.snap_manager.snap_position(responses, document, mouse);
 		let pos = transform.inverse().transform_point2(mouse);
 
-		let pos = compute_snapped_angle(&mut self.angle, modifiers.lock_angle, modifiers.snap_angle, pos, last_anchor);
+		let should_mirror = !modifiers.break_handle && self.should_mirror;
+
+		snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
+		let pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, should_mirror, mouse, Some(last_anchor));
 		if !pos.is_finite() {
 			return Some(PenToolFsmState::DraggingHandle);
 		}
@@ -424,7 +429,6 @@ impl PenToolData {
 			modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
 		});
 
-		let should_mirror = !modifiers.break_handle && self.should_mirror;
 		// Mirror handle of last segment
 		if should_mirror {
 			// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
@@ -446,7 +450,8 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle)
 	}
 
-	fn place_anchor(&mut self, document: &DocumentMessageHandler, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+	fn place_anchor(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let document = snap_data.document;
 		// Get subpath
 		let layer = self.layer?;
 		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
@@ -463,22 +468,19 @@ impl PenToolData {
 		// Get manipulator points
 		let first_anchor = first_manipulator_group.anchor;
 
-		let mouse = mouse; //self.snap_manager.snap_position(responses, document, mouse);
-		let mut pos = transform.inverse().transform_point2(mouse);
+		let mut pos = (document.metadata.document_to_viewport * transform).inverse().transform_point2(mouse);
 
-		// Snap to the first point (to show close path)
-		let show_close_path = mouse.distance_squared(transform.transform_point2(first_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-		if show_close_path {
-			pos = first_anchor;
-		}
+		let previous_anchor = previous_manipulator_group.map(|group| group.anchor);
 
-		if let Some(relative_previous_anchor) = previous_manipulator_group.map(|group| group.anchor) {
+		if let Some(last_anchor) = previous_anchor.filter(|&a| mouse.distance_squared(transform.transform_point2(a)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2)) {
 			// Snap to the previously placed point (to show break control)
-			if mouse.distance_squared(transform.transform_point2(relative_previous_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
-				pos = relative_previous_anchor;
-			} else {
-				pos = compute_snapped_angle(&mut self.angle, modifiers.lock_angle, modifiers.snap_angle, pos, relative_previous_anchor);
-			}
+			pos = last_anchor;
+		} else if mouse.distance_squared(transform.transform_point2(first_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
+			// Snap to the first point (to show close path)
+			pos = first_anchor;
+		} else {
+			snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
+			pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, previous_anchor);
 		}
 
 		for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
@@ -489,6 +491,61 @@ impl PenToolData {
 			});
 		}
 		Some(PenToolFsmState::PlacingAnchor)
+	}
+
+	/// Snap the angle of the line from relative to position if the key is pressed.
+	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>) -> DVec2 {
+		let document = snap_data.document;
+		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
+		let snap = &mut self.snap_manager;
+
+		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| snap_angle || lock_angle) {
+			let resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+			let angle = if lock_angle {
+				self.angle
+			} else {
+				(-(relative - document_pos).angle_between(DVec2::X) / resolution).round() * resolution
+			};
+			document_pos = relative - (relative - document_pos).project_onto(DVec2::new(angle.cos(), angle.sin()));
+
+			let contraint = SnapConstraint::Line {
+				origin: relative,
+				direction: document_pos - relative,
+			};
+			if mirror {
+				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), contraint, None);
+				let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), contraint, None);
+				document_pos = if snapped.distance < snapped_far.distance {
+					snapped.snapped_point_document
+				} else {
+					2. * relative - snapped_far.snapped_point_document
+				};
+				snap.update_indicator(if snapped.distance < snapped_far.distance { snapped } else { snapped_far });
+			} else {
+				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), contraint, None);
+				document_pos = snapped.snapped_point_document;
+				snap.update_indicator(snapped);
+			}
+		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
+			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), None, false);
+			document_pos = if snapped.distance < snapped_far.distance {
+				snapped.snapped_point_document
+			} else {
+				2. * relative - snapped_far.snapped_point_document
+			};
+			snap.update_indicator(if snapped.distance < snapped_far.distance { snapped } else { snapped_far });
+		} else {
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
+			document_pos = snapped.snapped_point_document;
+			snap.update_indicator(snapped);
+		}
+
+		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)) {
+			self.angle = -(relative - document_pos).angle_between(DVec2::X)
+		}
+
+		transform.inverse().transform_point2(document_pos)
 	}
 
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
@@ -548,13 +605,13 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or_default();
+		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
 			let parent_transform = tool_data
 				.layer
 				.and_then(|layer| layer.parent(document.metadata()))
-				.map(|layer| document.metadata().transform_to_viewport(layer));
+				.map(|layer| document.metadata().transform_to_document(layer));
 
 			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
 		}
@@ -567,16 +624,13 @@ impl Fsm for PenToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(_, PenToolMessage::CanvasTransformed) => {
-				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				self
-			}
 			(_, PenToolMessage::SelectionChanged) => {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
 				path_overlays(document, shape_editor, &mut overlay_context);
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
@@ -589,10 +643,6 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
-
-				// Initialize snapping
-				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-				//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 				// Disable this tool's mirroring
 				tool_data.should_mirror = false;
@@ -628,7 +678,10 @@ impl Fsm for PenToolFsmState {
 					lock_angle: input.keyboard.key(lock_angle),
 					break_handle: input.keyboard.key(break_handle),
 				};
-				tool_data.drag_handle(document, transform, input.mouse.position, modifiers, responses).unwrap_or(PenToolFsmState::Ready)
+				let snap_data = SnapData::new(document, input);
+				tool_data
+					.drag_handle(snap_data, transform, input.mouse.position, modifiers, responses)
+					.unwrap_or(PenToolFsmState::Ready)
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
 				let modifiers = ModifierState {
@@ -637,8 +690,13 @@ impl Fsm for PenToolFsmState {
 					break_handle: input.keyboard.key(break_handle),
 				};
 				tool_data
-					.place_anchor(document, transform, input.mouse.position, modifiers, responses)
+					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, modifiers, responses)
 					.unwrap_or(PenToolFsmState::Ready)
+			}
+			(PenToolFsmState::Ready, PenToolMessage::PointerMove { .. }) => {
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
 				// Abort or commit the transaction to the undo history
@@ -675,31 +733,6 @@ impl Fsm for PenToolFsmState {
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-	}
-}
-
-/// Snap the angle of the line from relative to position if the key is pressed.
-fn compute_snapped_angle(cached_angle: &mut f64, lock_angle: bool, snap_angle: bool, position: DVec2, relative: DVec2) -> DVec2 {
-	let delta = relative - position;
-	let mut angle = -delta.angle_between(DVec2::X);
-
-	if lock_angle {
-		angle = *cached_angle;
-	}
-
-	if snap_angle {
-		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
-		angle = (angle / snap_resolution).round() * snap_resolution;
-	}
-
-	*cached_angle = angle;
-
-	if snap_angle || lock_angle {
-		let length = delta.length();
-		let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
-		relative - rotated
-	} else {
-		position
 	}
 }
 
