@@ -6,24 +6,52 @@ use super::*;
 impl Bezier {
 	/// Convert a euclidean distance ratio along the `Bezier` curve to a parametric `t`-value.
 	pub fn euclidean_to_parametric(&self, ratio: f64, error: f64) -> f64 {
-		if ratio < error {
+		let total_length = self.length(None);
+		self.euclidean_to_parametric_with_total_length(ratio, error, total_length)
+	}
+
+	/// Convert a euclidean distance ratio along the `Bezier` curve to a parametric `t`-value.
+	/// For performance reasons, this version of the [`euclidean_to_parametric`] function allows the caller to
+	/// provide the total length of the curve so it doesn't have to be calculated every time the function is called.
+	pub fn euclidean_to_parametric_with_total_length(&self, euclidean_t: f64, error: f64, total_length: f64) -> f64 {
+		if euclidean_t < error {
 			return 0.;
 		}
-		if 1. - ratio < error {
+		if 1. - euclidean_t < error {
 			return 1.;
 		}
 
 		let mut low = 0.;
-		let mut mid = 0.;
+		let mut mid = 0.5;
 		let mut high = 1.;
-		let total_length = self.length(None);
 
+		// The euclidean t-value input generally correlates with the parametric t-value result.
+		// So we can assume a low t-value has a short length from the start of the curve, and a high t-value has a short length from the end of the curve.
+		// We'll use a strategy where we measure from either end of the curve depending on which side is closer than thus more likely to be proximate to the sought parametric t-value.
+		// This allows us to use fewer segments to approximate the curve, which usually won't go much beyond half the curve.
+		let result_likely_closer_to_start = euclidean_t < 0.5;
+		// If the curve is near either end, we need even fewer segments to approximate the curve with reasonable accuracy.
+		// A point that's likely near the center is the worst case where we need to use up to half the predefined number of max subdivisions.
+		let subdivisions_proportional_to_likely_length = ((euclidean_t - 0.5).abs() * DEFAULT_LENGTH_SUBDIVISIONS as f64).round().max(1.) as usize;
+
+		// Binary search for the parametric t-value that corresponds to the euclidean distance ratio by trimming the curve between the start and the tested parametric t-value during each iteration of the search.
 		while low < high {
 			mid = (low + high) / 2.;
-			let test_ratio = self.trim(TValue::Parametric(0.), TValue::Parametric(mid)).length(None) / total_length;
-			if f64_compare(test_ratio, ratio, error) {
+
+			// We can search from the curve start to the sought point, or from the sought point to the curve end, depending on which side is likely closer to the result.
+			let current_length = if result_likely_closer_to_start {
+				let trimmed = self.trim(TValue::Parametric(0.), TValue::Parametric(mid));
+				trimmed.length(Some(subdivisions_proportional_to_likely_length))
+			} else {
+				let trimmed = self.trim(TValue::Parametric(mid), TValue::Parametric(1.));
+				let trimmed_length = trimmed.length(Some(subdivisions_proportional_to_likely_length));
+				total_length - trimmed_length
+			};
+			let current_euclidean_t = current_length / total_length;
+
+			if f64_compare(current_euclidean_t, euclidean_t, error) {
 				break;
-			} else if test_ratio < ratio {
+			} else if current_euclidean_t < euclidean_t {
 				low = mid;
 			} else {
 				high = mid;
@@ -101,22 +129,14 @@ impl Bezier {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/length/solo" title="Length Demo"></iframe>
 	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
 		match self.handles {
-			BezierHandles::Linear => self.start.distance(self.end),
+			BezierHandles::Linear => (self.start - self.end).length(),
 			_ => {
 				// Code example from <https://gamedev.stackexchange.com/questions/5373/moving-ships-between-two-planets-along-a-bezier-missing-some-equations-for-acce/5427#5427>.
 
 				// We will use an approximate approach where we split the curve into many subdivisions
 				// and calculate the euclidean distance between the two endpoints of the subdivision
 				let lookup_table = self.compute_lookup_table(Some(num_subdivisions.unwrap_or(DEFAULT_LENGTH_SUBDIVISIONS)), Some(TValueType::Parametric));
-				let mut approx_curve_length = 0.;
-				let mut previous_point = lookup_table[0];
-				// Calculate approximate distance between subdivision
-				for current_point in lookup_table.iter().skip(1) {
-					// Calculate distance of subdivision
-					approx_curve_length += (*current_point - previous_point).length();
-					// Update the previous point
-					previous_point = *current_point;
-				}
+				let approx_curve_length: f64 = lookup_table.windows(2).map(|points| (points[1] - points[0]).length()).sum();
 
 				approx_curve_length
 			}

@@ -262,8 +262,8 @@ pub fn compute_circle_center_from_points(p1: DVec2, p2: DVec2, p3: DVec2) -> Opt
 }
 
 /// Compare two `f64` numbers with a provided max absolute value difference.
-pub fn f64_compare(f1: f64, f2: f64, max_abs_diff: f64) -> bool {
-	(f1 - f2).abs() < max_abs_diff
+pub fn f64_compare(a: f64, b: f64, max_abs_diff: f64) -> bool {
+	(a - b).abs() < max_abs_diff
 }
 
 /// Determine if an `f64` number is within a given range by using a max absolute value difference comparison.
@@ -272,8 +272,8 @@ pub fn f64_approximately_in_range(value: f64, min: f64, max: f64, max_abs_diff: 
 }
 
 /// Compare the two values in a `DVec2` independently with a provided max absolute value difference.
-pub fn dvec2_compare(dv1: DVec2, dv2: DVec2, max_abs_diff: f64) -> BVec2 {
-	BVec2::new((dv1.x - dv2.x).abs() < max_abs_diff, (dv1.y - dv2.y).abs() < max_abs_diff)
+pub fn dvec2_compare(a: DVec2, b: DVec2, max_abs_diff: f64) -> BVec2 {
+	BVec2::new((a.x - b.x).abs() < max_abs_diff, (a.y - b.y).abs() < max_abs_diff)
 }
 
 /// Determine if the values in a `DVec2` are within a given range independently by using a max absolute value difference comparison.
@@ -323,8 +323,8 @@ mod tests {
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 
 	/// Compare vectors of `f64`s with a provided max absolute value difference.
-	fn f64_compare_vector(vec1: Vec<f64>, vec2: Vec<f64>, max_abs_diff: f64) -> bool {
-		vec1.len() == vec2.len() && vec1.into_iter().zip(vec2).all(|(a, b)| f64_compare(a, b, max_abs_diff))
+	fn f64_compare_vector(a: Vec<f64>, b: Vec<f64>, max_abs_diff: f64) -> bool {
+		a.len() == b.len() && a.into_iter().zip(b).all(|(a, b)| f64_compare(a, b, max_abs_diff))
 	}
 
 	#[test]

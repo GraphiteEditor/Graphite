@@ -28,13 +28,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/length/solo" title="Length Demo"></iframe>
 	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
-		self.iter().fold(0., |accumulator, bezier| accumulator + bezier.length(num_subdivisions))
+		self.iter().map(|bezier| bezier.length(num_subdivisions)).sum()
 	}
 
-	fn global_euclidean_to_local_euclidean(&self, global_t: f64) -> (usize, f64) {
-		let lengths = self.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>();
-		let total_length: f64 = lengths.iter().sum();
-
+	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
+	/// The returned tuple represents the segment index and the `t` value along that segment.
+	/// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
+	pub fn global_euclidean_to_local_euclidean(&self, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 		let mut accumulator = 0.;
 		for (index, length) in lengths.iter().enumerate() {
 			let length_ratio = length / total_length;
@@ -77,11 +77,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(t, DEFAULT_EUCLIDEAN_ERROR_BOUND))
 			}
 			SubpathTValue::GlobalEuclidean(t) => {
-				let (segment_index, segment_t) = self.global_euclidean_to_local_euclidean(t);
-				(
-					segment_index,
-					self.get_segment(segment_index).unwrap().euclidean_to_parametric(segment_t, DEFAULT_EUCLIDEAN_ERROR_BOUND),
-				)
+				let lengths = self.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>();
+				let total_length: f64 = lengths.iter().sum();
+				let (segment_index, segment_t_euclidean) = self.global_euclidean_to_local_euclidean(t, lengths.as_slice(), total_length);
+				let segment_t_parametric = self.get_segment(segment_index).unwrap().euclidean_to_parametric(segment_t_euclidean, DEFAULT_EUCLIDEAN_ERROR_BOUND);
+				(segment_index, segment_t_parametric)
 			}
 			SubpathTValue::EuclideanWithinError { segment_index, t, error } => {
 				assert!((0.0..=1.).contains(&t));
@@ -89,7 +89,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(t, error))
 			}
 			SubpathTValue::GlobalEuclideanWithinError { t, error } => {
-				let (segment_index, segment_t) = self.global_euclidean_to_local_euclidean(t);
+				let lengths = self.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>();
+				let total_length: f64 = lengths.iter().sum();
+				let (segment_index, segment_t) = self.global_euclidean_to_local_euclidean(t, lengths.as_slice(), total_length);
 				(segment_index, self.get_segment(segment_index).unwrap().euclidean_to_parametric(segment_t, error))
 			}
 		}

@@ -5,9 +5,8 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, SubpathTValue};
+use bezier_rs::{Subpath, TValue};
 use glam::{DAffine2, DVec2};
-use num_traits::Zero;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
@@ -165,7 +164,7 @@ impl ConcatElement for VectorData {
 
 impl ConcatElement for GraphicGroup {
 	fn concat(&mut self, other: &Self, transform: DAffine2) {
-		// TODO: Decide if we want to keep this behaviour whereby the layers are flattened
+		// TODO: Decide if we want to keep this behavior whereby the layers are flattened
 		for mut element in other.iter().cloned() {
 			*element.transform_mut() = transform * element.transform() * other.transform();
 			self.push(element);
@@ -223,30 +222,40 @@ fn sample_points(mut vector_data: VectorData, spacing: f32, start_offset: f32, s
 		}
 
 		subpath.apply_transform(vector_data.transform);
-		let length = subpath.length(None);
-		let used_length = length - start_offset - stop_offset;
+
+		let segment_lengths = subpath.iter().map(|bezier| bezier.length(None)).collect::<Vec<f64>>();
+		let total_length: f64 = segment_lengths.iter().sum();
+
+		let mut used_length = total_length - start_offset - stop_offset;
 		if used_length <= 0. {
 			continue;
 		}
-		let used_length_without_remainder = used_length - used_length % spacing;
 
-		let count = if adaptive_spacing {
-			(used_length / spacing).round()
+		let count;
+		if adaptive_spacing {
+			count = (used_length / spacing).round();
 		} else {
-			(used_length / spacing + f64::EPSILON).floor()
-		};
+			count = (used_length / spacing + f64::EPSILON).floor();
+			used_length = used_length - used_length % spacing;
+		}
 
 		if count >= 1. {
 			let new_anchors = (0..=count as usize).map(|c| {
 				let ratio = c as f64 / count;
 
-				// With adaptive spacing, we widen or narrow the points (that's the rounding performed above) as necessary to ensure the last point is always at the end of the path
-				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path
+				// With adaptive spacing, we widen or narrow the points (that's the `round()` above) as necessary to ensure the last point is always at the end of the path.
+				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short (that's the `floor()` above) before the end of the path.
 
-				let used_length_here = if adaptive_spacing { used_length } else { used_length_without_remainder };
-				let t = ratio * used_length_here + start_offset;
-				subpath.evaluate(SubpathTValue::GlobalEuclidean(t / length))
+				let t = (ratio * used_length + start_offset) / total_length;
+
+				let (segment_index, segment_t_euclidean) = subpath.global_euclidean_to_local_euclidean(t, segment_lengths.as_slice(), total_length);
+				let segment_t_parametric = subpath
+					.get_segment(segment_index)
+					.unwrap()
+					.euclidean_to_parametric_with_total_length(segment_t_euclidean, 0.001, segment_lengths[segment_index]);
+				subpath.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(segment_t_parametric))
 			});
+
 			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && count as usize > 1);
 		}
 

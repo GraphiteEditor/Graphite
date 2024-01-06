@@ -17,7 +17,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Calculates the intersection points the subpath has with a given curve and returns a list of `(usize, f64)` tuples,
 	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
-	/// that curve where the intersection occured.
+	/// that curve where the intersection occurred.
 	/// Expects the following:
 	/// - `other`: a [Bezier] curve to check intersections against
 	/// - `error`: an optional f64 value to provide an error bound
