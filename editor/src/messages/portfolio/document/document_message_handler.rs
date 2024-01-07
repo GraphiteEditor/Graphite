@@ -1,7 +1,7 @@
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{SnappingOptions, SnappingState};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
-use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
@@ -50,8 +50,6 @@ pub struct DocumentMessageHandler {
 	pub network: NodeNetwork,
 	#[serde(default = "default_name")]
 	pub name: String,
-	#[serde(default = "default_version")]
-	version: String,
 	#[serde(default = "default_commit_hash")]
 	commit_hash: String,
 	#[serde(default = "default_pan_tilt_zoom")]
@@ -105,7 +103,6 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network: root_network(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
-			version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			navigation: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
@@ -136,10 +133,6 @@ fn default_network() -> NodeNetwork {
 #[inline(always)]
 fn default_name() -> String {
 	DocumentMessageHandler::default().name
-}
-#[inline(always)]
-fn default_version() -> String {
-	DocumentMessageHandler::default().version
 }
 #[inline(always)]
 fn default_commit_hash() -> String {
@@ -879,17 +872,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let deserialized_result: Result<Self, EditorError> = serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()));
-		match deserialized_result {
-			Ok(document) => {
-				if document.version == GRAPHITE_DOCUMENT_VERSION {
-					Ok(document)
-				} else {
-					Err(EditorError::DocumentDeserialization("Graphite document version mismatch".to_string()))
-				}
-			}
-			Err(e) => Err(e),
-		}
+		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {

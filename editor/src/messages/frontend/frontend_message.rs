@@ -85,7 +85,6 @@ pub enum FrontendMessage {
 	TriggerIndexedDbWriteDocument {
 		document: String,
 		details: FrontendDocumentDetails,
-		version: String,
 	},
 	TriggerLoadAutoSaveDocuments,
 	TriggerLoadPreferences,

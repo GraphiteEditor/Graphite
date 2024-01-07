@@ -51,13 +51,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		const currentDocumentVersion = editor.instance.graphiteDocumentVersion();
 		orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-			if (doc.version !== currentDocumentVersion) {
-				await removeDocument(doc.details.id);
-				return;
-			}
-
 			editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 		});
 	}

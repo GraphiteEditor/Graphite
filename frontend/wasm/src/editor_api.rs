@@ -10,7 +10,7 @@ use crate::{Error, EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
 
 use editor::application::generate_uuid;
 use editor::application::Editor;
-use editor::consts::{FILE_SAVE_SUFFIX, GRAPHITE_DOCUMENT_VERSION};
+use editor::consts::FILE_SAVE_SUFFIX;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -268,12 +268,6 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = fileSaveSuffix)]
 	pub fn file_save_suffix(&self) -> String {
 		FILE_SAVE_SUFFIX.into()
-	}
-
-	/// Get the constant `GRAPHITE_DOCUMENT_VERSION`
-	#[wasm_bindgen(js_name = graphiteDocumentVersion)]
-	pub fn graphite_document_version(&self) -> String {
-		GRAPHITE_DOCUMENT_VERSION.to_string()
 	}
 
 	/// Update layout of a given UI

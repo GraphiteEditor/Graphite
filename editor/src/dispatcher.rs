@@ -450,19 +450,14 @@ mod test {
 	}
 
 	#[test]
-	/// If this test is failing take a look at `GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, it may need to be updated.
 	/// This test will fail when you make changes to the underlying serialization format for a document.
-	fn check_if_graphite_file_version_upgrade_is_needed() {
+	fn check_if_demo_art_opens() {
 		use crate::messages::layout::utility_types::widget_prelude::*;
 
 		let print_problem_to_terminal_on_failure = |value: &String| {
 			println!();
 			println!("-------------------------------------------------");
 			println!("Failed test due to receiving a DisplayDialogError while loading a Graphite demo file.");
-			println!();
-			println!("That probably means the document serialization format changed. In that case, you need to bump the constant value");
-			println!("`GRAPHITE_DOCUMENT_VERSION` in `editor/src/consts.rs`, then update the documents in `/demo-artwork` by editing");
-			println!("their JSON to ensure they remain compatible with both the bumped version number and the serialization format changes.");
 			println!();
 			println!("DisplayDialogError details:");
 			println!();

@@ -1,6 +1,6 @@
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_DOCUMENT_NAME, GRAPHITE_DOCUMENT_VERSION};
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -90,7 +90,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						id: document_id,
 						name: document.name.clone(),
 					},
-					version: GRAPHITE_DOCUMENT_VERSION.to_string(),
 				})
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
