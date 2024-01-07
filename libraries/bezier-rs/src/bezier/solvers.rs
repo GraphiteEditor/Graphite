@@ -81,6 +81,7 @@ impl Bezier {
 	}
 
 	/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the specified point.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangents-to-point/solo" title="Tangents to Point Demo"></iframe>
 	#[must_use]
 	pub fn tangents_to_point(self, point: DVec2) -> Vec<f64> {
 		let sbasis: crate::SymmetricalBasisPair = to_symmetrical_basis_pair(self);
@@ -96,6 +97,7 @@ impl Bezier {
 	}
 
 	/// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/normals-to-point/solo" title="Normals to Point Demo"></iframe>
 	#[must_use]
 	pub fn normals_to_point(self, point: DVec2) -> Vec<f64> {
 		let sbasis = to_symmetrical_basis_pair(self);
