@@ -1,6 +1,6 @@
 [package]
 name = "bezier-rs"
-version = "0.2.0"
+version = "0.3.0"
 rust-version = "1.66.0"
 edition = "2021"
 authors = ["Graphite Authors <contact@graphite.rs>"]
@@ -16,5 +16,5 @@ documentation = "https://graphite.rs/libraries/bezier-rs/"
 [dependencies]
 glam = { version = "0.24", features = ["serde"] }
 
-dyn-any = { workspace = true, optional = true }
-serde = { workspace = true, optional = true }
+dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
+serde = { version = "1.0", workspace = true, optional = true }

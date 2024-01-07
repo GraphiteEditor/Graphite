@@ -1,11 +1,19 @@
 use super::*;
 use crate::utils::{solve_cubic, solve_quadratic, TValue};
+use crate::{to_symmetrical_basis_pair, SymmetricalBasis};
 
 use glam::DMat2;
 use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
 impl Bezier {
+	/// Get roots as [[x], [y]]
+	#[must_use]
+	pub fn roots(self) -> [Vec<f64>; 2] {
+		let s_basis = to_symmetrical_basis_pair(self);
+		[s_basis.x.roots(), s_basis.y.roots()]
+	}
+
 	/// Returns a list of lists of points representing the De Casteljau points for all iterations at the point `t` along the curve using De Casteljau's algorithm.
 	/// The `i`th element of the list represents the set of points in the `i`th iteration.
 	/// More information on the algorithm can be found in the [De Casteljau section](https://pomax.github.io/bezierinfo/#decasteljau) in Pomax's primer.
@@ -72,10 +80,30 @@ impl Bezier {
 		}
 	}
 
+	/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the specified point.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/tangents-to-point/solo" title="Tangents to Point Demo"></iframe>
+	#[must_use]
+	pub fn tangents_to_point(self, point: DVec2) -> Vec<f64> {
+		let sbasis: crate::SymmetricalBasisPair = to_symmetrical_basis_pair(self);
+		let derivative = sbasis.derivative();
+		let cross = (sbasis - point).cross(&derivative);
+		SymmetricalBasis::roots(&cross)
+	}
+
 	/// Returns a normalized unit vector representing the direction of the normal at the point `t` along the curve.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/normal/solo" title="Normal Demo"></iframe>
 	pub fn normal(&self, t: TValue) -> DVec2 {
 		self.tangent(t).perp()
+	}
+
+	/// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/normals-to-point/solo" title="Normals to Point Demo"></iframe>
+	#[must_use]
+	pub fn normals_to_point(self, point: DVec2) -> Vec<f64> {
+		let sbasis = to_symmetrical_basis_pair(self);
+		let derivative = sbasis.derivative();
+		let cross = (sbasis - point).dot(&derivative);
+		SymmetricalBasis::roots(&cross)
 	}
 
 	/// Returns the curvature, a scalar value for the derivative at the point `t` along the curve.
@@ -583,6 +611,27 @@ mod tests {
 	}
 
 	#[test]
+	fn tangent_at_point() {
+		let validate = |bz: Bezier, p: DVec2| {
+			let solutions = bz.tangents_to_point(p);
+			assert_ne!(solutions.len(), 0);
+			for t in solutions {
+				let pos = bz.evaluate(TValue::Parametric(t));
+				let expected_tangent = (pos - p).normalize();
+				let tangent = bz.tangent(TValue::Parametric(t));
+				assert!(expected_tangent.perp_dot(tangent).abs() < 0.2, "Expected tangent {expected_tangent} found {tangent} pos {pos}")
+			}
+		};
+		let bz = Bezier::from_quadratic_coordinates(55., 50., 165., 30., 185., 170.);
+		let p = DVec2::new(193., 83.);
+		validate(bz, p);
+
+		let bz = Bezier::from_cubic_coordinates(55., 30., 18., 139., 175., 30., 185., 160.);
+		let p = DVec2::new(127., 121.);
+		validate(bz, p);
+	}
+
+	#[test]
 	fn test_normal() {
 		// Test normals at start and end points of each Bezier curve type
 		let p1 = DVec2::new(10., 10.);
@@ -602,6 +651,36 @@ mod tests {
 		let cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		assert_eq!(cubic.normal(TValue::Parametric(0.)), DVec2::new(-60., 90.).normalize());
 		assert_eq!(cubic.normal(TValue::Parametric(1.)), DVec2::new(-120., 30.).normalize());
+	}
+
+	#[test]
+	fn normal_at_point() {
+		let validate = |bz: Bezier, p: DVec2| {
+			let solutions = bz.normals_to_point(p);
+			assert_ne!(solutions.len(), 0);
+			for t in solutions {
+				let pos = bz.evaluate(TValue::Parametric(t));
+				let expected_normal = (pos - p).normalize();
+				let normal = bz.normal(TValue::Parametric(t));
+				assert!(expected_normal.perp_dot(normal).abs() < 0.2, "Expected normal {expected_normal} found {normal} pos {pos}")
+			}
+		};
+
+		let bz = Bezier::from_linear_coordinates(50., 50., 100., 100.);
+		let p = DVec2::new(100., 50.);
+		validate(bz, p);
+
+		let bz = Bezier::from_quadratic_coordinates(55., 50., 165., 30., 185., 170.);
+		let p = DVec2::new(193., 83.);
+		validate(bz, p);
+
+		let bz = Bezier::from_cubic_coordinates(55., 30., 18., 139., 175., 30., 185., 160.);
+		let p = DVec2::new(127., 121.);
+		validate(bz, p);
+
+		let bz = Bezier::from_cubic_coordinates(55.0, 30.0, 85.0, 140.0, 175.0, 30.0, 185.0, 160.0);
+		let p = DVec2::new(17., 172.);
+		validate(bz, p);
 	}
 
 	#[test]

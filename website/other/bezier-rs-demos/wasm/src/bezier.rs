@@ -300,6 +300,31 @@ impl WasmBezier {
 		let content = format!("{bezier}{}", draw_line(projected_point.x, projected_point.y, x, y, RED, 1.),);
 		wrap_svg_tag(content)
 	}
+	pub fn tangents_to_point(&self, x: f64, y: f64) -> String {
+		let bezier = self.get_bezier_path();
+		let mut content = String::new();
+		for t in self.0.tangents_to_point(DVec2::new(x, y)) {
+			let point = self.0.evaluate(TValue::Parametric(t));
+			content += &draw_line(x, y, point.x, point.y, RED, 1.);
+		}
+		use std::fmt::Write;
+		write!(content, "{bezier}").unwrap();
+
+		wrap_svg_tag(content)
+	}
+
+	pub fn normals_to_point(&self, x: f64, y: f64) -> String {
+		let bezier = self.get_bezier_path();
+		let mut content = String::new();
+		for t in self.0.normals_to_point(DVec2::new(x, y)) {
+			let point = self.0.evaluate(TValue::Parametric(t));
+			content += &draw_line(x, y, point.x, point.y, RED, 1.);
+		}
+		use std::fmt::Write;
+		write!(content, "{bezier}").unwrap();
+
+		wrap_svg_tag(content)
+	}
 
 	pub fn local_extrema(&self) -> String {
 		let local_extrema: [Vec<f64>; 2] = self.0.local_extrema();
