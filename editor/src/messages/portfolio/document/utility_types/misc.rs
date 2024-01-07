@@ -87,7 +87,7 @@ impl Default for SnappingState {
 				sharp_nodes: true,
 				smooth_nodes: true,
 				line_midpoints: true,
-				perpendicular: true,
+				normals: true,
 				tangents: true,
 			},
 			grid: GridSnapping {
@@ -117,7 +117,7 @@ impl SnappingState {
 				NodeSnapTarget::Sharp => self.nodes.sharp_nodes,
 				NodeSnapTarget::LineMidpoint => self.nodes.line_midpoints,
 				NodeSnapTarget::Path => self.nodes.paths,
-				NodeSnapTarget::Parpendicular => self.nodes.perpendicular,
+				NodeSnapTarget::Normal => self.nodes.normals,
 				NodeSnapTarget::Tangent => self.nodes.tangents,
 				NodeSnapTarget::Intersection => self.nodes.path_intersections,
 			},
@@ -140,7 +140,7 @@ pub struct NodeSnapping {
 	pub sharp_nodes: bool,
 	pub smooth_nodes: bool,
 	pub line_midpoints: bool,
-	pub perpendicular: bool,
+	pub normals: bool,
 	pub tangents: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -195,7 +195,7 @@ pub enum NodeSnapTarget {
 	Sharp,
 	LineMidpoint,
 	Path,
-	Parpendicular,
+	Normal,
 	Tangent,
 	Intersection,
 }

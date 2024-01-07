@@ -412,12 +412,10 @@ impl PenToolData {
 		// Get manipulator points
 		let last_anchor = last_manipulator_group.anchor;
 
-		let pos = transform.inverse().transform_point2(mouse);
-
 		let should_mirror = !modifiers.break_handle && self.should_mirror;
 
 		snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
-		let pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, should_mirror, mouse, Some(last_anchor));
+		let pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, should_mirror, mouse, Some(last_anchor), false);
 		if !pos.is_finite() {
 			return Some(PenToolFsmState::DraggingHandle);
 		}
@@ -468,20 +466,18 @@ impl PenToolData {
 		// Get manipulator points
 		let first_anchor = first_manipulator_group.anchor;
 
-		let mut pos = (document.metadata.document_to_viewport * transform).inverse().transform_point2(mouse);
-
 		let previous_anchor = previous_manipulator_group.map(|group| group.anchor);
 
-		if let Some(last_anchor) = previous_anchor.filter(|&a| mouse.distance_squared(transform.transform_point2(a)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2)) {
+		let pos = if let Some(last_anchor) = previous_anchor.filter(|&a| mouse.distance_squared(transform.transform_point2(a)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2)) {
 			// Snap to the previously placed point (to show break control)
-			pos = last_anchor;
+			last_anchor
 		} else if mouse.distance_squared(transform.transform_point2(first_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2) {
 			// Snap to the first point (to show close path)
-			pos = first_anchor;
+			first_anchor
 		} else {
 			snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
-			pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, previous_anchor);
-		}
+			self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, previous_anchor, true)
+		};
 
 		for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
 			let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
@@ -494,10 +490,12 @@ impl PenToolData {
 	}
 
 	/// Snap the angle of the line from relative to position if the key is pressed.
-	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>) -> DVec2 {
+	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>, neighbour: bool) -> DVec2 {
 		let document = snap_data.document;
 		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
+
+		let neighbours = relative.filter(|_| neighbour).map_or(Vec::new(), |neighbour| vec![neighbour]);
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| snap_angle || lock_angle) {
 			let resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
@@ -512,9 +510,11 @@ impl PenToolData {
 				origin: relative,
 				direction: document_pos - relative,
 			};
+			let near_point = SnapCandidatePoint::handle_neighbours(document_pos, neighbours.clone());
+			let far_point = SnapCandidatePoint::handle_neighbours(2. * relative - document_pos, neighbours);
 			if mirror {
-				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), constraint, None);
-				let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), constraint, None);
+				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
+				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
 				document_pos = if snapped_far.other_snap_better(&snapped) {
 					snapped.snapped_point_document
 				} else {
@@ -522,13 +522,13 @@ impl PenToolData {
 				};
 				snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 			} else {
-				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), constraint, None);
+				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
 				document_pos = snapped.snapped_point_document;
 				snap.update_indicator(snapped);
 			}
 		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
-			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(document_pos, neighbours.clone()), None, false);
+			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(2. * relative - document_pos, neighbours), None, false);
 			document_pos = if snapped_far.other_snap_better(&snapped) {
 				snapped.snapped_point_document
 			} else {
@@ -536,7 +536,7 @@ impl PenToolData {
 			};
 			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 		} else {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(document_pos, neighbours), None, false);
 			document_pos = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}

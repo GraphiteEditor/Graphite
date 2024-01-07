@@ -84,7 +84,7 @@ impl ShapeState {
 
 			let to_document = document.metadata.transform_to_document(*layer);
 
-			for subpath in document.metadata.layer_outline(*layer) {
+			for subpath in subpaths {
 				for (index, group) in subpath.manipulator_groups().iter().enumerate() {
 					for handle in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
 						if !state.is_selected(ManipulatorPointId::new(group.id, handle)) {

@@ -267,7 +267,7 @@ impl Fsm for PolygonToolFsmState {
 				PolygonToolFsmState::Drawing
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = polygon_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+				if let Some(message) = polygon_data.calculate_transform(document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 

@@ -29,15 +29,7 @@ impl Resize {
 		root_transform.transform_point2(self.drag_start)
 	}
 
-	pub fn calculate_transform(
-		&mut self,
-		responses: &mut VecDeque<Message>,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		center: Key,
-		lock_ratio: Key,
-		skip_rerender: bool,
-	) -> Option<Message> {
+	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
 		let Some(layer) = self.layer else {
 			return None;
 		};
@@ -46,7 +38,7 @@ impl Resize {
 			return None;
 		}
 
-		let mut start = self.viewport_drag_start(document);
+		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
 		let to_viewport = document.metadata().document_to_viewport;
 		let document_mouse = to_viewport.inverse().transform_point2(mouse);

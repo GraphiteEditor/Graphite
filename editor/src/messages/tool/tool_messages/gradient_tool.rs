@@ -267,11 +267,6 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-	//snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-	//snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-}
-
 impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
 	type ToolOptions = GradientOptions;
@@ -431,7 +426,6 @@ impl Fsm for GradientToolFsmState {
 						let pos = transform.transform_point2(pos);
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut tool_data.snap_manager, document, input);
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer,
 								transform,
@@ -474,8 +468,6 @@ impl Fsm for GradientToolFsmState {
 						let selected_gradient = SelectedGradient::new(gradient, layer, document).with_gradient_start(input.mouse.position);
 
 						tool_data.selected_gradient = Some(selected_gradient);
-
-						start_snap(&mut tool_data.snap_manager, document, input);
 
 						GradientToolFsmState::Drawing
 					} else {

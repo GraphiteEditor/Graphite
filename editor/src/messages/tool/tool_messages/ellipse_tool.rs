@@ -227,7 +227,7 @@ impl Fsm for EllipseToolFsmState {
 				EllipseToolFsmState::Drawing
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+				if let Some(message) = shape_data.calculate_transform(document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 

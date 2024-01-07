@@ -34,6 +34,7 @@ pub struct SnapCandidatePoint {
 	target: SnapTarget,
 	source_index: usize,
 	quad: Option<Quad>,
+	neighbours: Vec<DVec2>,
 }
 impl SnapCandidatePoint {
 	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
@@ -54,6 +55,11 @@ impl SnapCandidatePoint {
 	pub fn handle(document_point: DVec2) -> Self {
 		Self::new_source(document_point, SnapSource::Node(NodeSnapSource::Sharp))
 	}
+	pub fn handle_neighbours(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
+		let mut point = Self::new_source(document_point, SnapSource::Node(NodeSnapSource::Sharp));
+		point.neighbours = neighbours.into();
+		point
+	}
 }
 #[derive(Default, Debug, Clone)]
 pub struct SnappedPoint {
@@ -62,8 +68,7 @@ pub struct SnappedPoint {
 	pub source: SnapSource,
 	pub target: SnapTarget,
 	pub at_intersection: bool,
-	pub contrained: bool,        // Found when looking for contrained
-	pub fully_constrained: bool, // e.g. on point (on a path is not fully contrained)
+	pub contrained: bool, // Found when looking for contrained
 	pub target_bounds: Option<Quad>,
 	pub source_bounds: Option<Quad>,
 	pub curves: [Option<Bezier>; 2],
@@ -230,13 +235,6 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 	}
 }
 
-fn get_selected_snap_points(snap_data: &SnapData) -> Vec<SnapCandidatePoint> {
-	let mut points = Vec::new();
-	for layer in snap_data.document.selected_visible_layers() {
-		get_layer_snap_points(layer, snap_data, &mut points);
-	}
-	points
-}
 #[derive(Clone, Debug, Default)]
 pub struct SnappedLine {
 	pub point: DVec2,
@@ -363,16 +361,16 @@ impl ObjectSnapper {
 		self.collect_paths(snap_data, point.source_index == 0);
 
 		let document = snap_data.document;
-		let perp = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Parpendicular));
-		let tang = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Tangent));
-
+		let normals = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Normal));
+		let tangents = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Tangent));
+		let tollerance = snap_tollerance(document);
 		for path in &self.paths_to_snap {
 			let time = path.document_curve.project(point.document_point, None);
 			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
 
 			let distance = snapped_point_document.distance(point.document_point);
 
-			if distance < snap_tollerance(document) {
+			if distance < tollerance {
 				snap_results.curves.push(SnappedCurve {
 					layer: path.layer,
 					start: path.start,
@@ -381,14 +379,14 @@ impl ObjectSnapper {
 						snapped_point_document,
 						target: path.target,
 						distance,
-						tollerance: snap_tollerance(document),
+						tollerance,
 						curves: [path.bounds.is_none().then(|| path.document_curve), None],
 						source: point.source,
 						target_bounds: path.bounds,
 						..Default::default()
 					},
 				});
-				if perp || tang {}
+				normals_and_tangents(path, normals, tangents, point, tollerance, snap_results);
 			}
 		}
 	}
@@ -518,6 +516,51 @@ impl ObjectSnapper {
 	pub fn contrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		self.snap_anchors(snap_data, point, snap_results, constraint, constraint.projection(point.document_point));
 		self.snap_paths_constrained(snap_data, point, snap_results, constraint);
+	}
+}
+
+fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tollerance: f64, snap_results: &mut SnapResults) {
+	if normals && path.bounds.is_none() {
+		for &neighbour in &point.neighbours {
+			for t in path.document_curve.normals_to_point(neighbour) {
+				let normal_point = path.document_curve.evaluate(TValue::Parametric(t));
+				let distance = normal_point.distance(point.document_point);
+				if distance > tollerance {
+					continue;
+				}
+				snap_results.points.push(SnappedPoint {
+					snapped_point_document: normal_point,
+					target: SnapTarget::Node(NodeSnapTarget::Normal),
+					distance,
+					tollerance,
+					curves: [Some(path.document_curve), None],
+					source: point.source,
+					contrained: true,
+					..Default::default()
+				});
+			}
+		}
+	}
+	if tangents && path.bounds.is_none() {
+		for &neighbour in &point.neighbours {
+			for t in path.document_curve.tangents_to_point(neighbour) {
+				let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
+				let distance = tangent_point.distance(point.document_point);
+				if distance > tollerance {
+					continue;
+				}
+				snap_results.points.push(SnappedPoint {
+					snapped_point_document: tangent_point,
+					target: SnapTarget::Node(NodeSnapTarget::Tangent),
+					distance,
+					tollerance,
+					curves: [Some(path.document_curve), None],
+					source: point.source,
+					contrained: true,
+					..Default::default()
+				});
+			}
+		}
 	}
 }
 
@@ -736,10 +779,6 @@ impl SnapManager {
 		info!("SR {snap_results:#?}");
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}
-
-	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
-	/// This should be called at the start of a drag.
-	pub fn start_snap(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {}
 
 	pub fn grid_overlay(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		let offset = document.snapping_state.grid.origin;
