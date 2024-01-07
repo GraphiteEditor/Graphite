@@ -208,7 +208,7 @@ pub fn group_smooth(group: &bezier_rs::ManipulatorGroup<ManipulatorGroupId>, to_
 	let smooth = handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end;
 	smooth
 }
-fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
+pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
 	if document.metadata().is_artboard(layer) {
 	} else if document.metadata().is_folder(layer) {
