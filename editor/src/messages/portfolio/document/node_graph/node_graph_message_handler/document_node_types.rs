@@ -2483,7 +2483,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							NodeInput::Network(concrete!(application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>)),
 							NodeInput::Network(concrete!(String)),
 							NodeInput::Network(concrete!(graphene_core::text::Font)),
-							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f32)),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::text::TextGeneratorNode<_, _, _>")),
 						..Default::default()
