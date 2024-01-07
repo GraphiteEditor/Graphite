@@ -1,6 +1,45 @@
-use glam::DVec2;
+/*
+ * Modifications and Rust port copyright (C) 2024 by 0Hypercube.
+ *
+ * Original version by lib2geom: <https://gitlab.com/inkscape/lib2geom>
+ *
+ * The entirety of this file is specially licensed under MPL 1.1 terms:
+ *
+ *  Original Authors:
+ *   Nathan Hurst <njh@mail.csse.monash.edu.au>
+ *   Michael Sloan <mgsloan@gmail.com>
+ *   Marco Cecchetti <mrcekets at gmail.com>
+ *   MenTaLguY <mental@rydia.net>
+ *   Michael Sloan <mgsloan@gmail.com>
+ *   Nathan Hurst <njh@njhurst.com>
+ *   Krzysztof Kosiński <tweenk.pl@gmail.com>
+ *   And additional authors listed in the version control history of the following files:
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/sbasis.h
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis-to-bezier.cpp
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/bezier.cpp
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/solve-bezier.cpp
+ *   - https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/solve-bezier-one-d.cpp
+ *
+ * Copyright (C) 2006-2007 Original Authors
+ *
+ * This file is free software; you can redistribute it and/or modify it
+ * either under the terms of the Mozilla Public License Version 1.1 (the
+ * "MPL").
+ *
+ * The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 (the "License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * https://www.mozilla.org/MPL/1.1/
+ *
+ * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY
+ * OF ANY KIND, either express or implied. See the LGPL or the MPL for
+ * the specific language governing rights and limitations.
+ */
 
 use crate::{Bezier, BezierHandles};
+
+use glam::DVec2;
 
 impl std::ops::Index<usize> for Bezier {
 	type Output = DVec2;
@@ -13,13 +52,15 @@ impl std::ops::Index<usize> for Bezier {
 	}
 }
 
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/sbasis.h#L70
 #[derive(Debug, Clone)]
-pub struct SymetricalBasis(pub Vec<DVec2>);
+pub(crate) struct SymmetricalBasis(pub Vec<DVec2>);
 
-impl SymetricalBasis {
+impl SymmetricalBasis {
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp#L323
 	#[must_use]
-	fn derivative(&self) -> SymetricalBasis {
-		let mut c = SymetricalBasis(vec![DVec2::ZERO; self.len()]);
+	fn derivative(&self) -> SymmetricalBasis {
+		let mut c = SymmetricalBasis(vec![DVec2::ZERO; self.len()]);
 		if self.iter().all(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
 			return c;
 		}
@@ -39,11 +80,8 @@ impl SymetricalBasis {
 		}
 		c
 	}
-	fn normalize(&mut self) {
-		while self.len() > 1 && self.last().is_some_and(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
-			self.pop();
-		}
-	}
+
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis-to-bezier.cpp#L86
 	#[must_use]
 	pub fn to_bezier1d(&self) -> Bezier1d {
 		let sb = self;
@@ -87,16 +125,21 @@ impl SymetricalBasis {
 		bz
 	}
 
+	fn normalize(&mut self) {
+		while self.len() > 1 && self.last().is_some_and(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
+			self.pop();
+		}
+	}
+
 	#[must_use]
-	fn roots(&self) -> Vec<f64> {
-		let s = self;
-		match s.len() {
+	pub(crate) fn roots(&self) -> Vec<f64> {
+		match self.len() {
 			0 => Vec::new(),
 			1 => {
 				let mut res = Vec::new();
-				let d = s[0].x - s[0].y;
+				let d = self[0].x - self[0].y;
 				if d != 0. {
-					let r = s[0].x / d;
+					let r = self[0].x / d;
 					if (0. ..=1.).contains(&r) {
 						res.push(r);
 					}
@@ -104,7 +147,7 @@ impl SymetricalBasis {
 				res
 			}
 			_ => {
-				let mut bz = s.to_bezier1d();
+				let mut bz = self.to_bezier1d();
 				let mut solutions = Vec::new();
 				if bz.len() == 0 || bz.iter().all(|&x| (x - bz[0]).abs() < 1e-5) {
 					return solutions;
@@ -136,19 +179,20 @@ impl SymetricalBasis {
 	}
 }
 
-impl<'a> std::ops::Mul for &'a SymetricalBasis {
-	type Output = SymetricalBasis;
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp#L228
+impl<'a> std::ops::Mul for &'a SymmetricalBasis {
+	type Output = SymmetricalBasis;
 	fn mul(self, b: Self) -> Self::Output {
 		let a = self;
 		if a.iter().all(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) || b.iter().all(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
-			return SymetricalBasis(vec![DVec2::ZERO]);
+			return SymmetricalBasis(vec![DVec2::ZERO]);
 		}
-		let mut c = SymetricalBasis(vec![DVec2::ZERO; a.len() + b.len()]);
+		let mut c = SymmetricalBasis(vec![DVec2::ZERO; a.len() + b.len()]);
 
 		for j in 0..b.len() {
 			for i in j..(a.len() + j) {
 				let tri = (b[j][1] - b[j][0]) * (a[i - j][1] - a[i - j][0]);
-				c[i+1/*shift*/] += DVec2::splat(-tri);
+				c[i + 1] += DVec2::splat(-tri);
 			}
 		}
 		for j in 0..b.len() {
@@ -163,13 +207,14 @@ impl<'a> std::ops::Mul for &'a SymetricalBasis {
 	}
 }
 
-impl std::ops::Add for SymetricalBasis {
-	type Output = SymetricalBasis;
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp#L88
+impl std::ops::Add for SymmetricalBasis {
+	type Output = SymmetricalBasis;
 	fn add(self, b: Self) -> Self::Output {
 		let a = self;
 		let out_size = a.len().max(b.len());
 		let min_size = a.len().min(b.len());
-		let mut result = SymetricalBasis(vec![DVec2::ZERO; out_size]);
+		let mut result = SymmetricalBasis(vec![DVec2::ZERO; out_size]);
 		for i in 0..min_size {
 			result[i] = a[i] + b[i];
 		}
@@ -183,13 +228,14 @@ impl std::ops::Add for SymetricalBasis {
 	}
 }
 
-impl std::ops::Sub for SymetricalBasis {
-	type Output = SymetricalBasis;
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis.cpp#L110
+impl std::ops::Sub for SymmetricalBasis {
+	type Output = SymmetricalBasis;
 	fn sub(self, b: Self) -> Self::Output {
 		let a = self;
 		let out_size = a.len().max(b.len());
 		let min_size = a.len().min(b.len());
-		let mut result = SymetricalBasis(vec![DVec2::ZERO; out_size]);
+		let mut result = SymmetricalBasis(vec![DVec2::ZERO; out_size]);
 		for i in 0..min_size {
 			result[i] = a[i] - b[i];
 		}
@@ -203,25 +249,25 @@ impl std::ops::Sub for SymetricalBasis {
 	}
 }
 
-impl std::ops::Deref for SymetricalBasis {
+impl std::ops::Deref for SymmetricalBasis {
 	type Target = Vec<DVec2>;
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
-
-impl std::ops::DerefMut for SymetricalBasis {
+impl std::ops::DerefMut for SymmetricalBasis {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.0
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct SymetricalBasisPair {
-	pub x: SymetricalBasis,
-	pub y: SymetricalBasis,
+pub(crate) struct SymmetricalBasisPair {
+	pub x: SymmetricalBasis,
+	pub y: SymmetricalBasis,
 }
-impl SymetricalBasisPair {
+
+impl SymmetricalBasisPair {
 	#[must_use]
 	pub fn derivative(&self) -> Self {
 		Self {
@@ -231,12 +277,33 @@ impl SymetricalBasisPair {
 	}
 
 	#[must_use]
-	pub fn dot(&self, other: &Self) -> SymetricalBasis {
+	pub fn dot(&self, other: &Self) -> SymmetricalBasis {
 		(&self.x * &other.x) + (&self.y * &other.y)
 	}
+
 	#[must_use]
-	pub fn cross(&self, rhs: &Self) -> SymetricalBasis {
+	pub fn cross(&self, rhs: &Self) -> SymmetricalBasis {
 		(&self.x * &rhs.y) - (&self.y * &rhs.x)
+	}
+}
+
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/sbasis.h#L337
+impl std::ops::Sub<DVec2> for SymmetricalBasisPair {
+	type Output = SymmetricalBasisPair;
+	fn sub(self, rhs: DVec2) -> Self::Output {
+		let sub = |a: &SymmetricalBasis, b: f64| {
+			if a.iter().all(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
+				return SymmetricalBasis(vec![DVec2::splat(-b)]);
+			}
+			let mut result = a.clone();
+			result[0] -= DVec2::splat(b);
+			result
+		};
+
+		Self {
+			x: sub(&self.x, rhs.x),
+			y: sub(&self.y, rhs.y),
+		}
 	}
 }
 
@@ -256,7 +323,9 @@ impl std::ops::DerefMut for Bezier1d {
 }
 
 impl Bezier1d {
-	const MAX_DEPTH: u32 = 32;
+	const MAX_DEPTH: u32 = 53;
+
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/bezier.cpp#L176
 	#[must_use]
 	fn deflate(&self) -> Self {
 		let bz = self;
@@ -271,6 +340,7 @@ impl Bezier1d {
 		b
 	}
 
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/bezier.h#L55
 	/// Compute the value of a Bernstein-Bezier polynomial using a Horner-like fast evaluation scheme.
 	#[must_use]
 	fn value_at(&self, t: f64) -> f64 {
@@ -288,6 +358,7 @@ impl Bezier1d {
 		tmp + tn * t * bz[bz.len() - 1]
 	}
 
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/solve-bezier.cpp#L258
 	#[must_use]
 	fn secant(&self) -> f64 {
 		let bz = self;
@@ -328,6 +399,7 @@ impl Bezier1d {
 		r
 	}
 
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/bezier.h#L78
 	fn casteljau_subdivision(&self, t: f64) -> [Self; 2] {
 		let v = self;
 		let order = v.len() - 1;
@@ -348,6 +420,7 @@ impl Bezier1d {
 		[left, right]
 	}
 
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/bezier.cpp#L282
 	fn derivative(&self) -> Self {
 		let bz = self;
 		if bz.len() - 1 == 1 {
@@ -361,6 +434,7 @@ impl Bezier1d {
 		der
 	}
 
+	// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/solve-bezier-one-d.cpp#L76
 	/// given an equation in Bernstein-Bernstein form, find all roots between left_t and right_t
 	fn find_bernstein_roots(&self, solutions: &mut Vec<f64>, depth: u32, left_t: f64, right_t: f64) {
 		let bz = self;
@@ -409,17 +483,17 @@ impl Bezier1d {
 		if depth > 2 {
 			let dbz = bz.derivative();
 
-			let mut dsolutions = Vec::new();
-			dbz.find_bernstein_roots(&mut dsolutions, 0, left_t, right_t);
-			dsolutions.sort_by(f64::total_cmp);
+			let mut d_solutions = Vec::new();
+			dbz.find_bernstein_roots(&mut d_solutions, 0, left_t, right_t);
+			d_solutions.sort_by(f64::total_cmp);
 
-			let mut dsplit_t = 0.5;
-			if !dsolutions.is_empty() {
-				dsplit_t = dsolutions[0];
-				split_t = left_t + (right_t - left_t) * dsplit_t;
+			let mut d_split_t = 0.5;
+			if !d_solutions.is_empty() {
+				d_split_t = d_solutions[0];
+				split_t = left_t + (right_t - left_t) * d_split_t;
 			}
 
-			[left, right] = bz.casteljau_subdivision(dsplit_t);
+			[left, right] = bz.casteljau_subdivision(d_split_t);
 		} else {
 			// split at midpoint, because it is cheap
 			left[0] = right[0];
@@ -446,128 +520,83 @@ impl Bezier1d {
 	}
 }
 
-impl std::ops::Sub<DVec2> for SymetricalBasisPair {
-	type Output = SymetricalBasisPair;
-	fn sub(self, rhs: DVec2) -> Self::Output {
-		fn sub(a: &SymetricalBasis, b: f64) -> SymetricalBasis {
-			if a.iter().all(|x| x.abs_diff_eq(DVec2::ZERO, 1e-5)) {
-				return SymetricalBasis(vec![DVec2::splat(-b)]);
-			}
-			let mut result = a.clone();
-			result[0] -= DVec2::splat(b);
-			result
-		}
-		Self {
-			x: sub(&self.x, rhs.x),
-			y: sub(&self.y, rhs.y),
-		}
-	}
-}
-
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/choose.h#L61
 /// Given a multiple of binomial(n, k), modify it to the same multiple of binomial(n, k + 1).
 #[must_use]
 fn binomial_increment_k(b: f64, n: usize, k: usize) -> f64 {
 	b * (n as f64 - k as f64) / (k + 1) as f64
 }
 
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/choose.h#L52
 /// Given a multiple of binomial(n, k), modify it to the same multiple of binomial(n - 1, k).
 #[must_use]
 fn binomial_decrement_n(b: f64, n: usize, k: usize) -> f64 {
 	b * (n as f64 - k as f64) / n as f64
 }
 
-impl Bezier {
-	/// Get roots as [[x], [y]]
-	#[must_use]
-	pub fn roots(&self) -> [Vec<f64>; 2] {
-		let s_basis = self.to_symetrical_basis_pair();
-		[s_basis.x.roots(), s_basis.y.roots()]
+// https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/sbasis-to-bezier.cpp#L86
+#[must_use]
+pub(crate) fn to_symmetrical_basis_pair(bezier: Bezier) -> SymmetricalBasisPair {
+	let n = match bezier.handles {
+		BezierHandles::Linear => 1,
+		BezierHandles::Quadratic { .. } => 2,
+		BezierHandles::Cubic { .. } => 3,
+	};
+	let q = (n + 1) / 2;
+	let even = n % 2 == 0;
+	let mut sb = SymmetricalBasisPair {
+		x: SymmetricalBasis(vec![DVec2::ZERO; q + even as usize]),
+		y: SymmetricalBasis(vec![DVec2::ZERO; q + even as usize]),
+	};
+
+	let mut nck = 1.;
+	for k in 0..q {
+		let mut tjk = nck;
+		for j in k..q {
+			sb.x[j][0] += tjk * bezier[k].x;
+			sb.x[j][1] += tjk * bezier[n - k].x;
+			sb.y[j][0] += tjk * bezier[k].y;
+			sb.y[j][1] += tjk * bezier[n - k].y;
+			tjk = binomial_increment_k(tjk, n - j - k, j - k);
+			tjk = binomial_decrement_n(tjk, n - j - k, j - k + 1);
+			tjk = -tjk;
+		}
+		tjk = -nck;
+		for j in (k + 1)..q {
+			sb.x[j][0] += tjk * bezier[n - k].x;
+			sb.x[j][1] += tjk * bezier[k].x;
+			sb.y[j][0] += tjk * bezier[n - k].y;
+			sb.y[j][1] += tjk * bezier[k].y;
+			tjk = binomial_increment_k(tjk, n - j - k - 1, j - k - 1);
+			tjk = binomial_decrement_n(tjk, n - j - k - 1, j - k);
+			tjk = -tjk;
+		}
+		nck = binomial_increment_k(nck, n, k);
 	}
-
-	#[must_use]
-	pub fn to_symetrical_basis_pair(&self) -> SymetricalBasisPair {
-		let n = match self.handles {
-			BezierHandles::Linear => 1,
-			BezierHandles::Quadratic { .. } => 2,
-			BezierHandles::Cubic { .. } => 3,
-		};
-		let q = (n + 1) / 2;
-		let even = n % 2 == 0;
-		let mut sb = SymetricalBasisPair {
-			x: SymetricalBasis(vec![DVec2::ZERO; q + even as usize]),
-			y: SymetricalBasis(vec![DVec2::ZERO; q + even as usize]),
-		};
-
-		let mut nck = 1.;
+	if even {
+		let mut tjk = if q % 2 == 1 { -1. } else { 1. };
 		for k in 0..q {
-			let mut tjk = nck;
-			for j in k..q {
-				sb.x[j][0] += tjk * self[k].x;
-				sb.x[j][1] += tjk * self[n - k].x;
-				sb.y[j][0] += tjk * self[k].y;
-				sb.y[j][1] += tjk * self[n - k].y;
-				tjk = binomial_increment_k(tjk, n - j - k, j - k);
-				tjk = binomial_decrement_n(tjk, n - j - k, j - k + 1);
-				tjk = -tjk;
-			}
-			tjk = -nck;
-			for j in (k + 1)..q {
-				sb.x[j][0] += tjk * self[n - k].x;
-				sb.x[j][1] += tjk * self[k].x;
-				sb.y[j][0] += tjk * self[n - k].y;
-				sb.y[j][1] += tjk * self[k].y;
-				tjk = binomial_increment_k(tjk, n - j - k - 1, j - k - 1);
-				tjk = binomial_decrement_n(tjk, n - j - k - 1, j - k);
-				tjk = -tjk;
-			}
-			nck = binomial_increment_k(nck, n, k);
+			sb.x[q][0] += tjk * (bezier[k].x + bezier[n - k].x);
+			sb.y[q][0] += tjk * (bezier[k].y + bezier[n - k].y);
+			tjk = binomial_increment_k(tjk, n, k);
+			tjk = -tjk;
 		}
-		if even {
-			let mut tjk = if q % 2 == 1 { -1. } else { 1. };
-			for k in 0..q {
-				sb.x[q][0] += tjk * (self[k].x + self[n - k].x);
-				sb.y[q][0] += tjk * (self[k].y + self[n - k].y);
-				tjk = binomial_increment_k(tjk, n, k);
-				tjk = -tjk;
-			}
-			sb.x[q][0] += tjk * self[q].x;
-			sb.x[q][1] = sb.x[q][0];
-			sb.y[q][0] += tjk * self[q].y;
-			sb.y[q][1] = sb.y[q][0];
-		}
-		sb.x[0][0] = self[0].x;
-		sb.x[0][1] = self[n].x;
-		sb.y[0][0] = self[0].y;
-		sb.y[0][1] = self[n].y;
-
-		sb
+		sb.x[q][0] += tjk * bezier[q].x;
+		sb.x[q][1] = sb.x[q][0];
+		sb.y[q][0] += tjk * bezier[q].y;
+		sb.y[q][1] = sb.y[q][0];
 	}
+	sb.x[0][0] = bezier[0].x;
+	sb.x[0][1] = bezier[n].x;
+	sb.y[0][0] = bezier[0].y;
+	sb.y[0][1] = bezier[n].y;
 
-	/// Find the t value such that the tangent at t is equal to the direction from t on the curve to the specified point.
-	#[must_use]
-	pub fn tangent_to_point(&self, point: DVec2) -> Vec<f64> {
-		let sbasis = self.to_symetrical_basis_pair();
-		let derivative = sbasis.derivative();
-		let sub = sbasis - point;
-		let cross = sub.cross(&derivative);
-		SymetricalBasis::roots(&cross)
-	}
-
-	/// Find the t value such that the normal at t is equal to the direction from t on the curve to the specified point.
-	#[must_use]
-	pub fn normal_to_point(&self, point: DVec2) -> Vec<f64> {
-		let sbasis = self.to_symetrical_basis_pair();
-		let derivative = sbasis.derivative();
-		let sub = sbasis - point;
-		let cross = sub.dot(&derivative);
-		SymetricalBasis::roots(&cross)
-	}
+	sb
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::*;
 
 	#[test]
 	fn find_bernstein_roots() {
@@ -579,56 +608,5 @@ mod tests {
 		for &t in &solutions {
 			assert!(bz.value_at(t,).abs() < 1e-5, "roots should be roots {} {}", t, bz.value_at(t,));
 		}
-	}
-
-	#[test]
-	fn tangent_at_point() {
-		let validate = |bz: Bezier, p: DVec2| {
-			let solutions = bz.tangent_to_point(p);
-			assert_ne!(solutions.len(), 0);
-			for t in solutions {
-				let pos = bz.evaluate(TValue::Parametric(t));
-				let expected_tangent = (pos - p).normalize();
-				let tangent = bz.tangent(TValue::Parametric(t));
-				assert!(expected_tangent.perp_dot(tangent).abs() < 0.2, "Expected tangent {expected_tangent} found {tangent} pos {pos}")
-			}
-		};
-		let bz = Bezier::from_quadratic_coordinates(55., 50., 165., 30., 185., 170.);
-		let p = DVec2::new(193., 83.);
-		validate(bz, p);
-
-		let bz = Bezier::from_cubic_coordinates(55., 30., 18., 139., 175., 30., 185., 160.);
-		let p = DVec2::new(127., 121.);
-		validate(bz, p);
-	}
-
-	#[test]
-	fn normal_at_point() {
-		let validate = |bz: Bezier, p: DVec2| {
-			let solutions = bz.normal_to_point(p);
-			assert_ne!(solutions.len(), 0);
-			for t in solutions {
-				let pos = bz.evaluate(TValue::Parametric(t));
-				let expected_normal = (pos - p).normalize();
-				let normal = bz.normal(TValue::Parametric(t));
-				assert!(expected_normal.perp_dot(normal).abs() < 0.2, "Expected normal {expected_normal} found {normal} pos {pos}")
-			}
-		};
-
-		let bz = Bezier::from_linear_coordinates(50., 50., 100., 100.);
-		let p = DVec2::new(100., 50.);
-		validate(bz, p);
-
-		let bz = Bezier::from_quadratic_coordinates(55., 50., 165., 30., 185., 170.);
-		let p = DVec2::new(193., 83.);
-		validate(bz, p);
-
-		let bz = Bezier::from_cubic_coordinates(55., 30., 18., 139., 175., 30., 185., 160.);
-		let p = DVec2::new(127., 121.);
-		validate(bz, p);
-
-		let bz = Bezier::from_cubic_coordinates(55.0, 30.0, 85.0, 140.0, 175.0, 30.0, 185.0, 160.0);
-		let p = DVec2::new(17., 172.);
-		validate(bz, p);
 	}
 }

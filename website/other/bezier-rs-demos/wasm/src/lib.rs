@@ -4,8 +4,10 @@ mod svg_drawing;
 mod utils;
 
 use wasm_bindgen::prelude::*;
+
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! { pub static HAS_CRASHED: std::cell::RefCell<bool> = std::cell::RefCell::new(false); }
+
 /// Initialize the backend
 #[wasm_bindgen(start)]
 pub fn init() {
