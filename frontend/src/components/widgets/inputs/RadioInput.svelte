@@ -13,6 +13,8 @@
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
 
+	$: mixed = selectedIndex === undefined && !disabled;
+
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
 		dispatch("selectedIndex", index);
@@ -23,20 +25,12 @@
 
 <LayoutRow class="radio-input" classes={{ disabled }}>
 	{#each entries as entry, index}
-		<button
-			class:active={index === selectedIndex}
-			class:mixed={selectedIndex === undefined}
-			class:disabled
-			on:click={() => handleEntryClick(entry)}
-			title={entry.tooltip}
-			tabindex={index === selectedIndex ? -1 : 0}
-			{disabled}
-		>
+		<button class:active={index === selectedIndex} class:mixed class:disabled on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
 				<IconLabel icon={entry.icon} />
 			{/if}
 			{#if entry.label}
-				<TextLabel italic={selectedIndex === undefined}>{entry.label}</TextLabel>
+				<TextLabel italic={mixed}>{entry.label}</TextLabel>
 			{/if}
 		</button>
 	{/each}
