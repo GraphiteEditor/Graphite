@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::NodeNetwork;
@@ -582,17 +582,26 @@ impl Fsm for SelectToolFsmState {
 				// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
 				responses.add_front(SelectToolMessage::DocumentIsDirty);
 
-				let mouse_position = axis_align_drag(input.keyboard.key(axis_align), input.mouse.position, tool_data.drag_start);
+				let axis_align = input.keyboard.key(axis_align);
+				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
+				let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_start);
 
 				let snap_data = SnapData::ignore(document, input, &tool_data.layers_dragging);
 				let mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 				let mut offset = mouse_delta_document;
-				let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_start);
 				let mut best_snap = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(mouse_position));
 
 				for point in &mut tool_data.snap_candidates {
 					point.document_point += total_mouse_delta_document;
-					let snapped = tool_data.snap_manager.free_snap(&snap_data, &point, None, false);
+					let snapped = if axis_align {
+						let constraint = SnapConstraint::Line {
+							origin: point.document_point,
+							direction: total_mouse_delta_document.normalize(),
+						};
+						tool_data.snap_manager.constrained_snap(&snap_data, &point, constraint, None)
+					} else {
+						tool_data.snap_manager.free_snap(&snap_data, &point, None, false)
+					};
 					if snapped.distance < best_snap.distance {
 						offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
 						best_snap = snapped;
