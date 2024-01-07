@@ -92,7 +92,7 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		text: String,
 		font: Font,
-		size: f64,
+		size: f32,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},

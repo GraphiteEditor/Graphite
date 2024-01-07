@@ -152,7 +152,7 @@ pub fn get_text_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -
 }
 
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&String, &Font, f64)> {
+pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&String, &Font, f32)> {
 	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Text")?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::String(text),
@@ -171,7 +171,7 @@ pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> O
 	};
 
 	let NodeInput::Value {
-		tagged_value: TaggedValue::F64(font_size),
+		tagged_value: TaggedValue::F32(font_size),
 		..
 	} = inputs[3]
 	else {
