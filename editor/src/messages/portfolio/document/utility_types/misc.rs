@@ -167,6 +167,7 @@ pub enum NodeSnapSource {
 	Sharp,
 	LineMidpoint,
 	PathIntersection,
+	Handle,
 }
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapSource {

@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
@@ -297,9 +297,9 @@ impl PathToolData {
 		}
 
 		// Move the selected points with the mouse
-		let snapped_position = input.mouse.position; // self.snap_manager.snap_position(responses, document, input.mouse.position);
-		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_position - self.previous_mouse_position, shift, responses);
-		self.previous_mouse_position = snapped_position;
+		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, self.previous_mouse_position);
+		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_delta, shift, responses);
+		self.previous_mouse_position += snapped_delta;
 	}
 }
 
@@ -330,6 +330,8 @@ impl Fsm for PathToolFsmState {
 
 				if self == Self::DrawingBox {
 					overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]))
+				} else if self == Self::Dragging {
+					tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);

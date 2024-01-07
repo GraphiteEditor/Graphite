@@ -1,7 +1,9 @@
 use super::graph_modification_utils;
+use super::snapping::{group_smooth, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::misc::{NodeSnapSource, SnapSource};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
 
@@ -64,6 +66,52 @@ pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<Manipulato
 
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
+	// Snap, returning a viewport delta
+	pub fn snap(&self, snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
+		let mut snap_data = SnapData::new(document, input);
+
+		for (layer, state) in &self.selected_shape_state {
+			for point in &state.selected_points {
+				snap_data.manipulators.push((*layer, point.group));
+			}
+		}
+
+		let mouse_delta = document.metadata.document_to_viewport.inverse().transform_vector2(input.mouse.position - previous_mouse);
+		let mut offset = mouse_delta;
+		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+		for (layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(*layer, &document.network) else { continue };
+
+			let to_document = document.metadata.transform_to_document(*layer);
+
+			for subpath in document.metadata.layer_outline(*layer) {
+				for (index, group) in subpath.manipulator_groups().iter().enumerate() {
+					for handle in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
+						if !state.is_selected(ManipulatorPointId::new(group.id, handle)) {
+							continue;
+						}
+						let source = if handle.is_handle() {
+							SnapSource::Node(NodeSnapSource::Handle)
+						} else if group_smooth(group, to_document, subpath, index) {
+							SnapSource::Node(NodeSnapSource::Smooth)
+						} else {
+							SnapSource::Node(NodeSnapSource::Sharp)
+						};
+						let Some(position) = handle.get_position(&group) else { continue };
+						let point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+						let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
+						if snapped.distance < best_snapped.distance {
+							offset = snapped.snapped_point_document - point.document_point + mouse_delta;
+							best_snapped = snapped;
+						}
+					}
+				}
+			}
+		}
+		snap_manager.update_indicator(best_snapped);
+		document.metadata.document_to_viewport.transform_vector2(offset)
+	}
+
 	/// Select the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
 	pub fn select_point(

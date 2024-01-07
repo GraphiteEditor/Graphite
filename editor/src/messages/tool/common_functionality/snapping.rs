@@ -29,7 +29,7 @@ struct SnapCandidatePath {
 }
 #[derive(Clone, Debug, Default)]
 pub struct SnapCandidatePoint {
-	document_point: DVec2,
+	pub document_point: DVec2,
 	source: SnapSource,
 	target: SnapTarget,
 	source_index: usize,
@@ -71,6 +71,13 @@ pub struct SnappedPoint {
 	pub tollerance: f64,
 }
 impl SnappedPoint {
+	pub fn infinite_snap(snapped_point_document: DVec2) -> Self {
+		Self {
+			snapped_point_document,
+			distance: f64::INFINITY,
+			..Default::default()
+		}
+	}
 	pub fn from_source_point(snapped_point_document: DVec2, source: SnapSource) -> Self {
 		Self {
 			snapped_point_document,
@@ -143,8 +150,11 @@ fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBo
 		points.push(SnapCandidatePoint::new_quad(quad.center(), values.centre_source, values.centre_target, Some(quad)));
 	}
 }
+
+fn handle_not_under(to_document: DAffine2) -> impl Fn(&DVec2) -> bool {
+	move |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE
+}
 fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<ManipulatorGroupId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
-	let handle_not_under = |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 	let document = snap_data.document;
 	// Midpoints of linear segments
 	if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::LineMidpoint)) {
@@ -153,8 +163,8 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Mani
 				continue;
 			}
 
-			let in_handle = curve.handle_start().map(|handle| handle - curve.start).filter(handle_not_under);
-			let out_handle = curve.handle_end().map(|handle| handle - curve.end).filter(handle_not_under);
+			let in_handle = curve.handle_start().map(|handle| handle - curve.start).filter(handle_not_under(to_document));
+			let out_handle = curve.handle_end().map(|handle| handle - curve.end).filter(handle_not_under(to_document));
 			if in_handle.is_none() && out_handle.is_none() {
 				points.push(SnapCandidatePoint::new(
 					to_document.transform_point2(curve.start() * 0.5 + curve.end * 0.5),
@@ -170,29 +180,33 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Mani
 			continue;
 		}
 
-		let anchor = group.anchor;
-		let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under);
-		let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under);
-		let at_end = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
-		let smooth = handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end;
+		let smooth = group_smooth(group, to_document, subpath, index);
 
-		// Smooth points
 		if smooth && document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Smooth)) {
+			// Smooth points
 			points.push(SnapCandidatePoint::new(
-				to_document.transform_point2(anchor),
+				to_document.transform_point2(group.anchor),
 				SnapSource::Node(NodeSnapSource::Smooth),
 				SnapTarget::Node(NodeSnapTarget::Smooth),
 			));
-		}
-		// Sharp points
-		if !smooth && document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Sharp)) {
+		} else if !smooth && document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Sharp)) {
+			// Sharp points
 			points.push(SnapCandidatePoint::new(
-				to_document.transform_point2(anchor),
+				to_document.transform_point2(group.anchor),
 				SnapSource::Node(NodeSnapSource::Sharp),
 				SnapTarget::Node(NodeSnapTarget::Sharp),
 			));
 		}
 	}
+}
+
+pub fn group_smooth(group: &bezier_rs::ManipulatorGroup<ManipulatorGroupId>, to_document: DAffine2, subpath: &Subpath<ManipulatorGroupId>, index: usize) -> bool {
+	let anchor = group.anchor;
+	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
+	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
+	let at_end = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
+	let smooth = handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end;
+	smooth
 }
 fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
@@ -650,11 +664,7 @@ impl SnapManager {
 
 		info!("Best {best_point:#?}");
 
-		best_point.unwrap_or(SnappedPoint {
-			snapped_point_document: point.document_point,
-			distance: f64::INFINITY,
-			..Default::default()
-		})
+		best_point.unwrap_or(SnappedPoint::infinite_snap(point.document_point))
 	}
 
 	fn find_candidates(snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>) -> Vec<LayerNodeIdentifier> {
