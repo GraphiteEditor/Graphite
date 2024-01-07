@@ -284,26 +284,26 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 	let snap = &mut tool_data.snap_manager;
 
 	if constrained {
-		let contraint = SnapConstraint::Line {
+		let constraint = SnapConstraint::Line {
 			origin: document_points[0],
 			direction: document_points[1] - document_points[0],
 		};
 		if centre {
-			let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_points[1]), contraint, None);
-			let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * document_points[0] - document_points[1]), contraint, None);
-			let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+			let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_points[1]), constraint, None);
+			let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * document_points[0] - document_points[1]), constraint, None);
+			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 			document_points[1] = document_points[0] * 2. - best.snapped_point_document;
 			document_points[0] = best.snapped_point_document;
 			snap.update_indicator(best);
 		} else {
-			let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_points[1]), contraint, None);
+			let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_points[1]), constraint, None);
 			document_points[1] = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}
 	} else if centre {
 		let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_points[1]), None, false);
 		let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * document_points[0] - document_points[1]), None, false);
-		let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+		let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 		document_points[1] = document_points[0] * 2. - best.snapped_point_document;
 		document_points[0] = best.snapped_point_document;
 		snap.update_indicator(best);

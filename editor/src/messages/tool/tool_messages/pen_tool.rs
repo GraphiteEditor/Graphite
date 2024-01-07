@@ -508,33 +508,33 @@ impl PenToolData {
 			};
 			document_pos = relative - (relative - document_pos).project_onto(DVec2::new(angle.cos(), angle.sin()));
 
-			let contraint = SnapConstraint::Line {
+			let constraint = SnapConstraint::Line {
 				origin: relative,
 				direction: document_pos - relative,
 			};
 			if mirror {
-				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), contraint, None);
-				let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), contraint, None);
-				document_pos = if snapped.distance < snapped_far.distance {
+				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), constraint, None);
+				let snapped_far = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), constraint, None);
+				document_pos = if snapped_far.other_snap_better(&snapped) {
 					snapped.snapped_point_document
 				} else {
 					2. * relative - snapped_far.snapped_point_document
 				};
-				snap.update_indicator(if snapped.distance < snapped_far.distance { snapped } else { snapped_far });
+				snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 			} else {
-				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), contraint, None);
+				let snapped = snap.constrained_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), constraint, None);
 				document_pos = snapped.snapped_point_document;
 				snap.update_indicator(snapped);
 			}
 		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
 			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
 			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * relative - document_pos), None, false);
-			document_pos = if snapped.distance < snapped_far.distance {
+			document_pos = if snapped_far.other_snap_better(&snapped) {
 				snapped.snapped_point_document
 			} else {
 				2. * relative - snapped_far.snapped_point_document
 			};
-			snap.update_indicator(if snapped.distance < snapped_far.distance { snapped } else { snapped_far });
+			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 		} else {
 			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle(document_pos), None, false);
 			document_pos = snapped.snapped_point_document;

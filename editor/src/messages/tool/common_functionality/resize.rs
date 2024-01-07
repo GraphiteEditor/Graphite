@@ -60,27 +60,27 @@ impl Resize {
 			let size = size.abs().max(size.abs().yx()) * size.signum();
 			points_viewport[1] = points_viewport[0] + size;
 			let end_document = to_viewport.inverse().transform_point2(points_viewport[1]);
-			let contraint = SnapConstraint::Line {
+			let constraint = SnapConstraint::Line {
 				origin: self.drag_start,
 				direction: end_document - self.drag_start,
 			};
 			if centre {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), contraint, None);
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, None);
 				let far = SnapCandidatePoint::handle(2. * self.drag_start - end_document);
-				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, contraint, None);
-				let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+				let snapped_far = self.snap_manager.constrained_snap(&snap_data, &far, constraint, None);
+				let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 				points_viewport[0] = to_viewport.transform_point2(best.snapped_point_document);
 				points_viewport[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 				self.snap_manager.update_indicator(best);
 			} else {
-				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), contraint, None);
+				let snapped = self.snap_manager.constrained_snap(&snap_data, &SnapCandidatePoint::handle(end_document), constraint, None);
 				points_viewport[1] = to_viewport.transform_point2(snapped.snapped_point_document);
 				self.snap_manager.update_indicator(snapped);
 			}
 		} else if centre {
 			let snapped = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
 			let snapped_far = self.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(2. * self.drag_start - document_mouse), None, false);
-			let best = if snapped.distance < snapped_far.distance { snapped } else { snapped_far };
+			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
 			points_viewport[0] = to_viewport.transform_point2(best.snapped_point_document);
 			points_viewport[1] = to_viewport.transform_point2(self.drag_start * 2. - best.snapped_point_document);
 			self.snap_manager.update_indicator(best);

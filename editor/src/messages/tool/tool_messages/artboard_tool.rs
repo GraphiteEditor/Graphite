@@ -160,9 +160,8 @@ impl ArtboardToolData {
 			return;
 		};
 
-		let snapped_mouse_position = mouse_position; //self.snap_manager.snap_position(responses, document, mouse_position);
-
-		let (position, size) = movement.new_size(snapped_mouse_position, bounds.transform, from_center, bounds.center_of_transformation, constrain_square);
+		let centre = from_center.then_some(bounds.center_of_transformation);
+		let (position, size) = movement.new_size(mouse_position, bounds.transform, centre, constrain_square, None);
 		responses.add(GraphOperationMessage::ResizeArtboard {
 			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),

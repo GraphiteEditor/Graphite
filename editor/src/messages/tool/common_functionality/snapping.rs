@@ -96,8 +96,11 @@ impl SnappedPoint {
 		let my_dist = self.distance;
 		let other_dist = other.distance;
 
+		// Prevent flickering when two points are equally close
+		let bias = 1e-2;
+
 		// Prefer closest
-		let other_closer = other_dist < my_dist;
+		let other_closer = other_dist < my_dist + bias;
 
 		// We should prefer the most contrained option (e.g. intersection > path)
 		let other_more_contrained = other.contrained && !self.contrained;
@@ -105,10 +108,10 @@ impl SnappedPoint {
 
 		// Prefer nodes to intersections if both are at the same position
 		let contrained_at_same_pos = other.contrained && self.contrained && self.snapped_point_document.abs_diff_eq(other.snapped_point_document, 1.);
-		let other_better_contraint = contrained_at_same_pos && self.at_intersection && !other.at_intersection;
-		let self_better_contraint = contrained_at_same_pos && other.at_intersection && !self.at_intersection;
+		let other_better_constraint = contrained_at_same_pos && self.at_intersection && !other.at_intersection;
+		let self_better_constraint = contrained_at_same_pos && other.at_intersection && !self.at_intersection;
 
-		(other_closer || other_more_contrained || other_better_contraint) && !self_more_contrained && !self_better_contraint
+		(other_closer || other_more_contrained || other_better_constraint) && !self_more_contrained && !self_better_constraint
 	}
 	pub fn is_snapped(&self) -> bool {
 		self.distance.is_finite()
@@ -295,7 +298,7 @@ struct ObjectSnapper {
 	points_to_snap: Vec<SnapCandidatePoint>,
 	paths_to_snap: Vec<SnapCandidatePath>,
 }
-fn snap_tollerance(document: &DocumentMessageHandler) -> f64 {
+pub fn snap_tollerance(document: &DocumentMessageHandler) -> f64 {
 	document.snapping_state.tolerance / document.navigation.zoom
 }
 impl ObjectSnapper {
@@ -720,7 +723,7 @@ impl SnapManager {
 		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, contraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
+	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
 		let mut snap_results = SnapResults::default();
 		if point.source_index == 0 {
 			self.candidates = None;
@@ -728,7 +731,7 @@ impl SnapManager {
 
 		let mut snap_data = snap_data.clone();
 		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-		self.object_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, contraint);
+		self.object_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 
 		info!("SR {snap_results:#?}");
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)

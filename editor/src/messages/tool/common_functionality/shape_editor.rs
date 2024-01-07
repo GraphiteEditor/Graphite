@@ -100,7 +100,7 @@ impl ShapeState {
 						let Some(position) = handle.get_position(&group) else { continue };
 						let point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
 						let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
-						if snapped.distance < best_snapped.distance {
+						if best_snapped.other_snap_better(&snapped) {
 							offset = snapped.snapped_point_document - point.document_point + mouse_delta;
 							best_snapped = snapped;
 						}

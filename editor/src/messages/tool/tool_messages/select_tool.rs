@@ -508,6 +508,7 @@ impl Fsm for SelectToolFsmState {
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
 					}
+					tool_data.get_snap_candidates(document, input);
 
 					SelectToolFsmState::ResizingBounds
 				} else if rotating_bounds {
@@ -602,7 +603,7 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						tool_data.snap_manager.free_snap(&snap_data, &point, None, false)
 					};
-					if snapped.distance < best_snap.distance {
+					if best_snap.other_snap_better(&snapped) {
 						offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
 						best_snap = snapped;
 					}
@@ -637,14 +638,16 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (_center, axis_align) = (input.keyboard.key(center), input.keyboard.key(axis_align));
+						let (_center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
 						let center = false; // TODO: Reenable this feature after fixing it
 
-						let mouse_position = input.mouse.position;
-
-						let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, );
-
-						let (position, size) = movement.new_size(snapped_mouse_position, bounds.original_bound_transform, center, bounds.center_of_transformation, axis_align);
+						let centre = center.then_some(bounds.center_of_transformation);
+						let snap = Some(SizeSnapData {
+							manager: &mut tool_data.snap_manager,
+							points: &mut tool_data.snap_candidates,
+							snap_data: SnapData::ignore(document, input, &tool_data.layers_dragging),
+						});
+						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, centre, constrain, snap);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 						let pivot_transform = DAffine2::from_translation(pivot);
