@@ -302,3 +302,20 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 	vector_data
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct BooleanUnion<Points> {
+	lhs: Points,
+	rhs: Points,
+}
+
+#[node_macro::node_fn(BooleanUnion)]
+async fn boolean_union<FP: Future<Output = VectorData>>(footprint: Footprint, lhs: impl Node<Footprint, Output = FP>, rhs: impl Node<Footprint, Output = FP>) -> VectorData {
+	let lhs = self.lhs.eval(footprint).await;
+	let rhs = self.rhs.eval(footprint).await;
+	let mut res = VectorData {
+		subpaths: vec![todo!()],
+		..lhs.clone()
+	};
+	res
+}
