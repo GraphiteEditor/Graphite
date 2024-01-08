@@ -116,13 +116,7 @@ impl ArtboardToolData {
 		Some(edges)
 	}
 
-	fn start_resizing(&mut self, selected_edges: (bool, bool, bool, bool), document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-		let snap_x = selected_edges.2 || selected_edges.3;
-		let snap_y = selected_edges.0 || selected_edges.1;
-
-		//self.snap_manager.start_snap(document, input, document.bounding_boxes(), snap_x, snap_y);
-		//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
+	fn start_resizing(&mut self, _selected_edges: (bool, bool, bool, bool), _document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		if let Some(bounds) = &mut self.bounding_box_manager {
 			bounds.center_of_transformation = (bounds.bounds[0] + bounds.bounds[1]) / 2.;
 		}
@@ -152,7 +146,7 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, mouse_position: DVec2, from_center: bool, constrain_square: bool) {
+	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, _document: &DocumentMessageHandler, mouse_position: DVec2, from_center: bool, constrain_square: bool) {
 		let Some(bounds) = &self.bounding_box_manager else {
 			return;
 		};

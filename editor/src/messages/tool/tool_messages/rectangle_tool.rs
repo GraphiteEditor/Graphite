@@ -233,7 +233,7 @@ impl Fsm for RectangleToolFsmState {
 				RectangleToolFsmState::Drawing
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = shape_data.calculate_transform( document, input, center, lock_ratio, false) {
+				if let Some(message) = shape_data.calculate_transform(document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 
