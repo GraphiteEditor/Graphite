@@ -104,7 +104,17 @@
 
 // ▛ TODAY AND TOMORROW ▜
 // ▙ TODAY AND TOMORROW ▟
-//
+
+// ▛ DISCIPLINES ▜
+#disciplines .section {
+	align-items: center;
+
+	.informational-group .informational {
+		margin-top: 40px;
+	}
+}
+// ▙ DISCIPLINES ▟
+
 // ▛ COMMUNITY ▜
 #community {
 	background-color: var(--color-mustard);
@@ -255,21 +265,23 @@
 }
 // ▙ COMMUNITY ▟
 
+// ▛ JUMP RIGHT IN ▜
+#jump-right-in {
+	max-width: 1000px;
+
+	.section {
+		align-items: center;
+	}
+}
+// ▙ JUMP RIGHT IN ▟
+
 // ▛ PROCEDURALISM ▜
-#proceduralism .section {
+#proceduralism .section,
+#proceduralism-demo .section,
+#proceduralism-features .section {
 	align-items: center;
 }
 // ▙ PROCEDURALISM ▟
-
-// ▛ DISCIPLINES ▜
-#disciplines .section {
-	align-items: center;
-
-	.informational-group .informational {
-		margin-top: 40px;
-	}
-}
-// ▙ DISCIPLINES ▟
 
 // ▛ FUNDRAISING ▜
 #fundraising {
@@ -312,73 +324,73 @@
 // ▙ VECTOR ART ▟
 
 // ▛ IMAGINATE ▜
-#imaginate {
-	> .section {
-		align-items: center;
+// #imaginate {
+// 	> .section {
+// 		align-items: center;
 
-		h1 {
-			text-align: center;
+// 		h1 {
+// 			text-align: center;
 
-			.alternating-text {
-				position: relative;
+// 			.alternating-text {
+// 				position: relative;
 
-				span {
-					// Move left by half (since it's centered) the average (half the 74px difference) of the variance in word lengths
-					margin-left: calc(-1.54em / 2 / 2);
-					opacity: 0;
-					$alternate-duration: 15s;
-					$alternate-words: 5;
-					animation: $alternate-duration infinite linear 0s fade-word;
+// 				span {
+// 					// Move left by half (since it's centered) the average (half the 74px difference) of the variance in word lengths
+// 					margin-left: calc(-1.54em / 2 / 2);
+// 					opacity: 0;
+// 					$alternate-duration: 15s;
+// 					$alternate-words: 5;
+// 					animation: $alternate-duration infinite linear 0s fade-word;
 
-					// The 1st child is the widest
-					&:not(:nth-child(1)) {
-						position: absolute;
-						right: 0;
-					}
+// 					// The 1st child is the widest
+// 					&:not(:nth-child(1)) {
+// 						position: absolute;
+// 						right: 0;
+// 					}
 
-					@for $i from 1 through $alternate-words {
-						&:nth-child(#{$i}) {
-							animation-delay: ($alternate-duration / $alternate-words * ($i - 1));
-						}
-					}
+// 					@for $i from 1 through $alternate-words {
+// 						&:nth-child(#{$i}) {
+// 							animation-delay: ($alternate-duration / $alternate-words * ($i - 1));
+// 						}
+// 					}
 
-					@keyframes fade-word {
-						// Fade in at the start (which begins staggered on each item by `animation-delay`)
-						#{0.0%} { opacity: 0; }
-						#{2.5%} { opacity: 1; }
-						// Remain visible for this item's slice of time, then fade out
-						#{0.0% + 100% / ($alternate-words + 1)} { opacity: 1; }
-						#{2.5% + 100% / ($alternate-words + 1)} { opacity: 0; }
-					}
-				}
-			}
-		}
-	}
+// 					@keyframes fade-word {
+// 						// Fade in at the start (which begins staggered on each item by `animation-delay`)
+// 						#{0.0%} { opacity: 0; }
+// 						#{2.5%} { opacity: 1; }
+// 						// Remain visible for this item's slice of time, then fade out
+// 						#{0.0% + 100% / ($alternate-words + 1)} { opacity: 1; }
+// 						#{2.5% + 100% / ($alternate-words + 1)} { opacity: 0; }
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
 
-	> .diptych {
-		margin-top: calc(80 * var(--variable-px));
+// 	> .diptych {
+// 		margin-top: calc(80 * var(--variable-px));
 
-		.section {
-			align-items: center;
+// 		.section {
+// 			align-items: center;
 
-			h2 {
-				text-align: center;
-			}
-		}
-	}
+// 			h2 {
+// 				text-align: center;
+// 			}
+// 		}
+// 	}
 
-	// #imaginate-creative-concepts-carousel {
-	// 	margin-top: 20px;
+// 	// #imaginate-creative-concepts-carousel {
+// 	// 	margin-top: 20px;
 
-	// 	.screenshot-details {
-	// 		justify-content: center;
-	// 	}
+// 	// 	.screenshot-details {
+// 	// 		justify-content: center;
+// 	// 	}
 
-	// 	+ blockquote {
-	// 		margin-top: 0;
-	// 	}
-	// }
-}
+// 	// 	+ blockquote {
+// 	// 		margin-top: 0;
+// 	// 	}
+// 	// }
+// }
 // ▙ IMAGINATE ▟
 
 // ▛ DEMO VIDEO ▜

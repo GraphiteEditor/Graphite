@@ -21,7 +21,13 @@ Additional manual chapters are being added over time. Check back often!
 
 ## Jump right in
 
-If you're eager to skip the reading, head straight to the [hands-on quickstart video](./introduction) in the next chapter for a beginner project walkthrough you can follow along with.
+<!-- If you're eager to skip the reading, head straight to the [hands-on quickstart video](./introduction) in the next chapter for a beginner project walkthrough you can follow along with. -->
+
+The fastest way to get started is to watch and follow along with the steps in the hands-on quickstart video:
+
+<div class="video-embed aspect-16x9">
+	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+</div>
 
 ## Need help?
 

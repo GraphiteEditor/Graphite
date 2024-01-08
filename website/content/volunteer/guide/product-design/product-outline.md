@@ -77,7 +77,7 @@ order = 1 # Page number after chapter intro
 	- Data flow
 	- Rasterization
 - Raster editing
-	- Resolution-agnostic sampling
+	- Adaptive resolution sampling
 	- Compositing and data flow
 	- Caching
 	- Predictive caching
