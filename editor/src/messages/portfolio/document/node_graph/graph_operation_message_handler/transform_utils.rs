@@ -71,35 +71,9 @@ impl LayerBounds {
 
 /// Get the current affine transform from the transform node's inputs
 pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
-	let translation = if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(translation),
-		..
-	} = inputs[1]
-	{
-		translation
-	} else {
-		DVec2::ZERO
-	};
-
-	let angle = if let NodeInput::Value {
-		tagged_value: TaggedValue::F64(angle),
-		..
-	} = inputs[2]
-	{
-		angle
-	} else {
-		0.
-	};
-
-	let scale = if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(scale),
-		..
-	} = inputs[3]
-	{
-		scale
-	} else {
-		DVec2::ONE
-	};
+	let translation = get_current_translation(inputs);
+	let angle = get_current_rotation(inputs);
+	let scale = get_current_scale(inputs);
 
 	let shear = if let NodeInput::Value {
 		tagged_value: TaggedValue::DVec2(shear),
@@ -125,6 +99,60 @@ pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	} else {
 		DVec2::splat(0.5)
 	}
+}
+
+pub fn get_current_rotation(inputs: &[NodeInput]) -> f64 {
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::F64(angle),
+		..
+	} = inputs[2]
+	{
+		angle
+	} else {
+		0.
+	}
+}
+
+pub fn get_current_scale(inputs: &[NodeInput]) -> DVec2 {
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::DVec2(scale),
+		..
+	} = inputs[3]
+	{
+		scale
+	} else {
+		DVec2::ONE
+	}
+}
+
+pub fn get_current_translation(inputs: &[NodeInput]) -> DVec2 {
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::DVec2(translation),
+		..
+	} = inputs[1]
+	{
+		translation
+	} else {
+		DVec2::ZERO
+	}
+}
+
+pub fn set_pivot(inputs: &mut [NodeInput], new_pivot: DVec2) {
+	let old_pivot = get_current_normalized_pivot(inputs);
+	let rotation = get_current_rotation(inputs);
+	let scale = get_current_scale(inputs);
+	let translation = get_current_translation(inputs);
+
+	let pivot_diff = new_pivot - old_pivot;
+	let translation_offset = translation - pivot_diff;
+	let scale_pivot = scale * pivot_diff;
+	let cosr = rotation.cos() as f64;
+	let sinr = rotation.sin() as f64;
+	let scale_rotation_offset = DVec2::new(scale_pivot.x * cosr - scale_pivot.y * sinr, scale_pivot.x * sinr + scale_pivot.y * cosr);
+	let new_translation = scale_rotation_offset + translation_offset;
+
+	inputs[1] = NodeInput::value(TaggedValue::DVec2(new_translation), false);
+	inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 }
 
 /// ![](https://files.keavon.com/-/OptimisticSpotlessTinamou/capture.png)

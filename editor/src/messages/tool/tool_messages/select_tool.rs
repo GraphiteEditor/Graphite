@@ -108,7 +108,7 @@ impl SelectTool {
 	}
 
 	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
-		PivotInput::new(self.tool_data.pivot.to_pivot_position())
+		PivotInput::new(Default::default())
 			.on_update(|pivot_input: &PivotInput| SelectToolMessage::SetPivot { position: pivot_input.position }.into())
 			.disabled(disabled)
 			.widget_holder()
@@ -677,8 +677,7 @@ impl Fsm for SelectToolFsmState {
 						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
-						let pivot_transform = DAffine2::from_translation(pivot);
-						let transformation = pivot_transform * delta * pivot_transform.inverse();
+						let transformation = delta;
 
 						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
 						let selected = &tool_data.layers_dragging;
@@ -986,9 +985,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
-
-				let pos: Option<DVec2> = position.into();
-				tool_data.pivot.set_normalized_position(pos.unwrap(), document, responses);
+				todo!("rework pivot positon widget {:?}", position);
 
 				self
 			}

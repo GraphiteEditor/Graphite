@@ -351,8 +351,7 @@ impl<'a> Selected<'a> {
 			.selected
 			.iter()
 			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.document_network, self.document_metadata))
-			.reduce(|a, b| a + b)
-			.unwrap_or_default();
+			.sum::<DVec2>();
 
 		xy_summation / self.selected.len() as f64
 	}

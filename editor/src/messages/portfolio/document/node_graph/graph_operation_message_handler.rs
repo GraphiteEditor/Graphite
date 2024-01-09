@@ -428,15 +428,9 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
+	fn pivot_set(&mut self, new_pivot: DVec2) {
 		self.modify_inputs("Transform", false, |inputs, node_id, metadata| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let upstream_transform = metadata.upstream_transform(node_id);
-			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs))));
-			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(new_pivot)));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
+			transform_utils::set_pivot(inputs, new_pivot);
 		});
 	}
 
@@ -733,9 +727,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.pivot_set(pivot, bounds);
+					modify_inputs.pivot_set(pivot);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
