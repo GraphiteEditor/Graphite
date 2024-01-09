@@ -138,42 +138,13 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 
 	assist(&mut widgets);
 
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::DVec2(dvec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
+	let mut create_widget = |vec2: DVec2, to_tagged_value: &'static (dyn Fn(f64, f64) -> TaggedValue + Send + Sync)| {
+		let update_x = move |input: &NumberInput| to_tagged_value(input.value.unwrap(), vec2.y);
+		let update_y = move |input: &NumberInput| to_tagged_value(vec2.x, input.value.unwrap());
+
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(dvec2.x))
-				.label(x)
-				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(dvec2.y))
-				.label(y)
-				.unit(unit)
-				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		]);
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::IVec2(ivec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		let update_x = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(input.value.unwrap() as i32, ivec2.y));
-		let update_y = move |input: &NumberInput| TaggedValue::IVec2(IVec2::new(ivec2.x, input.value.unwrap() as i32));
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(ivec2.x as f64))
-				.int()
+			NumberInput::new(Some(vec2.x))
 				.label(x)
 				.unit(unit)
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
@@ -182,8 +153,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.on_commit(commit_value)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(ivec2.y as f64))
-				.int()
+			NumberInput::new(Some(vec2.y))
 				.label(y)
 				.unit(unit)
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
@@ -192,36 +162,18 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.on_commit(commit_value)
 				.widget_holder(),
 		]);
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::UVec2(uvec2),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		let update_x = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(input.value.unwrap() as u32, uvec2.y));
-		let update_y = move |input: &NumberInput| TaggedValue::UVec2(UVec2::new(uvec2.x, input.value.unwrap() as u32));
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(uvec2.x as f64))
-				.int()
-				.label(x)
-				.unit(unit)
-				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(update_x, node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(uvec2.y as f64))
-				.int()
-				.label(y)
-				.unit(unit)
-				.min(min.unwrap_or(0.))
-				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
-				.on_update(update_value(update_y, node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		]);
-	}
+	};
+
+	let NodeInput::Value { ref tagged_value, exposed: false } = document_node.inputs[index] else {
+		return LayoutGroup::Row { widgets };
+	};
+
+	match tagged_value {
+		TaggedValue::DVec2(dvec2) => create_widget(*dvec2, &|x, y| TaggedValue::DVec2(DVec2::new(x, y))),
+		TaggedValue::IVec2(ivec2) => create_widget(ivec2.as_dvec2(), &|x, y| TaggedValue::IVec2(IVec2::new(x as i32, y as i32))),
+		TaggedValue::UVec2(uvec2) => create_widget(uvec2.as_dvec2(), &|x, y| TaggedValue::UVec2(UVec2::new(x as u32, y as u32))),
+		_ => (),
+	};
 
 	LayoutGroup::Row { widgets }
 }
@@ -1551,9 +1503,14 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		{
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.push(
-				PivotInput::new(pivot.into())
-					.on_update(update_value(|pivot: &PivotInput| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
-					.on_commit(commit_value)
+				PivotInput::new(PivotPosition::Center.into())
+					.on_update(
+						|_| Message::NoOp, // 	update_value(
+						                   // 	|pivot: &PivotInput| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()),
+						                   // 	node_id,
+						                   // 	pivot_index,
+						                   // )
+					)
 					.widget_holder(),
 			);
 		} else {
@@ -1561,6 +1518,9 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		}
 	};
 	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, translation_assist);
+	// The Pivot assist would need to modify the values of the Translation which is a bit annoying to pull of
+	// so we'll disable this until we have the proper graphical entry method
+	// let pivot = vec2_widget(document_node, node_id, 5, "Pivot", "X", "Y", "", None, add_blank_assist);
 
 	let rotation = {
 		let index = 2;
