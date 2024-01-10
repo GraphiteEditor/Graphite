@@ -12,17 +12,16 @@ use std::collections::VecDeque;
 
 #[derive(Clone, Debug)]
 pub struct Pivot {
-	/// Transform to get from normalized pivot to viewspace
-	transform_from_normalized: DAffine2,
 	/// The viewspace pivot position (if applicable)
 	pivot: Option<DVec2>,
+	viewport_pos: DVec2,
 }
 
 impl Default for Pivot {
 	fn default() -> Self {
 		Self {
-			transform_from_normalized: Default::default(),
-			pivot: Default::default(),
+			pivot: Some(DVec2::ONE),
+			viewport_pos: DVec2::ZERO,
 		}
 	}
 }
@@ -34,7 +33,11 @@ impl Pivot {
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+		log::debug!("adding_overlay for pivot at ");
 		if let Some(pivot) = self.pivot {
+			let viewport_transform = document.metadata().document_to_viewport;
+			let pivot = viewport_transform.transform_point2(pivot);
+			self.viewport_pos = pivot;
 			log::debug!("adding_overlay for pivot at {:?}", pivot);
 			overlay_context.pivot(pivot);
 		}
@@ -47,7 +50,8 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&mut self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.pivot = Some(position);
+		let viewport_transform = document.metadata().document_to_viewport.inverse();
+		self.pivot = Some(viewport_transform.transform_point2(position));
 		for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			let pivot = transform.inverse().transform_point2(position);
@@ -60,6 +64,6 @@ impl Pivot {
 
 	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
-		self.pivot.filter(|&pivot| mouse.distance_squared(pivot) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
+		self.pivot.filter(|&pivot| mouse.distance_squared(self.viewport_pos) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
 	}
 }
