@@ -2,10 +2,11 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import { beginDraggingElement } from "@graphite/io-managers/drag";
+	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
+	import type { DataBuffer, LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -20,8 +21,6 @@
 		entry: LayerPanelEntry;
 	};
 
-	let list: LayoutCol | undefined;
-
 	const RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT = 20;
 	const INSERT_MARK_OFFSET = 2;
 
@@ -35,6 +34,9 @@
 	};
 
 	const editor = getContext<Editor>("editor");
+	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+
+	let list: LayoutCol | undefined;
 
 	// Layer data
 	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
@@ -56,7 +58,9 @@
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			rebuildLayerHierarchy(updateDocumentLayerStructure);
+			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+			console.log("Layer structure", structure);
+			rebuildLayerHierarchy(structure);
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
@@ -66,6 +70,65 @@
 			updateLayerInTree(targetId, targetLayer);
 		});
 	});
+
+	type DocumentLayerStructure = {
+		layerId: bigint;
+		children: DocumentLayerStructure[];
+	};
+
+	function newUpdateDocumentLayerStructure(dataBuffer: DataBuffer): DocumentLayerStructure {
+		const pointerNum = Number(dataBuffer.pointer);
+		const lengthNum = Number(dataBuffer.length);
+
+		const wasmMemoryBuffer = editor.raw.buffer;
+
+		// Decode the folder structure encoding
+		const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
+
+		// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
+		const structureSectionLength = Number(encoding.getBigUint64(0, true));
+		const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
+
+		// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
+		const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
+
+		let layersEncountered = 0;
+		let currentFolder: DocumentLayerStructure = { layerId: BigInt(-1), children: [] };
+		const currentFolderStack = [currentFolder];
+
+		for (let i = 0; i < structureSectionLength; i += 1) {
+			const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
+			const msbMask = BigInt(1) << BigInt(64 - 1);
+
+			// Set the MSB to 0 to clear the sign and then read the number as usual
+			const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
+
+			// Store child folders in the current folder (until we are interrupted by an indent)
+			for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
+				const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
+				layersEncountered += 1;
+
+				const childLayer: DocumentLayerStructure = { layerId, children: [] };
+				currentFolder.children.push(childLayer);
+			}
+
+			// Check the sign of the MSB, where a 1 is a negative (outward) indent
+			const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
+			// Inward
+			if (subsequentDirectionOfDepthChange) {
+				currentFolderStack.push(currentFolder);
+				currentFolder = currentFolder.children[currentFolder.children.length - 1];
+			}
+			// Outward
+			else {
+				const popped = currentFolderStack.pop();
+				if (!popped) throw Error("Too many negative indents in the folder structure");
+				if (popped) currentFolder = popped;
+			}
+		}
+
+		return currentFolder;
+	}
 
 	function toggleLayerVisibility(id: bigint) {
 		editor.instance.toggleLayerVisibility(id);
@@ -222,11 +285,11 @@
 	async function dragStart(event: DragEvent, listing: LayerListingInfo) {
 		const layer = listing.entry;
 		dragInPanel = true;
-		if (!layer.selected) {
+		if (!$nodeGraph.selected.includes(layer.id)) {
 			fakeHighlight = layer.id;
 		}
 		const select = () => {
-			if (!layer.selected) selectLayer(listing, false, false);
+			if (!$nodeGraph.selected.includes(layer.id)) selectLayer(listing, false, false);
 		};
 
 		const target = (event.target instanceof HTMLElement && event.target) || undefined;
@@ -263,7 +326,7 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(updateDocumentLayerStructure: UpdateDocumentLayerStructureJs) {
+	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
@@ -271,7 +334,7 @@
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (folder: UpdateDocumentLayerStructureJs) => {
+		const recurse = (folder: DocumentLayerStructure) => {
 			folder.children.forEach((item, index) => {
 				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
@@ -313,7 +376,7 @@
 				<LayoutRow
 					class="layer"
 					classes={{
-						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : listing.entry.selected,
+						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : $nodeGraph.selected.includes(listing.entry.id),
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
@@ -333,7 +396,9 @@
 						{/if}
 					{:else}
 						<div class="thumbnail">
-							{@html listing.entry.thumbnail}
+							{#if $nodeGraph.thumbnails.has(listing.entry.id)}
+								{@html $nodeGraph.thumbnails.get(listing.entry.id)}
+							{/if}
 						</div>
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
@@ -353,8 +418,8 @@
 						class={"visibility"}
 						action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
 						size={24}
-						icon={(() => true)() ? "EyeVisible" : "EyeHidden"}
-						tooltip={(() => true)() ? "Visible" : "Hidden"}
+						icon={listing.entry.disabled ? "EyeHidden" : "EyeVisible"}
+						tooltip={listing.entry.disabled ? "Disabled" : "Enabled"}
 					/>
 				</LayoutRow>
 			{/each}

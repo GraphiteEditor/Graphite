@@ -2,7 +2,7 @@ use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
-use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
+use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_core::transform::Footprint;
 use graphene_core::Color;
 use graphene_core::Node;
@@ -303,7 +303,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	data.render_svg(&mut render, &render_params);
 	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 
-	RenderOutput::Svg(render.svg.to_string())
+	RenderOutput::Svg(render.svg.to_svg_string())
 }
 
 #[cfg(any(feature = "resvg", feature = "vello"))]

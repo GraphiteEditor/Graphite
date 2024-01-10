@@ -1,7 +1,6 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 use graphite_editor::application::Editor;
-use graphite_editor::messages::frontend::utility_types::FrontendImageData;
 use graphite_editor::messages::prelude::*;
 
 // use axum::body::StreamBody;
@@ -90,32 +89,15 @@ fn handle_message(message: String) -> String {
 		editor.as_mut().unwrap().handle_message(message)
 	});
 
-	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(message: FrontendMessage) -> FrontendMessage {
-		// Special case for update image data to avoid serialization times.
-		if let FrontendMessage::UpdateImageData { document_id, image_data } = message {
-			let mut stub_data = Vec::with_capacity(image_data.len());
-			for image in image_data {
-				stub_data.push(FrontendImageData {
-					mime: image.mime.clone(),
-					image_data: Arc::new(Vec::new()),
-				});
-			}
-			FrontendMessage::UpdateImageData { document_id, image_data: stub_data }
-		} else {
-			message
-		}
-	}
-
 	for response in &responses {
-		let serialized = ron::to_string(&send_frontend_message_to_js(response.clone())).unwrap();
+		let serialized = ron::to_string(&response.clone()).unwrap();
 		if let Err(error) = ron::from_str::<FrontendMessage>(&serialized) {
 			log::error!("Error deserializing message: {error}");
 		}
 	}
 
 	// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
-	let result: Vec<_> = responses.into_iter().map(send_frontend_message_to_js).collect();
+	let result: Vec<_> = responses.into_iter().collect();
 
 	ron::to_string(&result).expect("Failed to serialize FrontendMessage")
 }

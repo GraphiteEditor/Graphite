@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendDocumentDetails, FrontendImageData, MouseCursorIcon};
+use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuffer, LayerPanelEntry, RawBuffer};
@@ -171,12 +171,6 @@ pub enum FrontendMessage {
 		secondary_color: String,
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
-	},
-	UpdateImageData {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		#[serde(rename = "imageData")]
-		image_data: Vec<FrontendImageData>,
 	},
 	UpdateInputHints {
 		#[serde(rename = "hintData")]

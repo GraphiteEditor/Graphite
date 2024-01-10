@@ -87,7 +87,6 @@ pub enum DocumentMessage {
 	RenameDocument {
 		new_name: String,
 	},
-	RenderDocument,
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,

@@ -85,7 +85,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
 	#[serde(skip)]
-	pub metadata: DocumentMetadata,
+	pub document_metadata: DocumentMetadata,
 }
 
 impl Default for DocumentMessageHandler {
@@ -121,7 +121,7 @@ impl Default for DocumentMessageHandler {
 			graph_view_overlay_open: false,
 			snapping_state: SnappingState::default(),
 			layer_range_selection_reference: None,
-			metadata: Default::default(),
+			document_metadata: Default::default(),
 		}
 	}
 }
@@ -245,7 +245,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.navigation_handler.process_message(
 					message,
 					responses,
-					(&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport(), &mut self.navigation),
+					(
+						&self.document_metadata,
+						document_bounds,
+						ipp,
+						self.selected_visible_layers_bounding_box_viewport(),
+						&mut self.navigation,
+					),
 				);
 			}
 			#[remain::unsorted]
@@ -259,7 +265,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					executor,
 					document_name: self.name.as_str(),
 					document_network: &self.network,
-					document_metadata: &mut self.metadata,
+					document_metadata: &mut self.document_metadata,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
@@ -271,7 +277,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses,
 					NodeGraphHandlerData {
 						document_network: &mut self.network,
-						document_metadata: &mut self.metadata,
+						document_metadata: &mut self.document_metadata,
 						document_id,
 						document_name: self.name.as_str(),
 						collapsed: &mut self.collapsed,
@@ -281,13 +287,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				);
 			}
 			#[remain::unsorted]
-			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.network, &mut self.metadata, &mut self.collapsed, &mut self.node_graph_handler)),
+			GraphOperation(message) => GraphOperationMessageHandler.process_message(message, responses, (&mut self.network, &mut self.document_metadata, &mut self.collapsed, &mut self.node_graph_handler)),
 
 			// Messages
 			AbortTransaction => {
 				if !self.undo_in_progress {
 					self.undo(responses);
-					responses.extend([RenderDocument.into(), DocumentStructureChanged.into()]);
+					responses.add(OverlaysMessage::Draw);
 				}
 			}
 			AlignSelectedLayers { axis, aggregate } => {
@@ -373,14 +379,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
+				log::debug!("DocumentStructureChanged");
+
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
-
-				if self.graph_view_overlay_open {
-					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
-				}
 			}
 			DuplicateSelectedLayers => {
 				// TODO: Reimplement selected layer duplication
@@ -414,7 +418,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.graph_view_overlay_open = open;
 
 				if open {
-					responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
@@ -503,7 +507,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						});
 					}
 					// Nudge resize
-					else if let Some([existing_top_left, existing_bottom_right]) = self.metadata.bounding_box_document(layer) {
+					else if let Some([existing_top_left, existing_bottom_right]) = self.document_metadata.bounding_box_document(layer) {
 						let size = existing_bottom_right - existing_top_left;
 						let new_size = size + if opposite_corner { -delta } else { delta };
 						let enlargement_factor = new_size / size;
@@ -572,18 +576,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			Redo => {
 				responses.add(SelectToolMessage::Abort);
-				responses.add(DocumentHistoryForward);
+				responses.add(DocumentMessage::DocumentHistoryForward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				responses.add(RenderDocument);
-				responses.add(DocumentStructureChanged);
+				responses.add(OverlaysMessage::Draw);
 			}
 			RenameDocument { new_name } => {
 				self.name = new_name;
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
-			}
-			RenderDocument => {
-				responses.add(OverlaysMessage::Draw);
 			}
 			RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
@@ -753,11 +753,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			Undo => {
 				self.undo_in_progress = true;
 				responses.add(BroadcastEvent::ToolAbort);
-				responses.add(DocumentHistoryBackward);
+				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(BroadcastEvent::DocumentIsDirty);
-				responses.add(RenderDocument);
-				responses.add(DocumentStructureChanged);
-				responses.add(UndoFinished);
+				responses.add(OverlaysMessage::Draw);
+				responses.add(DocumentMessage::UndoFinished);
 			}
 			UndoFinished => self.undo_in_progress = false,
 			UngroupSelectedLayers => {
@@ -786,7 +785,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::CommitTransaction);
 			}
 			UpdateDocumentTransform { transform } => {
-				self.metadata.document_to_viewport = transform;
+				self.document_metadata.document_to_viewport = transform;
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -813,35 +812,43 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 impl DocumentMessageHandler {
 	pub fn layer_visible(&self, layer: LayerNodeIdentifier) -> bool {
-		!layer.ancestors(&self.metadata).any(|layer| self.network.disabled.contains(&layer.to_node()))
+		!layer.ancestors(&self.document_metadata).any(|layer| self.network.disabled.contains(&layer.to_node()))
 	}
 
 	pub fn selected_visible_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.metadata.selected_layers().filter(|&layer| self.layer_visible(layer))
+		self.document_metadata.selected_layers().filter(|&layer| self.layer_visible(layer))
 	}
 
 	/// Runs an intersection test with all layers and a viewport space quad
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
-		self.metadata
+		let document_quad = self.document_metadata.document_to_viewport.inverse() * viewport_quad;
+		self.document_metadata
 			.root()
-			.decendants(&self.metadata)
+			.decendants(&self.document_metadata)
 			.filter(|&layer| self.layer_visible(layer))
 			.filter(|&layer| !is_artboard(layer, network))
-			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
+			.filter_map(|layer| self.document_metadata.click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| {
+				target
+					.iter()
+					.any(move |target| target.intersect_rectangle(document_quad, self.document_metadata.transform_to_document(*layer)))
+			})
 			.map(|(layer, _)| layer)
 	}
 
 	/// Find all of the layers that were clicked on from a viewport space location
 	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
-		self.metadata
+		let point = self.document_metadata.document_to_viewport.inverse().transform_point2(viewport_location);
+		self.document_metadata
 			.root()
-			.decendants(&self.metadata)
+			.decendants(&self.document_metadata)
 			.filter(|&layer| self.layer_visible(layer))
-			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
+			.filter_map(|layer| self.document_metadata.click_target(layer).map(|targets| (layer, targets)))
+			.filter(move |(layer, target)| {
+				target
+					.iter()
+					.any(|target: &ClickTarget| target.intersect_point(point, self.document_metadata.transform_to_document(*layer)))
+			})
 			.map(|(layer, _)| layer)
 	}
 
@@ -853,7 +860,7 @@ impl DocumentMessageHandler {
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_visible_layers()
-			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.filter_map(|layer| self.document_metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
@@ -862,7 +869,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
-		&self.metadata
+		&self.document_metadata
 	}
 
 	pub fn serialize_document(&self) -> String {
@@ -878,7 +885,7 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
 		let mut document = Self { name, ..Self::default() };
 		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2., DVec2::ZERO, 0., 1.);
-		document.metadata.document_to_viewport = transform;
+		document.document_metadata.document_to_viewport = transform;
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 
 		document
@@ -897,23 +904,24 @@ impl DocumentMessageHandler {
 		std::iter::empty()
 	}
 
-	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure: &mut Vec<LayerNodeIdentifier>, data: &mut Vec<LayerNodeIdentifier>, path: &mut Vec<LayerNodeIdentifier>) {
+	/// Called recursively by the entry function [`serialize_root`].
+	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
 		let mut space = 0;
 		for layer_node in folder.children(self.metadata()) {
-			data.push(layer_node);
+			data_section.push(layer_node.to_node().0);
 			space += 1;
 			if layer_node.has_children(self.metadata()) && !self.collapsed.contains(&layer_node) {
 				path.push(layer_node);
 
 				// TODO: Skip if folder is not expanded.
-				structure.push(LayerNodeIdentifier::new_unchecked(NodeId(space)));
-				self.serialize_structure(layer_node, structure, data, path);
+				structure_section.push(space);
+				self.serialize_structure(layer_node, structure_section, data_section, path);
 				space = 0;
 
 				path.pop();
 			}
 		}
-		structure.push(LayerNodeIdentifier::new_unchecked(NodeId(space | 1 << 63)));
+		structure_section.push(space | 1 << 63);
 	}
 
 	/// Serializes the layer structure into a condensed 1D structure.
@@ -921,17 +929,18 @@ impl DocumentMessageHandler {
 	/// # Format
 	/// It is a string of numbers broken into three sections:
 	///
-	/// | Data                                                                                                                           | Description                                  | Length           |
-	/// |--------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------|------------------|
-	/// | `4,` `2, 1, -2, -0,` `16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186`   | Encoded example data                         |                  |
-	/// | `L` = `4` = `structure.len()`                                                                                                  | `L`, the length of the **Structure** section | First value      |
-	/// | **Structure** section = `2, 1, -2, -0`                                                                                         | The **Structure** section                    | Next `L` values  |
-	/// | **Data** section = `16533113728871998040, 3427872634365736244, 18115028555707261608, 15878401910454357952, 449479075714955186` | The **Data** section (layer IDs)             | Remaining values |
+	/// | Data                                                                                                                          | Description                                                   | Length           |
+	/// |------------------------------------------------------------------------------------------------------------------------------ |---------------------------------------------------------------|------------------|
+	/// | `4,` `2, 1, -2, -0,` `16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186`  | Encoded example data                                          |                  |
+	/// | _____________________________________________________________________________________________________________________________ | _____________________________________________________________ | ________________ |
+	/// | **Length** section: `4`                                                                                                       | Length of the **Structure** section (`L` = `structure.len()`) | First value      |
+	/// | **Structure** section: `2, 1, -2, -0`                                                                                         | The **Structure** section                                     | Next `L` values  |
+	/// | **Data** section: `16533113728871998040, 3427872634365736244, 18115028555707261608, 15878401910454357952, 449479075714955186` | The **Data** section (layer IDs)                              | Remaining values |
 	///
 	/// The data section lists the layer IDs for all folders/layers in the tree as read from top to bottom.
 	/// The structure section lists signed numbers. The sign indicates a folder indentation change (`+` is down a level, `-` is up a level).
 	/// The numbers in the structure block encode the indentation. For example:
-	/// - `2` means read two element from the data section, then place a `[`.
+	/// - `2` means read two elements from the data section, then place a `[`.
 	/// - `-x` means read `x` elements from the data section and then insert a `]`.
 	///
 	/// ```text
@@ -949,14 +958,18 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
 	pub fn serialize_root(&self) -> RawBuffer {
-		let mut structure = vec![LayerNodeIdentifier::ROOT];
-		let mut data = Vec::new();
-		self.serialize_structure(self.metadata().root(), &mut structure, &mut data, &mut vec![]);
+		let mut structure_section = vec![LayerNodeIdentifier::ROOT.to_node().0];
+		let mut data_section = Vec::new();
+		self.serialize_structure(self.metadata().root(), &mut structure_section, &mut data_section, &mut vec![]);
 
-		structure[0] = LayerNodeIdentifier::new_unchecked(NodeId(structure.len() as u64 - 1));
-		structure.extend(data);
+		log::debug!("Structure section length (L): {}, Data section length: {}", structure_section.len() - 1, data_section.len());
 
-		structure.iter().map(|id| id.to_node().0).collect::<Vec<_>>().as_slice().into()
+		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
+		structure_section[0] = structure_section.len() as u64 - 1;
+		// Append the data section to the end.
+		structure_section.extend(data_section);
+
+		structure_section.as_slice().into()
 	}
 
 	/// Places a document into the history system
@@ -1000,9 +1013,6 @@ impl DocumentMessageHandler {
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
-
-		responses.add(DocumentMessage::DocumentStructureChanged);
-		responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) {
@@ -1018,9 +1028,6 @@ impl DocumentMessageHandler {
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
 		}
-
-		responses.add(DocumentMessage::DocumentStructureChanged);
-		responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
@@ -1410,7 +1417,6 @@ impl DocumentMessageHandler {
 			Redo,
 			SelectAllLayers,
 			DeselectAllLayers,
-			RenderDocument,
 			SaveDocument,
 			SetSnapping,
 			DebugPrintDocument,

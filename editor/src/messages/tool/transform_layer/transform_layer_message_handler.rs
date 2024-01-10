@@ -56,7 +56,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			&selected_layers,
 			responses,
 			&document.network,
-			&document.metadata,
+			&document.document_metadata,
 			Some(shape_editor),
 			&tool_data.active_tool_type,
 		);

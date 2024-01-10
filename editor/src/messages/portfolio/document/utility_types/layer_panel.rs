@@ -39,15 +39,14 @@ pub enum LayerClassification {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
+	pub id: NodeId,
 	pub name: String,
 	pub tooltip: String,
 	#[serde(rename = "layerClassification")]
 	pub layer_classification: LayerClassification,
-	pub selected: bool,
 	pub expanded: bool,
+	pub disabled: bool,
 	#[serde(rename = "parentId")]
 	pub parent_id: Option<NodeId>,
-	pub id: NodeId,
 	pub depth: usize,
-	pub thumbnail: String,
 }

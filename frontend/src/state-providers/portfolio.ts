@@ -17,7 +17,6 @@ import {
 	TriggerOpenDocument,
 	TriggerRevokeBlobUrl,
 	UpdateActiveDocument,
-	UpdateImageData,
 	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
 
@@ -99,21 +98,6 @@ export function createPortfolioState(editor: Editor) {
 		} catch {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateImageData, (updateImageData) => {
-		updateImageData.imageData.forEach(async (element) => {
-			const buffer = new Uint8Array(element.imageData.values()).buffer;
-			const blob = new Blob([buffer], { type: element.mime });
-
-			const blobURL = URL.createObjectURL(blob);
-
-			// Pre-decode the image so it is ready to be drawn instantly once it's placed into the viewport SVG
-			const image = new Image();
-			image.src = blobURL;
-			await image.decode();
-
-			// editor.instance.setImageBlobURL(updateImageData.documentId, element.path, element.nodeId, blobURL, image.naturalWidth, image.naturalHeight, element.transform);
-		});
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);

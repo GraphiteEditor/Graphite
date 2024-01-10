@@ -35,7 +35,7 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		input_index: usize,
 	},
-	DoubleClickNode {
+	EnterNestedNetwork {
 		node: NodeId,
 	},
 	DuplicateSelectedNodes,
@@ -68,9 +68,7 @@ pub enum NodeGraphMessage {
 	SelectedNodesSet {
 		nodes: Vec<NodeId>,
 	},
-	SendGraph {
-		should_rerender: bool,
-	},
+	SendGraph,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
@@ -86,6 +84,7 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
+	/// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
 	ShiftNode {
 		node_id: NodeId,
 	},
