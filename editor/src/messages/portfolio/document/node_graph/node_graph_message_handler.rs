@@ -278,8 +278,9 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&self, network: &NodeNetwork, graph_view_overlay_open: bool, document_metadata: &DocumentMetadata, collapsed: &Vec<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
+	fn send_graph(&self, network: &NodeNetwork, graph_view_overlay_open: bool, document_metadata: &mut DocumentMetadata, collapsed: &Vec<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
 		log::debug!("send_graph()");
+		document_metadata.load_structure(&network);
 
 		let links = network
 			.nodes
