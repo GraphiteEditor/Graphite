@@ -158,10 +158,10 @@ impl SelectedEdges {
 				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
 
 				let scale_factor = (snapped_bounds - pivot) / (updated - pivot);
-				if bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length() > tollerance {
+				snapped.distance = bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length();
+				if snapped.distance > tollerance {
 					continue;
 				}
-				snapped.distance = scale_factor.length();
 				if best_snap.other_snap_better(&snapped) {
 					best_snap = snapped;
 					best_scale_factor = scale_factor;

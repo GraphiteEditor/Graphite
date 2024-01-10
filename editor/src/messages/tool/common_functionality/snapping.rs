@@ -1,21 +1,23 @@
+mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, NodeSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GridSnapTarget, NodeSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 use bezier_rs::{Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::uuid::ManipulatorGroupId;
 use std::cmp::Ordering;
-pub use {layer_snapper::*, snap_results::*};
+pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
 
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
 pub struct SnapManager {
 	indicator: Option<SnappedPoint>,
-	object_snapper: LayerSnapper,
+	layer_snapper: LayerSnapper,
+	grid_snapper: GridSnapper,
 	candidates: Option<Vec<LayerNodeIdentifier>>,
 }
 
@@ -78,6 +80,9 @@ fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&Sn
 	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Node(NodeSnapTarget::Path);
 	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
+fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
+	lines.iter().map(|curve| &curve.point).min_by(compare_points)
+}
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
@@ -106,6 +111,29 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 						tollerance: close.point.tollerance,
 						curves: [Some(close.document_curve), Some(far.document_curve)],
 						source: close.point.source,
+						at_intersection: true,
+						contrained: true,
+						..Default::default()
+					})
+				}
+			}
+		}
+	}
+	best
+}
+fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<SnappedPoint> {
+	let mut best = None;
+	for line_i in lines {
+		for line_j in lines {
+			if let Some(snapped_point_document) = Quad::intersect_rays(line_i.point.snapped_point_document, line_i.direction, line_j.point.snapped_point_document, line_j.direction) {
+				let distance = snap_to.distance(snapped_point_document);
+				if !best.as_ref().is_some_and(|best: &SnappedPoint| best.distance < distance) {
+					best = Some(SnappedPoint {
+						snapped_point_document,
+						distance,
+						target: SnapTarget::Grid(GridSnapTarget::Intersection),
+						tollerance: line_i.point.tollerance,
+						source: line_i.point.source,
 						at_intersection: true,
 						contrained: true,
 						..Default::default()
@@ -172,14 +200,21 @@ impl SnapManager {
 			snapped_points.push(closest_curve.clone());
 		}
 
+		if let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
+			snapped_points.push(closest_line.clone());
+		}
+
 		if !contrained {
 			if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Intersection)) {
 				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
 					snapped_points.push(closest_curves_intersection);
 				}
 			}
-
-			// TODO grid
+			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection)) {
+				if let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines) {
+					snapped_points.push(closest_grid_intersection);
+				}
+			}
 		}
 
 		if to_path {
@@ -247,6 +282,11 @@ impl SnapManager {
 	}
 
 	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>, to_paths: bool) -> SnappedPoint {
+		if !point.document_point.is_finite() {
+			warn!("Snapping non-finite position");
+			return SnappedPoint::infinite_snap(DVec2::ZERO);
+		}
+
 		let mut snap_results = SnapResults::default();
 		if point.source_index == 0 {
 			self.candidates = None;
@@ -254,12 +294,18 @@ impl SnapManager {
 
 		let mut snap_data = snap_data.clone();
 		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-		self.object_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 
 		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
 	}
 
 	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
+		if !point.document_point.is_finite() {
+			warn!("Snapping non-finite position");
+			return SnappedPoint::infinite_snap(DVec2::ZERO);
+		}
+
 		let mut snap_results = SnapResults::default();
 		if point.source_index == 0 {
 			self.candidates = None;
@@ -267,15 +313,15 @@ impl SnapManager {
 
 		let mut snap_data = snap_data.clone();
 		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-		self.object_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.layer_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.grid_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 
-		info!("SR {snap_results:#?}");
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}
 
 	pub fn grid_overlay(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		let offset = document.snapping_state.grid.origin;
-		let spacing = document.snapping_state.grid.size;
+		let spacing = document.snapping_state.grid.computed_size(&document.navigation);
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
@@ -286,9 +332,6 @@ impl SnapManager {
 			let primary1 = bounds.0.iter().map(|&corner| corner[primary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 			let primary2 = bounds.0.iter().map(|&corner| corner[primary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 			let mut spacing = spacing[secondary];
-			while (max - min) / spacing > 30. {
-				spacing *= 2.;
-			}
 			for line_index in 0..=((max - min) / spacing).ceil() as i32 {
 				let secondary_pos = (((min + offset[secondary]) / spacing).ceil() + line_index as f64) * spacing;
 				let start = if primary == 0 { DVec2::new(primary1, secondary_pos) } else { DVec2::new(secondary_pos, primary1) };

@@ -14,7 +14,6 @@ pub struct SnapResults {
 #[derive(Default, Debug, Clone)]
 pub struct SnappedPoint {
 	pub snapped_point_document: DVec2,
-	pub curve_tangent: DVec2,
 	pub source: SnapSource,
 	pub target: SnapTarget,
 	pub at_intersection: bool,
@@ -74,8 +73,8 @@ impl SnappedPoint {
 }
 #[derive(Clone, Debug, Default)]
 pub struct SnappedLine {
-	pub point: DVec2,
-	pub normal: DVec2,
+	pub point: SnappedPoint,
+	pub direction: DVec2,
 }
 #[derive(Clone, Debug)]
 pub struct SnappedCurve {

@@ -77,16 +77,21 @@ impl Quad {
 	}
 
 	/// https://www.cs.rpi.edu/~cutler/classes/computationalgeometry/F23/lectures/02_line_segment_intersections.pdf
-	fn intersect_lines(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
+	fn line_intersection_t(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> (f64, f64) {
 		let t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / ((a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x));
 		let u = ((a.x - c.x) * (a.y - b.y) - (a.y - c.y) * (a.x - b.x)) / ((a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x));
 
-		if (0. ..=1.).contains(&t) && (0. ..=1.).contains(&u) {
-			let l1 = a + t * (b - a);
-			Some(l1)
-		} else {
-			None
-		}
+		(t, u)
+	}
+
+	fn intersect_lines(a: DVec2, b: DVec2, c: DVec2, d: DVec2) -> Option<DVec2> {
+		let (t, u) = Self::line_intersection_t(a, b, c, d);
+		((0. ..=1.).contains(&t) && (0. ..=1.).contains(&u)).then(|| a + t * (b - a))
+	}
+
+	pub fn intersect_rays(a: DVec2, a_direction: DVec2, b: DVec2, b_direction: DVec2) -> Option<DVec2> {
+		let (t, u) = Self::line_intersection_t(a, a + a_direction, b, b + b_direction);
+		(t.is_finite() && u.is_finite()).then(|| a + t * a_direction)
 	}
 
 	pub fn intersects(&self, other: Quad) -> bool {

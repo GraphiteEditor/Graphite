@@ -25,6 +25,9 @@ impl LayerSnapper {
 			return;
 		};
 		let bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+		if bounds.0.iter().any(|point| !point.is_finite()) {
+			return;
+		}
 		for document_curve in bounds.bezier_lines() {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
@@ -50,6 +53,9 @@ impl LayerSnapper {
 		}
 		for &layer in snap_data.get_candidates() {
 			let transform = document.metadata.transform_to_document(layer);
+			if !transform.is_finite() {
+				continue;
+			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Path)) {
 				for subpath in document.metadata.layer_outline(layer) {

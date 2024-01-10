@@ -74,7 +74,7 @@ impl Default for SnappingState {
 			snapping_enabled: true,
 			bounding_box_snapping: true,
 			node_snapping: true,
-			grid_snapping: false,
+			grid_snapping: true,
 			bounds: BoundsSnapping {
 				edges: true,
 				corners: true,
@@ -93,7 +93,6 @@ impl Default for SnappingState {
 			grid: GridSnapping {
 				origin: DVec2::ZERO,
 				size: DVec2::ONE,
-				dots: false,
 			},
 			tolerance: 20.,
 			artboards: true,
@@ -122,6 +121,7 @@ impl SnappingState {
 				NodeSnapTarget::Intersection => self.nodes.path_intersections,
 			},
 			SnapTarget::Board(_) => self.artboards,
+			SnapTarget::Grid(_) => self.grid_snapping,
 			_ => false,
 		}
 	}
@@ -147,7 +147,16 @@ pub struct NodeSnapping {
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub size: DVec2,
-	pub dots: bool,
+}
+impl GridSnapping {
+	// Double grid size until it takes up at least 10px.
+	pub fn computed_size(&self, navigation: &PTZ) -> DVec2 {
+		let mut size = self.size;
+		while (size * navigation.zoom).cmplt(DVec2::splat(10.)).any() {
+			size *= 2.;
+		}
+		size
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,6 +214,12 @@ pub enum BoardSnapTarget {
 	Corner,
 	Centre,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GridSnapTarget {
+	Line,
+	LineNormal,
+	Intersection,
+}
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapTarget {
 	#[default]
@@ -212,6 +227,7 @@ pub enum SnapTarget {
 	BoundingBox(BoundingBoxSnapTarget),
 	Node(NodeSnapTarget),
 	Board(BoardSnapTarget),
+	Grid(GridSnapTarget),
 }
 impl SnapTarget {
 	pub fn is_some(&self) -> bool {
