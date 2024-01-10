@@ -379,8 +379,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			DocumentHistoryBackward => self.undo(responses),
 			DocumentHistoryForward => self.redo(responses),
 			DocumentStructureChanged => {
-				log::debug!("DocumentStructureChanged");
-
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				self.document_metadata.load_structure(&self.network);
@@ -962,8 +960,6 @@ impl DocumentMessageHandler {
 		let mut structure_section = vec![LayerNodeIdentifier::ROOT.to_node().0];
 		let mut data_section = Vec::new();
 		self.serialize_structure(self.metadata().root(), &mut structure_section, &mut data_section, &mut vec![]);
-
-		log::debug!("Structure section length (L): {}, Data section length: {}", structure_section.len() - 1, data_section.len());
 
 		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
 		structure_section[0] = structure_section.len() as u64 - 1;

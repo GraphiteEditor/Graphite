@@ -5,6 +5,7 @@ page_template = "book.html"
 
 [extra]
 book = true
+js = ["video-embed.js"]
 +++
 
 <br />

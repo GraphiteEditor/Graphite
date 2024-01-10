@@ -279,7 +279,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn send_graph(&self, network: &NodeNetwork, graph_view_overlay_open: bool, document_metadata: &mut DocumentMetadata, collapsed: &Vec<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
-		log::debug!("send_graph()");
 		document_metadata.load_structure(&network);
 
 		let links = network
@@ -308,7 +307,6 @@ impl NodeGraphMessageHandler {
 
 		let connected_node_to_output_lookup = links.iter().map(|link| ((link.link_start, link.link_start_output_index), link.link_end)).collect::<HashMap<_, _>>();
 
-		let mut count_debug = 0;
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
 			let node_path = vec![node_id];
@@ -380,6 +378,7 @@ impl NodeGraphMessageHandler {
 					} else {
 						LayerClassification::Layer
 					}
+					// TODO: Maybe switch to this below if perhaps it's simpler?
 					// if node.is_artboard() {
 					// 	LayerClassification::Artboard
 					// } else if node.is_folder(network) {
@@ -390,21 +389,21 @@ impl NodeGraphMessageHandler {
 				};
 
 				let data = LayerPanelEntry {
-					/**/ id: node_id,
-					/**/ layer_classification,
-					/**/ expanded: layer.has_children(document_metadata) && !collapsed.contains(&layer),
-					/**/ depth: layer.ancestors(document_metadata).count() - 1,
-					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
-					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
-					disabled: network.disabled.contains(&node_id),
+					id: node_id,
+					layer_classification,
+					expanded: layer.has_children(document_metadata) && !collapsed.contains(&layer),
+					depth: layer.ancestors(document_metadata).count() - 1,
 					parent_id: layer.parent(document_metadata).map(|parent| parent.to_node()),
+					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
+					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
+					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
+					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
+					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
+					disabled: network.disabled.contains(&node_id),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
-				count_debug += 1;
 			}
 		}
-
-		log::debug!("Count Debug (times called UpdateDocumentLayerDetails): {}", count_debug);
 
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		if graph_view_overlay_open {
@@ -680,7 +679,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					log::debug!("send_graph: NodeGraphMessage::EnterNestedNetwork");
 					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, responses);
@@ -720,7 +718,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					log::debug!("send_graph: NodeGraphMessage::ExitNestedNetwork");
 					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, responses);
@@ -769,7 +766,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				log::debug!("send_graph: NodeGraphMessage::MoveSelectedNodes");
 				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
@@ -835,7 +831,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SendGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					log::debug!("send_graph: NodeGraphMessage::SendGraph");
 					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 			}
@@ -937,7 +932,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				log::debug!("send_graph: NodeGraphMessage::ShiftNode");
 				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 			}
 			NodeGraphMessage::ToggleSelectedHidden => {
@@ -980,7 +974,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.alias = name;
 
-						log::debug!("send_graph: NodeGraphMessage::SetNameImpl");
 						self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 					}
 				}
@@ -1011,7 +1004,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					document_metadata.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					log::debug!("send_graph: NodeGraphMessage::UpdateNewNodeGraph");
 					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 
 					let node_types = document_node_types::collect_node_types();

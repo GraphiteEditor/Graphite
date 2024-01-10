@@ -79,13 +79,13 @@ pub struct ExportConfig {
 }
 
 pub(crate) struct ExecutionRequest {
-	generation_id: u64,
+	execution_id: u64,
 	graph: NodeNetwork,
 	render_config: RenderConfig,
 }
 
 pub(crate) struct ExecutionResponse {
-	generation_id: u64,
+	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	updates: VecDeque<Message>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
@@ -155,7 +155,7 @@ impl NodeRuntime {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
 				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.imaginate_preferences = preferences,
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
-					generation_id, graph, render_config, ..
+					execution_id, graph, render_config, ..
 				}) => {
 					let transform = render_config.viewport.transform;
 
@@ -165,7 +165,7 @@ impl NodeRuntime {
 					self.process_monitor_nodes(&mut responses);
 
 					self.sender.send_generation_response(ExecutionResponse {
-						generation_id,
+						execution_id,
 						result,
 						updates: responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
@@ -393,15 +393,15 @@ impl Default for NodeGraphExecutor {
 impl NodeGraphExecutor {
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&self, network: NodeNetwork, render_config: RenderConfig) -> u64 {
-		let generation_id = generate_uuid();
+		let execution_id = generate_uuid();
 		let request = ExecutionRequest {
 			graph: network,
-			generation_id,
+			execution_id,
 			render_config,
 		};
 		self.sender.send(NodeRuntimeMessage::ExecutionRequest(request)).expect("Failed to send generation request");
 
-		generation_id
+		execution_id
 	}
 
 	pub fn introspect_node(&self, path: &[NodeId]) -> Option<Arc<dyn std::any::Any>> {
@@ -459,9 +459,9 @@ impl NodeGraphExecutor {
 		};
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, render_config);
+		let execution_id = self.queue_execution(network, render_config);
 
-		self.futures.insert(generation_id, ExecutionContext { export_config: None });
+		self.futures.insert(execution_id, ExecutionContext { export_config: None });
 
 		Ok(())
 	}
@@ -494,9 +494,9 @@ impl NodeGraphExecutor {
 		export_config.size = size;
 
 		// Execute the node graph
-		let generation_id = self.queue_execution(network, render_config);
+		let execution_id = self.queue_execution(network, render_config);
 		let execution_context = ExecutionContext { export_config: Some(export_config) };
-		self.futures.insert(generation_id, execution_context);
+		self.futures.insert(execution_id, execution_context);
 
 		Ok(())
 	}
@@ -535,10 +535,8 @@ impl NodeGraphExecutor {
 		for response in results {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
-					log::debug!("poll_node_graph_evaluation NodeGraphUpdate::ExecutionResponse");
-
 					let ExecutionResponse {
-						generation_id,
+						execution_id,
 						result,
 						updates,
 						new_click_targets,
@@ -550,8 +548,7 @@ impl NodeGraphExecutor {
 
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 
-					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-
+					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {
 						return self.export(node_graph_output, export_config, responses);
 					}

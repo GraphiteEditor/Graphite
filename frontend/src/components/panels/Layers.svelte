@@ -59,7 +59,6 @@
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
 			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
-			console.log("Layer structure", structure);
 			rebuildLayerHierarchy(structure);
 		});
 
