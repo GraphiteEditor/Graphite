@@ -383,6 +383,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 				self.update_layers_panel_options_bar_widgets(responses);
 
+				self.document_metadata.load_structure(&self.network);
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
