@@ -133,8 +133,11 @@ impl ArtboardToolData {
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
 
-			//elf.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-			//self.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
+				let bounding_box_manager = self.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+				bounding_box_manager.bounds = bounds;
+				bounding_box_manager.transform = document.metadata().document_to_viewport;
+			}
 
 			true
 		} else {
@@ -222,13 +225,9 @@ impl Fsm for ArtboardToolFsmState {
 					let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
 					let mouse_delta = mouse_position - tool_data.drag_current;
 
-					//let snap = bounds.evaluate_transform_handle_positions().into_iter().collect();
-					let closest_move = mouse_delta;
-					//	tool_data.snap_manager.snap_layers(responses, document, snap, mouse_delta);
-
 					let size = bounds.bounds[1] - bounds.bounds[0];
 
-					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current + closest_move);
+					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						id: tool_data.selected_artboard.unwrap().to_node(),
@@ -238,7 +237,7 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(BroadcastEvent::DocumentIsDirty);
 
-					tool_data.drag_current = mouse_position + closest_move;
+					tool_data.drag_current = mouse_position;
 				}
 				ArtboardToolFsmState::Dragging
 			}
