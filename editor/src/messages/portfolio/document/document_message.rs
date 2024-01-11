@@ -1,6 +1,7 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::prelude::*;
 
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -63,6 +64,9 @@ pub enum DocumentMessage {
 		open: bool,
 	},
 	GraphViewOverlayToggle,
+	GridOptions(GridSnapping),
+	GridOverlays(OverlayContext),
+	GridVisible(bool),
 	GroupSelectedLayers,
 	ImaginateGenerate,
 	ImaginateRandom {
@@ -119,7 +123,7 @@ pub enum DocumentMessage {
 	SetSnapping {
 		snapping_enabled: Option<bool>,
 		bounding_box_snapping: Option<bool>,
-		node_snapping: Option<bool>,
+		geometry_snapping: Option<bool>,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

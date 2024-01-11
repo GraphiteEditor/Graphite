@@ -60,7 +60,7 @@ impl DocumentMode {
 pub struct SnappingState {
 	pub snapping_enabled: bool,
 	pub bounding_box_snapping: bool,
-	pub node_snapping: bool,
+	pub geometry_snapping: bool,
 	pub grid_snapping: bool,
 	pub bounds: BoundsSnapping,
 	pub nodes: NodeSnapping,
@@ -73,8 +73,8 @@ impl Default for SnappingState {
 		Self {
 			snapping_enabled: true,
 			bounding_box_snapping: true,
-			node_snapping: true,
-			grid_snapping: true,
+			geometry_snapping: true,
+			grid_snapping: false,
 			bounds: BoundsSnapping {
 				edges: true,
 				corners: true,
@@ -92,7 +92,7 @@ impl Default for SnappingState {
 			},
 			grid: GridSnapping {
 				origin: DVec2::ZERO,
-				size: DVec2::ONE,
+				grid_type: GridType::RECTANGLE,
 			},
 			tolerance: 20.,
 			artboards: true,
@@ -111,14 +111,14 @@ impl SnappingState {
 				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
 				BoundingBoxSnapTarget::Centre => self.bounds.centres,
 			},
-			SnapTarget::Node(nodes) if self.node_snapping => match nodes {
-				NodeSnapTarget::Smooth => self.nodes.smooth_nodes,
-				NodeSnapTarget::Sharp => self.nodes.sharp_nodes,
-				NodeSnapTarget::LineMidpoint => self.nodes.line_midpoints,
-				NodeSnapTarget::Path => self.nodes.paths,
-				NodeSnapTarget::Normal => self.nodes.normals,
-				NodeSnapTarget::Tangent => self.nodes.tangents,
-				NodeSnapTarget::Intersection => self.nodes.path_intersections,
+			SnapTarget::Geometry(nodes) if self.geometry_snapping => match nodes {
+				GeometrySnapTarget::Smooth => self.nodes.smooth_nodes,
+				GeometrySnapTarget::Sharp => self.nodes.sharp_nodes,
+				GeometrySnapTarget::LineMidpoint => self.nodes.line_midpoints,
+				GeometrySnapTarget::Path => self.nodes.paths,
+				GeometrySnapTarget::Normal => self.nodes.normals,
+				GeometrySnapTarget::Tangent => self.nodes.tangents,
+				GeometrySnapTarget::Intersection => self.nodes.path_intersections,
 			},
 			SnapTarget::Board(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
@@ -143,19 +143,64 @@ pub struct NodeSnapping {
 	pub normals: bool,
 	pub tangents: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub enum GridType {
+	Rectangle { spacing: DVec2 },
+	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
+}
+impl GridType {
+	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
+	pub const ISOMETRIC: Self = GridType::Isometric {
+		y_axis_spacing: 1.,
+		angle_a: 30.,
+		angle_b: 30.,
+	};
+	pub fn rect_spacing(&mut self) -> Option<&mut DVec2> {
+		match self {
+			Self::Rectangle { spacing } => Some(spacing),
+			_ => None,
+		}
+	}
+	pub fn isometric_y_spacing(&mut self) -> Option<&mut f64> {
+		match self {
+			Self::Isometric { y_axis_spacing, .. } => Some(y_axis_spacing),
+			_ => None,
+		}
+	}
+	pub fn angle_a(&mut self) -> Option<&mut f64> {
+		match self {
+			Self::Isometric { angle_a, .. } => Some(angle_a),
+			_ => None,
+		}
+	}
+	pub fn angle_b(&mut self) -> Option<&mut f64> {
+		match self {
+			Self::Isometric { angle_b, .. } => Some(angle_b),
+			_ => None,
+		}
+	}
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GridSnapping {
 	pub origin: DVec2,
-	pub size: DVec2,
+	pub grid_type: GridType,
 }
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
-	pub fn computed_size(&self, navigation: &PTZ) -> DVec2 {
-		let mut size = self.size;
+	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> DVec2 {
 		while (size * navigation.zoom).cmplt(DVec2::splat(10.)).any() {
 			size *= 2.;
 		}
 		size
+	}
+
+	// Double grid size until it takes up at least 10px.
+	pub fn compute_isometric_multiplier(length: f64, navigation: &PTZ) -> f64 {
+		let mut multiplier = 1.;
+		while length * multiplier * navigation.zoom < 10. {
+			multiplier *= 2.;
+		}
+		multiplier
 	}
 }
 
@@ -171,7 +216,7 @@ pub enum BoardSnapSource {
 	Corner,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeSnapSource {
+pub enum GeometrySnapSource {
 	Smooth,
 	Sharp,
 	LineMidpoint,
@@ -184,7 +229,7 @@ pub enum SnapSource {
 	None,
 	BoundingBox(BoundingBoxSnapSource),
 	Board(BoardSnapSource),
-	Node(NodeSnapSource),
+	Geometry(GeometrySnapSource),
 }
 impl SnapSource {
 	pub fn is_some(&self) -> bool {
@@ -199,7 +244,7 @@ pub enum BoundingBoxSnapTarget {
 	Centre,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeSnapTarget {
+pub enum GeometrySnapTarget {
 	Smooth,
 	Sharp,
 	LineMidpoint,
@@ -225,7 +270,7 @@ pub enum SnapTarget {
 	#[default]
 	None,
 	BoundingBox(BoundingBoxSnapTarget),
-	Node(NodeSnapTarget),
+	Geometry(GeometrySnapTarget),
 	Board(BoardSnapTarget),
 	Grid(GridSnapTarget),
 }
@@ -234,20 +279,20 @@ impl SnapTarget {
 		self != &Self::None
 	}
 	pub fn bounding_box(&self) -> bool {
-		matches!(self, Self::BoundingBox(_))
+		matches!(self, Self::BoundingBox(_) | Self::Board(_))
 	}
 }
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {
 	BoundingBoxes,
-	Points,
+	Geometry,
 }
 
 impl fmt::Display for SnappingOptions {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
-			SnappingOptions::Points => write!(f, "Points"),
+			SnappingOptions::Geometry => write!(f, "Geometry"),
 		}
 	}
 }

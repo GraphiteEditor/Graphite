@@ -2,7 +2,7 @@ use super::*;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{
-	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GridSnapTarget, NodeSnapSource, NodeSnapTarget, SnapSource, SnapTarget,
+	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GeometrySnapSource, GeometrySnapTarget, GridSnapTarget, GridSnapping, GridType, SnapSource, SnapTarget,
 };
 use crate::messages::prelude::*;
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
@@ -20,11 +20,12 @@ struct Line {
 pub struct GridSnapper;
 
 impl GridSnapper {
-	fn get_snap_lines(&self, document_point: DVec2, snap_data: &mut SnapData) -> Vec<Line> {
+	// Rectangular grid has 4 lines around a point, 2 on y axis and 2 on x axis.
+	fn get_snap_lines_rectangular(&self, document_point: DVec2, snap_data: &mut SnapData, spacing: DVec2) -> Vec<Line> {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		let spacing = document.snapping_state.grid.computed_size(&document.navigation);
+		let spacing = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation);
 		let origin = document.snapping_state.grid.origin;
 		for (direction, perpendicular) in [(DVec2::X, DVec2::Y), (DVec2::Y, DVec2::X)] {
 			lines.push(Line {
@@ -38,36 +39,98 @@ impl GridSnapper {
 		}
 		lines
 	}
+	// Isometric grid has 6 lines around a point, 2 y axis, 2 on the angle a, and 2 on the angle b.
+	fn get_snap_lines_isometric(&self, document_point: DVec2, snap_data: &mut SnapData, y_axis_spacing: f64, angle_a: f64, angle_b: f64) -> Vec<Line> {
+		let document = snap_data.document;
+		let mut lines = Vec::new();
+
+		let origin = document.snapping_state.grid.origin;
+
+		let tan_x = angle_a.to_radians().tan();
+		let tan_z = angle_b.to_radians().tan();
+		let spacing = DVec2::new(y_axis_spacing / (tan_x + tan_z), y_axis_spacing);
+		let spacing = spacing * GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation);
+
+		let x_max = ((document_point.x - origin.x) / spacing.x).ceil() * spacing.x + origin.x;
+		let x_min = ((document_point.x - origin.x) / spacing.x).floor() * spacing.x + origin.x;
+		lines.push(Line {
+			point: DVec2::new(x_max, 0.),
+			direction: DVec2::Y,
+		});
+		lines.push(Line {
+			point: DVec2::new(x_min, 0.),
+			direction: DVec2::Y,
+		});
+
+		let y_projected_onto_x = document_point.y + tan_x * (document_point.x - origin.x);
+		let y_onto_x_max = ((y_projected_onto_x - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
+		let y_onto_x_min = ((y_projected_onto_x - origin.y) / spacing.y).floor() * spacing.y + origin.y;
+		lines.push(Line {
+			point: DVec2::new(origin.x, y_onto_x_max),
+			direction: DVec2::new(1., -tan_x),
+		});
+		lines.push(Line {
+			point: DVec2::new(origin.x, y_onto_x_min),
+			direction: DVec2::new(1., -tan_x),
+		});
+
+		let y_projected_onto_z = document_point.y - tan_z * (document_point.x - origin.x);
+		let y_onto_z_max = ((y_projected_onto_z - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
+		let y_onto_z_min = ((y_projected_onto_z - origin.y) / spacing.y).floor() * spacing.y + origin.y;
+		lines.push(Line {
+			point: DVec2::new(origin.x, y_onto_z_max),
+			direction: DVec2::new(1., tan_z),
+		});
+		lines.push(Line {
+			point: DVec2::new(origin.x, y_onto_z_min),
+			direction: DVec2::new(1., tan_z),
+		});
+
+		lines
+	}
+	fn get_snap_lines(&self, document_point: DVec2, snap_data: &mut SnapData) -> Vec<Line> {
+		match snap_data.document.snapping_state.grid.grid_type {
+			GridType::Rectangle { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
+			GridType::Isometric { y_axis_spacing, angle_a, angle_b } => self.get_snap_lines_isometric(document_point, snap_data, y_axis_spacing, angle_a, angle_b),
+		}
+	}
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
 		let lines = self.get_snap_lines(point.document_point, snap_data);
 		let tollerance = snap_tollerance(snap_data.document);
 
 		for line in lines {
-			let projected = (point.document_point - line.point).project_onto_normalized(line.direction) + line.point;
+			let projected = (point.document_point - line.point).project_onto(line.direction) + line.point;
 			let distance = point.document_point.distance(projected);
+			if !distance.is_finite() {
+				continue;
+			}
 
 			if distance > tollerance {
 				continue;
 			}
 
-			snap_results.grid_lines.push(SnappedLine {
-				direction: line.direction,
-				point: SnappedPoint {
-					snapped_point_document: projected,
-					source: point.source,
-					target: SnapTarget::Grid(GridSnapTarget::Line),
-					source_bounds: point.quad,
-					distance,
-					tollerance,
-					..Default::default()
-				},
-			});
+			if snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
+				|| snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
+			{
+				snap_results.grid_lines.push(SnappedLine {
+					direction: line.direction,
+					point: SnappedPoint {
+						snapped_point_document: projected,
+						source: point.source,
+						target: SnapTarget::Grid(GridSnapTarget::Line),
+						source_bounds: point.quad,
+						distance,
+						tollerance,
+						..Default::default()
+					},
+				});
+			}
 
 			let normal_target = SnapTarget::Grid(GridSnapTarget::LineNormal);
 			if snap_data.document.snapping_state.target_enabled(normal_target) {
 				for &neighbour in &point.neighbours {
-					let projected = (neighbour - line.point).project_onto_normalized(line.direction) + line.point;
+					let projected = (neighbour - line.point).project_onto(line.direction) + line.point;
 					let distance = point.document_point.distance(projected);
 					if distance > tollerance {
 						continue;
@@ -100,7 +163,7 @@ impl GridSnapper {
 				continue;
 			};
 			let distance = intersection.distance(point.document_point);
-			if distance < tollerance {
+			if distance < tollerance && snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: intersection,
 					source: point.source,

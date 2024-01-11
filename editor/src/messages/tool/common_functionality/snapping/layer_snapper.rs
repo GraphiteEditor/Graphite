@@ -2,7 +2,7 @@ use super::*;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{
-	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, NodeSnapSource, NodeSnapTarget, SnapSource, SnapTarget,
+	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GeometrySnapSource, GeometrySnapTarget, SnapSource, SnapTarget,
 };
 use crate::messages::prelude::*;
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
@@ -57,7 +57,8 @@ impl LayerSnapper {
 				continue;
 			}
 
-			if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Path)) {
+			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path))
+			{
 				for subpath in document.metadata.layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
@@ -69,7 +70,7 @@ impl LayerSnapper {
 							document_curve,
 							layer,
 							start,
-							target: SnapTarget::Node(NodeSnapTarget::Path),
+							target: SnapTarget::Geometry(GeometrySnapTarget::Path),
 							bounds: None,
 						});
 					}
@@ -84,8 +85,8 @@ impl LayerSnapper {
 		self.collect_paths(snap_data, point.source_index == 0);
 
 		let document = snap_data.document;
-		let normals = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Normal));
-		let tangents = document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Tangent));
+		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
+		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
 		let tollerance = snap_tollerance(document);
 		for path in &self.paths_to_snap {
 			let time = path.document_curve.project(point.document_point, None);
@@ -177,7 +178,7 @@ impl LayerSnapper {
 					centre_target: SnapTarget::Board(BoardSnapTarget::Centre),
 					..Default::default()
 				};
-				get_bbox_points(quad, &mut self.points_to_snap, values);
+				get_bbox_points(quad, &mut self.points_to_snap, values, document);
 			}
 		}
 		for &layer in snap_data.get_candidates() {
@@ -190,9 +191,8 @@ impl LayerSnapper {
 				continue;
 			};
 			let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-			let target_enabled = |target: BoardSnapTarget| document.snapping_state.target_enabled(SnapTarget::Board(target));
-			let values = BBoxSnapValues::new(target_enabled(BoardSnapTarget::Corner), target_enabled(BoardSnapTarget::Edge), target_enabled(BoardSnapTarget::Centre));
-			get_bbox_points(quad, &mut self.points_to_snap, values);
+			let values = BBoxSnapValues::BOUNDING_BOX;
+			get_bbox_points(quad, &mut self.points_to_snap, values, document);
 		}
 	}
 	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, c: SnapConstraint, constrained_point: DVec2) {
@@ -209,7 +209,7 @@ impl LayerSnapper {
 
 			let candidate_better = |best: &SnappedPoint| {
 				if best.snapped_point_document.abs_diff_eq(candidate.document_point, 1e-5) {
-					!matches!(candidate.target, SnapTarget::BoundingBox(_))
+					!candidate.target.bounding_box()
 				} else {
 					distance < best.distance
 				}
@@ -253,7 +253,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: normal_point,
-					target: SnapTarget::Node(NodeSnapTarget::Normal),
+					target: SnapTarget::Geometry(GeometrySnapTarget::Normal),
 					distance,
 					tollerance,
 					curves: [Some(path.document_curve), None],
@@ -274,7 +274,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: tangent_point,
-					target: SnapTarget::Node(NodeSnapTarget::Tangent),
+					target: SnapTarget::Geometry(GeometrySnapTarget::Tangent),
 					distance,
 					tollerance,
 					curves: [Some(path.document_curve), None],
@@ -321,10 +321,10 @@ impl SnapCandidatePoint {
 		Self::new(document_point, source, SnapTarget::None)
 	}
 	pub fn handle(document_point: DVec2) -> Self {
-		Self::new_source(document_point, SnapSource::Node(NodeSnapSource::Sharp))
+		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp))
 	}
 	pub fn handle_neighbours(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
-		let mut point = Self::new_source(document_point, SnapSource::Node(NodeSnapSource::Sharp));
+		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp));
 		point.neighbours = neighbours.into();
 		point
 	}
@@ -339,29 +339,27 @@ struct BBoxSnapValues {
 	centre_target: SnapTarget,
 }
 impl BBoxSnapValues {
-	pub const fn new(corners: bool, edges: bool, centre: bool) -> Self {
-		Self {
-			corner_source: if corners { SnapSource::BoundingBox(BoundingBoxSnapSource::Corner) } else { SnapSource::None },
-			corner_target: if corners { SnapTarget::BoundingBox(BoundingBoxSnapTarget::Corner) } else { SnapTarget::None },
-			edge_source: if edges { SnapSource::BoundingBox(BoundingBoxSnapSource::EdgeMidpoint) } else { SnapSource::None },
-			edge_target: if edges { SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint) } else { SnapTarget::None },
-			centre_source: if centre { SnapSource::BoundingBox(BoundingBoxSnapSource::Centre) } else { SnapSource::None },
-			centre_target: if centre { SnapTarget::BoundingBox(BoundingBoxSnapTarget::Centre) } else { SnapTarget::None },
-		}
-	}
+	pub const BOUNDING_BOX: Self = Self {
+		corner_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Corner),
+		corner_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Corner),
+		edge_source: SnapSource::BoundingBox(BoundingBoxSnapSource::EdgeMidpoint),
+		edge_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
+		centre_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Centre),
+		centre_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Centre),
+	};
 }
-fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues) {
+fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
 	for index in 0..4 {
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
-		if values.corner_source.is_some() || values.corner_target.is_some() {
+		if document.snapping_state.target_enabled(values.corner_target) {
 			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad)));
 		}
-		if values.edge_source.is_some() || values.edge_target.is_some() {
+		if document.snapping_state.target_enabled(values.edge_target) {
 			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad)));
 		}
 	}
-	if values.centre_source.is_some() || values.centre_target.is_some() {
+	if document.snapping_state.target_enabled(values.centre_target) {
 		points.push(SnapCandidatePoint::new_quad(quad.center(), values.centre_source, values.centre_target, Some(quad)));
 	}
 }
@@ -372,7 +370,7 @@ fn handle_not_under(to_document: DAffine2) -> impl Fn(&DVec2) -> bool {
 fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<ManipulatorGroupId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
 	let document = snap_data.document;
 	// Midpoints of linear segments
-	if document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::LineMidpoint)) {
+	if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::LineMidpoint)) {
 		for (index, curve) in subpath.iter().enumerate() {
 			if snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[index].id) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(index + 1) % subpath.len()].id) {
 				continue;
@@ -383,8 +381,8 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Mani
 			if in_handle.is_none() && out_handle.is_none() {
 				points.push(SnapCandidatePoint::new(
 					to_document.transform_point2(curve.start() * 0.5 + curve.end * 0.5),
-					SnapSource::Node(NodeSnapSource::LineMidpoint),
-					SnapTarget::Node(NodeSnapTarget::LineMidpoint),
+					SnapSource::Geometry(GeometrySnapSource::LineMidpoint),
+					SnapTarget::Geometry(GeometrySnapTarget::LineMidpoint),
 				));
 			}
 		}
@@ -397,19 +395,19 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Mani
 
 		let smooth = group_smooth(group, to_document, subpath, index);
 
-		if smooth && document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Smooth)) {
+		if smooth && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Smooth)) {
 			// Smooth points
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Node(NodeSnapSource::Smooth),
-				SnapTarget::Node(NodeSnapTarget::Smooth),
+				SnapSource::Geometry(GeometrySnapSource::Smooth),
+				SnapTarget::Geometry(GeometrySnapTarget::Smooth),
 			));
-		} else if !smooth && document.snapping_state.target_enabled(SnapTarget::Node(NodeSnapTarget::Sharp)) {
+		} else if !smooth && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Sharp)) {
 			// Sharp points
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Node(NodeSnapSource::Sharp),
-				SnapTarget::Node(NodeSnapTarget::Sharp),
+				SnapSource::Geometry(GeometrySnapSource::Sharp),
+				SnapTarget::Geometry(GeometrySnapTarget::Sharp),
 			));
 		}
 	}

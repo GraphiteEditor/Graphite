@@ -3,7 +3,7 @@ use super::snapping::{group_smooth, SnapCandidatePoint, SnapData, SnapManager, S
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{NodeSnapSource, SnapSource};
+use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
 
@@ -91,11 +91,11 @@ impl ShapeState {
 							continue;
 						}
 						let source = if handle.is_handle() {
-							SnapSource::Node(NodeSnapSource::Handle)
+							SnapSource::Geometry(GeometrySnapSource::Handle)
 						} else if group_smooth(group, to_document, subpath, index) {
-							SnapSource::Node(NodeSnapSource::Smooth)
+							SnapSource::Geometry(GeometrySnapSource::Smooth)
 						} else {
-							SnapSource::Node(NodeSnapSource::Sharp)
+							SnapSource::Geometry(GeometrySnapSource::Sharp)
 						};
 						let Some(position) = handle.get_position(&group) else { continue };
 						let point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);

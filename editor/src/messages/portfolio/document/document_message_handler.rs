@@ -5,11 +5,12 @@ use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, 
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
+use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::layer_panel::RawBuffer;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, GridSnapping, GridType, PTZ};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
@@ -421,6 +422,21 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
+			GridOptions(grid) => {
+				self.snapping_state.grid = grid;
+				self.snapping_state.grid_snapping = true;
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			GridOverlays(mut overlay_context) => {
+				if self.snapping_state.grid_snapping {
+					grid_overlay(self, &mut overlay_context)
+				}
+			}
+			GridVisible(enabled) => {
+				self.snapping_state.grid_snapping = enabled;
+				responses.add(OverlaysMessage::Draw);
+			}
 			GroupSelectedLayers => {
 				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let parent = self.metadata().deepest_common_ancestor(self.metadata().selected_layers(), true).unwrap_or(LayerNodeIdentifier::ROOT);
@@ -724,7 +740,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			SetSnapping {
 				snapping_enabled,
 				bounding_box_snapping,
-				node_snapping,
+				geometry_snapping,
 			} => {
 				if let Some(state) = snapping_enabled {
 					self.snapping_state.snapping_enabled = state
@@ -732,8 +748,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				if let Some(state) = bounding_box_snapping {
 					self.snapping_state.bounding_box_snapping = state
 				}
-				if let Some(state) = node_snapping {
-					self.snapping_state.node_snapping = state
+				if let Some(state) = geometry_snapping {
+					self.snapping_state.geometry_snapping = state
 				};
 			}
 			SetViewMode { view_mode } => {
@@ -1086,7 +1102,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
-		let snapping_state = self.snapping_state.clone();
+		let mut snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
@@ -1096,7 +1112,7 @@ impl DocumentMessageHandler {
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
 						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
-						node_snapping: Some(snapping_state.node_snapping),
+						geometry_snapping: Some(snapping_state.geometry_snapping),
 					}
 					.into()
 				})
@@ -1113,7 +1129,7 @@ impl DocumentMessageHandler {
 									DocumentMessage::SetSnapping {
 										snapping_enabled: None,
 										bounding_box_snapping: Some(input.checked),
-										node_snapping: None,
+										geometry_snapping: None,
 									}
 									.into()
 								})
@@ -1123,15 +1139,15 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							TextLabel::new(SnappingOptions::Points.to_string()).table_align(true).min_width(96).widget_holder(),
+							TextLabel::new(SnappingOptions::Geometry.to_string()).table_align(true).min_width(96).widget_holder(),
 							Separator::new(SeparatorType::Unrelated).widget_holder(),
-							CheckboxInput::new(self.snapping_state.node_snapping)
-								.tooltip(SnappingOptions::Points.to_string())
+							CheckboxInput::new(self.snapping_state.geometry_snapping)
+								.tooltip(SnappingOptions::Geometry.to_string())
 								.on_update(|input: &CheckboxInput| {
 									DocumentMessage::SetSnapping {
 										snapping_enabled: None,
 										bounding_box_snapping: None,
-										node_snapping: Some(input.checked),
+										geometry_snapping: Some(input.checked),
 									}
 									.into()
 								})
@@ -1141,12 +1157,14 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			CheckboxInput::new(true)
+			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
 				.tooltip("Grid")
-				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(318) }.into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisible(optional_input.checked).into())
 				.widget_holder(),
-			PopoverButton::new("Grid", "Coming soon").widget_holder(),
+			PopoverButton::new("Grid", "Grid customization settings")
+				.options_widget(overlay_options(&self.snapping_state.grid))
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(self.overlays_visible)
 				.icon("Overlays")

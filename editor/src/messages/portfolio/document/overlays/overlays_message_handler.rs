@@ -31,6 +31,10 @@ impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> f
 				context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
 
 				if overlays_visible {
+					responses.add(DocumentMessage::GridOverlays(OverlayContext {
+						render_context: context.clone(),
+						size: size.as_dvec2(),
+					}));
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: context.clone(),
