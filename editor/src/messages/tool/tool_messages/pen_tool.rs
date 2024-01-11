@@ -720,7 +720,7 @@ fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f64) 
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
 
-	for layer in document.metadata().selected_layers() {
+	for layer in document.selected_nodes.selected_layers(document.metadata()) {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 
 		let subpaths = get_subpaths(layer, &document.network)?;

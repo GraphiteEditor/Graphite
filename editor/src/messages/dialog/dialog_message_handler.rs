@@ -92,7 +92,7 @@ impl MessageHandler<DialogMessage, DialogData<'_>> for DialogMessageHandler {
 					self.export_dialog = ExportDialogMessageHandler {
 						scale_factor: 1.,
 						artboards,
-						has_selection: document.metadata().selected_layers().next().is_some(),
+						has_selection: document.selected_nodes.selected_layers(document.metadata()).next().is_some(),
 						..Default::default()
 					};
 					self.export_dialog.send_dialog_to_frontend(responses);

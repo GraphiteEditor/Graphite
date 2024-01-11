@@ -477,7 +477,9 @@ impl NodeGraphExecutor {
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
 			ExportBounds::AllArtwork => document.metadata().document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.metadata().selected_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Selection => document
+				.metadata()
+				.selected_bounds_document_space(!export_config.transparent_background, document.metadata(), &document.selected_nodes),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;

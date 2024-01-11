@@ -163,7 +163,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document.metadata().shallowest_unique_layers(active_document.metadata().selected_layers()) {
+					for layer_path in active_document
+						.metadata()
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()))
+					{
 						let Some(layer) = layer_path.last().copied() else {
 							continue;
 						};
@@ -184,7 +187,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									.collect(),
 							)
 							.collect(),
-							selected: active_document.metadata().selected_layers_contains(layer),
+							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							collapsed: false,
 						});
 					}
@@ -526,7 +529,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		);
 
 		if let Some(document) = self.active_document() {
-			if document.metadata().selected_layers().next().is_some() {
+			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
 				let select = actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

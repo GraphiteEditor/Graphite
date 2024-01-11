@@ -1,3 +1,5 @@
+use super::nodes::SelectedNodes;
+
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
@@ -19,7 +21,6 @@ pub struct DocumentMetadata {
 	artboards: HashSet<LayerNodeIdentifier>,
 	folders: HashSet<LayerNodeIdentifier>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
-	selected_nodes: Vec<NodeId>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -32,7 +33,6 @@ impl Default for DocumentMetadata {
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
-			selected_nodes: Vec::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
 	}
@@ -50,34 +50,6 @@ impl DocumentMetadata {
 
 	pub fn all_layers(&self) -> DecendantsIter<'_> {
 		self.root().decendants(self)
-	}
-
-	pub fn all_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers().filter(move |layer| !self.artboards.contains(layer))
-	}
-
-	pub fn selected_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers().filter(|layer| self.selected_nodes.contains(&layer.to_node()))
-	}
-
-	pub fn selected_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers().filter(move |layer| !self.artboards.contains(layer))
-	}
-
-	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier) -> bool {
-		self.selected_layers().any(|selected| selected == layer)
-	}
-
-	pub fn selected_nodes(&self) -> core::slice::Iter<'_, NodeId> {
-		self.selected_nodes.iter()
-	}
-
-	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
-		&self.selected_nodes
-	}
-
-	pub fn has_selected_nodes(&self) -> bool {
-		!self.selected_nodes.is_empty()
 	}
 
 	pub fn layer_exists(&self, layer: LayerNodeIdentifier) -> bool {
@@ -146,14 +118,9 @@ impl DocumentMetadata {
 		self.artboards.contains(&layer)
 	}
 
-	/// Filter out non folder layers
-	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		layers.filter(|layer| self.folders.contains(layer))
-	}
-
 	/// Folders sorted from most nested to least nested
 	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
-		let mut folders: Vec<_> = self.folders(layers).collect();
+		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
 		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
 		folders
 	}
@@ -164,24 +131,8 @@ impl DocumentMetadata {
 // ==============================================
 
 impl DocumentMetadata {
-	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
-		self.selected_nodes.retain(f);
-	}
-
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
-		self.selected_nodes = new;
-	}
-
-	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) {
-		self.selected_nodes.extend(iter);
-	}
-
-	pub fn clear_selected_nodes(&mut self) {
-		self.set_selected_nodes(Vec::new());
-	}
-
 	/// Loads the structure of layer nodes from a node graph.
-	pub fn load_structure(&mut self, graph: &NodeNetwork) {
+	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
 		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
 			graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
 		}
@@ -224,7 +175,7 @@ impl DocumentMetadata {
 			}
 		}
 
-		self.selected_nodes.retain(|node| graph.nodes.contains_key(node));
+		selected_nodes.0.retain(|node| graph.nodes.contains_key(node));
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
@@ -328,8 +279,9 @@ impl DocumentMetadata {
 	}
 
 	/// Calculates the selected layer bounds in document space
-	pub fn selected_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.selected_layers()
+	pub fn selected_bounds_document_space(&self, include_artboards: bool, document_metadata: &DocumentMetadata, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
+		selected_nodes
+			.selected_layers(document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(layer))
 			.filter_map(|layer| self.bounding_box_document(layer))
 			.reduce(Quad::combine_bounds)

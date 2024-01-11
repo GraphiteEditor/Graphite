@@ -17,8 +17,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 			executor,
 			document_network,
 			document_metadata,
+			selected_nodes,
 			document_name,
-			..
 		} = data;
 
 		match message {
@@ -42,7 +42,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					metadata: document_metadata,
 				};
 
-				let properties_sections = node_graph_message_handler.collate_properties(&mut context);
+				let properties_sections = node_graph_message_handler.collate_properties(&mut context, selected_nodes);
 
 				let options_bar = vec![LayoutGroup::Row {
 					widgets: vec![
