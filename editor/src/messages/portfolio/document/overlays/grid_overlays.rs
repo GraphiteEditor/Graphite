@@ -1,13 +1,9 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, GridSnapping, GridType, SnapTarget, SnappingState};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-use bezier_rs::{Subpath, TValue};
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
-use std::cmp::Ordering;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
@@ -84,14 +80,14 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 
 pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	let mut widgets = Vec::new();
-	fn update_val<I>(grid: &GridSnapping, mut update: impl Fn(&mut GridSnapping, &I)) -> impl Fn(&I) -> Message {
+	fn update_val<I>(grid: &GridSnapping, update: impl Fn(&mut GridSnapping, &I)) -> impl Fn(&I) -> Message {
 		let grid = grid.clone();
 		move |input: &I| {
 			let mut grid = grid.clone();
 			update(&mut grid, &input);
 			DocumentMessage::GridOptions(grid).into()
 		}
-	};
+	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
 		update_val::<NumberInput>(grid, move |grid, val| {
 			if let Some(val) = val.value {

@@ -3,7 +3,7 @@ mod layer_snapper;
 mod snap_results;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, GridSnapping, GridType, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 use bezier_rs::{Subpath, TValue};
 use glam::{DAffine2, DVec2};

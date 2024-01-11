@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::properties_panel::utility_types::Prope
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::layer_panel::RawBuffer;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, GridSnapping, GridType, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_blend_mode, get_opacity};
@@ -1102,7 +1102,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
-		let mut snapping_state = self.snapping_state.clone();
+		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")

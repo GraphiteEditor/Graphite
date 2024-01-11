@@ -1,14 +1,10 @@
 use super::*;
-use crate::consts::HIDE_HANDLE_DISTANCE;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{
-	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GeometrySnapSource, GeometrySnapTarget, GridSnapTarget, GridSnapping, GridType, SnapSource, SnapTarget,
-};
-use crate::messages::prelude::*;
-use bezier_rs::{Bezier, Identifier, Subpath, TValue};
-use glam::{DAffine2, DVec2};
+
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
+
+use bezier_rs::Bezier;
+use glam::DVec2;
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
 
 struct Line {
 	pub point: DVec2,
