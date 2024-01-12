@@ -654,6 +654,11 @@ impl TypingContext {
 		Ok(())
 	}
 
+	pub fn free_node(&mut self, id: NodeId) {
+		self.inferred.remove(&id);
+		self.constructor.remove(&id);
+	}
+
 	/// Returns the node constructor for a given node id.
 	pub fn constructor(&self, node_id: NodeId) -> Option<NodeConstructor> {
 		self.constructor.get(&node_id).copied()

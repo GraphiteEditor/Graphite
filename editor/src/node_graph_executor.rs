@@ -193,7 +193,7 @@ impl NodeRuntime {
 
 		let mut proto_network = ProtoNetwork::default();
 		if self.graph_hash.is_none() {
-			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
+			let scoped_network = wrap_network_in_scope(graph.clone(), font_hash_code);
 
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
@@ -219,13 +219,13 @@ impl NodeRuntime {
 
 		let hook = std::panic::take_hook();
 		std::panic::set_hook(Box::new(move |info| {
-			error!("Panic whilst executing {proto_network:#?} {info:?}");
+			error!("Panic whilst executing {proto_network:#?} \n\ndocument: {graph:#?}\n\n{info:?}");
 		}));
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err("No input type".to_string()),
+			_ => Err("No input type {proto_network:#?}\n\ndocument: {graph:#?}".to_string()),
 		};
 		std::panic::set_hook(hook);
 		let result = match result {

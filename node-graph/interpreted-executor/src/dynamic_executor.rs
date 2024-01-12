@@ -64,7 +64,8 @@ impl DynamicExecutor {
 		core::mem::swap(&mut self.orphaned_nodes, &mut orphans);
 		for node_id in orphans {
 			if self.orphaned_nodes.contains(&node_id) {
-				self.tree.free_node(node_id)
+				self.tree.free_node(node_id);
+				self.typing_context.free_node(node_id);
 			}
 		}
 		Ok(())
