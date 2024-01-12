@@ -131,9 +131,20 @@ impl BorrowTree {
 	/// Pushes new nodes into the tree and return orphaned nodes
 	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
+		let proto_network_copy = proto_network.clone();
+
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
+				let hook = std::panic::take_hook();
+				std::panic::set_hook(Box::new({
+					let node = node.clone();
+					let proto_network_copy = proto_network_copy.clone();
+					move |info| {
+						log::error!("Panic whilst inserting node {id} {node:#?} to proto network {proto_network_copy:#?}\n{info:?}");
+					}
+				}));
 				self.push_node(id, node, typing_context).await?;
+				std::panic::set_hook(hook);
 			}
 			old_nodes.remove(&id);
 		}

@@ -12,7 +12,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphErrors, ProtoNetwork};
 use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{Image, ImageFrame};
@@ -191,6 +191,7 @@ impl NodeRuntime {
 			self.graph_hash = None;
 		}
 
+		let mut proto_network = ProtoNetwork::default();
 		if self.graph_hash.is_none() {
 			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
 
@@ -203,13 +204,10 @@ impl NodeRuntime {
 			// We assume only one output
 			assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 			let c = Compiler {};
-			let proto_network = match c.compile_single(scoped_network) {
-				Ok(network) => network,
-				Err(e) => return Err(e),
-			};
+			proto_network = c.compile_single(scoped_network)?;
 
 			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
-			if let Err(e) = self.executor.update(proto_network).await {
+			if let Err(e) = self.executor.update(proto_network.clone()).await {
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);
@@ -219,12 +217,17 @@ impl NodeRuntime {
 
 		use graph_craft::graphene_compiler::Executor;
 
+		let hook = std::panic::take_hook();
+		std::panic::set_hook(Box::new(move |info| {
+			error!("Panic whilst executing {proto_network:#?} {info:?}");
+		}));
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err("No input type".to_string()),
 		};
+		std::panic::set_hook(hook);
 		let result = match result {
 			Ok(value) => value,
 			Err(e) => return Err(e),
