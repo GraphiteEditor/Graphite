@@ -187,20 +187,32 @@ pub struct GridSnapping {
 }
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
-	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> DVec2 {
+	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> Option<DVec2> {
+		let mut iterations = 0;
+		size = size.abs();
 		while (size * navigation.zoom).cmplt(DVec2::splat(10.)).any() {
+			if iterations > 100 {
+				return None;
+			}
 			size *= 2.;
+			iterations += 1;
 		}
-		size
+		Some(size)
 	}
 
 	// Double grid size until it takes up at least 10px.
-	pub fn compute_isometric_multiplier(length: f64, navigation: &PTZ) -> f64 {
+	pub fn compute_isometric_multiplier(length: f64, navigation: &PTZ) -> Option<f64> {
+		let length = length.abs();
+		let mut iterations = 0;
 		let mut multiplier = 1.;
 		while length * multiplier * navigation.zoom < 10. {
+			if iterations > 100 {
+				return None;
+			}
 			multiplier *= 2.;
+			iterations += 1;
 		}
-		multiplier
+		Some(multiplier)
 	}
 }
 

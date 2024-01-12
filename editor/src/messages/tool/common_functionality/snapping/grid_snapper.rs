@@ -21,7 +21,9 @@ impl GridSnapper {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		let spacing = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation);
+		let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+			return lines;
+		};
 		let origin = document.snapping_state.grid.origin;
 		for (direction, perpendicular) in [(DVec2::X, DVec2::Y), (DVec2::Y, DVec2::X)] {
 			lines.push(Line {
@@ -45,7 +47,10 @@ impl GridSnapper {
 		let tan_x = angle_a.to_radians().tan();
 		let tan_z = angle_b.to_radians().tan();
 		let spacing = DVec2::new(y_axis_spacing / (tan_x + tan_z), y_axis_spacing);
-		let spacing = spacing * GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation);
+		let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation) else {
+			return lines;
+		};
+		let spacing = spacing * spacing_multiplier;
 
 		let x_max = ((document_point.x - origin.x) / spacing.x).ceil() * spacing.x + origin.x;
 		let x_min = ((document_point.x - origin.x) / spacing.x).floor() * spacing.x + origin.x;

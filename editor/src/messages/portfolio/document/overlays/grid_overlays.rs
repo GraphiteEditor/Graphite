@@ -7,7 +7,9 @@ use graphene_core::renderer::Quad;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
-	let spacing = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation);
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+		return;
+	};
 	let document_to_viewport = document.metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
@@ -42,7 +44,10 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let isometric_spacing = spacing * GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation);
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation) else {
+		return;
+	};
+	let isometric_spacing = spacing * spacing_multiplier;
 
 	let min_x = bounds.0.iter().map(|&corner| corner.x).min_by(cmp).unwrap_or_default();
 	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
@@ -135,12 +140,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				NumberInput::new(Some(spacing.x))
 					.label("X")
 					.unit("px")
+					.min(0.)
 					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.x)))
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(spacing.y))
 					.label("Y")
 					.unit("px")
+					.min(0.)
 					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.y)))
 					.widget_holder(),
 			],
@@ -153,6 +160,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					NumberInput::new(Some(y_axis_spacing))
 						.label("Y")
 						.unit("px")
+						.min(0.)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.isometric_y_spacing()))
 						.widget_holder(),
 				],
