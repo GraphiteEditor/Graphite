@@ -218,14 +218,18 @@ impl NodeRuntime {
 		use graph_craft::graphene_compiler::Executor;
 
 		let hook = std::panic::take_hook();
-		std::panic::set_hook(Box::new(move |info| {
-			error!("Panic whilst executing {proto_network:#?} \n\ndocument: {graph:#?}\n\n{info:?}");
+		std::panic::set_hook(Box::new({
+			let proto_network = proto_network.clone();
+			let graph = graph.clone();
+			move |info| {
+				error!("Panic whilst executing {proto_network:#?} \n\ndocument: {graph:#?}\n\n{info:?}");
+			}
 		}));
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err("No input type {proto_network:#?}\n\ndocument: {graph:#?}".to_string()),
+			_ => Err(format!("No input type {proto_network:#?}\n\ndocument: {graph:#?}")),
 		};
 		std::panic::set_hook(hook);
 		let result = match result {
