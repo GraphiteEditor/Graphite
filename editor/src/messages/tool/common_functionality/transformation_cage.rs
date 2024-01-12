@@ -157,9 +157,16 @@ impl SelectedEdges {
 				}
 				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
 
-				let scale_factor = (snapped_bounds - pivot) / (updated - pivot);
+				let mut scale_factor = (snapped_bounds - pivot) / (updated - pivot);
+				if !(self.left || self.right) {
+					scale_factor.x = 1.
+				}
+				if !(self.top || self.bottom) {
+					scale_factor.y = 1.
+				}
+
 				snapped.distance = bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length();
-				if snapped.distance > tollerance {
+				if snapped.distance > tollerance || !snapped.distance.is_finite() {
 					continue;
 				}
 				if best_snap.other_snap_better(&snapped) {
@@ -168,6 +175,7 @@ impl SelectedEdges {
 				}
 			}
 			manager.update_indicator(best_snap);
+
 			min = pivot - (pivot - min) * best_scale_factor;
 			max = pivot - (pivot - max) * best_scale_factor;
 		}
