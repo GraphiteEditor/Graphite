@@ -22,7 +22,7 @@ impl ClickTarget {
 	/// Does the click target intersect the rectangle
 	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
-		if layer_transform.matrix2.determinant() <= std::f64::EPSILON {
+		if layer_transform.matrix2.determinant().abs() <= std::f64::EPSILON {
 			return false;
 		}
 		let quad = layer_transform.inverse() * document_quad;
