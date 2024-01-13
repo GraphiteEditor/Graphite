@@ -223,7 +223,7 @@ impl PathToolData {
 		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.select_point(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
+		if let Some(selected_points) = shape_editor.select_point(&document.network, &document.document_metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
 			self.start_dragging_point(selected_points, input, document, responses);
 			responses.add(OverlaysMessage::Draw);
 
@@ -298,7 +298,7 @@ impl PathToolData {
 
 		// Move the selected points with the mouse
 		let snapped_position = self.snap_manager.snap_position(responses, document, input.mouse.position);
-		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_position - self.previous_mouse_position, shift, responses);
+		shape_editor.move_selected_points(&document.network, &document.document_metadata, snapped_position - self.previous_mouse_position, shift, responses);
 		self.previous_mouse_position = snapped_position;
 	}
 }
@@ -362,7 +362,12 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
+					shape_editor.select_all_in_quad(
+						&document.network,
+						&document.document_metadata,
+						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
+						!shift_pressed,
+					);
 				}
 				responses.add(OverlaysMessage::Draw);
 
@@ -376,7 +381,12 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
+					shape_editor.select_all_in_quad(
+						&document.network,
+						&document.document_metadata,
+						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
+						!shift_pressed,
+					);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -388,16 +398,16 @@ impl Fsm for PathToolFsmState {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
 				let nearest_point = shape_editor
-					.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD)
+					.find_nearest_point_indices(&document.network, &document.document_metadata, input.mouse.position, SELECTION_THRESHOLD)
 					.map(|(_, nearest_point)| nearest_point);
 
-				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.metadata, &tool_data.opposing_handle_lengths, responses);
+				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.document_metadata, &tool_data.opposing_handle_lengths, responses);
 
 				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
 					if clicked_selected {
 						shape_editor.deselect_all();
-						shape_editor.select_point(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
+						shape_editor.select_point(&document.network, &document.document_metadata, input.mouse.position, SELECTION_THRESHOLD, false);
 						responses.add(OverlaysMessage::Draw);
 					}
 				}
@@ -418,9 +428,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::InsertPoint) => {
 				// First we try and flip the sharpness (if they have clicked on an anchor)
-				if !shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses) {
+				if !shape_editor.flip_sharp(&document.network, &document.document_metadata, input.mouse.position, SELECTION_TOLERANCE, responses) {
 					// If not, then we try and split the path that may have been clicked upon
-					shape_editor.split(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
+					shape_editor.split(&document.network, &document.document_metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -433,7 +443,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(&document.network, &document.metadata, (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(&document.network, &document.document_metadata, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}
@@ -444,18 +454,18 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(new_x, coordinates.y), layer);
+					shape_editor.reposition_control_point(&id, responses, &document.network, &document.document_metadata, DVec2::new(new_x, coordinates.y), layer);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(coordinates.x, new_y), layer);
+					shape_editor.reposition_control_point(&id, responses, &document.network, &document.document_metadata, DVec2::new(coordinates.x, new_y), layer);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				tool_data.selection_status = get_selection_status(&document.network, &document.metadata, shape_editor);
+				tool_data.selection_status = get_selection_status(&document.network, &document.document_metadata, shape_editor);
 				self
 			}
 			(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {

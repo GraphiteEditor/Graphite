@@ -60,7 +60,7 @@ impl ClickTarget {
 
 /// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
-	pub svg: SvgSegmentList,
+	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
 	pub image_data: Vec<(u64, Image<Color>)>,
@@ -70,7 +70,7 @@ pub struct SvgRender {
 impl SvgRender {
 	pub fn new() -> Self {
 		Self {
-			svg: SvgSegmentList::default(),
+			svg: Vec::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
 			image_data: Vec::new(),
@@ -79,8 +79,8 @@ impl SvgRender {
 	}
 
 	pub fn indent(&mut self) {
-		self.svg.push("\n");
-		self.svg.push("\t".repeat(self.indent));
+		self.svg.push("\n".into());
+		self.svg.push("\t".repeat(self.indent).into());
 	}
 
 	/// Add an outer `<svg>...</svg>` tag with a `viewBox` and the `<defs />`
@@ -90,7 +90,7 @@ impl SvgRender {
 		let defs = &self.svg_defs;
 		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
 		self.svg.insert(0, svg_header.into());
-		self.svg.push("</svg>");
+		self.svg.push("</svg>".into());
 	}
 
 	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation
@@ -106,43 +106,43 @@ impl SvgRender {
 			format_transform_matrix(transform)
 		);
 		self.svg.insert(0, svg_header.into());
-		self.svg.push("</g></svg>");
+		self.svg.push("</g></svg>".into());
 	}
 
 	pub fn leaf_tag(&mut self, name: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs)) {
 		self.indent();
-		self.svg.push("<");
-		self.svg.push(name);
+		self.svg.push("<".into());
+		self.svg.push(name.into());
 		attributes(&mut SvgRenderAttrs(self));
 
-		self.svg.push("/>");
+		self.svg.push("/>".into());
 	}
 
 	pub fn leaf_node(&mut self, content: impl Into<SvgSegment>) {
 		self.indent();
-		self.svg.push(content);
+		self.svg.push(content.into());
 	}
 
 	pub fn parent_tag(&mut self, name: impl Into<SvgSegment>, attributes: impl FnOnce(&mut SvgRenderAttrs), inner: impl FnOnce(&mut Self)) {
 		let name = name.into();
 		self.indent();
-		self.svg.push("<");
+		self.svg.push("<".into());
 		self.svg.push(name.clone());
 		// Wraps `self` in a newtype (1-tuple) which is then mutated by the `attributes` closure
 		attributes(&mut SvgRenderAttrs(self));
-		self.svg.push(">");
+		self.svg.push(">".into());
 		let length = self.svg.len();
 		self.indent += 1;
 		inner(self);
 		self.indent -= 1;
 		if self.svg.len() != length {
 			self.indent();
-			self.svg.push("</");
+			self.svg.push("</".into());
 			self.svg.push(name);
-			self.svg.push(">");
+			self.svg.push(">".into());
 		} else {
 			self.svg.pop();
-			self.svg.push("/>");
+			self.svg.push("/>".into());
 		}
 	}
 }
@@ -154,8 +154,6 @@ impl Default for SvgRender {
 }
 
 pub enum ImageRenderMode {
-	BlobUrl,
-	Canvas,
 	Base64,
 }
 
@@ -209,10 +207,10 @@ pub trait GraphicElementRendered {
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
 	fn to_usvg_node(&self) -> usvg::Node {
 		let mut render = SvgRender::new();
-		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::BlobUrl, None, false, false, false);
+		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::Base64, None, false, false, false);
 		self.render_svg(&mut render, &render_params);
 		render.format_svg(DVec2::ZERO, DVec2::ONE);
-		let svg = render.svg.to_string();
+		let svg = render.svg.to_svg_string();
 
 		let opt = usvg::Options::default();
 
@@ -384,7 +382,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push("Artboard");
+					render.svg.push("Artboard".into());
 				},
 			);
 		}
@@ -448,22 +446,8 @@ impl GraphicElementRendered for Artboard {
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);
-		let uuid = generate_uuid();
 
 		match render_params.image_render_mode {
-			ImageRenderMode::BlobUrl => {
-				render.leaf_tag("image", move |attributes| {
-					attributes.push("width", 1.to_string());
-					attributes.push("height", 1.to_string());
-					attributes.push("preserveAspectRatio", "none");
-					attributes.push("transform", transform);
-					attributes.push("href", SvgSegment::BlobUrl(uuid));
-					if self.alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", self.alpha_blending.blend_mode.render());
-					}
-				});
-				render.image_data.push((uuid, self.image.clone()))
-			}
 			ImageRenderMode::Base64 => {
 				let image = &self.image;
 				if image.data.is_empty() {
@@ -485,9 +469,6 @@ impl GraphicElementRendered for ImageFrame<Color> {
 						attributes.push("style", self.alpha_blending.blend_mode.render());
 					}
 				});
-			}
-			ImageRenderMode::Canvas => {
-				todo!("Canvas rendering is not yet implemented")
 			}
 		}
 	}
@@ -683,34 +664,21 @@ impl From<&'static str> for SvgSegment {
 	}
 }
 
-/// A list of [`SvgSegment`]s.
-///
-/// Can be modified with `list.push("hello".into())`. Use `list.to_string()` to convert the segments into one string.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct SvgSegmentList(Vec<SvgSegment>);
-
-impl core::ops::Deref for SvgSegmentList {
-	type Target = Vec<SvgSegment>;
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-impl core::ops::DerefMut for SvgSegmentList {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
-	}
+pub trait RenderSvgSegmentList {
+	fn to_svg_string(&self) -> String;
 }
 
-impl core::fmt::Display for SvgSegmentList {
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl RenderSvgSegmentList for Vec<SvgSegment> {
+	fn to_svg_string(&self) -> String {
+		let mut result = String::new();
 		for segment in self.iter() {
-			f.write_str(match segment {
+			result.push_str(match segment {
 				SvgSegment::Slice(x) => x,
 				SvgSegment::String(x) => x,
 				SvgSegment::BlobUrl(_) => "<!-- Blob url not yet loaded -->",
-			})?;
+			});
 		}
-		Ok(())
+		result
 	}
 }
 
@@ -718,22 +686,16 @@ pub struct SvgRenderAttrs<'a>(&'a mut SvgRender);
 
 impl<'a> SvgRenderAttrs<'a> {
 	pub fn push_complex(&mut self, name: impl Into<SvgSegment>, value: impl FnOnce(&mut SvgRender)) {
-		self.0.svg.push(" ");
-		self.0.svg.push(name);
-		self.0.svg.push("=\"");
+		self.0.svg.push(" ".into());
+		self.0.svg.push(name.into());
+		self.0.svg.push("=\"".into());
 		value(self.0);
-		self.0.svg.push("\"");
+		self.0.svg.push("\"".into());
 	}
 	pub fn push(&mut self, name: impl Into<SvgSegment>, value: impl Into<SvgSegment>) {
-		self.push_complex(name, move |renderer| renderer.svg.push(value));
+		self.push_complex(name, move |renderer| renderer.svg.push(value.into()));
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
-		self.0.svg.push(value);
-	}
-}
-
-impl SvgSegmentList {
-	pub fn push(&mut self, value: impl Into<SvgSegment>) {
-		self.0.push(value.into());
+		self.0.svg.push(value.into());
 	}
 }

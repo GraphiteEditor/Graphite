@@ -491,7 +491,7 @@ impl Fsm for SelectToolFsmState {
 							&tool_data.layers_dragging,
 							responses,
 							&document.network,
-							&document.metadata,
+							&document.document_metadata,
 							None,
 							&ToolType::Select,
 						);
@@ -510,7 +510,7 @@ impl Fsm for SelectToolFsmState {
 							&selected,
 							responses,
 							&document.network,
-							&document.metadata,
+							&document.document_metadata,
 							None,
 							&ToolType::Select,
 						);
@@ -630,7 +630,7 @@ impl Fsm for SelectToolFsmState {
 							selected,
 							responses,
 							&document.network,
-							&document.metadata,
+							&document.document_metadata,
 							None,
 							&ToolType::Select,
 						);
@@ -665,7 +665,7 @@ impl Fsm for SelectToolFsmState {
 						&tool_data.layers_dragging,
 						responses,
 						&document.network,
-						&document.metadata,
+						&document.document_metadata,
 						None,
 						&ToolType::Select,
 					);
@@ -832,7 +832,7 @@ impl Fsm for SelectToolFsmState {
 						&tool_data.layers_dragging,
 						responses,
 						&document.network,
-						&document.metadata,
+						&document.document_metadata,
 						None,
 						&ToolType::Select,
 					);

@@ -66,7 +66,7 @@ impl Pivot {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
 				.selected_visible_layers()
-				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network, &document.metadata))
+				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network, &document.document_metadata))
 				.reduce(|a, b| a + b)
 				.unwrap_or_default();
 

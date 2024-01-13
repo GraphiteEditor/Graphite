@@ -1,5 +1,3 @@
-pub use super::layer_panel::LayerPanelEntry;
-
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt;

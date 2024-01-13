@@ -75,7 +75,7 @@ impl MessageHandler<DialogMessage, DialogData<'_>> for DialogMessageHandler {
 				if let Some(document) = portfolio.active_document() {
 					let mut index = 0;
 					let artboards = document
-						.metadata
+						.document_metadata
 						.all_layers()
 						.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Artboard"))
 						.map(|layer| {

@@ -144,9 +144,10 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 			}
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
-				let send = Box::new(TransformLayerMessage::SelectionChanged.into());
-				let on = BroadcastEvent::SelectionChanged;
-				responses.add(BroadcastMessage::SubscribeEvent { send, on });
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: BroadcastEvent::SelectionChanged,
+					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
 
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;

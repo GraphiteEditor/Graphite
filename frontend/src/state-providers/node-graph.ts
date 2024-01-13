@@ -1,7 +1,16 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
-import { type FrontendNode, type FrontendNodeLink, type FrontendNodeType, UpdateNodeGraph, UpdateNodeTypes, UpdateNodeThumbnail, UpdateZoomWithScroll } from "@graphite/wasm-communication/messages";
+import {
+	type FrontendNode,
+	type FrontendNodeLink,
+	type FrontendNodeType,
+	UpdateNodeGraph,
+	UpdateNodeTypes,
+	UpdateNodeThumbnail,
+	UpdateZoomWithScroll,
+	UpdateNodeGraphSelection,
+} from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
@@ -11,6 +20,7 @@ export function createNodeGraphState(editor: Editor) {
 		nodeTypes: [] as FrontendNodeType[],
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
+		selected: [] as bigint[],
 	});
 
 	// Set up message subscriptions on creation
@@ -19,6 +29,7 @@ export function createNodeGraphState(editor: Editor) {
 			state.nodes = updateNodeGraph.nodes;
 			state.links = updateNodeGraph.links;
 			const newThumbnails = new Map<bigint, string>();
+			// Transfer over any preexisting thumbnails from itself
 			state.nodes.forEach((node) => {
 				const thumbnail = state.thumbnails.get(node.id);
 				if (thumbnail) newThumbnails.set(node.id, thumbnail);
@@ -42,6 +53,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateZoomWithScroll, (updateZoomWithScroll) => {
 		update((state) => {
 			state.zoomWithScroll = updateZoomWithScroll.zoomWithScroll;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
+		update((state) => {
+			state.selected = updateNodeGraphSelection.selected;
 			return state;
 		});
 	});

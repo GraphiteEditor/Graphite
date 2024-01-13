@@ -45,6 +45,7 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
+/// Stores both what a node was called with and what it returned.
 #[derive(Clone, Debug)]
 pub struct IORecord<I, O> {
 	pub input: I,

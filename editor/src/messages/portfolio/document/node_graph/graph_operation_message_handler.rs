@@ -83,8 +83,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing node");
-		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 
+		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
 		document_node.metadata.position = post_node.metadata.position + offset;
 		self.document_network.nodes.insert(new_id, document_node);
@@ -153,7 +153,6 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 			let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
 			parent.push_front_child(self.document_metadata, new_child);
-			self.responses.add(DocumentMessage::DocumentStructureChanged);
 		}
 
 		new_id
@@ -181,7 +180,7 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
@@ -202,7 +201,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
 		let shape_id = NodeId(generate_uuid());
 		self.insert_node_before(shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn insert_text(&mut self, text: String, font: Font, size: f32, layer: NodeId) {
@@ -227,7 +226,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
 		let text_id = NodeId(generate_uuid());
 		self.insert_node_before(text_id, transform_id, 0, text, IVec2::new(-8, 0));
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: NodeId) {
@@ -243,7 +242,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let image_id = NodeId(generate_uuid());
 		self.insert_node_before(image_id, transform_id, 0, image, IVec2::new(-8, 0));
 
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
@@ -317,11 +316,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		} else {
-			// Code was removed from here which cleared the frame
-		}
-		if existing_node_id.is_none() {
-			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 		}
 	}
 
@@ -567,8 +561,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id));
 		self.responses.add(BroadcastEvent::SelectionChanged);
 
-		self.responses.add(DocumentMessage::DocumentStructureChanged);
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
 
@@ -702,7 +695,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 						}
 					}
 
-					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
 				load_network_structure(document_network, document_metadata, collapsed);

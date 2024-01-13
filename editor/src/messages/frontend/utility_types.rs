@@ -13,13 +13,6 @@ pub struct FrontendDocumentDetails {
 	pub id: DocumentId,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
-pub struct FrontendImageData {
-	pub mime: String,
-	#[serde(skip)]
-	pub image_data: std::sync::Arc<Vec<u8>>,
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum MouseCursorIcon {
 	#[default]
