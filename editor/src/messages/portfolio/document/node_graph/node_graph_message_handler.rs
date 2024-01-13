@@ -596,6 +596,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Copy => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -631,6 +632,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					graph_craft::document::DocumentNodeMetadata::position((x, y)),
 				);
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Cut => {
 				responses.add(NodeGraphMessage::Copy);
@@ -681,6 +683,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::EnterNestedNetwork { node } => {
 				if let Some(network) = document_network.nested_network(&self.network) {
@@ -759,6 +762,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
 				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, document_node } => {
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
