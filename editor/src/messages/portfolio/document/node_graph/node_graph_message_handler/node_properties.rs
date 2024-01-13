@@ -594,7 +594,7 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(entries)
 				.selected_index(match fill_type {
-					FillType::None | FillType::Solid => Some(0),
+					FillType::Solid => Some(0),
 					FillType::Gradient => Some(1),
 				})
 				.widget_holder(),

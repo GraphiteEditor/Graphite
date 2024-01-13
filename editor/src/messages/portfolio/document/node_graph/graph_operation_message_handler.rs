@@ -348,8 +348,7 @@ impl<'a> ModifyInputsContext<'a> {
 	fn fill_set(&mut self, fill: Fill) {
 		self.modify_inputs("Fill", false, |inputs, _node_id, _metadata| {
 			let fill_type = match fill {
-				Fill::None => FillType::None,
-				Fill::Solid(_) => FillType::Solid,
+				Fill::None | Fill::Solid(_) => FillType::Solid,
 				Fill::Gradient(_) => FillType::Gradient,
 			};
 			inputs[1] = NodeInput::value(TaggedValue::FillType(fill_type), false);

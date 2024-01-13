@@ -31,7 +31,7 @@ fn set_vector_data_fill(
 	positions: Vec<(f64, Option<Color>)>,
 ) -> VectorData {
 	vector_data.style.set_fill(match fill_type {
-		FillType::None | FillType::Solid => solid_color.map_or(Fill::None, Fill::Solid),
+		FillType::Solid => solid_color.map_or(Fill::None, Fill::Solid),
 		FillType::Gradient => Fill::Gradient(Gradient {
 			start,
 			end,
