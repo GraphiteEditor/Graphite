@@ -87,7 +87,7 @@ pub(crate) struct ExecutionRequest {
 pub(crate) struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	updates: VecDeque<Message>,
+	responses: VecDeque<Message>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	resolved_types: ResolvedDocumentNodeTypes,
@@ -167,7 +167,7 @@ impl NodeRuntime {
 					self.sender.send_generation_response(ExecutionResponse {
 						execution_id,
 						result,
-						updates: responses,
+						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
 						resolved_types: self.resolved_types.clone(),
@@ -265,12 +265,16 @@ impl NodeRuntime {
 			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
 			let Some(parent_network_node_id) = monitor_node_path.get(monitor_node_path.len() - 2).copied() else {
 				warn!("Monitor node has invalid node id");
+
 				continue;
 			};
 
 			// Extract the monitor node's stored `GraphicElement` data.
 			let Some(introspected_data) = self.executor.introspect(monitor_node_path).flatten() else {
+				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
+				#[cfg(debug_assertions)]
 				warn!("Failed to introspect monitor node");
+
 				continue;
 			};
 
@@ -538,7 +542,7 @@ impl NodeGraphExecutor {
 					let ExecutionResponse {
 						execution_id,
 						result,
-						updates,
+						responses: existing_responses,
 						new_click_targets,
 						new_upstream_transforms,
 						resolved_types,
@@ -546,23 +550,24 @@ impl NodeGraphExecutor {
 						transform,
 					} = execution_response;
 
-					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
-
-					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
-					if let Some(export_config) = execution_context.export_config {
-						return self.export(node_graph_output, export_config, responses);
-					}
-
-					document.document_metadata.update_transforms(new_upstream_transforms);
-					document.document_metadata.update_click_targets(new_click_targets);
-
-					self.process_node_graph_output(node_graph_output, transform, responses)?;
-
-					responses.extend(updates);
+					responses.extend(existing_responses);
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(OverlaysMessage::Draw);
+
+					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
+
+					document.document_metadata.update_transforms(new_upstream_transforms);
+					document.document_metadata.update_click_targets(new_click_targets);
+
+					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+					if let Some(export_config) = execution_context.export_config {
+						// Special handling for exporting the artwork
+						self.export(node_graph_output, export_config, responses)?
+					} else {
+						self.process_node_graph_output(node_graph_output, transform, responses)?
+					}
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(NodeGraphUpdateMessage::ImaginateStatusUpdate) => {
 					responses.add(DocumentMessage::PropertiesPanel(PropertiesPanelMessage::Refresh));

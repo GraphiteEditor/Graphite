@@ -38,6 +38,9 @@
 	let selectIfNotDragged: undefined | bigint = undefined;
 	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
 	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
+	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
+	// let linkInProgressFromLayerTop: bigint | undefined = undefined;
+	// let linkInProgressFromLayerBottom: bigint | undefined = undefined;
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
 	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
@@ -127,8 +130,8 @@
 	}
 
 	function createLinkPaths(linkPathInProgress: LinkPath | undefined, nodeLinkPaths: LinkPath[]): LinkPath[] {
-		const optionalTuple = linkPathInProgress ? [linkPathInProgress] : [];
-		return [...optionalTuple, ...nodeLinkPaths];
+		const maybeLinkPathInProgress = linkPathInProgress ? [linkPathInProgress] : [];
+		return [...maybeLinkPathInProgress, ...nodeLinkPaths];
 	}
 
 	async function watchNodes(nodes: FrontendNode[]) {
@@ -194,7 +197,20 @@
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
-		const curveLength = 200;
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// // Straight: stacking lines which are always straight, or a straight horizontal link between two aligned nodes
+		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
+		// 	return [
+		// 		{ x: outConnectorX, y: outConnectorY },
+		// 		{ x: inConnectorX, y: inConnectorY },
+		// 	];
+		// }
+
+		// // L-shape bend
+		// if (verticalOut !== verticalIn) {
+		// }
+
+		const curveLength = 24;
 		const curveFalloffRate = curveLength * Math.PI * 2;
 
 		const horizontalCurveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
@@ -213,7 +229,20 @@
 	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
 		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
-		return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
+		const SMOOTHING = 0.5;
+		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
+		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
+		return `
+			M${locations[0].x},${locations[0].y}
+			L${locations[1].x},${locations[1].y}
+			C${locations[1].x + delta01.x},${locations[1].y + delta01.y}
+			${locations[2].x - delta23.x},${locations[2].y - delta23.y}
+			${locations[2].x},${locations[2].y}
+			L${locations[3].x},${locations[3].y}
+			`
+			.split("\n")
+			.map((line) => line.trim())
+			.join(" ");
 	}
 
 	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
@@ -278,6 +307,8 @@
 			nodeListLocation = undefined;
 			document.removeEventListener("keydown", keydown);
 			linkInProgressFromConnector = undefined;
+			// linkInProgressFromLayerTop = undefined;
+			// linkInProgressFromLayerBottom = undefined;
 		}
 	}
 
@@ -301,7 +332,8 @@
 		if (nodeError && lmb) return;
 		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeId = node?.getAttribute("data-node") || undefined;
+		const nodeIdString = node?.getAttribute("data-node") || undefined;
+		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
 		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
 
 		// Create the add node popup on right click, then exit
@@ -319,71 +351,85 @@
 		if (lmb) {
 			nodeListLocation = undefined;
 			linkInProgressFromConnector = undefined;
+			// linkInProgressFromLayerTop = undefined;
+			// linkInProgressFromLayerBottom = undefined;
 		}
 
 		// Alt-click sets the clicked node as previewed
-		if (lmb && e.altKey && nodeId) {
-			editor.instance.togglePreview(BigInt(nodeId));
+		if (lmb && e.altKey && nodeId !== undefined) {
+			editor.instance.togglePreview(nodeId);
 		}
 
 		// Clicked on a port dot
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
+			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
 
-			if (isOutput) linkInProgressFromConnector = port;
+			// Output: Begin dragging out a new link
+			if (isOutput) {
+				// Disallow creating additional vertical output links from an already-connected layer
+				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined) return;
+
+				linkInProgressFromConnector = port;
+				// // Since we are just beginning to drag out a link from the top, we know the in-progress link exists from this layer's top and has no connection to any other layer bottom yet
+				// linkInProgressFromLayerTop = nodeId !== undefined && frontendNode?.isLayer ? nodeId : undefined;
+				// linkInProgressFromLayerBottom = undefined;
+			}
+			// Input: Begin moving an existing link
 			else {
 				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
+				// const isLayerBottomConnector = frontendNode?.isLayer && inputNodeConnectionIndexSearch === 1;
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+				if (inputIndex === undefined || nodeId === undefined) return;
+
 				// Set the link to draw from the input that a previous link was on
-				if (inputIndex !== undefined && nodeId !== undefined) {
-					const nodeIdInt = BigInt(nodeId);
-					const inputIndexInt = BigInt(inputIndex);
-					const links = $nodeGraph.links;
-					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					if (linkIndex !== -1) {
-						const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-						linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
-						const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-						linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
-						disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
-						refreshLinks();
-					}
-				}
+
+				const linkIndex = $nodeGraph.links.findIndex((value) => value.linkEnd === nodeId && value.linkEndInputIndex === BigInt(inputIndex));
+				if (linkIndex === -1) return;
+
+				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+				linkInProgressFromConnector = nodeOutputConnectors?.[Number($nodeGraph.links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
+				// linkInProgressFromLayerBottom = isLayerBottomConnector ? frontendNode.exposedInputs[0].connected : undefined;
+
+				const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+				linkInProgressToConnector = nodeInputConnectors?.[Number($nodeGraph.links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
+				// linkInProgressFromLayerTop = undefined;
+
+				disconnecting = { nodeId: nodeId, inputIndex, linkIndex };
+				refreshLinks();
 			}
 
 			return;
 		}
 
 		// Clicked on a node, so we select it
-		if (lmb && nodeId) {
+		if (lmb && nodeId !== undefined) {
 			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
-
-			const id = BigInt(nodeId);
 
 			// Add to/remove from selection if holding Shift or Ctrl
 			if (e.shiftKey || e.ctrlKey) {
 				modifiedSelected = true;
 
 				// Remove from selection if already selected
-				if (!updatedSelected.includes(id)) updatedSelected.push(id);
+				if (!updatedSelected.includes(nodeId)) updatedSelected.push(nodeId);
 				// Add to selection if not already selected
-				else updatedSelected.splice(updatedSelected.lastIndexOf(id), 1);
+				else updatedSelected.splice(updatedSelected.lastIndexOf(nodeId), 1);
 			}
 			// Replace selection with a non-selected node
-			else if (!updatedSelected.includes(id)) {
+			else if (!updatedSelected.includes(nodeId)) {
 				modifiedSelected = true;
 
-				updatedSelected = [id];
+				updatedSelected = [nodeId];
 			}
 			// Replace selection (of multiple nodes including this one) with just this one, but only upon pointer up if the user didn't drag the selected nodes
 			else {
-				selectIfNotDragged = id;
+				selectIfNotDragged = nodeId;
 			}
 
 			// If this node is selected (whether from before or just now), prepare it for dragging
-			if (updatedSelected.includes(id)) {
+			if (updatedSelected.includes(nodeId)) {
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
@@ -405,7 +451,7 @@
 	function doubleClick(_e: MouseEvent) {
 		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		// const nodeId = node?.getAttribute("data-node") || undefined;
-		// if (nodeId) {
+		// if (nodeId !== undefined) {
 		// 	const id = BigInt(nodeId);
 		// 	editor.instance.enterNestedNetwork(id);
 		// }
@@ -726,7 +772,7 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{dataTypeTooltip(node.primaryInput) + "\n\nConnected to " + node.primaryInput?.connected}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
 						{/if}
 						{#if node.primaryInput?.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -751,7 +797,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput) + "\n\nConnected to " + node.primaryOutput.connected}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
@@ -773,7 +819,7 @@
 						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{dataTypeTooltip(stackDataInput) + "\n\nConnected to " + stackDataInput.connected}</title>
+						<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
 						{#if stackDataInput.connected}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if $nodeGraph.nodes.find((n) => n.id === stackDataInput.connected)?.isLayer}
@@ -857,7 +903,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryInput) + "\n\nConnected to " + node.primaryInput.connected}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connected || "nothing"}`}</title>
 							{#if node.primaryInput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -877,7 +923,7 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 								bind:this={inputs[nodeIndex][index + 1]}
 							>
-								<title>{dataTypeTooltip(parameter) + "\n\nConnected to " + parameter.connected}</title>
+								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
 								{#if parameter.connected}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -900,7 +946,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput) + "\n\nConnected to " + node.primaryOutput.connected}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -919,7 +965,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{dataTypeTooltip(parameter) + "\n\nConnected to " + parameter.connected}</title>
+							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
 							{#if parameter.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
