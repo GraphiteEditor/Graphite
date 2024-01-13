@@ -77,7 +77,7 @@ impl Default for SnappingState {
 				edges: true,
 				corners: true,
 				edge_midpoints: false,
-				centres: false,
+				centres: true,
 			},
 			nodes: NodeSnapping {
 				paths: true,
@@ -244,6 +244,9 @@ pub enum SnapSource {
 impl SnapSource {
 	pub fn is_some(&self) -> bool {
 		self != &Self::None
+	}
+	pub fn bounding_box(&self) -> bool {
+		matches!(self, Self::BoundingBox(_) | Self::Board(_))
 	}
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

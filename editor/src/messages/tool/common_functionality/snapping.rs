@@ -64,9 +64,9 @@ pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
 }
 
 fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
-	if (a.target.bounding_box() && !b.target.bounding_box()) || (a.at_intersection && !b.at_intersection) {
+	if (a.target.bounding_box() && !b.target.bounding_box()) || (a.at_intersection && !b.at_intersection) || (a.source.bounding_box() && !b.source.bounding_box()) {
 		Ordering::Greater
-	} else if (!a.target.bounding_box() && b.target.bounding_box()) || (!a.at_intersection && b.at_intersection) {
+	} else if (!a.target.bounding_box() && b.target.bounding_box()) || (!a.at_intersection && b.at_intersection) || (!a.source.bounding_box() && b.source.bounding_box()) {
 		Ordering::Less
 	} else {
 		a.distance.partial_cmp(&b.distance).unwrap()

@@ -281,6 +281,10 @@ impl SelectToolData {
 		self.snap_candidates.clear();
 		for &layer in &self.layers_dragging {
 			snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
+			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
+				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
+			}
 		}
 	}
 
