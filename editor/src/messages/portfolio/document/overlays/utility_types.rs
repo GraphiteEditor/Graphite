@@ -15,11 +15,12 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip, default = "overlay_canvas_context")]
 	pub render_context: web_sys::CanvasRenderingContext2d,
+	pub size: DVec2,
 }
 // Message hashing isn't used but is required by the message system macros
 impl core::hash::Hash for OverlayContext {
@@ -37,11 +38,11 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2) {
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
 		self.render_context.begin_path();
-		self.render_context.move_to(start.x.round(), start.y.round());
-		self.render_context.line_to(end.x.round(), end.y.round());
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.move_to(start.x, start.y);
+		self.render_context.line_to(end.x, end.y);
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color.unwrap_or(COLOR_OVERLAY_BLUE)));
 		self.render_context.stroke();
 	}
 
@@ -130,5 +131,21 @@ impl OverlayContext {
 
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
+	}
+
+	pub fn text(&self, text: &str, pos: DVec2, background: &str, padding: f64) {
+		let pos = pos.round();
+		let metrics = self.render_context.measure_text(text).expect("measure text");
+		self.render_context.set_fill_style(&background.into());
+		self.render_context.fill_rect(
+			pos.x + metrics.actual_bounding_box_left(),
+			pos.y - metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent() - padding * 2.,
+			metrics.actual_bounding_box_right() - metrics.actual_bounding_box_left() + padding * 2.,
+			metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent() + padding * 2.,
+		);
+		self.render_context.set_fill_style(&"white".into());
+		self.render_context
+			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
+			.expect("draw text");
 	}
 }

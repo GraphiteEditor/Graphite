@@ -1,9 +1,10 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -39,7 +40,7 @@ pub enum LineToolMessage {
 	#[remain::unsorted]
 	DocumentIsDirty,
 	#[remain::unsorted]
-	CanvasTransformed,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -48,7 +49,7 @@ pub enum LineToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Redraw {
+	PointerMove {
 		center: Key,
 		lock_angle: Key,
 		snap_angle: Key,
@@ -127,8 +128,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 
 	fn actions(&self) -> ActionList {
 		match self.fsm_state {
-			LineToolFsmState::Ready => actions!(LineToolMessageDiscriminant; DragStart),
-			LineToolFsmState::Drawing => actions!(LineToolMessageDiscriminant; DragStop, Redraw, Abort),
+			LineToolFsmState::Ready => actions!(LineToolMessageDiscriminant; DragStart, PointerMove),
+			LineToolFsmState::Drawing => actions!(LineToolMessageDiscriminant; DragStop, PointerMove, Abort),
 		}
 	}
 }
@@ -136,7 +137,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for LineToo
 impl ToolTransition for LineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(LineToolMessage::CanvasTransformed.into()),
+			overlay_provider: Some(|overlay_context| LineToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(LineToolMessage::Abort.into()),
 			working_color_changed: Some(LineToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -174,11 +175,14 @@ impl Fsm for LineToolFsmState {
 			return self;
 		};
 		match (self, event) {
+			(_, LineToolMessage::Overlays(mut overlay_context)) => {
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				self
+			}
 			(LineToolFsmState::Ready, LineToolMessage::DragStart) => {
-				tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-
-				let viewport_start = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				tool_data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(viewport_start);
+				let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+				tool_data.drag_start = snapped.snapped_point_document;
 
 				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
 
@@ -195,14 +199,20 @@ impl Fsm for LineToolFsmState {
 
 				LineToolFsmState::Drawing
 			}
-			(LineToolFsmState::Drawing, LineToolMessage::Redraw { center, snap_angle, lock_angle }) => {
-				tool_data.drag_current = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+			(LineToolFsmState::Drawing, LineToolMessage::PointerMove { center, snap_angle, lock_angle }) => {
+				tool_data.drag_current = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 
 				let keyboard = &input.keyboard;
-				let transform = document.metadata().document_to_viewport;
-				responses.add(generate_transform(tool_data, transform, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
+				let ignore = if let Some(layer) = tool_data.layer { vec![layer] } else { vec![] };
+				let snap_data = SnapData::ignore(document, input, &ignore);
+				responses.add(generate_transform(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
 				LineToolFsmState::Drawing
+			}
+			(_, LineToolMessage::PointerMove { .. }) => {
+				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);
@@ -250,38 +260,71 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, document_to_viewport: DAffine2, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
-	let mut start = document_to_viewport.transform_point2(tool_data.drag_start);
-	let line_vector = tool_data.drag_current - start;
+fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, centre: bool) -> Message {
+	let document_to_viewport = snap_data.document.metadata.document_to_viewport;
+	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
-	let mut angle = -line_vector.angle_between(DVec2::X);
-
+	let mut angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
+	let mut line_length = (document_points[1] - document_points[0]).length();
 	if lock_angle {
 		angle = tool_data.angle;
 	}
-
 	if snap_angle {
 		let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
 		angle = (angle / snap_resolution).round() * snap_resolution;
 	}
 
-	tool_data.angle = angle;
-
-	let mut line_length = line_vector.length();
-
 	if lock_angle {
 		let angle_vec = DVec2::new(angle.cos(), angle.sin());
-		line_length = line_vector.dot(angle_vec);
+		line_length = (document_points[1] - document_points[0]).dot(angle_vec);
+	}
+	document_points[1] = document_points[0] + line_length * DVec2::new(angle.cos(), angle.sin());
+
+	let constrained = snap_angle || lock_angle;
+	let snap = &mut tool_data.snap_manager;
+
+	let near_point = SnapCandidatePoint::handle_neighbours(document_points[1], [tool_data.drag_start]);
+	let far_point = SnapCandidatePoint::handle_neighbours(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
+
+	if constrained {
+		let constraint = SnapConstraint::Line {
+			origin: document_points[0],
+			direction: document_points[1] - document_points[0],
+		};
+		if centre {
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
+			let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
+			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+			document_points[1] = document_points[0] * 2. - best.snapped_point_document;
+			document_points[0] = best.snapped_point_document;
+			snap.update_indicator(best);
+		} else {
+			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
+			document_points[1] = snapped.snapped_point_document;
+			snap.update_indicator(snapped);
+		}
+	} else if centre {
+		let snapped = snap.free_snap(&snap_data, &near_point, None, false);
+		let snapped_far = snap.free_snap(&snap_data, &far_point, None, false);
+		let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
+		document_points[1] = document_points[0] * 2. - best.snapped_point_document;
+		document_points[0] = best.snapped_point_document;
+		snap.update_indicator(best);
+	} else {
+		let snapped = snap.free_snap(&snap_data, &near_point, None, false);
+		document_points[1] = snapped.snapped_point_document;
+		snap.update_indicator(snapped);
 	}
 
-	if center {
-		start -= line_length * DVec2::new(angle.cos(), angle.sin());
-		line_length *= 2.;
-	}
+	// Used for keeping the same angle next frame
+	tool_data.angle = -(document_points[1] - document_points[0]).angle_between(DVec2::X);
 
+	let viewport_points = [document_to_viewport.transform_point2(document_points[0]), document_to_viewport.transform_point2(document_points[1])];
+	let line_length = (viewport_points[1] - viewport_points[0]).length();
+	let angle = -(viewport_points[1] - viewport_points[0]).angle_between(DVec2::X);
 	GraphOperationMessage::TransformSet {
 		layer: tool_data.layer.unwrap(),
-		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, start),
+		transform: glam::DAffine2::from_scale_angle_translation(DVec2::new(line_length, 1.), angle, viewport_points[0]),
 		transform_in: TransformIn::Viewport,
 		skip_rerender: false,
 	}

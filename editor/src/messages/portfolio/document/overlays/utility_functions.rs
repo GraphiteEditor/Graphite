@@ -39,12 +39,12 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 			let not_under_anchor = |&position: &DVec2| transform.transform_point2(position).distance_squared(anchor_position) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 			if let Some(in_handle) = manipulator_group.in_handle.filter(not_under_anchor) {
 				let handle_position = transform.transform_point2(in_handle);
-				overlay_context.line(handle_position, anchor_position);
+				overlay_context.line(handle_position, anchor_position, None);
 				overlay_context.handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle)));
 			}
 			if let Some(out_handle) = manipulator_group.out_handle.filter(not_under_anchor) {
 				let handle_position = transform.transform_point2(out_handle);
-				overlay_context.line(handle_position, anchor_position);
+				overlay_context.line(handle_position, anchor_position, None);
 				overlay_context.handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle)));
 			}
 

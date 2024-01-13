@@ -90,10 +90,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 		// TODO: Consider the shared point between adjacent beziers.
 		self.iter().enumerate().fold([Vec::new(), Vec::new()], |mut acc, elem| {
-			let extremas = elem.1.local_extrema();
+			let [x, y] = elem.1.local_extrema();
 			// Convert t-values of bezier curve to t-values of subpath
-			acc[0].extend(extremas[0].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
-			acc[1].extend(extremas[1].iter().map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc[0].extend(x.map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
+			acc[1].extend(y.map(|t| ((elem.0 as f64) + t) / number_of_curves).collect::<Vec<f64>>());
 			acc
 		})
 	}

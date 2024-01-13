@@ -55,6 +55,7 @@ web-sys = { workspace = true, features = [
 	"Element",
 	"HtmlCanvasElement",
 	"CanvasRenderingContext2d",
+	"TextMetrics",
 ] }
 
 

@@ -1,7 +1,9 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -48,7 +50,7 @@ pub enum RectangleOptionsUpdate {
 pub enum RectangleToolMessage {
 	// Standard messages
 	#[remain::unsorted]
-	CanvasTransformed,
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -57,7 +59,7 @@ pub enum RectangleToolMessage {
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize {
+	PointerMove {
 		center: Key,
 		lock_ratio: Key,
 	},
@@ -136,11 +138,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 		match self.fsm_state {
 			Ready => actions!(RectangleToolMessageDiscriminant;
 				DragStart,
+				PointerMove,
 			),
 			Drawing => actions!(RectangleToolMessageDiscriminant;
 				DragStop,
 				Abort,
-				Resize,
+				PointerMove,
 			),
 		}
 	}
@@ -161,7 +164,7 @@ impl ToolMetadata for RectangleTool {
 impl ToolTransition for RectangleTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			canvas_transformed: Some(RectangleToolMessage::CanvasTransformed.into()),
+			overlay_provider: Some(|overlay_context| RectangleToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(RectangleToolMessage::Abort.into()),
 			working_color_changed: Some(RectangleToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -195,9 +198,6 @@ impl Fsm for RectangleToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		use RectangleToolFsmState::*;
-		use RectangleToolMessage::*;
-
 		let shape_data = &mut tool_data.data;
 
 		let ToolMessage::Rectangle(event) = event else {
@@ -205,12 +205,12 @@ impl Fsm for RectangleToolFsmState {
 		};
 
 		match (self, event) {
-			(Drawing, CanvasTransformed) => {
-				tool_data.data.recalculate_snaps(document, input);
+			(_, RectangleToolMessage::Overlays(mut overlay_context)) => {
+				shape_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
 			}
-			(Ready, DragStart) => {
-				shape_data.start(responses, document, input);
+			(RectangleToolFsmState::Ready, RectangleToolMessage::DragStart) => {
+				shape_data.start(document, input);
 
 				let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
 
@@ -230,29 +230,34 @@ impl Fsm for RectangleToolFsmState {
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
 
-				Drawing
+				RectangleToolFsmState::Drawing
 			}
-			(state, Resize { center, lock_ratio }) => {
-				if let Some(message) = shape_data.calculate_transform(responses, document, input, center, lock_ratio, false) {
+			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
+				if let Some(message) = shape_data.calculate_transform(document, input, center, lock_ratio, false) {
 					responses.add(message);
 				}
 
-				state
+				self
 			}
-			(Drawing, DragStop) => {
+			(_, RectangleToolMessage::PointerMove { .. }) => {
+				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				responses.add(OverlaysMessage::Draw);
+				self
+			}
+			(RectangleToolFsmState::Drawing, RectangleToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
 				shape_data.cleanup(responses);
 
-				Ready
+				RectangleToolFsmState::Ready
 			}
-			(Drawing, Abort) => {
+			(RectangleToolFsmState::Drawing, RectangleToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				shape_data.cleanup(responses);
 
-				Ready
+				RectangleToolFsmState::Ready
 			}
-			(_, WorkingColorChanged) => {
+			(_, RectangleToolMessage::WorkingColorChanged) => {
 				responses.add(RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::WorkingColors(
 					Some(global_tool_data.primary_color),
 					Some(global_tool_data.secondary_color),

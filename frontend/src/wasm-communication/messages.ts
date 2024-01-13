@@ -869,6 +869,8 @@ export class PopoverButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
+	popoverMinWidth: number | undefined;
+
 	optionsWidget: LayoutGroup[] | undefined;
 }
 

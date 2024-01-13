@@ -8,6 +8,14 @@ use graphene_core::renderer::Quad;
 
 use glam::{DAffine2, DVec2};
 
+use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
+
+pub struct SizeSnapData<'a> {
+	pub manager: &'a mut SnapManager,
+	pub points: &'a mut Vec<SnapCandidatePoint>,
+	pub snap_data: SnapData<'a>,
+}
+
 /// Contains the edges that are being dragged along with the original bounds.
 #[derive(Clone, Debug, Default)]
 pub struct SelectedEdges {
@@ -60,7 +68,7 @@ impl SelectedEdges {
 	}
 
 	/// Computes the new bounds with the given mouse move and modifier keys
-	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center: bool, center_around: DVec2, constrain: bool) -> (DVec2, DVec2) {
+	pub fn new_size(&self, mouse: DVec2, transform: DAffine2, center_around: Option<DVec2>, constrain: bool, snap: Option<SizeSnapData>) -> (DVec2, DVec2) {
 		let mouse = transform.inverse().transform_point2(mouse);
 
 		let mut min = self.bounds[0];
@@ -77,7 +85,7 @@ impl SelectedEdges {
 		}
 
 		let mut pivot = self.pivot_from_bounds(min, max);
-		if center {
+		if let Some(center_around) = center_around {
 			// The below ratio is: `dragging edge / being centered`.
 			// The `is_finite()` checks are in case the user is dragging the edge where the pivot is located (in which case the centering mode is ignored).
 			if self.top {
@@ -120,6 +128,56 @@ impl SelectedEdges {
 			let delta_size = new_size - size;
 			min -= delta_size * min_pivot;
 			max = min + new_size;
+		} else if let Some(SizeSnapData { manager, points, snap_data }) = snap {
+			let view_to_doc = snap_data.document.metadata.document_to_viewport.inverse();
+			let bounds_to_doc = view_to_doc * transform;
+			let mut best_snap = SnappedPoint::infinite_snap(pivot);
+			let mut best_scale_factor = DVec2::ONE;
+			let tolerance = snapping::snap_tolerance(snap_data.document);
+			for point in points {
+				let old_position = point.document_point;
+				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
+				let normalised = (bounds_space - self.bounds[0]) / (self.bounds[1] - self.bounds[0]);
+				let updated = normalised * (max - min) + min;
+				point.document_point = bounds_to_doc.transform_point2(updated);
+				let mut snapped = if !(self.top || self.bottom) || !(self.left || self.right) {
+					let axis = if !(self.top || self.bottom) { DVec2::X } else { DVec2::Y };
+					let constraint = SnapConstraint::Line {
+						origin: point.document_point,
+						direction: bounds_to_doc.transform_vector2(axis),
+					};
+					manager.constrained_snap(&snap_data, point, constraint, None)
+				} else {
+					manager.free_snap(&snap_data, point, None, false)
+				};
+				point.document_point = old_position;
+
+				if !snapped.is_snapped() {
+					continue;
+				}
+				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
+
+				let mut scale_factor = (snapped_bounds - pivot) / (updated - pivot);
+				if !(self.left || self.right) {
+					scale_factor.x = 1.
+				}
+				if !(self.top || self.bottom) {
+					scale_factor.y = 1.
+				}
+
+				snapped.distance = bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length();
+				if snapped.distance > tolerance || !snapped.distance.is_finite() {
+					continue;
+				}
+				if best_snap.other_snap_better(&snapped) {
+					best_snap = snapped;
+					best_scale_factor = scale_factor;
+				}
+			}
+			manager.update_indicator(best_snap);
+
+			min = pivot - (pivot - min) * best_scale_factor;
+			max = pivot - (pivot - max) * best_scale_factor;
 		}
 
 		(min, max - min)

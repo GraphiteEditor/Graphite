@@ -43,4 +43,4 @@ pub enum Message {
 /// Specta isn't integrated with `impl_message`, so a remote impl must be provided using this struct.
 #[derive(specta::Type)]
 #[specta(inline, remote = "MessageDiscriminant")]
-pub struct MessageDiscriminantDef(u8);
+pub struct MessageDiscriminantDef(pub u8);

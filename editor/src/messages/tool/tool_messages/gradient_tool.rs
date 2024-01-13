@@ -22,7 +22,7 @@ pub struct GradientOptions {
 
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Gradient)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientToolMessage {
 	// Standard messages
 	#[remain::unsorted]
@@ -267,10 +267,6 @@ struct GradientToolData {
 	drag_start: DVec2,
 }
 
-pub fn start_snap(snap_manager: &mut SnapManager, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
-	snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-}
-
 impl Fsm for GradientToolFsmState {
 	type ToolData = GradientToolData;
 	type ToolOptions = GradientOptions;
@@ -303,7 +299,7 @@ impl Fsm for GradientToolFsmState {
 					let Gradient { start, end, positions, .. } = gradient;
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
-					overlay_context.line(start, end);
+					overlay_context.line(start, end, None);
 					overlay_context.handle(start, dragging == Some(GradientDragTarget::Start));
 					overlay_context.handle(end, dragging == Some(GradientDragTarget::End));
 
@@ -430,7 +426,6 @@ impl Fsm for GradientToolFsmState {
 						let pos = transform.transform_point2(pos);
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
-							start_snap(&mut tool_data.snap_manager, document, input);
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer,
 								transform,
@@ -474,8 +469,6 @@ impl Fsm for GradientToolFsmState {
 
 						tool_data.selected_gradient = Some(selected_gradient);
 
-						start_snap(&mut tool_data.snap_manager, document, input);
-
 						GradientToolFsmState::Drawing
 					} else {
 						GradientToolFsmState::Ready
@@ -484,7 +477,7 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-					let mouse = tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 				}
 				GradientToolFsmState::Drawing

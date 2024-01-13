@@ -1,126 +1,347 @@
-use crate::consts::{SNAP_AXIS_TOLERANCE, SNAP_POINT_TOLERANCE};
+mod grid_snapper;
+mod layer_snapper;
+mod snap_results;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
-
-use glam::DVec2;
+use bezier_rs::{Subpath, TValue};
+use glam::{DAffine2, DVec2};
+use graphene_core::renderer::Quad;
+use graphene_core::uuid::ManipulatorGroupId;
+use std::cmp::Ordering;
+pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
 
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
 pub struct SnapManager {
-	point_targets: Option<Vec<DVec2>>,
-	bound_targets: Option<Vec<DVec2>>,
-	snap_x: bool,
-	snap_y: bool,
+	indicator: Option<SnappedPoint>,
+	layer_snapper: LayerSnapper,
+	grid_snapper: GridSnapper,
+	candidates: Option<Vec<LayerNodeIdentifier>>,
 }
 
-impl SnapManager {
-	/// Computes the necessary translation to the layer to snap it (as well as updating necessary overlays)
-	fn calculate_snap<R>(&mut self, targets: R, responses: &mut VecDeque<Message>) -> DVec2
-	where
-		R: Iterator<Item = DVec2> + Clone,
-	{
-		let empty = Vec::new();
-		let snap_points = self.snap_x && self.snap_y;
-
-		let axis = self.bound_targets.as_ref().unwrap_or(&empty);
-		let points = if snap_points { self.point_targets.as_ref().unwrap_or(&empty) } else { &empty };
-
-		let x_axis = if self.snap_x { axis } else { &empty }
-			.iter()
-			.flat_map(|&pos| targets.clone().map(move |goal| (pos, goal, (pos - goal).x)));
-		let y_axis = if self.snap_y { axis } else { &empty }
-			.iter()
-			.flat_map(|&pos| targets.clone().map(move |goal| (pos, goal, (pos - goal).y)));
-		let points = points.iter().flat_map(|&pos| targets.clone().map(move |goal| (pos, pos - goal, (pos - goal).length())));
-
-		let min_x = x_axis.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
-		let min_y = y_axis.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
-		let min_points = points.clone().min_by(|a, b| a.2.abs().partial_cmp(&b.2.abs()).expect("Could not compare position."));
-
-		// Snap to a point if possible
-		let (clamped_closest_distance, _snapped_to_point) = if let Some(min_points) = min_points.filter(|&(_, _, dist)| dist <= SNAP_POINT_TOLERANCE) {
-			(min_points.1, true)
-		} else {
-			// Do not move if over snap tolerance
-			let closest_distance = DVec2::new(min_x.unwrap_or_default().2, min_y.unwrap_or_default().2);
-			(
-				DVec2::new(
-					if closest_distance.x.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.x },
-					if closest_distance.y.abs() > SNAP_AXIS_TOLERANCE { 0. } else { closest_distance.y },
-				),
-				false,
-			)
-		};
-		responses.add(OverlaysMessage::Draw);
-
-		clamped_closest_distance
-	}
-
-	/// Gets a list of snap targets for the X and Y axes (if specified) in Viewport coords for the target layers (usually all layers or all non-selected layers.)
-	/// This should be called at the start of a drag.
-	pub fn start_snap(
-		&mut self,
-		document_message_handler: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		bounding_boxes: impl Iterator<Item = [DVec2; 2]>,
-		snap_x: bool,
-		snap_y: bool,
-	) {
-		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
-		let bounding_box_snapping = document_message_handler.snapping_state.bounding_box_snapping;
-		if snapping_enabled && bounding_box_snapping {
-			self.snap_x = snap_x;
-			self.snap_y = snap_y;
-
-			// Could be made into sorted Vec or a HashSet for more performant lookups.
-			self.bound_targets = Some(
-				bounding_boxes
-					.flat_map(expand_bounds)
-					.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y)
-					.collect(),
-			);
-			self.point_targets = None;
+#[derive(Clone, Copy, Debug, Default)]
+pub enum SnapConstraint {
+	#[default]
+	None,
+	Line {
+		origin: DVec2,
+		direction: DVec2,
+	},
+	Direction(DVec2),
+	Circle {
+		centre: DVec2,
+		radius: f64,
+	},
+}
+impl SnapConstraint {
+	pub fn projection(&self, point: DVec2) -> DVec2 {
+		match *self {
+			Self::Line { origin, direction } if direction != DVec2::ZERO => (point - origin).project_onto(direction) + origin,
+			Self::Circle { centre, radius } => {
+				let from_centre = point - centre;
+				let distance = from_centre.length();
+				if distance > 0. {
+					centre + radius * from_centre / distance
+				} else {
+					// Point is exactly at the centre, so project right
+					centre + DVec2::new(radius, 0.)
+				}
+			}
+			_ => point,
 		}
 	}
+	pub fn direction(&self) -> DVec2 {
+		match *self {
+			Self::Line { direction, .. } | Self::Direction(direction) => direction,
+			_ => DVec2::ZERO,
+		}
+	}
+}
+pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
+	document.snapping_state.tolerance / document.navigation.zoom
+}
 
-	/// Add arbitrary snapping points
-	///
-	/// This should be called after start_snap
-	pub fn add_snap_points(&mut self, document_message_handler: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, snap_points: impl Iterator<Item = DVec2>) {
-		let snapping_enabled = document_message_handler.snapping_state.snapping_enabled;
-		let node_snapping = document_message_handler.snapping_state.node_snapping;
-		if snapping_enabled && node_snapping {
-			let snap_points = snap_points.filter(|&pos| pos.x >= 0. && pos.y >= 0. && pos.x < input.viewport_bounds.size().x && pos.y <= input.viewport_bounds.size().y);
-			if let Some(targets) = &mut self.point_targets {
-				targets.extend(snap_points);
-			} else {
-				self.point_targets = Some(snap_points.collect());
+fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
+	if (a.target.bounding_box() && !b.target.bounding_box()) || (a.at_intersection && !b.at_intersection) {
+		Ordering::Greater
+	} else if (!a.target.bounding_box() && b.target.bounding_box()) || (!a.at_intersection && b.at_intersection) {
+		Ordering::Less
+	} else {
+		a.distance.partial_cmp(&b.distance).unwrap()
+	}
+}
+
+fn get_closest_point(points: &[SnappedPoint]) -> Option<&SnappedPoint> {
+	points.iter().min_by(compare_points)
+}
+fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
+	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Geometry(GeometrySnapTarget::Path);
+	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
+}
+fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
+	lines.iter().map(|curve| &curve.point).min_by(compare_points)
+}
+fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
+	let mut best = None;
+	for curve_i in curves {
+		if curve_i.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
+			continue;
+		}
+
+		for curve_j in curves {
+			if curve_j.point.target == SnapTarget::BoundingBox(BoundingBoxSnapTarget::Edge) {
+				continue;
+			}
+			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
+				continue;
+			}
+			for curve_i_t in curve_i.document_curve.intersections(&curve_j.document_curve, None, None) {
+				let snapped_point_document = curve_i.document_curve.evaluate(TValue::Parametric(curve_i_t));
+				let distance = snap_to.distance(snapped_point_document);
+				let i_closer = curve_i.point.distance < curve_j.point.distance;
+				let close = if i_closer { curve_i } else { curve_j };
+				let far = if i_closer { curve_j } else { curve_i };
+				if !best.as_ref().is_some_and(|best: &SnappedPoint| best.distance < distance) {
+					best = Some(SnappedPoint {
+						snapped_point_document,
+						distance,
+						target: SnapTarget::Geometry(GeometrySnapTarget::Intersection),
+						tolerance: close.point.tolerance,
+						curves: [Some(close.document_curve), Some(far.document_curve)],
+						source: close.point.source,
+						at_intersection: true,
+						contrained: true,
+						..Default::default()
+					})
+				}
 			}
 		}
 	}
-
-	/// Finds the closest snap from an array of layers to the specified snap targets in viewport coords.
-	/// Returns 0 for each axis that there is no snap less than the snap tolerance.
-	pub fn snap_layers(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, snap_anchors: Vec<DVec2>, mouse_delta: DVec2) -> DVec2 {
-		if document_message_handler.snapping_state.snapping_enabled {
-			self.calculate_snap(snap_anchors.iter().map(move |&snap| mouse_delta + snap), responses)
-		} else {
-			DVec2::ZERO
+	best
+}
+fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<SnappedPoint> {
+	let mut best = None;
+	for line_i in lines {
+		for line_j in lines {
+			if let Some(snapped_point_document) = Quad::intersect_rays(line_i.point.snapped_point_document, line_i.direction, line_j.point.snapped_point_document, line_j.direction) {
+				let distance = snap_to.distance(snapped_point_document);
+				if !best.as_ref().is_some_and(|best: &SnappedPoint| best.distance < distance) {
+					best = Some(SnappedPoint {
+						snapped_point_document,
+						distance,
+						target: SnapTarget::Grid(GridSnapTarget::Intersection),
+						tolerance: line_i.point.tolerance,
+						source: line_i.point.source,
+						at_intersection: true,
+						contrained: true,
+						..Default::default()
+					})
+				}
+			}
 		}
 	}
+	best
+}
+#[derive(Clone)]
+pub struct SnapData<'a> {
+	pub document: &'a DocumentMessageHandler,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub ignore: &'a [LayerNodeIdentifier],
+	pub manipulators: Vec<(LayerNodeIdentifier, ManipulatorGroupId)>,
+	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
+}
+impl<'a> SnapData<'a> {
+	pub fn new(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler) -> Self {
+		Self::ignore(document, input, &[])
+	}
+	pub fn ignore(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, ignore: &'a [LayerNodeIdentifier]) -> Self {
+		Self {
+			document,
+			input,
+			ignore,
+			candidates: None,
+			manipulators: Vec::new(),
+		}
+	}
+	fn get_candidates(&self) -> &[LayerNodeIdentifier] {
+		self.candidates.map_or([].as_slice(), |candidates| candidates.as_slice())
+	}
+	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
+		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
+	}
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: ManipulatorGroupId) -> bool {
+		self.manipulators.contains(&(layer, manipulator))
+	}
+}
+impl SnapManager {
+	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
+		self.indicator = snapped_point.is_snapped().then_some(snapped_point);
+	}
+	pub fn clear_indicator(&mut self) {
+		self.indicator = None;
+	}
+	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
+		let point = SnapCandidatePoint::handle(snap_data.document.metadata.document_to_viewport.inverse().transform_point2(mouse));
+		let snapped = self.free_snap(snap_data, &point, None, false);
+		self.update_indicator(snapped);
+	}
 
-	/// Handles snapping of a viewport position, returning another viewport position.
-	pub fn snap_position(&mut self, responses: &mut VecDeque<Message>, document_message_handler: &DocumentMessageHandler, position_viewport: DVec2) -> DVec2 {
-		if document_message_handler.snapping_state.snapping_enabled {
-			self.calculate_snap([position_viewport].into_iter(), responses) + position_viewport
-		} else {
-			position_viewport
+	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, contrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
+		let mut snapped_points = Vec::new();
+		let document = snap_data.document;
+
+		if let Some(closest_point) = get_closest_point(&snap_results.points) {
+			snapped_points.push(closest_point.clone());
+		}
+		let exclude_paths = !document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path));
+		if let Some(closest_curve) = get_closest_curve(&snap_results.curves, exclude_paths) {
+			snapped_points.push(closest_curve.clone());
+		}
+
+		if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
+			if let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
+				snapped_points.push(closest_line.clone());
+			}
+		}
+
+		if !contrained {
+			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) {
+				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
+					snapped_points.push(closest_curves_intersection);
+				}
+			}
+			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection)) {
+				if let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines) {
+					snapped_points.push(closest_grid_intersection);
+				}
+			}
+		}
+
+		if to_path {
+			snapped_points.retain(|i| matches!(i.target, SnapTarget::Geometry(_)));
+		}
+
+		let mut best_point = None;
+
+		for point in snapped_points {
+			let viewport_point = document.metadata.document_to_viewport.transform_point2(point.snapped_point_document);
+			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.input.viewport_bounds.size()).all();
+			if !on_screen && !off_screen {
+				continue;
+			}
+			if point.distance > point.tolerance {
+				continue;
+			}
+			if best_point.as_ref().is_some_and(|best: &SnappedPoint| point.other_snap_better(best)) {
+				continue;
+			}
+			best_point = Some(point);
+		}
+
+		best_point.unwrap_or(SnappedPoint::infinite_snap(point.document_point))
+	}
+
+	fn find_candidates(snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>) -> Vec<LayerNodeIdentifier> {
+		let document = snap_data.document;
+		let offset = snap_tolerance(document);
+		let quad = bbox.map_or_else(|| Quad::from_box([point.document_point - offset, point.document_point + offset]), |quad| quad.inflate(offset));
+		let mut candidates = Vec::new();
+
+		fn add_candidates(layer: LayerNodeIdentifier, snap_data: &SnapData, quad: Quad, candidates: &mut Vec<LayerNodeIdentifier>) {
+			let document = snap_data.document;
+			if candidates.len() > 10 {
+				return;
+			}
+			if !document.selected_nodes.layer_visible(layer, &document.network, &document.metadata) {
+				return;
+			}
+			if snap_data.ignore.contains(&layer) {
+				return;
+			}
+			if document.metadata.is_folder(layer) {
+				for layer in layer.children(&document.metadata) {
+					add_candidates(layer, snap_data, quad, candidates);
+				}
+				return;
+			}
+			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+				return;
+			};
+			let layer_bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+			let screen_bounds = document.metadata.document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
+			if quad.intersects(layer_bounds) && screen_bounds.intersects(layer_bounds) {
+				candidates.push(layer);
+			}
+		}
+		add_candidates(LayerNodeIdentifier::ROOT, snap_data, quad, &mut candidates);
+		if candidates.len() > 10 {
+			warn!("Snap candidate overflow");
+		}
+
+		candidates
+	}
+
+	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>, to_paths: bool) -> SnappedPoint {
+		if !point.document_point.is_finite() {
+			warn!("Snapping non-finite position");
+			return SnappedPoint::infinite_snap(DVec2::ZERO);
+		}
+
+		let mut snap_results = SnapResults::default();
+		if point.source_index == 0 {
+			self.candidates = None;
+		}
+
+		let mut snap_data = snap_data.clone();
+		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
+		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+
+		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
+	}
+
+	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
+		if !point.document_point.is_finite() {
+			warn!("Snapping non-finite position");
+			return SnappedPoint::infinite_snap(DVec2::ZERO);
+		}
+
+		let mut snap_results = SnapResults::default();
+		if point.source_index == 0 {
+			self.candidates = None;
+		}
+
+		let mut snap_data = snap_data.clone();
+		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
+		self.layer_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.grid_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+
+		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
+	}
+
+	pub fn draw_overlays(&mut self, snap_data: SnapData, overlay_context: &mut OverlayContext) {
+		let to_viewport = snap_data.document.metadata.document_to_viewport;
+		if let Some(ind) = &self.indicator {
+			for curve in &ind.curves {
+				let Some(curve) = curve else { continue };
+				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
+			}
+			if let Some(quad) = ind.target_bounds {
+				overlay_context.quad(to_viewport * quad);
+			}
+			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
+
+			overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "rgba(0, 0, 0, 0.8)", 3.);
+			overlay_context.square(viewport, true);
 		}
 	}
 
 	/// Removes snap target data and overlays. Call this when snapping is done.
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
-		self.bound_targets = None;
-		self.point_targets = None;
+		self.candidates = None;
+		self.indicator = None;
 		responses.add(OverlaysMessage::Draw);
 	}
 }

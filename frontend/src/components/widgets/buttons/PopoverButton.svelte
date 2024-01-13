@@ -10,6 +10,7 @@
 	export let icon: IconName | undefined = undefined;
 	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
+	export let popoverMinWidth = 1;
 
 	// Callbacks
 	export let action: (() => void) | undefined = undefined;
@@ -28,7 +29,7 @@
 		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
 	{/if}
 
-	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} type="Popover" direction="Bottom">
+	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction="Bottom">
 		<slot />
 	</FloatingMenu>
 </LayoutRow>

@@ -26,6 +26,7 @@ use wasm_bindgen::{Clamped, JsCast};
 use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+#[cfg(any(feature = "resvg", feature = "vello"))]
 pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
@@ -284,7 +285,10 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 pub use graph_craft::document::value::RenderOutput;
 pub struct RenderNode<Data, Surface, Parameter> {
 	data: Data,
+	#[cfg(any(feature = "resvg", feature = "vello"))]
 	surface_handle: Surface,
+	#[cfg(not(any(feature = "resvg", feature = "vello")))]
+	surface_handle: PhantomData<Surface>,
 	parameter: PhantomData<Parameter>,
 }
 
@@ -417,10 +421,13 @@ where
 }
 #[automatically_derived]
 impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
-	pub const fn new(data: Data, surface_handle: Surface) -> Self {
+	pub fn new(data: Data, surface_handle: Surface) -> Self {
 		Self {
 			data,
+			#[cfg(any(feature = "resvg", feature = "vello"))]
 			surface_handle,
+			#[cfg(not(any(feature = "resvg", feature = "vello")))]
+			surface_handle: PhantomData,
 			parameter: PhantomData,
 		}
 	}

@@ -118,7 +118,7 @@ impl Fsm for ImaginateToolFsmState {
 				self
 			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
-				shape_data.start(responses, document, input);
+				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
@@ -168,7 +168,7 @@ impl Fsm for ImaginateToolFsmState {
 				ImaginateToolFsmState::Drawing
 			}
 			(state, ImaginateToolMessage::Resize { center, lock_ratio }) => {
-				let message = shape_data.calculate_transform(responses, document, input, center, lock_ratio, true);
+				let message = shape_data.calculate_transform(document, input, center, lock_ratio, true);
 				responses.try_add(message);
 
 				state
