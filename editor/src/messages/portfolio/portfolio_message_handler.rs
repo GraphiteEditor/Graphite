@@ -634,6 +634,10 @@ impl PortfolioMessageHandler {
 
 		self.executor.poll_node_graph_evaluation(active_document, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {e}");
+
+			let error = r#"<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="white" style="font-size: 50px"><tspan x="50%" dy="-0.75em">Error while evaluating node graph</tspan><tspan x="50%" dy="1.5em">Open node graph (Ctrl Space) for details</tspan>/text>"#
+				.to_string();
+			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		});
 	}
 }
