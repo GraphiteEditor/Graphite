@@ -102,7 +102,7 @@ impl ShapeState {
 
 						let mut push_neighbour = |group: ManipulatorGroup<ManipulatorGroupId>| {
 							if !state.is_selected(ManipulatorPointId::new(group.id, SelectedType::Anchor)) {
-								point.neighbors.push(group.anchor)
+								point.neighbors.push(to_document.transform_point2(group.anchor));
 							}
 						};
 						if handle == SelectedType::Anchor {
