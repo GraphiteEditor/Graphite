@@ -10,7 +10,6 @@ use graphene_core::Node;
 use wgpu_executor::WgpuExecutor;
 
 use core::future::Future;
-#[cfg(target_arch = "wasm32")]
 use js_sys::{Object, Reflect};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,10 +18,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsValue;
 use wasm_bindgen::{Clamped, JsCast};
-#[cfg(target_arch = "wasm32")]
 use web_sys::window;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
@@ -30,18 +27,15 @@ pub struct Canvas(CanvasRenderingContext2d);
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
-	#[cfg(target_arch = "wasm32")]
 	ids: RefCell<u64>,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	#[cfg(not(target_arch = "wasm32"))]
-	windows: RefCell<Vec<Arc<winit::window::Window>>>,
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+		#[cfg(all(feature = "wgpu"))]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
@@ -56,15 +50,10 @@ impl WasmApplicationIo {
 		} else {
 			None
 		};
-		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
-		let executor = WgpuExecutor::new().await;
 		let mut io = Self {
-			#[cfg(target_arch = "wasm32")]
 			ids: RefCell::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
-			#[cfg(not(target_arch = "wasm32"))]
-			windows: RefCell::new(Vec::new()),
 			resources: HashMap::new(),
 		};
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
@@ -91,16 +80,12 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
-	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
-	#[cfg(not(target_arch = "wasm32"))]
-	type Surface = Arc<winit::window::Window>;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
 	type Executor = ();
 
-	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
@@ -134,29 +119,7 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
-	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self) -> SurfaceHandle<Self::Surface> {
-		#[cfg(feature = "wayland")]
-		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		#[cfg(feature = "wayland")]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build();
-		#[cfg(not(feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoop::new();
-		let window = winit::window::WindowBuilder::new()
-			.with_title("Graphite")
-			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
-			.build(&event_loop)
-			.unwrap();
-		let window = Arc::new(window);
-		self.windows.borrow_mut().push(window.clone());
-		SurfaceHandle {
-			surface_id: SurfaceId(window.id().into()),
-			surface: window,
-		}
-	}
-
-	#[cfg(target_arch = "wasm32")]
 	fn destroy_surface(&self, surface_id: SurfaceId) {
 		let window = window().expect("should have a window in this context");
 		let window = Object::from(window);
@@ -176,9 +139,6 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	fn destroy_surface(&self, _surface_id: SurfaceId) {}
 
 	#[cfg(feature = "wgpu")]
 	fn gpu_executor(&self) -> Option<&Self::Executor> {

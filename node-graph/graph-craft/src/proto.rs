@@ -631,7 +631,7 @@ pub type GraphErrors = Vec<GraphError>;
 #[derive(Default, Clone)]
 pub struct TypingContext {
 	lookup: Cow<'static, HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>>,
-	inferred: HashMap<NodeId, NodeIOTypes>,
+	pub inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
 }
 

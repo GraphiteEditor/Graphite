@@ -7,6 +7,7 @@ use dyn_any::StaticType;
 pub use std::borrow::Cow;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NodeIOTypes {
 	pub input: Type,
 	pub output: Type,

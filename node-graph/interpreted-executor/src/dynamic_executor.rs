@@ -18,7 +18,7 @@ pub struct DynamicExecutor {
 	/// Stores all of the dynamic node structs.
 	tree: BorrowTree,
 	/// Stores the types of the protonodes.
-	typing_context: TypingContext,
+	pub typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: Vec<NodeId>,
 }

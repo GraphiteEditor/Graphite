@@ -192,8 +192,10 @@ impl NodeRuntime {
 		}
 
 		let mut proto_network = ProtoNetwork::default();
+		let mut scoped_network = NodeNetwork::default();
+		let typing_context_serded = serde_json::to_string(&self.executor.typing_context.inferred).unwrap();
 		if self.graph_hash.is_none() {
-			let scoped_network = wrap_network_in_scope(graph.clone(), font_hash_code);
+			scoped_network = wrap_network_in_scope(graph.clone(), font_hash_code);
 
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
@@ -204,7 +206,7 @@ impl NodeRuntime {
 			// We assume only one output
 			assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
 			let c = Compiler {};
-			proto_network = c.compile_single(scoped_network)?;
+			proto_network = c.compile_single(scoped_network.clone())?;
 
 			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 			if let Err(e) = self.executor.update(proto_network.clone()).await {
@@ -229,7 +231,10 @@ impl NodeRuntime {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type {proto_network:#?}\n\ndocument: {graph:#?}")),
+			_ => {
+				let scoped_network_serded = serde_json::to_string(&scoped_network).unwrap();
+				Err(format!("No input type \n\ntypes: {typing_context_serded}\n\ndocument: {scoped_network_serded}"))
+			}
 		};
 		std::panic::set_hook(hook);
 		let result = match result {
@@ -581,7 +586,7 @@ impl NodeGraphExecutor {
 					transform,
 				}) => {
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
-					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
+					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e}"))?;
 					let execution_context = self.futures.remove(&generation_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 
 					if let Some(export_config) = execution_context.export_config {
@@ -689,5 +694,28 @@ impl NodeGraphExecutor {
 			}
 		};
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[tokio::test]
+	async fn intermittent_crash() {
+		let val = include_str!("test_net.txt");
+		let typing_context = val.split_once("types: ").unwrap().1.split_once("\n").unwrap().0;
+		let document = val.split_once("document: ").unwrap().1.split_once("\n").unwrap().0;
+		println!("{val:?}");
+		let inferred = serde_json::from_str(typing_context).unwrap();
+		let scoped_network: NodeNetwork = serde_json::from_str(document).unwrap();
+
+		let mut executor = DynamicExecutor::default();
+		executor.typing_context.inferred = inferred;
+		let c = Compiler {};
+		let proto_network = c.compile_single(scoped_network).unwrap();
+
+		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+		executor.update(proto_network.clone()).await.unwrap();
+		info!("{:?}", executor.input_type());
 	}
 }
