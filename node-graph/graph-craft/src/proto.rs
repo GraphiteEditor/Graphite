@@ -648,15 +648,18 @@ impl TypingContext {
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &ProtoNetwork) -> Result<(), GraphErrors> {
+		let mut delete_nodes = self.inferred.keys().copied().collect::<HashSet<_>>();
+
 		for (id, node) in network.nodes.iter() {
 			self.infer(*id, node)?;
+			delete_nodes.remove(id);
 		}
-		Ok(())
-	}
 
-	pub fn free_node(&mut self, id: NodeId) {
-		self.inferred.remove(&id);
-		self.constructor.remove(&id);
+		for node in delete_nodes {
+			self.inferred.remove(&node);
+		}
+
+		Ok(())
 	}
 
 	/// Returns the node constructor for a given node id.

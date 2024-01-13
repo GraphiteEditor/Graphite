@@ -233,7 +233,10 @@ impl NodeRuntime {
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => {
 				let scoped_network_serded = serde_json::to_string(&scoped_network).unwrap();
-				Err(format!("No input type \n\ntypes: {typing_context_serded}\n\ndocument: {scoped_network_serded}"))
+				let proto_network_serded = serde_json::to_string(&proto_network).unwrap();
+				Err(format!(
+					"No input type \n\ntypes: {typing_context_serded}\n\nproto: {proto_network_serded}\n\ndocument: {scoped_network_serded}"
+				))
 			}
 		};
 		std::panic::set_hook(hook);
@@ -716,6 +719,6 @@ mod tests {
 
 		assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
 		executor.update(proto_network.clone()).await.unwrap();
-		info!("{:?}", executor.input_type());
+		println!("{:?}", executor.input_type());
 	}
 }
