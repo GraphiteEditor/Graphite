@@ -2919,7 +2919,7 @@ impl DocumentNodeDefinition {
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata
-	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, document_metadata: DocumentNodeMetadata) -> DocumentNode {
+	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: DocumentNodeMetadata) -> DocumentNode {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 		DocumentNode {
@@ -2927,7 +2927,7 @@ impl DocumentNodeDefinition {
 			inputs,
 			has_primary_output: self.has_primary_output,
 			implementation: self.generate_implementation(),
-			metadata: document_metadata,
+			metadata,
 			manual_composition: self.manual_composition.clone(),
 			..Default::default()
 		}
@@ -2935,10 +2935,10 @@ impl DocumentNodeDefinition {
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, document_metadata: DocumentNodeMetadata) -> DocumentNode {
+	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, metadata: DocumentNodeMetadata) -> DocumentNode {
 		let mut input_override = input_override.into_iter();
 		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
-		self.to_document_node(inputs, document_metadata)
+		self.to_document_node(inputs, metadata)
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default

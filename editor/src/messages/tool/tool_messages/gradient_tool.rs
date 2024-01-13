@@ -291,7 +291,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.selected_visible_layers() {
+				for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
 					let Some(gradient) = get_gradient(layer, &document.network) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected.filter(|selected| selected.layer == layer).map(|selected| selected.dragging);
@@ -362,7 +362,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.selected_visible_layers() {
+				for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
 					let Some(mut gradient) = get_gradient(layer, &document.network) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -403,7 +403,7 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.selected_visible_layers() {
+				for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
 					let Some(gradient) = get_gradient(layer, &document.network) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -443,7 +443,7 @@ impl Fsm for GradientToolFsmState {
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
-						if !document.metadata().selected_layers_contains(layer) {
+						if !document.selected_nodes.selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
 
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });

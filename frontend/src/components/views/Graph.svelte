@@ -1,15 +1,15 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { UpdateNodeGraphSelection } from "@graphite/wasm-communication/messages";
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -29,14 +29,18 @@
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
+	// TODO: MEMORY LEAK: Items never get removed from this array, so find a way to deal with garbage collection
+	let layerNameLabelWidths: Record<string, number> = {};
 
 	let transform = { scale: 1, x: 1200, y: 0 };
 	let panning = false;
-	let selected: bigint[] = [];
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	let selectIfNotDragged: undefined | bigint = undefined;
 	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
 	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
+	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
+	// let linkInProgressFromLayerTop: bigint | undefined = undefined;
+	// let linkInProgressFromLayerBottom: bigint | undefined = undefined;
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
 	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
@@ -118,16 +122,16 @@
 			const from = connectorToNodeIndex(linkInProgressFromConnector);
 			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
 
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === from?.nodeId)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((node) => node.id === to?.nodeId)?.isLayer && to?.index !== 0) || false;
+			const linkStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index !== 0) || false;
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
 	}
 
 	function createLinkPaths(linkPathInProgress: LinkPath | undefined, nodeLinkPaths: LinkPath[]): LinkPath[] {
-		const optionalTuple = linkPathInProgress ? [linkPathInProgress] : [];
-		return [...optionalTuple, ...nodeLinkPaths];
+		const maybeLinkPathInProgress = linkPathInProgress ? [linkPathInProgress] : [];
+		return [...maybeLinkPathInProgress, ...nodeLinkPaths];
 	}
 
 	async function watchNodes(nodes: FrontendNode[]) {
@@ -136,7 +140,6 @@
 			if (!outputs[index]) outputs[index] = [];
 		});
 
-		selected = selected.filter((id) => nodes.find((node) => node.id === id));
 		await refreshLinks();
 	}
 
@@ -144,8 +147,8 @@
 		const outputIndex = Number(link.linkStartOutputIndex);
 		const inputIndex = Number(link.linkEndInputIndex);
 
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((node) => node.id === link.linkStart)];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((node) => node.id === link.linkEnd)] || undefined;
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === link.linkStart)];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === link.linkEnd)] || undefined;
 
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
@@ -160,8 +163,9 @@
 			const { nodeInput, nodeOutput } = resolveLink(link);
 			if (!nodeInput || !nodeOutput) return [];
 			if (disconnecting?.linkIndex === index) return [];
-			const linkStart = $nodeGraph.nodes.find((node) => node.id === link.linkStart)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((node) => node.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n) || false;
+
+			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -177,21 +181,36 @@
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
+		const VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP = 1;
+
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
-		const outY = verticalOut ? outputBounds.y - 1 : outputBounds.y + outputBounds.height / 2;
+		const outY = verticalOut ? outputBounds.y + VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
 		const outConnectorX = (outX - containerBounds.x) / transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
-		const inY = verticalIn ? inputBounds.y + inputBounds.height + 2 : inputBounds.y + inputBounds.height / 2;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
-		const curveLength = 200;
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// // Straight: stacking lines which are always straight, or a straight horizontal link between two aligned nodes
+		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
+		// 	return [
+		// 		{ x: outConnectorX, y: outConnectorY },
+		// 		{ x: inConnectorX, y: inConnectorY },
+		// 	];
+		// }
+
+		// // L-shape bend
+		// if (verticalOut !== verticalIn) {
+		// }
+
+		const curveLength = 24;
 		const curveFalloffRate = curveLength * Math.PI * 2;
 
 		const horizontalCurveAmount = -(2 ** ((-10 * horizontalGap) / curveFalloffRate)) + 1;
@@ -210,7 +229,20 @@
 	function buildWirePathString(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): string {
 		const locations = buildWirePathLocations(outputBounds, inputBounds, verticalOut, verticalIn);
 		if (locations.length === 0) return "[error]";
-		return `M${locations[0].x},${locations[0].y} C${locations[1].x},${locations[1].y} ${locations[2].x},${locations[2].y} ${locations[3].x},${locations[3].y}`;
+		const SMOOTHING = 0.5;
+		const delta01 = { x: (locations[1].x - locations[0].x) * SMOOTHING, y: (locations[1].y - locations[0].y) * SMOOTHING };
+		const delta23 = { x: (locations[3].x - locations[2].x) * SMOOTHING, y: (locations[3].y - locations[2].y) * SMOOTHING };
+		return `
+			M${locations[0].x},${locations[0].y}
+			L${locations[1].x},${locations[1].y}
+			C${locations[1].x + delta01.x},${locations[1].y + delta01.y}
+			${locations[2].x - delta23.x},${locations[2].y - delta23.y}
+			${locations[2].x},${locations[2].y}
+			L${locations[3].x},${locations[3].y}
+			`
+			.split("\n")
+			.map((line) => line.trim())
+			.join(" ");
 	}
 
 	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
@@ -275,6 +307,8 @@
 			nodeListLocation = undefined;
 			document.removeEventListener("keydown", keydown);
 			linkInProgressFromConnector = undefined;
+			// linkInProgressFromLayerTop = undefined;
+			// linkInProgressFromLayerBottom = undefined;
 		}
 	}
 
@@ -298,7 +332,8 @@
 		if (nodeError && lmb) return;
 		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeId = node?.getAttribute("data-node") || undefined;
+		const nodeIdString = node?.getAttribute("data-node") || undefined;
+		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
 		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
 
 		// Create the add node popup on right click, then exit
@@ -316,73 +351,97 @@
 		if (lmb) {
 			nodeListLocation = undefined;
 			linkInProgressFromConnector = undefined;
+			// linkInProgressFromLayerTop = undefined;
+			// linkInProgressFromLayerBottom = undefined;
 		}
 
 		// Alt-click sets the clicked node as previewed
-		if (lmb && e.altKey && nodeId) {
-			editor.instance.togglePreview(BigInt(nodeId));
+		if (lmb && e.altKey && nodeId !== undefined) {
+			editor.instance.togglePreview(nodeId);
 		}
 
 		// Clicked on a port dot
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
+			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
 
-			if (isOutput) linkInProgressFromConnector = port;
+			// Output: Begin dragging out a new link
+			if (isOutput) {
+				// Disallow creating additional vertical output links from an already-connected layer
+				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined) return;
+
+				linkInProgressFromConnector = port;
+				// // Since we are just beginning to drag out a link from the top, we know the in-progress link exists from this layer's top and has no connection to any other layer bottom yet
+				// linkInProgressFromLayerTop = nodeId !== undefined && frontendNode?.isLayer ? nodeId : undefined;
+				// linkInProgressFromLayerBottom = undefined;
+			}
+			// Input: Begin moving an existing link
 			else {
 				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
+				// const isLayerBottomConnector = frontendNode?.isLayer && inputNodeConnectionIndexSearch === 1;
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
+				if (inputIndex === undefined || nodeId === undefined) return;
+
 				// Set the link to draw from the input that a previous link was on
-				if (inputIndex !== undefined && nodeId !== undefined) {
-					const nodeIdInt = BigInt(nodeId);
-					const inputIndexInt = BigInt(inputIndex);
-					const links = $nodeGraph.links;
-					const linkIndex = links.findIndex((value) => value.linkEnd === nodeIdInt && value.linkEndInputIndex === inputIndexInt);
-					if (linkIndex !== -1) {
-						const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-						linkInProgressFromConnector = nodeOutputConnectors?.[Number(links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
-						const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String(links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-						linkInProgressToConnector = nodeInputConnectors?.[Number(links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
-						disconnecting = { nodeId: nodeIdInt, inputIndex, linkIndex };
-						refreshLinks();
-					}
-				}
+
+				const linkIndex = $nodeGraph.links.findIndex((value) => value.linkEnd === nodeId && value.linkEndInputIndex === BigInt(inputIndex));
+				if (linkIndex === -1) return;
+
+				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
+				linkInProgressFromConnector = nodeOutputConnectors?.[Number($nodeGraph.links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
+				// linkInProgressFromLayerBottom = isLayerBottomConnector ? frontendNode.exposedInputs[0].connected : undefined;
+
+				const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
+				linkInProgressToConnector = nodeInputConnectors?.[Number($nodeGraph.links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
+				// linkInProgressFromLayerTop = undefined;
+
+				disconnecting = { nodeId: nodeId, inputIndex, linkIndex };
+				refreshLinks();
 			}
 
 			return;
 		}
 
-		// Clicked on a node
-		if (lmb && nodeId) {
+		// Clicked on a node, so we select it
+		if (lmb && nodeId !== undefined) {
+			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
 
-			const id = BigInt(nodeId);
+			// Add to/remove from selection if holding Shift or Ctrl
 			if (e.shiftKey || e.ctrlKey) {
 				modifiedSelected = true;
 
-				if (selected.includes(id)) selected.splice(selected.lastIndexOf(id), 1);
-				else selected.push(id);
-			} else if (!selected.includes(id)) {
+				// Remove from selection if already selected
+				if (!updatedSelected.includes(nodeId)) updatedSelected.push(nodeId);
+				// Add to selection if not already selected
+				else updatedSelected.splice(updatedSelected.lastIndexOf(nodeId), 1);
+			}
+			// Replace selection with a non-selected node
+			else if (!updatedSelected.includes(nodeId)) {
 				modifiedSelected = true;
 
-				selected = [id];
-			} else {
-				selectIfNotDragged = id;
+				updatedSelected = [nodeId];
+			}
+			// Replace selection (of multiple nodes including this one) with just this one, but only upon pointer up if the user didn't drag the selected nodes
+			else {
+				selectIfNotDragged = nodeId;
 			}
 
-			if (selected.includes(id)) {
+			// If this node is selected (whether from before or just now), prepare it for dragging
+			if (updatedSelected.includes(nodeId)) {
 				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
 			}
 
-			if (modifiedSelected) editor.instance.selectNodes(selected.length > 0 ? new BigUint64Array(selected) : undefined);
+			// Update the selection in the backend if it was modified
+			if (modifiedSelected) editor.instance.selectNodes(new BigUint64Array(updatedSelected));
 
 			return;
 		}
 
-		// Clicked on the graph background
-		if (lmb && selected.length !== 0) {
-			selected = [];
-			editor.instance.selectNodes(undefined);
+		// Clicked on the graph background with something selected, so we deselect everything
+		if (lmb && $nodeGraph.selected.length !== 0) {
+			editor.instance.selectNodes(new BigUint64Array([]));
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere
@@ -392,9 +451,9 @@
 	function doubleClick(_e: MouseEvent) {
 		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		// const nodeId = node?.getAttribute("data-node") || undefined;
-		// if (nodeId) {
+		// if (nodeId !== undefined) {
 		// 	const id = BigInt(nodeId);
-		// 	editor.instance.doubleClickNode(id);
+		// 	editor.instance.enterNestedNetwork(id);
 		// }
 	}
 
@@ -435,6 +494,10 @@
 		}
 	}
 
+	function toggleLayerVisibility(id: bigint) {
+		editor.instance.toggleLayerVisibility(id);
+	}
+
 	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
 		const node = svg.closest("[data-node]");
 
@@ -454,8 +517,8 @@
 
 	// Check if this node should be inserted between two other nodes
 	function checkInsertBetween() {
-		if (selected.length !== 1) return;
-		const selectedNodeId = selected[0];
+		if ($nodeGraph.selected.length !== 1) return;
+		const selectedNodeId = $nodeGraph.selected[0];
 		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
 		// Check that neither the input or output of the selected node are already connected.
@@ -491,13 +554,14 @@
 
 		// If the node has been dragged on top of the link then connect it into the middle.
 		if (link) {
-			const isLayer = $nodeGraph.nodes.find((node) => node.id === selectedNodeId)?.isLayer;
+			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
 
 			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
 			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
 			if (!isLayer) editor.instance.shiftNode(selectedNodeId);
 		}
 	}
+
 	function pointerUp(e: PointerEvent) {
 		panning = false;
 
@@ -536,13 +600,12 @@
 			return;
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
-				if (selectIfNotDragged !== undefined && (selected.length !== 1 || selected[0] !== selectIfNotDragged)) {
-					selected = [selectIfNotDragged];
-					editor.instance.selectNodes(new BigUint64Array(selected));
+				if (selectIfNotDragged !== undefined && ($nodeGraph.selected.length !== 1 || $nodeGraph.selected[0] !== selectIfNotDragged)) {
+					editor.instance.selectNodes(new BigUint64Array([selectIfNotDragged]));
 				}
 			}
 
-			if (selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.instance.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
+			if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.instance.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
 
 			checkInsertBetween();
 
@@ -592,15 +655,18 @@
 
 	function layerBorderMask(nodeWidth: number): string {
 		const NODE_HEIGHT = 2 * 24;
-		const THUMBNAIL_WIDTH = 96;
-		const FUDGE = 2;
+		const THUMBNAIL_WIDTH = 72 + 8 * 2;
+		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
 
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
 		// Left input
 		boxes.push({ x: -8, y: 16, width: 16, height: 16 });
 
 		// Thumbnail
-		boxes.push({ x: 24, y: -FUDGE, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE * 2 });
+		boxes.push({ x: 28, y: -FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT * 2 });
+
+		// Right visibility button
+		boxes.push({ x: nodeWidth - 12, y: (NODE_HEIGHT - 24) / 2, width: 24, height: 24 });
 
 		return borderMask(boxes, nodeWidth, NODE_HEIGHT);
 	}
@@ -614,12 +680,6 @@
 		const dataTypeCapitalized = `${value.dataType[0].toUpperCase()}${value.dataType.slice(1)}`;
 		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${dataTypeCapitalized}`;
 	}
-
-	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
-			selected = updateNodeGraphSelection.selected;
-		});
-	});
 </script>
 
 <div
@@ -679,16 +739,19 @@
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
+			{@const extraWidthToReachGridMultiple = 8}
+			{@const labelWidthGridCells = Math.ceil(((layerNameLabelWidths?.[String(node.id)] || 0) - extraWidthToReachGridMultiple) / 24)}
 			<div
 				class="layer"
-				class:selected={selected.includes(node.id)}
+				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
-				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
+				style:--label-width={labelWidthGridCells}
 				data-node={node.id}
 			>
 				{#if node.errors}
@@ -709,19 +772,24 @@
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{dataTypeTooltip(node.primaryInput)}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
 						{/if}
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+						{#if node.primaryInput?.connected}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+						{:else}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+						{/if}
 					</svg>
 				</div>
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
 						{@html $nodeGraph.thumbnails.get(node.id)}
 					{/if}
+					<!-- Layer stacking top output -->
 					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
+							viewBox="0 0 8 12"
 							class="port top"
 							data-port="output"
 							data-datatype={node.primaryOutput.dataType}
@@ -729,13 +797,21 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput)}</title>
-							<path d="M0,2.953,2.521,1.259a2.649,2.649,0,0,1,2.959,0L8,2.953V8H0Z" />
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							{#if node.primaryOutput.connected}
+								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
+								{#if $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
+									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
+								{/if}
+							{:else}
+								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
+							{/if}
 						</svg>
 					{/if}
+					<!-- Layer stacking bottom input -->
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
+						viewBox="0 0 8 12"
 						class="port bottom"
 						data-port="input"
 						data-datatype={stackDataInput.dataType}
@@ -743,19 +819,36 @@
 						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
 						bind:this={inputs[nodeIndex][1]}
 					>
-						<title>{dataTypeTooltip(stackDataInput)}</title>
-						<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" />
+						<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
+						{#if stackDataInput.connected}
+							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
+							{#if $nodeGraph.nodes.find((n) => n.id === stackDataInput.connected)?.isLayer}
+								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
+							{/if}
+						{:else}
+							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
+						{/if}
 					</svg>
 				</div>
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || "Layer"}</TextLabel>
+					<span title={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
+						{node.alias || "Layer"}
+					</span>
 				</div>
+				<IconButton
+					class={"visibility"}
+					action={(e) => (toggleLayerVisibility(node.id), e?.stopPropagation())}
+					size={24}
+					icon={node.disabled ? "EyeHidden" : "EyeVisible"}
+					tooltip={node.disabled ? "Disabled" : "Enabled"}
+				/>
 
 				<svg class="border-mask" width="0" height="0">
 					<defs>
 						<clipPath id={clipPathId}>
-							<path clip-rule="evenodd" d={layerBorderMask(216)} />
+							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
+							<path clip-rule="evenodd" d={layerBorderMask(36 + 72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -767,11 +860,11 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
-				class:selected={selected.includes(node.id)}
+				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
-				style:--offset-left={(node.position?.x || 0) + (selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + (selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
+				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
@@ -810,8 +903,12 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryInput)}</title>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connected || "nothing"}`}</title>
+							{#if node.primaryInput.connected}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{:else}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+							{/if}
 						</svg>
 					{/if}
 					{#each node.exposedInputs as parameter, index}
@@ -826,8 +923,12 @@
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 								bind:this={inputs[nodeIndex][index + 1]}
 							>
-								<title>{dataTypeTooltip(parameter)}</title>
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
+								{#if parameter.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
 							</svg>
 						{/if}
 					{/each}
@@ -845,8 +946,12 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{dataTypeTooltip(node.primaryOutput)}</title>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							{#if node.primaryOutput.connected}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{:else}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+							{/if}
 						</svg>
 					{/if}
 					{#each node.exposedOutputs as parameter, outputIndex}
@@ -860,8 +965,12 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{dataTypeTooltip(parameter)}</title>
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" />
+							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
+							{#if parameter.connected}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{:else}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+							{/if}
 						</svg>
 					{/each}
 				</div>
@@ -1097,7 +1206,6 @@
 			}
 
 			.port {
-				fill: var(--data-color);
 				// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
 				margin: calc(24px - 8px) 0;
 				width: 8px;
@@ -1112,7 +1220,10 @@
 
 		.layer {
 			border-radius: 8px;
-			width: 216px;
+			--half-visibility-button: 12px;
+			--extra-width-to-reach-grid-multiple: 8px;
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
+			width: calc(36px + 72px + 8px + 24px * Max(3, var(--label-width)) + 8px + var(--half-visibility-button) + var(--extra-width-to-reach-grid-multiple));
 
 			&::after {
 				border: 1px solid var(--color-5-dullgray);
@@ -1160,31 +1271,43 @@
 					margin: 0 auto;
 					left: 0;
 					right: 0;
+					height: 12px;
 
 					&.top {
-						top: -9px;
+						top: -13px;
 					}
 
 					&.bottom {
-						bottom: -9px;
+						bottom: -13px;
 					}
 				}
 			}
 
 			.details {
-				margin-left: 12px;
+				margin: 0 8px;
 
-				.text-label {
+				span {
+					white-space: nowrap;
 					line-height: 48px;
 				}
 			}
 
+			.visibility {
+				position: absolute;
+				right: calc(-1 * var(--half-visibility-button));
+			}
+
+			.visibility,
 			.input.ports,
 			.input.ports .port {
 				position: absolute;
 				margin: auto 0;
 				top: 0;
 				bottom: 0;
+			}
+
+			.input.ports .port {
+				left: 24px;
 			}
 		}
 

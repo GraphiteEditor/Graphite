@@ -159,27 +159,6 @@ impl JsEditorHandle {
 
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
-		// Special case for update image data to avoid serialization times.
-		if let FrontendMessage::UpdateImageData { document_id: _, image_data: _ } = message {
-			// for image in image_data {
-			// 	#[cfg(not(feature = "tauri"))]
-			// 	{
-			// 		let transform = if let Some(transform_val) = image.transform {
-			// 			let transform = js_sys::Float64Array::new_with_length(6);
-			// 			transform.copy_from(&transform_val);
-			// 			transform
-			// 		} else {
-			// 			js_sys::Float64Array::default()
-			// 		};
-			// 	}
-			// 	#[cfg(feature = "tauri")]
-			// 	{
-			// 		let identifier = format!("http://localhost:3001/image/{:?}_{}", image.path, document_id);
-			// 		fetchImage(image.path.clone(), image.node_id, image.mime, document_id, identifier);
-			// 	}
-			// }
-			return;
-		}
 		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
@@ -633,9 +612,8 @@ impl JsEditorHandle {
 
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
-	pub fn select_nodes(&self, nodes: Option<Vec<u64>>) {
-		let nodes = nodes.map(|nodes| nodes.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>());
-		let nodes = nodes.unwrap_or_default();
+	pub fn select_nodes(&self, nodes: Vec<u64>) {
+		let nodes = nodes.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
 		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
 	}
@@ -648,10 +626,10 @@ impl JsEditorHandle {
 	}
 
 	/// Notifies the backend that the user double clicked a node
-	#[wasm_bindgen(js_name = doubleClickNode)]
-	pub fn double_click_node(&self, node: u64) {
+	#[wasm_bindgen(js_name = enterNestedNetwork)]
+	pub fn enter_nested_network(&self, node: u64) {
 		let node = NodeId(node);
-		let message = NodeGraphMessage::DoubleClickNode { node };
+		let message = NodeGraphMessage::EnterNestedNetwork { node };
 		self.dispatch(message);
 	}
 

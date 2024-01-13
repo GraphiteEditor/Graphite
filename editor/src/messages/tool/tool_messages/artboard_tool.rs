@@ -221,12 +221,8 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
 				if let Some(bounds) = &tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
-
 					let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
-					let mouse_delta = mouse_position - tool_data.drag_current;
-
 					let size = bounds.bounds[1] - bounds.bounds[0];
-
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 
 					responses.add(GraphOperationMessage::ResizeArtboard {

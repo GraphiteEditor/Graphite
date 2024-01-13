@@ -44,7 +44,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation) else {
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
 		return;
 	};
 	let isometric_spacing = spacing * spacing_multiplier;

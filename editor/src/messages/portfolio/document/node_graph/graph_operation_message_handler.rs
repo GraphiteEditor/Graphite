@@ -1,5 +1,6 @@
 use super::{resolve_document_node_type, VectorDataModification};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
@@ -83,8 +84,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_node_before(&mut self, new_id: NodeId, node_id: NodeId, input_index: usize, mut document_node: DocumentNode, offset: IVec2) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing node");
-		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 
+		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
 		document_node.metadata.position = post_node.metadata.position + offset;
 		self.document_network.nodes.insert(new_id, document_node);
@@ -153,7 +154,6 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 			let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
 			parent.push_front_child(self.document_metadata, new_child);
-			self.responses.add(DocumentMessage::DocumentStructureChanged);
 		}
 
 		new_id
@@ -181,7 +181,7 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
@@ -202,7 +202,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
 		let shape_id = NodeId(generate_uuid());
 		self.insert_node_before(shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn insert_text(&mut self, text: String, font: Font, size: f32, layer: NodeId) {
@@ -227,7 +227,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
 		let text_id = NodeId(generate_uuid());
 		self.insert_node_before(text_id, transform_id, 0, text, IVec2::new(-8, 0));
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn insert_image_data(&mut self, image_frame: ImageFrame<Color>, layer: NodeId) {
@@ -243,7 +243,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let image_id = NodeId(generate_uuid());
 		self.insert_node_before(image_id, transform_id, 0, image, IVec2::new(-8, 0));
 
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
@@ -317,11 +317,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		} else {
-			// Code was removed from here which cleared the frame
-		}
-		if existing_node_id.is_none() {
-			self.responses.add(NodeGraphMessage::SendGraph { should_rerender: false });
 		}
 	}
 
@@ -515,7 +510,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn delete_layer(&mut self, id: NodeId) {
+	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
 		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
@@ -564,21 +559,31 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		self.document_metadata.retain_selected_nodes(|id| !delete_nodes.contains(id));
+		selected_nodes.retain_selected_nodes(|id| !delete_nodes.contains(id));
 		self.responses.add(BroadcastEvent::SelectionChanged);
 
-		self.responses.add(DocumentMessage::DocumentStructureChanged);
-		self.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
 
-impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetadata, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler)> for GraphOperationMessageHandler {
-	fn process_message(
-		&mut self,
-		message: GraphOperationMessage,
-		responses: &mut VecDeque<Message>,
-		(document_network, document_metadata, collapsed, node_graph): (&mut NodeNetwork, &mut DocumentMetadata, &mut Vec<LayerNodeIdentifier>, &mut NodeGraphMessageHandler),
-	) {
+pub struct GraphOperationHandlerData<'a> {
+	pub document_network: &'a mut NodeNetwork,
+	pub document_metadata: &'a mut DocumentMetadata,
+	pub selected_nodes: &'a mut SelectedNodes,
+	pub collapsed: &'a mut CollapsedLayers,
+	pub node_graph: &'a mut NodeGraphMessageHandler,
+}
+
+impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for GraphOperationMessageHandler {
+	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationHandlerData) {
+		let GraphOperationHandlerData {
+			document_network,
+			document_metadata,
+			selected_nodes,
+			collapsed,
+			node_graph,
+		} = data;
+
 		match message {
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
@@ -652,7 +657,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -702,17 +707,17 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 						}
 					}
 
-					modify_inputs.responses.add(NodeGraphMessage::SendGraph { should_rerender: true });
+					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -726,7 +731,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
@@ -735,18 +740,18 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.delete_layer(id);
-				load_network_structure(document_network, document_metadata, collapsed);
+				modify_inputs.delete_layer(id, selected_nodes);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
 					if modify_inputs.document_network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
-						modify_inputs.delete_layer(layer);
+						modify_inputs.delete_layer(layer, selected_nodes);
 					}
 				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 		}
 	}
@@ -756,7 +761,7 @@ impl MessageHandler<GraphOperationMessage, (&mut NodeNetwork, &mut DocumentMetad
 	}
 }
 
-pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, collapsed: &mut Vec<LayerNodeIdentifier>) {
-	document_metadata.load_structure(document_network);
-	collapsed.retain(|&layer| document_metadata.layer_exists(layer));
+pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &mut CollapsedLayers) {
+	document_metadata.load_structure(document_network, selected_nodes);
+	collapsed.0.retain(|&layer| document_metadata.layer_exists(layer));
 }

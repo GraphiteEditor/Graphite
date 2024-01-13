@@ -158,6 +158,7 @@ pub struct RenderConfig {
 }
 
 pub struct EditorApi<'a, Io> {
+	// TODO: Is `image_frame` still used? I think it's only ever set to None.
 	pub image_frame: Option<ImageFrame<Color>>,
 	pub font_cache: &'a FontCache,
 	pub application_io: &'a Io,

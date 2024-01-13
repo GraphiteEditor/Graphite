@@ -1,5 +1,3 @@
-pub use super::layer_panel::LayerPanelEntry;
-
 use glam::DVec2;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -201,11 +199,11 @@ impl GridSnapping {
 	}
 
 	// Double grid size until it takes up at least 10px.
-	pub fn compute_isometric_multiplier(length: f64, navigation: &PTZ) -> Option<f64> {
+	pub fn compute_isometric_multiplier(length: f64, divisor: f64, navigation: &PTZ) -> Option<f64> {
 		let length = length.abs();
 		let mut iterations = 0;
 		let mut multiplier = 1.;
-		while length * multiplier * navigation.zoom < 10. {
+		while (length / divisor.abs().max(1.)) * multiplier * navigation.zoom < 10. {
 			if iterations > 100 {
 				return None;
 			}

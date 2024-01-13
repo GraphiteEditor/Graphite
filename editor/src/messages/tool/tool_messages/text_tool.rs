@@ -344,9 +344,9 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.metadata().selected_layers();
-
+	let mut selected_layers = document.selected_nodes.selected_layers(document.metadata());
 	let layer = selected_layers.next()?;
+
 	// Check that only one layer is selected
 	if selected_layers.next().is_some() {
 		return None;
@@ -392,7 +392,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.metadata().selected_layers() {
+				for layer in document.selected_nodes.selected_layers(document.metadata()) {
 					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network) else {
 						continue;
 					};

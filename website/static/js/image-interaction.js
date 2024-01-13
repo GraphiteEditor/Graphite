@@ -305,19 +305,21 @@ window.addEventListener("DOMContentLoaded", initializeVideoAutoPlay);
 function initializeVideoAutoPlay() {
 	const VISIBILITY_COVERAGE_FRACTION = 0.25;
 
-	let loaded = false;
+	const players = document.querySelectorAll("[data-auto-play]");
+	players.forEach((player) => {
+		if (!(player instanceof HTMLVideoElement)) return;
 
-	const player = document.querySelector("[data-auto-play]");
-	if (!(player instanceof HTMLVideoElement)) return;
-
-	new IntersectionObserver((entries) => {
-		entries.forEach((entry) => {
-			if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
-				player.play();
-
-				loaded = true;
-			};
-		});
-	}, { threshold: VISIBILITY_COVERAGE_FRACTION })
+		let loaded = false;
+		
+		new IntersectionObserver((entries) => {
+			entries.forEach((entry) => {
+				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
+					player.play();
+					
+					loaded = true;
+				};
+			});
+		}, { threshold: VISIBILITY_COVERAGE_FRACTION })
 		.observe(player);
+	});
 }

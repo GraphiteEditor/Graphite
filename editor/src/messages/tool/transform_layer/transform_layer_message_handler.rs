@@ -48,7 +48,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
-		let selected_layers = document.metadata().selected_layers().collect::<Vec<_>>();
+		let selected_layers = document.selected_nodes.selected_layers(document.metadata()).collect::<Vec<_>>();
 
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
@@ -222,7 +222,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.mouse_position = input.mouse.position;
 			}
 			SelectionChanged => {
-				let target_layers = document.metadata().selected_layers().collect();
+				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),

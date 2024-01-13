@@ -266,10 +266,10 @@ impl BrushToolData {
 	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.transform = DAffine2::IDENTITY;
 
-		if document.metadata().selected_layers().count() != 1 {
+		if document.selected_nodes.selected_layers(document.metadata()).count() != 1 {
 			return None;
 		}
-		let Some(layer) = document.metadata().selected_layers().next() else {
+		let Some(layer) = document.selected_nodes.selected_layers(document.metadata()).next() else {
 			return None;
 		};
 

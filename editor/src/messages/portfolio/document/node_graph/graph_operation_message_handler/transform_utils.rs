@@ -52,11 +52,11 @@ pub struct LayerBounds {
 
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
-	pub fn new(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {
+	pub fn new(metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {
 		Self {
-			bounds: document_metadata.nonzero_bounding_box(layer),
+			bounds: metadata.nonzero_bounding_box(layer),
 			bounds_transform: DAffine2::IDENTITY,
-			layer_transform: document_metadata.transform_to_document(layer),
+			layer_transform: metadata.transform_to_document(layer),
 		}
 	}
 

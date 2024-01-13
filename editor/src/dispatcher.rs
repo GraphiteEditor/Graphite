@@ -32,16 +32,15 @@ pub struct DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderDocument)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::DocumentIsDirty)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
-	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::DocumentIsDirty)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 ];
 
 impl Dispatcher {
@@ -119,7 +118,7 @@ impl Dispatcher {
 				}
 				Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::UpdateImageData { .. } | FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
+					if let FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
 						self.cleanup_queues(false);
 

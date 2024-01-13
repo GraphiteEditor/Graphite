@@ -95,9 +95,6 @@ pub enum PortfolioMessage {
 	SelectDocument {
 		document_id: DocumentId,
 	},
-	SetActiveDocument {
-		document_id: DocumentId,
-	},
 	SubmitDocumentExport {
 		file_name: String,
 		file_type: FileType,

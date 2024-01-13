@@ -54,7 +54,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 		&mut self,
 		message: NavigationMessage,
 		responses: &mut VecDeque<Message>,
-		(document_metadata, document_bounds, ipp, selection_bounds, ptz): (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>, &mut PTZ),
+		(metadata, document_bounds, ipp, selection_bounds, ptz): (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>, &mut PTZ),
 	) {
 		use NavigationMessage::*;
 
@@ -73,8 +73,8 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				bounds: [pos1, pos2],
 				prevent_zoom_past_100,
 			} => {
-				let v1 = document_metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document_metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
+				let v1 = metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
+				let v2 = metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
 				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
 				let size = (pos2 - pos1) / (v2 - v1);
@@ -96,7 +96,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
-					let transform = document_metadata.document_to_viewport.inverse();
+					let transform = metadata.document_to_viewport.inverse();
 					responses.add(FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
@@ -257,7 +257,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				responses.add(TransformCanvasEnd { abort_transform });
 			}
 			TranslateCanvas { delta } => {
-				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta);
+				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
@@ -275,7 +275,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				self.transform_operation = TransformOperation::Pan { pre_commit_pan: ptz.pan };
 			}
 			TranslateCanvasByViewportFraction { delta } => {
-				let transformed_delta = document_metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::DocumentIsDirty);

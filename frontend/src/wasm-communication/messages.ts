@@ -90,6 +90,8 @@ export class FrontendGraphInput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly connected!: bigint | undefined;
 }
 
 export class FrontendGraphOutput {
@@ -98,6 +100,8 @@ export class FrontendGraphOutput {
 	readonly name!: string;
 
 	readonly resolvedType!: string | undefined;
+
+	readonly connected!: bigint | undefined;
 }
 
 export class FrontendNode {
@@ -566,72 +570,13 @@ export class TriggerSavePreferences extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export class UpdateDocumentLayerStructureJs extends JsMessage {
-	constructor(
-		readonly layerId: bigint,
-		readonly children: UpdateDocumentLayerStructureJs[],
-	) {
-		super();
-	}
-}
-
-type DataBuffer = {
+export type DataBuffer = {
 	pointer: bigint;
 	length: bigint;
 };
 
-export function newUpdateDocumentLayerStructure(input: { dataBuffer: DataBuffer }, wasm: WasmRawInstance): UpdateDocumentLayerStructureJs {
-	const pointerNum = Number(input.dataBuffer.pointer);
-	const lengthNum = Number(input.dataBuffer.length);
-
-	const wasmMemoryBuffer = wasm.buffer;
-
-	// Decode the folder structure encoding
-	const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
-
-	// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
-	const structureSectionLength = Number(encoding.getBigUint64(0, true));
-	const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
-
-	// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-	const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
-
-	let layersEncountered = 0;
-	let currentFolder = new UpdateDocumentLayerStructureJs(BigInt(-1), []);
-	const currentFolderStack = [currentFolder];
-
-	for (let i = 0; i < structureSectionLength; i += 1) {
-		const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-		const msbMask = BigInt(1) << BigInt(64 - 1);
-
-		// Set the MSB to 0 to clear the sign and then read the number as usual
-		const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
-
-		// Store child folders in the current folder (until we are interrupted by an indent)
-		for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
-			const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
-			layersEncountered += 1;
-
-			const childLayer = new UpdateDocumentLayerStructureJs(layerId, []);
-			currentFolder.children.push(childLayer);
-		}
-
-		// Check the sign of the MSB, where a 1 is a negative (outward) indent
-		const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
-		// Inward
-		if (subsequentDirectionOfDepthChange) {
-			currentFolderStack.push(currentFolder);
-			currentFolder = currentFolder.children[currentFolder.children.length - 1];
-		}
-		// Outward
-		else {
-			const popped = currentFolderStack.pop();
-			if (!popped) throw Error("Too many negative indents in the folder structure");
-			if (popped) currentFolder = popped;
-		}
-	}
-
-	return currentFolder;
+export class UpdateDocumentLayerStructureJs extends JsMessage {
+	readonly dataBuffer!: DataBuffer;
 }
 
 export class DisplayEditableTextbox extends JsMessage {
@@ -653,13 +598,6 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 	readonly transform!: number[];
 }
 
-export class UpdateImageData extends JsMessage {
-	readonly documentId!: bigint;
-
-	@Type(() => FrontendImageData)
-	readonly imageData!: FrontendImageData[];
-}
-
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateDocumentLayerDetails extends JsMessage {
@@ -675,27 +613,19 @@ export class LayerPanelEntry {
 
 	layerClassification!: LayerClassification;
 
+	expanded!: boolean;
+
+	disabled!: boolean;
+
 	parentId!: bigint | undefined;
 
 	id!: bigint;
 
 	@Transform(({ value }: { value: bigint }) => Number(value))
 	depth!: number;
-
-	expanded!: boolean;
-
-	selected!: boolean;
-
-	thumbnail!: string;
 }
 
 export type LayerClassification = "Folder" | "Artboard" | "Layer";
-
-export class FrontendImageData {
-	readonly mime!: string;
-
-	readonly imageData!: Uint8Array;
-}
 
 export class DisplayDialogDismiss extends JsMessage {}
 
@@ -1373,12 +1303,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructureJs: newUpdateDocumentLayerStructure,
+	UpdateDocumentLayerStructureJs,
 	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateEyedropperSamplingState,
-	UpdateImageData,
 	UpdateInputHints,
 	UpdateLayersPanelOptionsLayout,
 	UpdateMenuBarLayout,

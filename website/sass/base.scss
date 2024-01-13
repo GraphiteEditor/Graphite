@@ -414,6 +414,21 @@ summary {
 	}
 }
 
+.status-flag {
+	background: var(--color-crimson);
+	white-space: nowrap;
+	color: white;
+	font-size: 0.4em;
+	padding: 0.2em 0.4em;
+	padding-top: 0.1em;
+	position: relative;
+	top: -0.2em;
+	font-family: "EB Garamond", Garamond, serif;
+	font-feature-settings: "lnum";
+	line-height: 1.2;
+	font-weight: 500;
+}
+
 .video-embed {
 	position: relative;
 	width: 100%;

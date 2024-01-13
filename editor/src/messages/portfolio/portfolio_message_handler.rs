@@ -139,8 +139,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(DocumentMessage::RenderDocument);
-				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			PortfolioMessage::CloseDocumentWithConfirmation { document_id } => {
 				let target_document = self.documents.get(&document_id).unwrap();
@@ -165,7 +163,10 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document.metadata().shallowest_unique_layers(active_document.metadata().selected_layers()) {
+					for layer_path in active_document
+						.metadata()
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()))
+					{
 						let Some(layer) = layer_path.last().copied() else {
 							continue;
 						};
@@ -186,7 +187,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									.collect(),
 							)
 							.collect(),
-							selected: active_document.metadata().selected_layers_contains(layer),
+							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							collapsed: false,
 						});
 					}
@@ -420,6 +421,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				}
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
+				// Auto-save the document we are leaving
 				if let Some(document) = self.active_document() {
 					if !document.is_auto_saved() {
 						responses.add(PortfolioMessage::AutoSaveDocument {
@@ -429,26 +431,19 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				}
 
-				if self.active_document().is_some() {
-					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(OverlaysMessage::Draw);
-				}
+				// Set the new active document ID
+				self.active_document_id = Some(document_id);
 
-				// TODO: Remove this message in favor of having tools have specific data per document instance
-				responses.add(PortfolioMessage::SetActiveDocument { document_id });
+				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
-				responses.add(DocumentMessage::RenderDocument);
-				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(OverlaysMessage::Draw);
+				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			PortfolioMessage::SetActiveDocument { document_id } => {
-				self.active_document_id = Some(document_id);
-				responses.add(MenuBarMessage::SendLayout);
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,
@@ -534,7 +529,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 		);
 
 		if let Some(document) = self.active_document() {
-			if document.metadata().selected_layers().next().is_some() {
+			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
 				let select = actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,
@@ -619,7 +614,6 @@ impl PortfolioMessageHandler {
 		responses.add(ToolMessage::InitTools);
 		responses.add(NodeGraphMessage::Init);
 		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
-		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Clear);
 		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}

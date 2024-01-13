@@ -120,28 +120,32 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>New viewport overlays system</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Layer and grid snapping</span>
+		</div>
+		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-		<span>Resolution-agnostic raster rendering</span>
+		<span>Adaptive resolution raster rendering</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>WebGPU accelerated rendering</span>
-		</div>
-		<div class="informational ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Snapping between layers</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Desktop app with built-in AI models</span>
 		</div>
 		<!-- Alpha Milestone 3 -->
 		<div class="informational heading" title="Expected to begin February 2024" data-year="2024">
 			<h3>— Alpha Milestone 3 —</h3>
 		</div>
 		<div class="informational">
+			<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Desktop app with built-in AI models</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Rust-based vector renderer</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 42" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Timeline and animation curves</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 22" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -164,8 +168,8 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Imported SVG file editing</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 42" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Timeline and renderer for animation</span>
+			<img class="atlas" style="--atlas-index: 30" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>CAD-like constraint relationships</span>
 		</div>
 		<!-- Alpha Milestone 4 -->
 		<div class="informational heading" title="Expected to begin February 2025" data-year="2025">
@@ -245,11 +249,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Procedural paint brush styling</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 30" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>CAD-like constraint solver</span>
+			<span>Procedural styling of paint brushes</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 31" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -285,7 +285,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>SVG animation</span>
+			<span>SVG animation authorship</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 43" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />

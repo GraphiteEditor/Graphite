@@ -254,7 +254,7 @@ impl SnapManager {
 			if candidates.len() > 10 {
 				return;
 			}
-			if !document.layer_visible(layer) {
+			if !document.selected_nodes.layer_visible(layer, &document.network, &document.metadata) {
 				return;
 			}
 			if snap_data.ignore.contains(&layer) {

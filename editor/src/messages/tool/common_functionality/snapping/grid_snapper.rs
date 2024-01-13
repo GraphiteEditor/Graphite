@@ -44,10 +44,10 @@ impl GridSnapper {
 
 		let origin = document.snapping_state.grid.origin;
 
-		let tan_x = angle_a.to_radians().tan();
-		let tan_z = angle_b.to_radians().tan();
-		let spacing = DVec2::new(y_axis_spacing / (tan_x + tan_z), y_axis_spacing);
-		let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, &document.navigation) else {
+		let tan_a = angle_a.to_radians().tan();
+		let tan_b = angle_b.to_radians().tan();
+		let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
+		let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
 			return lines;
 		};
 		let spacing = spacing * spacing_multiplier;
@@ -63,28 +63,28 @@ impl GridSnapper {
 			direction: DVec2::Y,
 		});
 
-		let y_projected_onto_x = document_point.y + tan_x * (document_point.x - origin.x);
+		let y_projected_onto_x = document_point.y + tan_a * (document_point.x - origin.x);
 		let y_onto_x_max = ((y_projected_onto_x - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
 		let y_onto_x_min = ((y_projected_onto_x - origin.y) / spacing.y).floor() * spacing.y + origin.y;
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_x_max),
-			direction: DVec2::new(1., -tan_x),
+			direction: DVec2::new(1., -tan_a),
 		});
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_x_min),
-			direction: DVec2::new(1., -tan_x),
+			direction: DVec2::new(1., -tan_a),
 		});
 
-		let y_projected_onto_z = document_point.y - tan_z * (document_point.x - origin.x);
+		let y_projected_onto_z = document_point.y - tan_b * (document_point.x - origin.x);
 		let y_onto_z_max = ((y_projected_onto_z - origin.y) / spacing.y).ceil() * spacing.y + origin.y;
 		let y_onto_z_min = ((y_projected_onto_z - origin.y) / spacing.y).floor() * spacing.y + origin.y;
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_z_max),
-			direction: DVec2::new(1., tan_z),
+			direction: DVec2::new(1., tan_b),
 		});
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_z_min),
-			direction: DVec2::new(1., tan_z),
+			direction: DVec2::new(1., tan_b),
 		});
 
 		lines

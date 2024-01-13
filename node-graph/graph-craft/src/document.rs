@@ -347,6 +347,11 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
+
+	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
+		let input_connection = self.inputs.get(0).and_then(|input| input.as_node()).and_then(|node_id| network.nodes.get(&node_id));
+		input_connection.map(|node| node.is_layer()).unwrap_or(false)
+	}
 }
 
 /// Represents the possible inputs to a node.
@@ -485,14 +490,19 @@ impl NodeOutput {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// A network of nodes containing each [`DocumentNode`] and its ID, as well as a list of input nodes and [`NodeOutput`]s
+/// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as a list of input nodes and [`NodeOutput`]s
 pub struct NodeNetwork {
+	/// The list of nodes that are imported into this network from the parent network. Each is a reference to the node that the input is connected to.
+	/// Presently, only one is supported— use an Identity node to split an input to multiple user nodes (although this could be changed in the future).
 	pub inputs: Vec<NodeId>,
+	/// The list of data outputs that are exported from this network to the parent network. Each is a reference to the node, and its output index, that is the source of the output data.
 	pub outputs: Vec<NodeOutput>,
+	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// These nodes are replaced with identity nodes during the graph flattening step
+	/// Nodes that the user has disabled/hidden with the visibility eye icon.
+	/// These nodes get replaced with Identity nodes during the graph flattening step.
 	pub disabled: Vec<NodeId>,
-	/// In the case when a new node is chosen as a temporary output, this stores what it used to be so it can be restored later
+	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it used to be so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
 

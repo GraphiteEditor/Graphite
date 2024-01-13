@@ -103,10 +103,10 @@ js = ["image-interaction.js", "video-embed.js"]
 				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress raster editing pipeline. Some nodes shown here are not implemented yet, but will be soon!
+				Design mockup for the work-in-progress raster editing pipeline. Some of these raster-specific nodes are not implemented yet, but will be soon!
 			</p>
 			<p data-carousel-description>
-				Design mockup for the work-in-progress raster editing workflow. Some viewport features shown here are not implemented yet, but will be soon!
+				Design mockup for the work-in-progress raster editing workflow. Some of the features shown here are not implemented yet, but will be soon!
 			</p>
 		</div>
 	</div>
@@ -120,7 +120,7 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <div class="section">
 
-# Graphite today
+# Graphite today <span class="status-flag">alpha release</span>
 
 <div class="informational-group features">
 	<div class="informational">
@@ -128,12 +128,15 @@ js = ["image-interaction.js", "video-embed.js"]
 		<span>Vector graphics editing</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Node-based layers</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>AI-assisted art creation</span>
+		<!-- TODO: Reenable when Imaginate is properly working again -->
+		<!-- <img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
+		<!-- <span>AI-assisted art creation</span> -->
+		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Procedural design workflow</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
@@ -175,6 +178,45 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 </section>
 <!-- ▙ TODAY AND TOMORROW ▟ -->
 <!--                     -->
+<!-- ▛ DISCIPLINES ▜ -->
+<section id="disciplines">
+<div class="section">
+
+# One app to rule them all
+
+**Stop jumping between programs. Planned features will make Graphite a first-class design tool for all these disciplines** *(listed by priority)*.
+
+<div class="informational-group concepts">
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Graphic Design</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Image Editing</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Digital Painting</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Motion Graphics</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>VFX Compositing</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Desktop Publishing</span>
+	</div>
+</div>
+
+</div>
+</section>
+<!-- ▙ DISCIPLINES ▟ -->
+<!--                  -->
 <!-- ▛ COMMUNITY ▜ -->
 <section id="community" class="feature-box">
 <div class="box">
@@ -248,18 +290,58 @@ You'll receive your first newsletter email with the next major Graphite news.
 </div>
 </section>
 <!-- ▙ COMMUNITY ▟ -->
-<!--                 -->
+<!--                  -->
+<!-- ▛ JUMP RIGHT IN ▜ -->
+<section id="jump-right-in">
+<div class="section">
+
+# Jump right in
+
+**Get started with Graphite by following along to a hands-on quickstart tutorial.**
+
+<div class="video-embed aspect-16x9">
+	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+</div>
+
+</div>
+</section>
+<!-- ▙ JUMP RIGHT IN ▟ -->
+<!--                    -->
 <!-- ▛ PROCEDURALISM ▜ -->
 <section id="proceduralism">
 <div class="section">
 
 # Powerful proceduralism
 
-Graphite's data-driven approach to graphic design affords some unique capabilities (while in alpha, these remain a work in progress):
+**Graphite is the first and only graphic design app to offer procedural vector editing.**
+
+This new capability has just recently shown its potential. Now, expanding Graphite's procedural powers is the focus of development in 2024.
+
+</div>
+</section>
+
+<section id="proceduralism-demo">
+<div class="section">
+
+Proceduralism lets you create sophisticated design elements that are easy to edit and reuse. The holiday string lights shown below are built from a simple group of nodes, allowing you to effortlessly reshape the wire and update the bulb appearance and spacing. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> and try dragging the wire layer's points with the Path tool (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="vertical-align: bottom"><polygon fill="#aaa" points="5,0 5,17 10,12 17,12" /><path fill="#78bae5" d="M20.77,14.36c-0.35-0.42-0.98-0.48-1.41-0.13c-1.04,0.87-2.19,1.6-3.36,2.24V16h-6v2.9c-2.88,0.84-5.07,1.1-5.11,1.11c-0.55,0.06-0.94,0.56-0.88,1.11C4.06,21.62,4.5,22,5,22c0.04,0,0.07,0,0.11-0.01c0.17-0.02,2.18-0.26,4.89-1.01V22h6v-3.28c1.6-0.79,3.2-1.75,4.64-2.95C21.06,15.42,21.12,14.78,20.77,14.36z M14,20h-2v-2h2V20z" /></svg>).
+
+<div class="video-background">
+	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
+	</video>
+</div>
+
+</div>
+</section>
+
+<section id="proceduralism-features">
+<div class="section">
+
+Graphite's data-driven approach to graphic design affords unique capabilities (while in alpha, these remain a work in progress):
 
 <div class="informational-group features four-wide">
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Fully nondestructive editing with node-driven layers</span>
 	</div>
 	<div class="informational">
@@ -267,7 +349,8 @@ Graphite's data-driven approach to graphic design affords some unique capabiliti
 		<span class="balance-text">Infinitely scalable raster content with no pixelation</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<!-- <img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
+		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Integrated generative AI models and graphics algorithms</span>
 	</div>
 	<div class="informational">
@@ -280,45 +363,6 @@ Graphite's data-driven approach to graphic design affords some unique capabiliti
 </section>
 <!-- ▙ PROCEDURALISM ▟ -->
 <!--                   -->
-<!-- ▛ DISCIPLINES ▜ -->
-<section id="disciplines">
-<div class="section">
-
-# One app to rule them all
-
-Stop jumping between programs. Planned features will make Graphite a first-class design tool for these disciplines (listed by priority):
-
-<div class="informational-group concepts">
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Graphic Design</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Image Editing</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Digital Painting</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Desktop Publishing</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>VFX Compositing</span>
-	</div>
-	<div class="informational">
-		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Motion Graphics</span>
-	</div>
-</div>
-
-</div>
-</section>
-<!-- ▙ DISCIPLINES ▟ -->
-<!--                  -->
 <!-- ▛ FUNDRAISING ▜ -->
 <section id="fundraising" class="feature-box">
 <div class="box">
@@ -368,9 +412,14 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 
 # Art takes shape
 
-Make vector art out of shapes ranging from simple geometric primitives to complex Bézier curves.
+**All you've come to expect from a professional vector graphics editor. Now readily accessible in your browser.**
 
-Style your shapes with strokes, fills, and gradients. Mix your layers with blend modes. Then export as SVG.
+<p>
+<center>
+Make vector art out of shapes ranging from simple geometric primitives to complex Bézier curves.
+<br />
+Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Then export as an image or SVG.</center>
+</p>
 
 <div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
@@ -397,6 +446,11 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 <!-- ▙ VECTOR ART ▟ -->
 <!--                   -->
 <!-- ▛ IMAGINATE ▜ -->
+
+<!-- TODO: Reenable when Imaginate is properly working again -->
+
+<!--
+
 <section id="imaginate">
 
 <div class="section">
@@ -404,7 +458,7 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 <h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
 
 **Imaginate** is a node powered by <a href="https://en.wikipedia.org/wiki/Stable_Diffusion" target="_blank">Stable Diffusion</a> that makes AI-assisted art creation an easy, nondestructive process.
-<!-- [Learn how](/learn/node-graph/imaginate) it works. -->
+<!-- [Learn how](/learn/node-graph/imaginate) it works. --////////////////////>
 
 </div>
 <div class="diptych">
@@ -471,11 +525,13 @@ Style your shapes with strokes, fills, and gradients. Mix your layers with blend
 </div>
 
 </section>
+
+-->
+
 <!-- ▙ IMAGINATE ▟ -->
 <!--                 -->
 <!-- ▛ DEMO VIDEO ▜ -->
 <section id="demo-video">
-
 <div class="section">
 
 Watch this timelapse showing the process of mixing traditional vector art (tracing a physical sketch and colorizing it, first two minutes) with using Imaginate to generate a background (last 45 seconds).
@@ -487,7 +543,6 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 (Recorded in an older version of Graphite from early 2023.)
 
 </div>
-
 </section>
 <!-- ▙ DEMO VIDEO ▟ -->
 <!--                   -->
