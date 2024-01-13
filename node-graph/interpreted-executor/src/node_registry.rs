@@ -737,6 +737,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::vector::SamplePoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => f32, () => f32, () => f32, () => bool, Footprint => Vec<Vec<f64>>]),
 		register_node!(graphene_core::vector::LengthsOfSegmentsOfSubpaths, input: VectorData, params: []),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
+		async_node!(graphene_core::vector::MorphNode<_, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData, () => u32, () => f64]),
 		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f32]),
 		register_node!(graphene_core::vector::generator_nodes::EllipseGenerator<_, _>, input: (), params: [f32, f32]),
 		register_node!(graphene_core::vector::generator_nodes::RectangleGenerator<_, _>, input: (), params: [f32, f32]),

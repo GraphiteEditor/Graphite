@@ -2715,6 +2715,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
+		DocumentNodeDefinition {
+			name: "Morph",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::MorphNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Source", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Target", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Start Index", TaggedValue::U32(0), false),
+				DocumentInputType::value("Time", TaggedValue::F64(0.5), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			manual_composition: Some(concrete!(Footprint)),
+			properties: node_properties::morph_properties,
+			..Default::default()
+		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Image Segmentation",

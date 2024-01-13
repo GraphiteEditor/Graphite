@@ -2056,6 +2056,16 @@ pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _
 	]
 }
 
+pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let start_index = number_widget(document_node, node_id, 2, "Start Index", NumberInput::default().min(0.), true);
+	let time = number_widget(document_node, node_id, 3, "Time", NumberInput::default().min(0.).max(1.), true);
+
+	vec![
+		LayoutGroup::Row { widgets: start_index }.with_tooltip("The index of point on the target that morphs to the first point of the source"),
+		LayoutGroup::Row { widgets: time }.with_tooltip("Linear time of transition - 0. is source, 1. is target"),
+	]
+}
+
 /// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let fill_type_index = 1;

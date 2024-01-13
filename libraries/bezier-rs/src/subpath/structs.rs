@@ -111,6 +111,12 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 	pub fn is_finite(&self) -> bool {
 		self.anchor.is_finite() && self.in_handle.map_or(true, |handle| handle.is_finite()) && self.out_handle.map_or(true, |handle| handle.is_finite())
 	}
+
+	/// Reverse directions of handles
+	pub fn flip(mut self) -> Self {
+		std::mem::swap(&mut self.in_handle, &mut self.out_handle);
+		self
+	}
 }
 
 #[derive(Copy, Clone)]

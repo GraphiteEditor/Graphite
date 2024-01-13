@@ -422,6 +422,13 @@ impl PathStyle {
 		Self { stroke, fill }
 	}
 
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		Self {
+			fill: Fill::Solid(self.fill.color().lerp(other.fill.color(), time as f32)),
+			stroke: if time < 0.5 { self.stroke.clone() } else { other.stroke.clone() },
+		}
+	}
+
 	/// Get the current path's [Fill].
 	///
 	/// # Example

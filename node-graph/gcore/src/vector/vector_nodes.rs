@@ -5,7 +5,7 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, TValue};
+use bezier_rs::{Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 
 #[derive(Debug, Clone, Copy)]
@@ -308,4 +308,99 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 	}
 
 	vector_data
+}
+
+pub struct MorphNode<Source, Target, StartIndex, Time> {
+	source: Source,
+	target: Target,
+	start_index: StartIndex,
+	time: Time,
+}
+
+#[node_macro::node_fn(MorphNode)]
+async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<Output = VectorData>>(
+	footprint: Footprint,
+	source: impl Node<Footprint, Output = SourceFuture>,
+	target: impl Node<Footprint, Output = TargetFuture>,
+	start_index: u32,
+	time: f64,
+) -> VectorData {
+	let mut source = self.source.eval(footprint).await;
+	let mut target = self.target.eval(footprint).await;
+
+	// Lerp styles
+	let style = source.style.lerp(&target.style, time);
+
+	for (source_path, target_path) in source.subpaths.iter_mut().zip(target.subpaths.iter_mut()) {
+		// Deal with mistmatched transforms
+		source_path.apply_transform(source.transform);
+		target_path.apply_transform(target.transform);
+
+		// Deal with mismatched start index
+		for _ in 0..start_index {
+			let first = target_path.remove_manipulator_group(0);
+			target_path.push_manipulator_group(first);
+		}
+
+		// Deal with mismatched closed state
+		if source_path.closed() && !target_path.closed() {
+			source_path.set_closed(false);
+			source_path.push_manipulator_group(source_path.manipulator_groups()[0].flip());
+		}
+		if !source_path.closed() && target_path.closed() {
+			target_path.set_closed(false);
+			target_path.push_manipulator_group(target_path.manipulator_groups()[0].flip());
+		}
+
+		// Mismatched subpath items
+		'outer: loop {
+			for segment_index in (0..(source_path.len() - 1)).rev() {
+				if target_path.len() <= source_path.len() {
+					break 'outer;
+				}
+				source_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
+			}
+		}
+		'outer: loop {
+			for segment_index in (0..(target_path.len() - 1)).rev() {
+				if source_path.len() <= target_path.len() {
+					break 'outer;
+				}
+				target_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
+			}
+		}
+	}
+	// Mismatched subpath count
+	for source_path in source.subpaths.iter_mut().skip(target.subpaths.len()) {
+		source_path.apply_transform(source.transform);
+		target.subpaths.push(Subpath::from_anchors(
+			std::iter::repeat(source_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default()).take(source_path.len()),
+			source_path.closed,
+		))
+	}
+	for target_path in target.subpaths.iter_mut().skip(source.subpaths.len()) {
+		target_path.apply_transform(target.transform);
+		source.subpaths.push(Subpath::from_anchors(
+			std::iter::repeat(target_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default()).take(target_path.len()),
+			target_path.closed,
+		))
+	}
+
+	// Lerp points
+	for (subpath, target) in source.subpaths.iter_mut().zip(target.subpaths.iter()) {
+		for (manipulator, target) in subpath.manipulator_groups_mut().iter_mut().zip(target.manipulator_groups()) {
+			manipulator.in_handle = Some(manipulator.in_handle.unwrap_or(manipulator.anchor).lerp(target.in_handle.unwrap_or(target.anchor), time));
+			manipulator.out_handle = Some(manipulator.out_handle.unwrap_or(manipulator.anchor).lerp(target.out_handle.unwrap_or(target.anchor), time));
+			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
+		}
+	}
+
+	// Create result
+	let subpaths = std::mem::take(&mut source.subpaths);
+	let mut current = if time < 0.5 { source } else { target };
+	current.style = style;
+	current.subpaths = subpaths;
+	current.transform = DAffine2::IDENTITY;
+
+	current
 }
