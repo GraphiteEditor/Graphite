@@ -209,7 +209,6 @@ impl Fill {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, DynAny, Hash, specta::Type)]
 pub enum FillType {
-	None,
 	Solid,
 	Gradient,
 }
