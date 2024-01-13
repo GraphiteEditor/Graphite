@@ -278,6 +278,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
+	// TODO: clean up this massive function
 	fn send_graph(
 		&self,
 		network: &NodeNetwork,
@@ -292,7 +293,14 @@ impl NodeGraphMessageHandler {
 		let links = network
 			.nodes
 			.iter()
-			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
+			.flat_map(|(link_end, node)| {
+				node.inputs
+					.iter()
+					.enumerate()
+					// Deals with the really weird behaviour concerning the primary input leaving a gap if it is not exposed.
+					.filter(|(index, input)| *index == 0 || input.is_exposed())
+					.map(move |(index, input)| (input, link_end, index))
+			})
 			.filter_map(|(input, &link_end, link_end_input_index)| {
 				if let NodeInput::Node {
 					node_id: link_start,
@@ -386,14 +394,6 @@ impl NodeGraphMessageHandler {
 					} else {
 						LayerClassification::Layer
 					}
-					// TODO: Maybe switch to this below if perhaps it's simpler?
-					// if node.is_artboard() {
-					// 	LayerClassification::Artboard
-					// } else if node.is_folder(network) {
-					// 	LayerClassification::Folder
-					// } else {
-					// 	LayerClassification::Layer
-					// }
 				};
 
 				let data = LayerPanelEntry {
@@ -402,11 +402,8 @@ impl NodeGraphMessageHandler {
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					disabled: network.disabled.contains(&node_id),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
