@@ -321,7 +321,7 @@ fn render_canvas(
 	let min = footprint.transform.inverse().transform_point2((0., 0.).into());
 	let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
 	render.format_svg(min, max);
-	let string = render.svg.to_string();
+	let string = render.svg.to_svg_string();
 	let array = string.as_bytes();
 	let canvas = &surface_handle.surface;
 	canvas.set_width(resolution.x);
