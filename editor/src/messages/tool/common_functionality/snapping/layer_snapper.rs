@@ -330,7 +330,7 @@ impl SnapCandidatePoint {
 	}
 }
 #[derive(Default)]
-struct BBoxSnapValues {
+pub struct BBoxSnapValues {
 	corner_source: SnapSource,
 	corner_target: SnapTarget,
 	edge_source: SnapSource,
@@ -348,7 +348,7 @@ impl BBoxSnapValues {
 		centre_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Centre),
 	};
 }
-fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
+pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
 	for index in 0..4 {
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
