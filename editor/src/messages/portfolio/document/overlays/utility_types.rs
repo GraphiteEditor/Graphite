@@ -38,11 +38,11 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2) {
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color.unwrap_or(COLOR_OVERLAY_BLUE)));
 		self.render_context.stroke();
 	}
 

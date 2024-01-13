@@ -1112,6 +1112,13 @@ impl DocumentMessageHandler {
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
 		let snapping_state = self.snapping_state.clone();
 		let mut widgets = vec![
+			CheckboxInput::new(self.overlays_visible)
+				.icon("Overlays")
+				.tooltip("Overlays")
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
+				.widget_holder(),
+			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip("Snapping")
@@ -1130,7 +1137,7 @@ impl DocumentMessageHandler {
 					LayoutGroup::Row {
 						widgets: vec![
 							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(true).min_width(96).widget_holder(),
-							Separator::new(SeparatorType::Unrelated).widget_holder(),
+							Separator::new(SeparatorType::Related).widget_holder(),
 							CheckboxInput::new(snapping_state.bounding_box_snapping)
 								.tooltip(SnappingOptions::BoundingBoxes.to_string())
 								.on_update(move |input: &CheckboxInput| {
@@ -1148,7 +1155,7 @@ impl DocumentMessageHandler {
 					LayoutGroup::Row {
 						widgets: vec![
 							TextLabel::new(SnappingOptions::Geometry.to_string()).table_align(true).min_width(96).widget_holder(),
-							Separator::new(SeparatorType::Unrelated).widget_holder(),
+							Separator::new(SeparatorType::Related).widget_holder(),
 							CheckboxInput::new(self.snapping_state.geometry_snapping)
 								.tooltip(SnappingOptions::Geometry.to_string())
 								.on_update(|input: &CheckboxInput| {
@@ -1172,14 +1179,8 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			PopoverButton::new("Grid", "Grid customization settings")
 				.options_widget(overlay_options(&self.snapping_state.grid))
+				.popover_min_width(Some(320))
 				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-			CheckboxInput::new(self.overlays_visible)
-				.icon("Overlays")
-				.tooltip("Overlays")
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
-				.widget_holder(),
-			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
 				RadioEntryData::default()

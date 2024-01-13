@@ -22,7 +22,7 @@ pub struct SnappedPoint {
 	pub source_bounds: Option<Quad>,
 	pub curves: [Option<Bezier>; 2],
 	pub distance: f64,
-	pub tollerance: f64,
+	pub tolerance: f64,
 }
 impl SnappedPoint {
 	pub fn infinite_snap(snapped_point_document: DVec2) -> Self {

@@ -59,7 +59,7 @@ impl SnapConstraint {
 		}
 	}
 }
-pub fn snap_tollerance(document: &DocumentMessageHandler) -> f64 {
+pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
 	document.snapping_state.tolerance / document.navigation.zoom
 }
 
@@ -108,7 +108,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 						snapped_point_document,
 						distance,
 						target: SnapTarget::Geometry(GeometrySnapTarget::Intersection),
-						tollerance: close.point.tollerance,
+						tolerance: close.point.tolerance,
 						curves: [Some(close.document_curve), Some(far.document_curve)],
 						source: close.point.source,
 						at_intersection: true,
@@ -132,7 +132,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 						snapped_point_document,
 						distance,
 						target: SnapTarget::Grid(GridSnapTarget::Intersection),
-						tollerance: line_i.point.tollerance,
+						tolerance: line_i.point.tolerance,
 						source: line_i.point.source,
 						at_intersection: true,
 						contrained: true,
@@ -177,7 +177,7 @@ impl<'a> SnapData<'a> {
 }
 impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
-		self.indicator = snapped_point.is_snapped().then(|| snapped_point);
+		self.indicator = snapped_point.is_snapped().then_some(snapped_point);
 	}
 	pub fn clear_indicator(&mut self) {
 		self.indicator = None;
@@ -231,7 +231,7 @@ impl SnapManager {
 			if !on_screen && !off_screen {
 				continue;
 			}
-			if point.distance > point.tollerance {
+			if point.distance > point.tolerance {
 				continue;
 			}
 			if best_point.as_ref().is_some_and(|best: &SnappedPoint| point.other_snap_better(best)) {
@@ -245,7 +245,7 @@ impl SnapManager {
 
 	fn find_candidates(snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>) -> Vec<LayerNodeIdentifier> {
 		let document = snap_data.document;
-		let offset = snap_tollerance(document);
+		let offset = snap_tolerance(document);
 		let quad = bbox.map_or_else(|| Quad::from_box([point.document_point - offset, point.document_point + offset]), |quad| quad.inflate(offset));
 		let mut candidates = Vec::new();
 
@@ -333,7 +333,7 @@ impl SnapManager {
 			}
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
-			overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "#0008", 3.);
+			overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "rgba(0, 0, 0, 0.8)", 3.);
 			overlay_context.square(viewport, true);
 		}
 	}

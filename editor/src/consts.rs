@@ -18,21 +18,10 @@ pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
-// Snapping axis
-pub const SNAP_AXIS_TOLERANCE: f64 = 3.;
-pub const SNAP_AXIS_OVERLAY_FADE_DISTANCE: f64 = 15.;
-pub const SNAP_AXIS_UNSNAPPED_OPACITY: f64 = 0.4;
-
 // Snapping point
-pub const SNAP_POINT_OVERLAY_FADE_NEAR: f64 = 20.;
-pub const SNAP_POINT_OVERLAY_FADE_FAR: f64 = 40.;
-pub const SNAP_POINT_UNSNAPPED_OPACITY: f64 = 0.4;
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
-pub const SNAP_POINT_SIZE: f64 = 5.;
 
 pub const DRAG_THRESHOLD: f64 = 1.;
-
-pub const PATH_OUTLINE_WEIGHT: f64 = 2.;
 
 // Transforming layer
 pub const ROTATE_SNAP_ANGLE: f64 = 15.;
@@ -75,6 +64,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 
 // Fonts
 pub const DEFAULT_FONT_FAMILY: &str = "Cabin";

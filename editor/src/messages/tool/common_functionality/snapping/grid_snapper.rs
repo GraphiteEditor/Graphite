@@ -98,7 +98,7 @@ impl GridSnapper {
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
 		let lines = self.get_snap_lines(point.document_point, snap_data);
-		let tollerance = snap_tollerance(snap_data.document);
+		let tolerance = snap_tolerance(snap_data.document);
 
 		for line in lines {
 			let projected = (point.document_point - line.point).project_onto(line.direction) + line.point;
@@ -107,7 +107,7 @@ impl GridSnapper {
 				continue;
 			}
 
-			if distance > tollerance {
+			if distance > tolerance {
 				continue;
 			}
 
@@ -122,7 +122,7 @@ impl GridSnapper {
 						target: SnapTarget::Grid(GridSnapTarget::Line),
 						source_bounds: point.quad,
 						distance,
-						tollerance,
+						tolerance,
 						..Default::default()
 					},
 				});
@@ -130,10 +130,10 @@ impl GridSnapper {
 
 			let normal_target = SnapTarget::Grid(GridSnapTarget::LineNormal);
 			if snap_data.document.snapping_state.target_enabled(normal_target) {
-				for &neighbour in &point.neighbours {
-					let projected = (neighbour - line.point).project_onto(line.direction) + line.point;
+				for &neighbor in &point.neighbors {
+					let projected = (neighbor - line.point).project_onto(line.direction) + line.point;
 					let distance = point.document_point.distance(projected);
-					if distance > tollerance {
+					if distance > tolerance {
 						continue;
 					}
 					snap_results.points.push(SnappedPoint {
@@ -142,7 +142,7 @@ impl GridSnapper {
 						source_bounds: point.quad,
 						target: normal_target,
 						distance,
-						tollerance,
+						tolerance,
 						..Default::default()
 					})
 				}
@@ -151,7 +151,7 @@ impl GridSnapper {
 	}
 
 	pub fn contrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
-		let tollerance = snap_tollerance(snap_data.document);
+		let tolerance = snap_tolerance(snap_data.document);
 		let projected = constraint.projection(point.document_point);
 		let lines = self.get_snap_lines(projected, snap_data);
 		let (constraint_start, constraint_direction) = match constraint {
@@ -164,7 +164,7 @@ impl GridSnapper {
 				continue;
 			};
 			let distance = intersection.distance(point.document_point);
-			if distance < tollerance && snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
+			if distance < tolerance && snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: intersection,
 					source: point.source,
@@ -173,11 +173,11 @@ impl GridSnapper {
 					contrained: true,
 					source_bounds: point.quad,
 					curves: [
-						Some(Bezier::from_linear_dvec2(projected - constraint_direction * tollerance, projected + constraint_direction * tollerance)),
+						Some(Bezier::from_linear_dvec2(projected - constraint_direction * tolerance, projected + constraint_direction * tolerance)),
 						None,
 					],
 					distance,
-					tollerance,
+					tolerance,
 					..Default::default()
 				})
 			}

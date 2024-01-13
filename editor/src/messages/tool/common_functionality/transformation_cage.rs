@@ -133,7 +133,7 @@ impl SelectedEdges {
 			let bounds_to_doc = view_to_doc * transform;
 			let mut best_snap = SnappedPoint::infinite_snap(pivot);
 			let mut best_scale_factor = DVec2::ONE;
-			let tollerance = snapping::snap_tollerance(snap_data.document);
+			let tolerance = snapping::snap_tolerance(snap_data.document);
 			for point in points {
 				let old_position = point.document_point;
 				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
@@ -166,7 +166,7 @@ impl SelectedEdges {
 				}
 
 				snapped.distance = bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length();
-				if snapped.distance > tollerance || !snapped.distance.is_finite() {
+				if snapped.distance > tolerance || !snapped.distance.is_finite() {
 					continue;
 				}
 				if best_snap.other_snap_better(&snapped) {

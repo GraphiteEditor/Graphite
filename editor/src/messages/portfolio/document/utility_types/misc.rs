@@ -92,7 +92,7 @@ impl Default for SnappingState {
 				origin: DVec2::ZERO,
 				grid_type: GridType::RECTANGLE,
 			},
-			tolerance: 20.,
+			tolerance: 8.,
 			artboards: true,
 		}
 	}

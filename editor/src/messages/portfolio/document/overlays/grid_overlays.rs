@@ -1,3 +1,4 @@
+use crate::consts::COLOR_OVERLAY_GRAY;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
@@ -32,10 +33,11 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end));
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(COLOR_OVERLAY_GRAY));
 		}
 	}
 }
+
 fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
@@ -58,12 +60,12 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end));
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(COLOR_OVERLAY_GRAY));
 	}
 
-	for (tan, multipliy) in [(tan_a, -1.), (tan_b, 1.)] {
-		let project = |corner: &DVec2| corner.y + multipliy * tan * (corner.x - origin.x);
-		let inverse_project = |corner: &DVec2| corner.y - tan * multipliy * (corner.x - origin.x);
+	for (tan, multiply) in [(tan_a, -1.), (tan_b, 1.)] {
+		let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
+		let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
 		let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
 		let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
 		let spacing = isometric_spacing.y;
@@ -72,10 +74,11 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end));
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(COLOR_OVERLAY_GRAY));
 		}
 	}
 }
+
 pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	match document.snapping_state.grid.grid_type {
 		GridType::Rectangle { spacing } => grid_overlay_rectangular(document, overlay_context, spacing),
@@ -104,24 +107,26 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	};
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Origin").widget_holder(),
+			TextLabel::new("Origin").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(grid.origin.x))
 				.label("X")
-				.unit("px")
+				.unit(" px")
+				.min_width(98)
 				.on_update(update_origin(&grid, |grid| Some(&mut grid.origin.x)))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(grid.origin.y))
 				.label("Y")
-				.unit("px")
+				.unit(" px")
+				.min_width(98)
 				.on_update(update_origin(&grid, |grid| Some(&mut grid.origin.y)))
 				.widget_holder(),
 		],
 	});
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Type").widget_holder(),
+			TextLabel::new("Type").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			RadioInput::new(vec![
 				RadioEntryData::new("Rectangular").on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGLE)),
@@ -135,19 +140,21 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	match grid.grid_type {
 		GridType::Rectangle { spacing } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
-				TextLabel::new("Spacing").widget_holder(),
+				TextLabel::new("Spacing").table_align(true).widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(spacing.x))
 					.label("X")
-					.unit("px")
+					.unit(" px")
 					.min(0.)
+					.min_width(98)
 					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.x)))
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(spacing.y))
 					.label("Y")
-					.unit("px")
+					.unit(" px")
 					.min(0.)
+					.min_width(98)
 					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.y)))
 					.widget_holder(),
 			],
@@ -155,32 +162,35 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Spacing").widget_holder(),
+					TextLabel::new("Spacing").table_align(true).widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(y_axis_spacing))
 						.label("Y")
-						.unit("px")
+						.unit(" px")
 						.min(0.)
+						.min_width(200)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.isometric_y_spacing()))
 						.widget_holder(),
 				],
 			});
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Angle A").widget_holder(),
+					TextLabel::new("Angle A").table_align(true).widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(angle_a))
 						.unit("°")
+						.min_width(200)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_a()))
 						.widget_holder(),
 				],
 			});
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Angle B").widget_holder(),
+					TextLabel::new("Angle B").table_align(true).widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(angle_b))
 						.unit("°")
+						.min_width(200)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_b()))
 						.widget_holder(),
 				],

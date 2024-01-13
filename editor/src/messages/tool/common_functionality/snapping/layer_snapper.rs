@@ -87,14 +87,14 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
 		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
-		let tollerance = snap_tollerance(document);
+		let tolerance = snap_tolerance(document);
 		for path in &self.paths_to_snap {
 			let time = path.document_curve.project(point.document_point, None);
 			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
 
 			let distance = snapped_point_document.distance(point.document_point);
 
-			if distance < tollerance {
+			if distance < tolerance {
 				snap_results.curves.push(SnappedCurve {
 					layer: path.layer,
 					start: path.start,
@@ -103,14 +103,14 @@ impl LayerSnapper {
 						snapped_point_document,
 						target: path.target,
 						distance,
-						tollerance,
+						tolerance,
 						curves: [path.bounds.is_none().then(|| path.document_curve), None],
 						source: point.source,
 						target_bounds: path.bounds,
 						..Default::default()
 					},
 				});
-				normals_and_tangents(path, normals, tangents, point, tollerance, snap_results);
+				normals_and_tangents(path, normals, tangents, point, tolerance, snap_results);
 			}
 		}
 	}
@@ -119,14 +119,14 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		self.collect_paths(snap_data, point.source_index == 0);
 
-		let tollerance = snap_tollerance(document);
+		let tolerance = snap_tolerance(document);
 		let constraint_path = if let SnapConstraint::Circle { centre, radius } = constraint {
 			Subpath::new_ellipse(centre - DVec2::splat(radius), centre + DVec2::splat(radius))
 		} else {
 			let constrained_point = constraint.projection(point.document_point);
 			let direction = constraint.direction().normalize_or_zero();
-			let start = constrained_point - tollerance * direction;
-			let end = constrained_point + tollerance * direction;
+			let start = constrained_point - tolerance * direction;
+			let end = constrained_point + tolerance * direction;
 			Subpath::<ManipulatorGroupId>::new_line(start, end)
 		};
 
@@ -137,12 +137,12 @@ impl LayerSnapper {
 
 					let distance = snapped_point_document.distance(point.document_point);
 
-					if distance < tollerance {
+					if distance < tolerance {
 						snap_results.points.push(SnappedPoint {
 							snapped_point_document,
 							target: path.target,
 							distance,
-							tollerance,
+							tolerance,
 							curves: [path.bounds.is_none().then(|| path.document_curve), Some(constraint_path)],
 							source: point.source,
 							target_bounds: path.bounds,
@@ -205,7 +205,7 @@ impl LayerSnapper {
 				continue;
 			}
 			let distance = candidate.document_point.distance(constrained_point);
-			let tollerance = snap_tollerance(snap_data.document);
+			let tolerance = snap_tolerance(snap_data.document);
 
 			let candidate_better = |best: &SnappedPoint| {
 				if best.snapped_point_document.abs_diff_eq(candidate.document_point, 1e-5) {
@@ -214,13 +214,13 @@ impl LayerSnapper {
 					distance < best.distance
 				}
 			};
-			if distance < tollerance && (best.is_none() || best.as_ref().is_some_and(|best| candidate_better(best))) {
+			if distance < tolerance && (best.is_none() || best.as_ref().is_some_and(|best| candidate_better(best))) {
 				best = Some(SnappedPoint {
 					snapped_point_document: candidate.document_point,
 					source: point.source,
 					target: candidate.target,
 					distance,
-					tollerance,
+					tolerance,
 					contrained: true,
 					target_bounds: candidate.quad,
 					..Default::default()
@@ -242,20 +242,20 @@ impl LayerSnapper {
 	}
 }
 
-fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tollerance: f64, snap_results: &mut SnapResults) {
+fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
 	if normals && path.bounds.is_none() {
-		for &neighbour in &point.neighbours {
+		for &neighbour in &point.neighbors {
 			for t in path.document_curve.normals_to_point(neighbour) {
 				let normal_point = path.document_curve.evaluate(TValue::Parametric(t));
 				let distance = normal_point.distance(point.document_point);
-				if distance > tollerance {
+				if distance > tolerance {
 					continue;
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: normal_point,
 					target: SnapTarget::Geometry(GeometrySnapTarget::Normal),
 					distance,
-					tollerance,
+					tolerance,
 					curves: [Some(path.document_curve), None],
 					source: point.source,
 					contrained: true,
@@ -265,18 +265,18 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 		}
 	}
 	if tangents && path.bounds.is_none() {
-		for &neighbour in &point.neighbours {
+		for &neighbour in &point.neighbors {
 			for t in path.document_curve.tangents_to_point(neighbour) {
 				let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
 				let distance = tangent_point.distance(point.document_point);
-				if distance > tollerance {
+				if distance > tolerance {
 					continue;
 				}
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: tangent_point,
 					target: SnapTarget::Geometry(GeometrySnapTarget::Tangent),
 					distance,
-					tollerance,
+					tolerance,
 					curves: [Some(path.document_curve), None],
 					source: point.source,
 					contrained: true,
@@ -302,7 +302,7 @@ pub struct SnapCandidatePoint {
 	pub target: SnapTarget,
 	pub source_index: usize,
 	pub quad: Option<Quad>,
-	pub neighbours: Vec<DVec2>,
+	pub neighbors: Vec<DVec2>,
 }
 impl SnapCandidatePoint {
 	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
@@ -325,7 +325,7 @@ impl SnapCandidatePoint {
 	}
 	pub fn handle_neighbours(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
 		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp));
-		point.neighbours = neighbours.into();
+		point.neighbors = neighbours.into();
 		point
 	}
 }
