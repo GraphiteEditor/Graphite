@@ -98,7 +98,28 @@ impl ShapeState {
 							SnapSource::Geometry(GeometrySnapSource::Sharp)
 						};
 						let Some(position) = handle.get_position(&group) else { continue };
-						let point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+
+						let mut push_neighbour = |group: ManipulatorGroup<ManipulatorGroupId>| {
+							if !state.is_selected(ManipulatorPointId::new(group.id, SelectedType::Anchor)) {
+								point.neighbors.push(group.anchor)
+							}
+						};
+						if handle == SelectedType::Anchor {
+							// Previous anchor (looping if closed)
+							if index > 0 {
+								push_neighbour(subpath.manipulator_groups()[index - 1]);
+							} else if subpath.closed() {
+								push_neighbour(subpath.manipulator_groups()[subpath.len() - 1]);
+							}
+							// Next anchor (looping if closed)
+							if index + 1 < subpath.len() {
+								push_neighbour(subpath.manipulator_groups()[index + 1]);
+							} else if subpath.closed() {
+								push_neighbour(subpath.manipulator_groups()[0]);
+							}
+						}
+
 						let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
 						if best_snapped.other_snap_better(&snapped) {
 							offset = snapped.snapped_point_document - point.document_point + mouse_delta;
