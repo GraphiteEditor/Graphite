@@ -114,7 +114,7 @@ pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
 fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f32, radius: f32, count: u32) -> VectorData {
 	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(vector_data.subpaths.len() * count as usize);
 
-	let bounding_box = vector_data.bounding_box().unwrap();
+	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	let base_transform = DVec2::new(0., radius as f64) - center;
