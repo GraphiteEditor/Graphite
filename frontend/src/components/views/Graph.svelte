@@ -921,7 +921,7 @@
 								data-datatype={parameter.dataType}
 								style:--data-color={`var(--color-data-${parameter.dataType})`}
 								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
-								bind:this={inputs[nodeIndex][index + 1]}
+								bind:this={inputs[nodeIndex][index + (node.primaryInput ? 1 : 0)]}
 							>
 								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
 								{#if parameter.connected}

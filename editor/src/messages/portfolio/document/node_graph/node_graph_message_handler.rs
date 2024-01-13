@@ -293,14 +293,7 @@ impl NodeGraphMessageHandler {
 		let links = network
 			.nodes
 			.iter()
-			.flat_map(|(link_end, node)| {
-				node.inputs
-					.iter()
-					.enumerate()
-					// Deals with the really weird behaviour concerning the primary input leaving a gap if it is not exposed.
-					.filter(|(index, input)| *index == 0 || input.is_exposed())
-					.map(move |(index, input)| (input, link_end, index))
-			})
+			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
 			.filter_map(|(input, &link_end, link_end_input_index)| {
 				if let NodeInput::Node {
 					node_id: link_start,
