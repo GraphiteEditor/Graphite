@@ -449,7 +449,7 @@ impl NodeGraphExecutor {
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: document.document_metadata.document_to_viewport,
+				transform: document.metadata.document_to_viewport,
 				resolution: viewport_resolution,
 				..Default::default()
 			},
@@ -477,7 +477,9 @@ impl NodeGraphExecutor {
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
 			ExportBounds::AllArtwork => document.metadata().document_bounds_document_space(!export_config.transparent_background),
-			ExportBounds::Selection => document.metadata().selected_bounds_document_space(!export_config.transparent_background),
+			ExportBounds::Selection => document
+				.metadata()
+				.selected_bounds_document_space(!export_config.transparent_background, document.metadata(), &document.selected_nodes),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -558,8 +560,8 @@ impl NodeGraphExecutor {
 
 					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
 
-					document.document_metadata.update_transforms(new_upstream_transforms);
-					document.document_metadata.update_click_targets(new_click_targets);
+					document.metadata.update_transforms(new_upstream_transforms);
+					document.metadata.update_click_targets(new_click_targets);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {

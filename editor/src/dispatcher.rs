@@ -306,8 +306,8 @@ mod test {
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.document_metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.document_metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -329,7 +329,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let shape_id = document_before_copy.document_metadata.all_layers().nth(1).unwrap();
+		let shape_id = document_before_copy.metadata.all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] });
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -341,8 +341,8 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.document_metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.document_metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 4);
@@ -384,8 +384,8 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.document_metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.document_metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 		let [original_folder, original_freehand, original_line, original_ellipse, original_polygon, original_rect] = layers_before_copy[..] else {
 			panic!("Layers before incorrect");
 		};
@@ -413,7 +413,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers();
 
 		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-		let mut layers = document_before_copy.document_metadata.all_layers();
+		let mut layers = document_before_copy.metadata.all_layers();
 		let rect_id = layers.next().expect("rectangle");
 		let shape_id = layers.next().expect("shape");
 		let ellipse_id = layers.next().expect("ellipse");
@@ -437,8 +437,8 @@ mod test {
 
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
 
-		let layers_before_copy = document_before_copy.document_metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.document_metadata.all_layers().collect::<Vec<_>>();
+		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
+		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
 
 		assert_eq!(layers_before_copy.len(), 3);
 		assert_eq!(layers_after_copy.len(), 6);

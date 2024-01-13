@@ -1,3 +1,5 @@
+use super::nodes::SelectedNodes;
+
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
@@ -19,7 +21,6 @@ pub struct DocumentMetadata {
 	artboards: HashSet<LayerNodeIdentifier>,
 	folders: HashSet<LayerNodeIdentifier>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
-	selected_nodes: Vec<NodeId>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -32,7 +33,6 @@ impl Default for DocumentMetadata {
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
-			selected_nodes: Vec::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
 	}
@@ -50,34 +50,6 @@ impl DocumentMetadata {
 
 	pub fn all_layers(&self) -> DecendantsIter<'_> {
 		self.root().decendants(self)
-	}
-
-	pub fn all_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers().filter(move |layer| !self.artboards.contains(layer))
-	}
-
-	pub fn selected_layers(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.all_layers().filter(|layer| self.selected_nodes.contains(&layer.to_node()))
-	}
-
-	pub fn selected_layers_except_artboards(&self) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers().filter(move |layer| !self.artboards.contains(layer))
-	}
-
-	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier) -> bool {
-		self.selected_layers().any(|selected| selected == layer)
-	}
-
-	pub fn selected_nodes(&self) -> core::slice::Iter<'_, NodeId> {
-		self.selected_nodes.iter()
-	}
-
-	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
-		&self.selected_nodes
-	}
-
-	pub fn has_selected_nodes(&self) -> bool {
-		!self.selected_nodes.is_empty()
 	}
 
 	pub fn layer_exists(&self, layer: LayerNodeIdentifier) -> bool {
@@ -146,14 +118,9 @@ impl DocumentMetadata {
 		self.artboards.contains(&layer)
 	}
 
-	/// Filter out non folder layers
-	pub fn folders<'a>(&'a self, layers: impl Iterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
-		layers.filter(|layer| self.folders.contains(layer))
-	}
-
 	/// Folders sorted from most nested to least nested
 	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
-		let mut folders: Vec<_> = self.folders(layers).collect();
+		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
 		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
 		folders
 	}
@@ -164,24 +131,8 @@ impl DocumentMetadata {
 // ==============================================
 
 impl DocumentMetadata {
-	pub fn retain_selected_nodes(&mut self, f: impl FnMut(&NodeId) -> bool) {
-		self.selected_nodes.retain(f);
-	}
-
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
-		self.selected_nodes = new;
-	}
-
-	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) {
-		self.selected_nodes.extend(iter);
-	}
-
-	pub fn clear_selected_nodes(&mut self) {
-		self.set_selected_nodes(Vec::new());
-	}
-
 	/// Loads the structure of layer nodes from a node graph.
-	pub fn load_structure(&mut self, graph: &NodeNetwork) {
+	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
 		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
 			graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
 		}
@@ -224,7 +175,7 @@ impl DocumentMetadata {
 			}
 		}
 
-		self.selected_nodes.retain(|node| graph.nodes.contains_key(node));
+		selected_nodes.0.retain(|node| graph.nodes.contains_key(node));
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
@@ -328,8 +279,9 @@ impl DocumentMetadata {
 	}
 
 	/// Calculates the selected layer bounds in document space
-	pub fn selected_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.selected_layers()
+	pub fn selected_bounds_document_space(&self, include_artboards: bool, metadata: &DocumentMetadata, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
+		selected_nodes
+			.selected_layers(metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(layer))
 			.filter_map(|layer| self.bounding_box_document(layer))
 			.reduce(Quad::combine_bounds)
@@ -388,109 +340,109 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Access the parent layer if possible
-	pub fn parent(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		document_metadata.get_relations(self).and_then(|relations| relations.parent)
+	pub fn parent(self, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		metadata.get_relations(self).and_then(|relations| relations.parent)
 	}
 
 	/// Access the previous sibling of this layer (up the Layers panel)
-	pub fn previous_sibling(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		document_metadata.get_relations(self).and_then(|relations| relations.previous_sibling)
+	pub fn previous_sibling(self, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		metadata.get_relations(self).and_then(|relations| relations.previous_sibling)
 	}
 
 	/// Access the next sibling of this layer (down the Layers panel)
-	pub fn next_sibling(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		document_metadata.get_relations(self).and_then(|relations| relations.next_sibling)
+	pub fn next_sibling(self, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		metadata.get_relations(self).and_then(|relations| relations.next_sibling)
 	}
 
 	/// Access the first child of this layer (top most in Layers panel)
-	pub fn first_child(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		document_metadata.get_relations(self).and_then(|relations| relations.first_child)
+	pub fn first_child(self, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		metadata.get_relations(self).and_then(|relations| relations.first_child)
 	}
 
 	/// Access the last child of this layer (bottom most in Layers panel)
-	pub fn last_child(self, document_metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		document_metadata.get_relations(self).and_then(|relations| relations.last_child)
+	pub fn last_child(self, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		metadata.get_relations(self).and_then(|relations| relations.last_child)
 	}
 
 	/// Does the layer have children?
-	pub fn has_children(self, document_metadata: &DocumentMetadata) -> bool {
-		self.first_child(document_metadata).is_some()
+	pub fn has_children(self, metadata: &DocumentMetadata) -> bool {
+		self.first_child(metadata).is_some()
 	}
 
 	/// Iterator over all direct children (excluding self and recursive children)
-	pub fn children(self, document_metadata: &DocumentMetadata) -> AxisIter {
+	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {
-			layer_node: self.first_child(document_metadata),
+			layer_node: self.first_child(metadata),
 			next_node: Self::next_sibling,
-			document_metadata,
+			metadata,
 		}
 	}
 
 	/// All ancestors of this layer, including self, going to the document root
-	pub fn ancestors(self, document_metadata: &DocumentMetadata) -> AxisIter {
+	pub fn ancestors(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::parent,
-			document_metadata,
+			metadata,
 		}
 	}
 
 	/// Iterator through all the last children, starting from self
-	pub fn last_children(self, document_metadata: &DocumentMetadata) -> AxisIter {
+	pub fn last_children(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {
 			layer_node: Some(self),
 			next_node: Self::last_child,
-			document_metadata,
+			metadata,
 		}
 	}
 
 	/// Iterator through all decendants, including recursive children (not including self)
-	pub fn decendants(self, document_metadata: &DocumentMetadata) -> DecendantsIter {
+	pub fn decendants(self, metadata: &DocumentMetadata) -> DecendantsIter {
 		DecendantsIter {
-			front: self.first_child(document_metadata),
-			back: self.last_child(document_metadata).and_then(|child| child.last_children(document_metadata).last()),
-			document_metadata,
+			front: self.first_child(metadata),
+			back: self.last_child(metadata).and_then(|child| child.last_children(metadata).last()),
+			metadata,
 		}
 	}
 
 	/// Add a child towards the top of the Layers panel
-	pub fn push_front_child(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
-		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
-		let parent = document_metadata.get_structure_mut(self);
+	pub fn push_front_child(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
+		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
+		let parent = metadata.get_structure_mut(self);
 		let old_first_child = parent.first_child.replace(new);
 		parent.last_child.get_or_insert(new);
 		if let Some(old_first_child) = old_first_child {
-			document_metadata.get_structure_mut(old_first_child).previous_sibling = Some(new);
+			metadata.get_structure_mut(old_first_child).previous_sibling = Some(new);
 		}
-		document_metadata.get_structure_mut(new).next_sibling = old_first_child;
-		document_metadata.get_structure_mut(new).parent = Some(self);
+		metadata.get_structure_mut(new).next_sibling = old_first_child;
+		metadata.get_structure_mut(new).parent = Some(self);
 	}
 
 	/// Add a child towards the bottom of the Layers panel
-	pub fn push_child(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
-		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
-		let parent = document_metadata.get_structure_mut(self);
+	pub fn push_child(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
+		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
+		let parent = metadata.get_structure_mut(self);
 		let old_last_child = parent.last_child.replace(new);
 		parent.first_child.get_or_insert(new);
 		if let Some(old_last_child) = old_last_child {
-			document_metadata.get_structure_mut(old_last_child).next_sibling = Some(new);
+			metadata.get_structure_mut(old_last_child).next_sibling = Some(new);
 		}
-		document_metadata.get_structure_mut(new).previous_sibling = old_last_child;
-		document_metadata.get_structure_mut(new).parent = Some(self);
+		metadata.get_structure_mut(new).previous_sibling = old_last_child;
+		metadata.get_structure_mut(new).parent = Some(self);
 	}
 
 	/// Add sibling above in the Layers panel
-	pub fn add_before(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
-		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
-		document_metadata.get_structure_mut(new).next_sibling = Some(self);
-		document_metadata.get_structure_mut(new).parent = self.parent(document_metadata);
-		let old_previous_sibling = document_metadata.get_structure_mut(self).previous_sibling.replace(new);
+	pub fn add_before(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
+		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
+		metadata.get_structure_mut(new).next_sibling = Some(self);
+		metadata.get_structure_mut(new).parent = self.parent(metadata);
+		let old_previous_sibling = metadata.get_structure_mut(self).previous_sibling.replace(new);
 		if let Some(old_previous_sibling) = old_previous_sibling {
-			document_metadata.get_structure_mut(old_previous_sibling).next_sibling = Some(new);
-			document_metadata.get_structure_mut(new).previous_sibling = Some(old_previous_sibling);
+			metadata.get_structure_mut(old_previous_sibling).next_sibling = Some(new);
+			metadata.get_structure_mut(new).previous_sibling = Some(old_previous_sibling);
 		} else if let Some(structure) = self
-			.parent(document_metadata)
-			.map(|parent| document_metadata.get_structure_mut(parent))
+			.parent(metadata)
+			.map(|parent| metadata.get_structure_mut(parent))
 			.filter(|structure| structure.first_child == Some(self))
 		{
 			structure.first_child = Some(new);
@@ -498,17 +450,17 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Add sibling below in the Layers panel
-	pub fn add_after(self, document_metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
-		assert!(!document_metadata.structure.contains_key(&new), "Cannot add already existing layer");
-		document_metadata.get_structure_mut(new).previous_sibling = Some(self);
-		document_metadata.get_structure_mut(new).parent = self.parent(document_metadata);
-		let old_next_sibling = document_metadata.get_structure_mut(self).next_sibling.replace(new);
+	pub fn add_after(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
+		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");
+		metadata.get_structure_mut(new).previous_sibling = Some(self);
+		metadata.get_structure_mut(new).parent = self.parent(metadata);
+		let old_next_sibling = metadata.get_structure_mut(self).next_sibling.replace(new);
 		if let Some(old_next_sibling) = old_next_sibling {
-			document_metadata.get_structure_mut(old_next_sibling).previous_sibling = Some(new);
-			document_metadata.get_structure_mut(new).next_sibling = Some(old_next_sibling);
+			metadata.get_structure_mut(old_next_sibling).previous_sibling = Some(new);
+			metadata.get_structure_mut(new).next_sibling = Some(old_next_sibling);
 		} else if let Some(structure) = self
-			.parent(document_metadata)
-			.map(|parent| document_metadata.get_structure_mut(parent))
+			.parent(metadata)
+			.map(|parent| metadata.get_structure_mut(parent))
 			.filter(|structure| structure.last_child == Some(self))
 		{
 			structure.last_child = Some(new);
@@ -516,18 +468,18 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Delete layer and all children
-	pub fn delete(self, document_metadata: &mut DocumentMetadata) {
-		let previous_sibling = self.previous_sibling(document_metadata);
-		let next_sibling = self.next_sibling(document_metadata);
+	pub fn delete(self, metadata: &mut DocumentMetadata) {
+		let previous_sibling = self.previous_sibling(metadata);
+		let next_sibling = self.next_sibling(metadata);
 
-		if let Some(previous_sibling) = previous_sibling.map(|node| document_metadata.get_structure_mut(node)) {
+		if let Some(previous_sibling) = previous_sibling.map(|node| metadata.get_structure_mut(node)) {
 			previous_sibling.next_sibling = next_sibling;
 		}
 
-		if let Some(next_sibling) = next_sibling.map(|node| document_metadata.get_structure_mut(node)) {
+		if let Some(next_sibling) = next_sibling.map(|node| metadata.get_structure_mut(node)) {
 			next_sibling.previous_sibling = previous_sibling;
 		}
-		let mut parent = self.parent(document_metadata).map(|parent| document_metadata.get_structure_mut(parent));
+		let mut parent = self.parent(metadata).map(|parent| metadata.get_structure_mut(parent));
 		if let Some(structure) = parent.as_mut().filter(|structure| structure.first_child == Some(self)) {
 			structure.first_child = next_sibling;
 		}
@@ -536,22 +488,22 @@ impl LayerNodeIdentifier {
 		}
 
 		let mut delete = vec![self];
-		delete.extend(self.decendants(document_metadata));
+		delete.extend(self.decendants(metadata));
 		for node in delete {
-			document_metadata.structure.remove(&node);
+			metadata.structure.remove(&node);
 		}
 	}
 
-	pub fn exists(&self, document_metadata: &DocumentMetadata) -> bool {
-		document_metadata.get_relations(*self).is_some()
+	pub fn exists(&self, metadata: &DocumentMetadata) -> bool {
+		metadata.get_relations(*self).is_some()
 	}
 
-	pub fn starts_with(&self, other: Self, document_metadata: &DocumentMetadata) -> bool {
-		self.ancestors(document_metadata).any(|parent| parent == other)
+	pub fn starts_with(&self, other: Self, metadata: &DocumentMetadata) -> bool {
+		self.ancestors(metadata).any(|parent| parent == other)
 	}
 
-	pub fn child_of_root(&self, document_metadata: &DocumentMetadata) -> Self {
-		self.ancestors(document_metadata)
+	pub fn child_of_root(&self, metadata: &DocumentMetadata) -> Self {
+		self.ancestors(metadata)
 			.filter(|&layer| layer != LayerNodeIdentifier::ROOT)
 			.last()
 			.expect("There should be a layer before the root")
@@ -567,7 +519,7 @@ impl LayerNodeIdentifier {
 pub struct AxisIter<'a> {
 	pub layer_node: Option<LayerNodeIdentifier>,
 	pub next_node: fn(LayerNodeIdentifier, &DocumentMetadata) -> Option<LayerNodeIdentifier>,
-	pub document_metadata: &'a DocumentMetadata,
+	pub metadata: &'a DocumentMetadata,
 }
 
 impl<'a> Iterator for AxisIter<'a> {
@@ -575,7 +527,7 @@ impl<'a> Iterator for AxisIter<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let layer_node = self.layer_node.take();
-		self.layer_node = layer_node.and_then(|node| (self.next_node)(node, self.document_metadata));
+		self.layer_node = layer_node.and_then(|node| (self.next_node)(node, self.metadata));
 		layer_node
 	}
 }
@@ -588,7 +540,7 @@ impl<'a> Iterator for AxisIter<'a> {
 pub struct DecendantsIter<'a> {
 	front: Option<LayerNodeIdentifier>,
 	back: Option<LayerNodeIdentifier>,
-	document_metadata: &'a DocumentMetadata,
+	metadata: &'a DocumentMetadata,
 }
 
 impl<'a> Iterator for DecendantsIter<'a> {
@@ -602,8 +554,8 @@ impl<'a> Iterator for DecendantsIter<'a> {
 			let layer_node = self.front.take();
 			if let Some(layer_node) = layer_node {
 				self.front = layer_node
-					.first_child(self.document_metadata)
-					.or_else(|| layer_node.ancestors(self.document_metadata).find_map(|ancestor| ancestor.next_sibling(self.document_metadata)));
+					.first_child(self.metadata)
+					.or_else(|| layer_node.ancestors(self.metadata).find_map(|ancestor| ancestor.next_sibling(self.metadata)));
 			}
 			layer_node
 		}
@@ -618,9 +570,9 @@ impl<'a> DoubleEndedIterator for DecendantsIter<'a> {
 			let layer_node = self.back.take();
 			if let Some(layer_node) = layer_node {
 				self.back = layer_node
-					.previous_sibling(self.document_metadata)
-					.and_then(|sibling| sibling.last_children(self.document_metadata).last())
-					.or_else(|| layer_node.parent(self.document_metadata));
+					.previous_sibling(self.metadata)
+					.and_then(|sibling| sibling.last_children(self.metadata).last())
+					.or_else(|| layer_node.parent(self.metadata));
 			}
 
 			layer_node
@@ -659,47 +611,47 @@ pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 
 #[test]
 fn test_tree() {
-	let mut document_metadata = DocumentMetadata::default();
-	let root = document_metadata.root();
-	let document_metadata = &mut document_metadata;
-	root.push_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
-	assert_eq!(root.children(document_metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);
-	root.push_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(6)));
-	assert_eq!(root.children(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
-	assert_eq!(root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
-	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_after(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(4)));
-	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_before(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(2)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_before(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(5)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_after(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(9)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(8)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_front_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(7)));
-	root.push_front_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(1)));
+	let mut metadata = DocumentMetadata::default();
+	let root = metadata.root();
+	let metadata = &mut metadata;
+	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
+	assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);
+	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(6)));
+	assert_eq!(root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
+	assert_eq!(root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
+	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(4)));
+	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(2)));
+	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(5)));
+	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(9)));
+	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(8)));
+	LayerNodeIdentifier::new_unchecked(NodeId(6)).push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(7)));
+	root.push_front_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(1)));
 	assert_eq!(
-		root.children(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(7), NodeId(8), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+		root.decendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
 		vec![NodeId(9), NodeId(8), NodeId(7), NodeId(6), NodeId(5), NodeId(4), NodeId(3), NodeId(2), NodeId(1)]
 	);
-	assert!(root.children(document_metadata).all(|child| child.parent(document_metadata) == Some(root)));
-	LayerNodeIdentifier::new_unchecked(NodeId(6)).delete(document_metadata);
-	LayerNodeIdentifier::new_unchecked(NodeId(1)).delete(document_metadata);
-	LayerNodeIdentifier::new_unchecked(NodeId(9)).push_child(document_metadata, LayerNodeIdentifier::new_unchecked(NodeId(10)));
+	assert!(root.children(metadata).all(|child| child.parent(metadata) == Some(root)));
+	LayerNodeIdentifier::new_unchecked(NodeId(6)).delete(metadata);
+	LayerNodeIdentifier::new_unchecked(NodeId(1)).delete(metadata);
+	LayerNodeIdentifier::new_unchecked(NodeId(9)).push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(10)));
 	assert_eq!(
-		root.children(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9), NodeId(10)]
 	);
 	assert_eq!(
-		root.decendants(document_metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+		root.decendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
 		vec![NodeId(10), NodeId(9), NodeId(5), NodeId(4), NodeId(3), NodeId(2)]
 	);
 }

@@ -13,7 +13,7 @@ use fern::colors::{Color, ColoredLevelConfig};
 // use http::{Response, StatusCode};
 use std::cell::RefCell;
 // use std::collections::HashMap;
-use std::sync::Arc;
+// use std::sync::Arc;
 // use std::sync::Mutex;
 
 thread_local! {

@@ -4,7 +4,7 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::layer_panel::{LayerClassification, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerClassification, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -174,20 +174,20 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the buttons for disable and preview
-	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, responses: &mut VecDeque<Message>) {
+	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		if let Some(network) = document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selected_nodes = document_metadata.selected_nodes().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
+			let mut selection = selected_nodes.selected_nodes().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
 
 			// If there is at least one other selected node then show the hide or show button
-			if selected_nodes.next().is_some() {
+			if selection.next().is_some() {
 				// Check if any of the selected nodes are disabled
-				let is_hidden = document_metadata.selected_nodes().any(|id| network.disabled.contains(id));
+				let is_hidden = selected_nodes.selected_nodes().any(|id| network.disabled.contains(id));
 
 				// Check if multiple nodes are selected
-				let multiple_nodes = selected_nodes.next().is_some();
+				let multiple_nodes = selection.next().is_some();
 
 				// Generate the enable or disable button accordingly
 				let (hide_show_label, hide_show_icon) = if is_hidden { ("Make Visible", "EyeHidden") } else { ("Make Hidden", "EyeVisible") };
@@ -203,8 +203,8 @@ impl NodeGraphMessageHandler {
 			}
 
 			// If only one node is selected then show the preview or stop previewing button
-			let mut selected_nodes = document_metadata.selected_nodes();
-			if let (Some(&node_id), None) = (selected_nodes.next(), selected_nodes.next()) {
+			let mut selection = selected_nodes.selected_nodes();
+			if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
 
@@ -225,7 +225,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collate the properties panel sections for a node graph
-	pub fn collate_properties(&self, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	pub fn collate_properties(&self, context: &mut NodePropertiesContext, selected_nodes: &SelectedNodes) -> Vec<LayoutGroup> {
 		let mut network = context.network;
 
 		for segment in &self.network {
@@ -239,7 +239,7 @@ impl NodeGraphMessageHandler {
 
 		// First, we filter all the selections into layers and nodes
 		let (mut layers, mut nodes) = (Vec::new(), Vec::new());
-		for node_id in context.metadata.selected_nodes() {
+		for node_id in selected_nodes.selected_nodes() {
 			if let Some(layer_or_node) = network.nodes.get(node_id) {
 				if layer_or_node.is_layer() {
 					layers.push(*node_id);
@@ -278,8 +278,16 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&self, network: &NodeNetwork, graph_view_overlay_open: bool, document_metadata: &mut DocumentMetadata, collapsed: &Vec<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
-		document_metadata.load_structure(&network);
+	fn send_graph(
+		&self,
+		network: &NodeNetwork,
+		graph_view_overlay_open: bool,
+		metadata: &mut DocumentMetadata,
+		selected_nodes: &mut SelectedNodes,
+		collapsed: &CollapsedLayers,
+		responses: &mut VecDeque<Message>,
+	) {
+		metadata.load_structure(network, selected_nodes);
 
 		let links = network
 			.nodes
@@ -371,9 +379,9 @@ impl NodeGraphMessageHandler {
 			if node.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network);
 				let layer_classification = {
-					if document_metadata.is_artboard(layer) {
+					if metadata.is_artboard(layer) {
 						LayerClassification::Artboard
-					} else if document_metadata.is_folder(layer) {
+					} else if metadata.is_folder(layer) {
 						LayerClassification::Folder
 					} else {
 						LayerClassification::Layer
@@ -391,9 +399,9 @@ impl NodeGraphMessageHandler {
 				let data = LayerPanelEntry {
 					id: node_id,
 					layer_classification,
-					expanded: layer.has_children(document_metadata) && !collapsed.contains(&layer),
-					depth: layer.ancestors(document_metadata).count() - 1,
-					parent_id: layer.parent(document_metadata).map(|parent| parent.to_node()),
+					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
+					depth: layer.ancestors(metadata).count() - 1,
+					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
 					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
@@ -413,10 +421,10 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the frontend's selection state in line with the backend
-	fn update_selected(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, responses: &mut VecDeque<Message>) {
-		self.update_selection_action_buttons(document_network, document_metadata, responses);
+	fn update_selected(&mut self, document_network: &NodeNetwork, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+		self.update_selection_action_buttons(document_network, selected_nodes, responses);
 		responses.add(FrontendMessage::UpdateNodeGraphSelection {
-			selected: document_metadata.selected_nodes_ref().clone(),
+			selected: selected_nodes.selected_nodes_ref().clone(),
 		});
 	}
 
@@ -487,7 +495,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Tries to remove a node from the network, returning true on success.
-	fn remove_node(&mut self, document_network: &mut NodeNetwork, document_metadata: &mut DocumentMetadata, node_id: NodeId, responses: &mut VecDeque<Message>, reconnect: bool) -> bool {
+	fn remove_node(&mut self, document_network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_id: NodeId, responses: &mut VecDeque<Message>, reconnect: bool) -> bool {
 		let Some(network) = document_network.nested_network_mut(&self.network) else {
 			return false;
 		};
@@ -495,7 +503,7 @@ impl NodeGraphMessageHandler {
 			return false;
 		}
 		network.nodes.remove(&node_id);
-		document_metadata.retain_selected_nodes(|&id| id != node_id);
+		selected_nodes.retain_selected_nodes(|&id| id != node_id);
 		responses.add(BroadcastEvent::SelectionChanged);
 		true
 	}
@@ -521,9 +529,10 @@ impl NodeGraphMessageHandler {
 pub struct NodeGraphHandlerData<'a> {
 	pub document_network: &'a mut NodeNetwork,
 	pub document_metadata: &'a mut DocumentMetadata,
+	pub selected_nodes: &'a mut SelectedNodes,
 	pub document_id: DocumentId,
 	pub document_name: &'a str,
-	pub collapsed: &'a mut Vec<LayerNodeIdentifier>,
+	pub collapsed: &'a mut CollapsedLayers,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 }
@@ -533,6 +542,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 		let NodeGraphHandlerData {
 			document_network,
 			document_metadata,
+			selected_nodes,
 			document_id,
 			collapsed,
 			graph_view_overlay_open,
@@ -545,14 +555,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
-				self.update_selection_action_buttons(document_network, document_metadata, responses);
-				self.update_selected(document_network, document_metadata, responses);
-				if document_metadata.selected_layers().count() <= 1 {
+				self.update_selection_action_buttons(document_network, selected_nodes, responses);
+				self.update_selected(document_network, selected_nodes, responses);
+				if selected_nodes.selected_layers(document_metadata).count() <= 1 {
 					responses.add(DocumentMessage::SetRangeSelectionLayer {
-						new_layer: document_metadata.selected_layers().next(),
+						new_layer: selected_nodes.selected_layers(document_metadata).next(),
 					});
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -594,7 +604,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				// Collect the selected nodes
-				let new_ids = &document_metadata.selected_nodes().copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
+				let new_ids = &selected_nodes.selected_nodes().copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
 				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes
@@ -627,18 +637,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNode { node_id, reconnect } => {
-				self.remove_node(document_network, document_metadata, node_id, responses, reconnect);
+				self.remove_node(document_network, selected_nodes, node_id, responses, reconnect);
 			}
 			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				for node_id in document_metadata.selected_nodes().copied() {
+				for node_id in selected_nodes.selected_nodes().copied() {
 					responses.add(NodeGraphMessage::DeleteNode { node_id, reconnect });
 				}
 
 				if let Some(network) = document_network.nested_network(&self.network) {
 					// Only generate node graph if one of the selected nodes is connected to the output
-					if document_metadata.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
+					if selected_nodes.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
@@ -679,24 +689,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
-				self.update_selected(document_network, document_metadata, responses);
+				self.update_selected(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = document_network.nested_network(&self.network) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let new_ids = &document_metadata.selected_nodes().map(|&id| (id, NodeId(generate_uuid()))).collect();
+					let new_ids = &selected_nodes.selected_nodes().map(|&id| (id, NodeId(generate_uuid()))).collect();
 
-					document_metadata.clear_selected_nodes();
+					selected_nodes.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
 					// Copy the selected nodes
 					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
 
 					// Select the new nodes
-					document_metadata.add_selected_nodes(copied_nodes.iter().map(|(node_id, _)| *node_id));
+					selected_nodes.add_selected_nodes(copied_nodes.iter().map(|(node_id, _)| *node_id));
 					responses.add(BroadcastEvent::SelectionChanged);
 
 					for (node_id, mut document_node) in copied_nodes {
@@ -707,20 +717,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 					}
 
-					self.update_selected(document_network, document_metadata, responses);
+					self.update_selected(document_network, selected_nodes, responses);
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
-				document_metadata.clear_selected_nodes();
+				selected_nodes.clear_selected_nodes();
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				for _ in 0..depth_of_nesting {
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
-				self.update_selected(document_network, document_metadata, responses);
+				self.update_selected(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -761,12 +771,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				for node_id in document_metadata.selected_nodes() {
+				for node_id in selected_nodes.selected_nodes() {
 					if let Some(node) = network.nodes.get_mut(node_id) {
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -817,21 +827,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id });
 			}
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
-				document_metadata.add_selected_nodes(nodes);
+				selected_nodes.add_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
-				document_metadata.retain_selected_nodes(|node| !nodes.contains(node));
+				selected_nodes.retain_selected_nodes(|node| !nodes.contains(node));
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
-				document_metadata.set_selected_nodes(nodes);
+				selected_nodes.set_selected_nodes(nodes);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -858,7 +868,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
 						*node_input = input;
 						if structure_changed {
-							load_network_structure(document_network, document_metadata, collapsed);
+							load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 						}
 					}
 				}
@@ -932,14 +942,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 			}
 			NodeGraphMessage::ToggleSelectedHidden => {
 				if let Some(network) = document_network.nested_network(&self.network) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let new_hidden = !document_metadata.selected_nodes().any(|id| network.disabled.contains(id));
-					for &node_id in document_metadata.selected_nodes() {
+					let new_hidden = !selected_nodes.selected_nodes().any(|id| network.disabled.contains(id));
+					for &node_id in selected_nodes.selected_nodes() {
 						responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
 					}
 				}
@@ -963,7 +973,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
-				self.update_selection_action_buttons(document_network, document_metadata, responses);
+				self.update_selection_action_buttons(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -974,7 +984,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.alias = name;
 
-						self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+						self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 					}
 				}
 			}
@@ -995,28 +1005,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				self.update_selection_action_buttons(document_network, document_metadata, responses);
+				self.update_selection_action_buttons(document_network, selected_nodes, responses);
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					document_metadata.clear_selected_nodes();
+					selected_nodes.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
 				}
-				self.update_selected(document_network, document_metadata, responses);
+				self.update_selected(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
 				self.resolved_types = resolved_types;
 				self.node_graph_errors = node_graph_errors;
 			}
 		}
-		self.has_selection = document_metadata.has_selected_nodes();
+		self.has_selection = selected_nodes.has_selected_nodes();
 	}
 
 	fn actions(&self) -> ActionList {

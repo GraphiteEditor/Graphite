@@ -1,7 +1,7 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
-use crate::messages::portfolio::document::utility_types::layer_panel::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 

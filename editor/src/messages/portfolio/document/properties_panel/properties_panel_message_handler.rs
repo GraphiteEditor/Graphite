@@ -15,10 +15,10 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 		let PropertiesPanelMessageHandlerData {
 			node_graph_message_handler,
 			executor,
-			document_network,
-			document_metadata,
+			document_network: network,
+			document_metadata: metadata,
+			selected_nodes,
 			document_name,
-			..
 		} = data;
 
 		match message {
@@ -38,11 +38,11 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					responses,
 					nested_path: &node_graph_message_handler.network,
 					executor,
-					network: document_network,
-					metadata: document_metadata,
+					network,
+					metadata,
 				};
 
-				let properties_sections = node_graph_message_handler.collate_properties(&mut context);
+				let properties_sections = node_graph_message_handler.collate_properties(&mut context, selected_nodes);
 
 				let options_bar = vec![LayoutGroup::Row {
 					widgets: vec![
