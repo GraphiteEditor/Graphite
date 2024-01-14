@@ -112,6 +112,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		&self.manipulator_groups
 	}
 
+	/// Returns a mutable vec of the [ManipulatorGroup]s in the `Subpath`.
+	pub fn manipulator_groups_mut(&mut self) -> &mut Vec<ManipulatorGroup<ManipulatorGroupId>> {
+		&mut self.manipulator_groups
+	}
+
 	/// Returns a vector of all the anchors (DVec2) for this `Subpath`.
 	pub fn anchors(&self) -> Vec<DVec2> {
 		self.manipulator_groups().iter().map(|group| group.anchor).collect()

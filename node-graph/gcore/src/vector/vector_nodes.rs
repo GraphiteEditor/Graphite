@@ -297,7 +297,14 @@ pub struct SplinesFromPointsNode;
 #[node_macro::node_fn(SplinesFromPointsNode)]
 fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 	for subpath in &mut vector_data.subpaths {
-		*subpath = Subpath::new_cubic_spline(subpath.anchors());
+		let mut spline = Subpath::new_cubic_spline(subpath.anchors());
+
+		// Preserve the manipulator group ids
+		for (spline_manipulator_group, original_manipulator_group) in spline.manipulator_groups_mut().iter_mut().zip(subpath.manipulator_groups()) {
+			spline_manipulator_group.id = original_manipulator_group.id;
+		}
+
+		*subpath = spline;
 	}
 
 	vector_data
