@@ -803,7 +803,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	modify_inputs.layer_node = Some(layer);
 	match &*node.borrow() {
 		usvg::NodeKind::Group(_group) => {
-			for (index, child) in node.children().enumerate() {
+			for child in node.children() {
 				import_usvg_node(modify_inputs, &child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
 			}
 			modify_inputs.layer_node = Some(layer);
@@ -867,14 +867,14 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				end: DVec2::new(linear.x2 as f64, linear.y2 as f64),
 				transform: usvg_transform(linear.transform),
 				gradient_type: GradientType::Linear,
-				positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, Some(usvg_color(stop.color, stop.opacity.get())))).collect(),
+				positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
 			}),
 			usvg::Paint::RadialGradient(radial) => Fill::Gradient(Gradient {
 				start: DVec2::new(radial.cx as f64, radial.cy as f64),
 				end: DVec2::new(radial.fx as f64, radial.fy as f64),
 				transform: usvg_transform(radial.transform),
 				gradient_type: GradientType::Radial,
-				positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, Some(usvg_color(stop.color, stop.opacity.get())))).collect(),
+				positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
 			}),
 			usvg::Paint::Pattern(_) => {
 				warn!("Skip pattern");

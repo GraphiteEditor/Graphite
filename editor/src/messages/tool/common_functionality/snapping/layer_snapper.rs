@@ -89,6 +89,10 @@ impl LayerSnapper {
 		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
 		let tolerance = snap_tolerance(document);
 		for path in &self.paths_to_snap {
+			// Skip very short paths
+			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance {
+				continue;
+			}
 			let time = path.document_curve.project(point.document_point, None);
 			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
 
