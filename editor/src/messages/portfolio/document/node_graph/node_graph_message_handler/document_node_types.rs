@@ -2580,7 +2580,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 0.5)), false),
 				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(1., 0.5)), false),
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
-				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Some(Color::BLACK)), (1., Some(Color::WHITE))]), false),
+				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Color::BLACK), (1., Color::WHITE)]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::fill_properties,
@@ -2713,6 +2713,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_no_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Morph",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::MorphNode<_, _, _, _>"),
+			inputs: vec![
+				DocumentInputType::value("Source", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Target", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Start Index", TaggedValue::U32(0), false),
+				DocumentInputType::value("Time", TaggedValue::F64(0.5), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			manual_composition: Some(concrete!(Footprint)),
+			properties: node_properties::morph_properties,
 			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.

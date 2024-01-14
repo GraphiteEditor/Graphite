@@ -853,7 +853,7 @@ impl Color {
 	///
 	/// T must be between 0 and 1.
 	#[inline(always)]
-	pub fn lerp(self, other: Color, t: f32) -> Self {
+	pub fn lerp(&self, other: &Color, t: f32) -> Self {
 		assert!((0. ..=1.).contains(&t));
 		Color::from_rgbaf32_unchecked(
 			self.red + ((other.red - self.red) * t),

@@ -5,7 +5,6 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
-use graphene_core::raster::color::Color;
 use graphene_core::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default)]
@@ -335,7 +334,7 @@ impl Fsm for GradientToolFsmState {
 				if selected_gradient.gradient.positions.len() == 1 {
 					responses.add(GraphOperationMessage::FillSet {
 						layer: selected_gradient.layer,
-						fill: Fill::Solid(selected_gradient.gradient.positions[0].1.unwrap_or(Color::BLACK)),
+						fill: Fill::Solid(selected_gradient.gradient.positions[0].1),
 					});
 					return self;
 				}
@@ -344,7 +343,7 @@ impl Fsm for GradientToolFsmState {
 				let min_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
 				let max_position = selected_gradient.gradient.positions.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
 
-				// Recompute the start and end posiiton of the gradient (in viewport transform)
+				// Recompute the start and end position of the gradient (in viewport transform)
 				let transform = selected_gradient.transform;
 				let (start, end) = (transform.transform_point2(selected_gradient.gradient.start), transform.transform_point2(selected_gradient.gradient.end));
 				let (new_start, new_end) = (start.lerp(end, min_position), start.lerp(end, max_position));
