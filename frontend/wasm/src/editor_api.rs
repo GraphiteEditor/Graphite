@@ -660,6 +660,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = pasteSvg)]
+	pub fn paste_svg(&self, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>) {
+		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
+		let message = DocumentMessage::PasteSvg { svg, mouse };
+		self.dispatch(message);
+	}
+
 	/// Toggle visibility of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerVisibility)]
 	pub fn toggle_layer_visibility(&self, id: u64) {

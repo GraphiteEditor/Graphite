@@ -87,6 +87,10 @@ pub enum DocumentMessage {
 		image: Image<Color>,
 		mouse: Option<(f64, f64)>,
 	},
+	PasteSvg {
+		svg: String,
+		mouse: Option<(f64, f64)>,
+	},
 	Redo,
 	RenameDocument {
 		new_name: String,

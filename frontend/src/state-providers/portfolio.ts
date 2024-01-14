@@ -65,8 +65,12 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "data");
-		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
-		editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+		if (data.type.includes("svg")) {
+			editor.instance.pasteSvg(new TextDecoder().decode(data.content));
+		} else {
+			const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
+			editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);

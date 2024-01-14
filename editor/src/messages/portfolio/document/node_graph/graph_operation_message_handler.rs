@@ -3,18 +3,19 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
-use bezier_rs::Subpath;
+use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, FillType, Stroke};
+use graphene_core::vector::style::{Fill, FillType, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::{Artboard, Color};
 use transform_utils::LayerBounds;
 
 use glam::{DAffine2, DVec2, IVec2};
+use usvg::NodeExt;
 
 pub mod transform_utils;
 
@@ -752,6 +753,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
+			GraphOperationMessage::NewSvg {
+				id,
+				svg,
+				transform,
+				parent,
+				insert_index,
+			} => {
+				use usvg::TreeParsing;
+				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+					Ok(t) => t,
+					Err(e) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "SVG parsing failed".to_string(),
+							description: e.to_string(),
+						});
+						return;
+					}
+				};
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+
+				import_usvg_node(&mut modify_inputs, &tree.root, transform, id, parent, insert_index);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+			}
 		}
 	}
 
@@ -763,4 +787,143 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &mut CollapsedLayers) {
 	document_metadata.load_structure(document_network, selected_nodes);
 	collapsed.0.retain(|&layer| document_metadata.layer_exists(layer));
+}
+
+fn usvg_color(c: usvg::Color, a: f32) -> Color {
+	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
+}
+fn usvg_transform(c: usvg::Transform) -> DAffine2 {
+	DAffine2::from_cols_array(&[c.sx as f64, c.kx as f64, c.ky as f64, c.sy as f64, c.tx as f64, c.ty as f64])
+}
+
+fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) {
+	let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) else {
+		return;
+	};
+	modify_inputs.layer_node = Some(layer);
+	match &*node.borrow() {
+		usvg::NodeKind::Group(_group) => {
+			for (index, child) in node.children().enumerate() {
+				import_usvg_node(modify_inputs, &child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
+			}
+			modify_inputs.layer_node = Some(layer);
+		}
+		usvg::NodeKind::Path(path) => {
+			let subpaths = convert_usvg_path(path);
+
+			modify_inputs.insert_vector_data(subpaths, layer);
+
+			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
+				inputs[5] = NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false);
+				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
+			});
+			apply_usvg_fill(&path.fill, modify_inputs);
+			apply_usvg_stroke(&path.stroke, modify_inputs);
+		}
+		usvg::NodeKind::Image(_image) => {
+			warn!("Skip image")
+		}
+		usvg::NodeKind::Text(text) => {
+			let font = Font::new(crate::consts::DEFAULT_FONT_FAMILY.to_string(), crate::consts::DEFAULT_FONT_STYLE.to_string());
+			modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), font, 24., layer);
+			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+		}
+	}
+}
+
+fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyInputsContext) {
+	if let Some(stroke) = stroke {
+		if let usvg::Paint::Color(color) = &stroke.paint {
+			modify_inputs.stroke_set(Stroke {
+				color: Some(usvg_color(*color, stroke.opacity.get())),
+				weight: stroke.width.get() as f64,
+				dash_lengths: stroke.dasharray.clone().unwrap_or_default(),
+				dash_offset: stroke.dashoffset as f64,
+				line_cap: match stroke.linecap {
+					usvg::LineCap::Butt => LineCap::Butt,
+					usvg::LineCap::Round => LineCap::Round,
+					usvg::LineCap::Square => LineCap::Square,
+				},
+				line_join: match stroke.linejoin {
+					usvg::LineJoin::Miter => LineJoin::Miter,
+					usvg::LineJoin::MiterClip => LineJoin::Miter,
+					usvg::LineJoin::Round => LineJoin::Round,
+					usvg::LineJoin::Bevel => LineJoin::Bevel,
+				},
+				line_join_miter_limit: stroke.miterlimit.get() as f64,
+			})
+		} else {
+			warn!("Skip non solid stroke")
+		}
+	}
+}
+
+fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsContext) {
+	if let Some(fill) = &fill {
+		modify_inputs.fill_set(match &fill.paint {
+			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity.get())),
+			usvg::Paint::LinearGradient(linear) => Fill::Gradient(Gradient {
+				start: DVec2::new(linear.x1 as f64, linear.y1 as f64),
+				end: DVec2::new(linear.x2 as f64, linear.y2 as f64),
+				transform: usvg_transform(linear.transform),
+				gradient_type: GradientType::Linear,
+				positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, Some(usvg_color(stop.color, stop.opacity.get())))).collect(),
+			}),
+			usvg::Paint::RadialGradient(radial) => Fill::Gradient(Gradient {
+				start: DVec2::new(radial.cx as f64, radial.cy as f64),
+				end: DVec2::new(radial.fx as f64, radial.fy as f64),
+				transform: usvg_transform(radial.transform),
+				gradient_type: GradientType::Radial,
+				positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, Some(usvg_color(stop.color, stop.opacity.get())))).collect(),
+			}),
+			usvg::Paint::Pattern(_) => {
+				warn!("Skip pattern");
+				return;
+			}
+		});
+	}
+}
+
+fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<ManipulatorGroupId>> {
+	let mut subpaths = Vec::new();
+	let mut groups = Vec::new();
+
+	let mut points = path.data.points().iter();
+	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
+
+	for verb in path.data.verbs() {
+		match verb {
+			usvg::tiny_skia_path::PathVerb::Move => {
+				subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
+				let Some(start) = points.next().map(to_vec) else { continue };
+				groups.push(ManipulatorGroup::new(start, Some(start), Some(start)));
+			}
+			usvg::tiny_skia_path::PathVerb::Line => {
+				let Some(end) = points.next().map(to_vec) else { continue };
+				groups.push(ManipulatorGroup::new(end, Some(end), Some(end)));
+			}
+			usvg::tiny_skia_path::PathVerb::Quad => {
+				let Some(handle) = points.next().map(to_vec) else { continue };
+				let Some(end) = points.next().map(to_vec) else { continue };
+				if let Some(last) = groups.last_mut() {
+					last.out_handle = Some(last.anchor + (2. / 3.) * (handle - last.anchor));
+				}
+				groups.push(ManipulatorGroup::new(end, Some(end + (2. / 3.) * (handle - end)), Some(end)));
+			}
+			usvg::tiny_skia_path::PathVerb::Cubic => {
+				let Some(first_handle) = points.next().map(to_vec) else { continue };
+				let Some(second_handle) = points.next().map(to_vec) else { continue };
+				let Some(end) = points.next().map(to_vec) else { continue };
+				if let Some(last) = groups.last_mut() {
+					last.out_handle = Some(first_handle);
+				}
+				groups.push(ManipulatorGroup::new(end, Some(second_handle), Some(end)));
+			}
+			usvg::tiny_skia_path::PathVerb::Close => {
+				subpaths.push(Subpath::new(std::mem::take(&mut groups), true));
+			}
+		}
+	}
+	subpaths.push(Subpath::new(groups, false));
+	subpaths
 }

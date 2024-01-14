@@ -105,6 +105,13 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 	},
 	ClearArtboards,
+	NewSvg {
+		id: NodeId,
+		svg: String,
+		transform: DAffine2,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
+	},
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

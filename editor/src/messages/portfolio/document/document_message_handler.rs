@@ -602,6 +602,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
+			PasteSvg { svg, mouse } => {
+				use crate::messages::tool::common_functionality::graph_modification_utils;
+				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
+				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
+				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(), responses);
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
+			}
 			Redo => {
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);

@@ -116,7 +116,9 @@
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			const file = item.getAsFile();
-			if (file?.type.startsWith("image")) {
+			if (file?.type.includes("svg")) {
+				editor.instance.pasteSvg(await file.text(), e.clientX, e.clientY);
+			} else if (file?.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
 
 				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
