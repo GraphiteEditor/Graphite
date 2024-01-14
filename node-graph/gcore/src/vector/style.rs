@@ -290,6 +290,18 @@ impl Stroke {
 		}
 	}
 
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		Self {
+			color: self.color.map(|color| color.lerp(other.color.unwrap_or(color), time as f32)),
+			weight: self.weight + (other.weight - self.weight) * time,
+			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time as f32).collect(),
+			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
+			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
+			line_join: if time < 0.5 { self.line_join } else { other.line_join },
+			line_join_miter_limit: self.line_join_miter_limit + (other.line_join_miter_limit - self.line_join_miter_limit) * time,
+		}
+	}
+
 	/// Get the current stroke color.
 	pub fn color(&self) -> Option<Color> {
 		self.color
@@ -425,7 +437,24 @@ impl PathStyle {
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
 			fill: Fill::Solid(self.fill.color().lerp(other.fill.color(), time as f32)),
-			stroke: if time < 0.5 { self.stroke.clone() } else { other.stroke.clone() },
+			stroke: match (self.stroke.as_ref(), other.stroke.as_ref()) {
+				(Some(a), Some(b)) => Some(a.lerp(b, time)),
+				(Some(a), None) => {
+					if time < 0.5 {
+						Some(a.clone())
+					} else {
+						None
+					}
+				}
+				(None, Some(b)) => {
+					if time < 0.5 {
+						Some(b.clone())
+					} else {
+						None
+					}
+				}
+				(None, None) => None,
+			},
 		}
 	}
 
