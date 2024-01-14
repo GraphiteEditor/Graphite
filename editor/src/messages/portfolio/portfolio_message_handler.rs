@@ -635,7 +635,14 @@ impl PortfolioMessageHandler {
 		self.executor.poll_node_graph_evaluation(active_document, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {e}");
 
-			let error = r#"<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="white" style="font-size: 50px"><tspan x="50%" dy="-0.75em">Error while evaluating node graph</tspan><tspan x="50%" dy="1.5em">Open node graph (Ctrl Space) for details</tspan>/text>"#
+			let error = r#"
+				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
+				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
+					<tspan x="50%" dy="-24" font-weight="bold">The document cannot be rendered in its current state.</tspan>
+					<tspan x="50%" dy="24">Check for error details in the node graph, which can be</tspan>
+					<tspan x="50%" dy="24">opened with the viewport's top right <tspan font-style="italic">Node Graph</tspan> button.</tspan>
+				/text>"#
+				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		});
