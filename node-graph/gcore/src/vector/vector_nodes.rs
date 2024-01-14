@@ -28,7 +28,7 @@ fn set_vector_data_fill(
 	start: DVec2,
 	end: DVec2,
 	transform: DAffine2,
-	positions: Vec<(f64, Option<Color>)>,
+	positions: Vec<(f64, Color)>,
 ) -> VectorData {
 	vector_data.style.set_fill(match fill_type {
 		FillType::Solid => solid_color.map_or(Fill::None, Fill::Solid),

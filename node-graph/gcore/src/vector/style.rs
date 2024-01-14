@@ -36,9 +36,10 @@ pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
 	pub transform: DAffine2,
-	pub positions: Vec<(f64, Option<Color>)>,
+	pub positions: Vec<(f64, Color)>,
 	pub gradient_type: GradientType,
 }
+
 impl core::hash::Hash for Gradient {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.positions.len().hash(state);
@@ -52,14 +53,40 @@ impl core::hash::Hash for Gradient {
 		self.gradient_type.hash(state);
 	}
 }
+
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, transform: DAffine2, gradient_type: GradientType) -> Self {
 		Gradient {
 			start,
 			end,
-			positions: vec![(0., Some(start_color)), (1., Some(end_color))],
+			positions: vec![(0., start_color), (1., end_color)],
 			transform,
+			gradient_type,
+		}
+	}
+
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		let start = self.start + (other.start - self.start) * time;
+		let end = self.end + (other.end - self.end) * time;
+		let transform = self.transform;
+		let positions = self
+			.positions
+			.iter()
+			.zip(other.positions.iter())
+			.map(|((a_pos, a_color), (b_pos, b_color))| {
+				let position = a_pos + (b_pos - a_pos) * time;
+				let color = a_color.lerp(b_color, time as f32);
+				(position, color)
+			})
+			.collect::<Vec<_>>();
+		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
+
+		Self {
+			start,
+			end,
+			transform,
+			positions,
 			gradient_type,
 		}
 	}
@@ -71,7 +98,7 @@ impl Gradient {
 		let updated_transform = multiplied_transform * bound_transform;
 
 		let mut positions = String::new();
-		for (position, color) in self.positions.iter().filter_map(|(pos, color)| color.map(|color| (pos, color))) {
+		for (position, color) in self.positions.iter() {
 			let _ = write!(positions, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.with_alpha(color.a()).rgba_hex());
 		}
 
@@ -124,15 +151,14 @@ impl Gradient {
 		}
 
 		// Compute the color of the inserted stop
-		let get_color = |index: usize, time: f64| match (self.positions[index].1, self.positions.get(index + 1).and_then(|x| x.1)) {
+		let get_color = |index: usize, time: f64| match (self.positions[index].1, self.positions.get(index + 1).map(|(_, c)| *c)) {
 			// Lerp between the nearest colors if applicable
-			(Some(a), Some(b)) => a.lerp(
-				b,
+			(a, Some(b)) => a.lerp(
+				&b,
 				((time - self.positions[index].0) / self.positions.get(index + 1).map(|end| end.0 - self.positions[index].0).unwrap_or_default()) as f32,
 			),
 			// Use the start or the end color if applicable
-			(Some(v), _) | (_, Some(v)) => v,
-			_ => Color::WHITE,
+			(v, _) => v,
 		};
 
 		// Compute the correct index to keep the positions in order
@@ -144,7 +170,7 @@ impl Gradient {
 		let new_color = get_color(index - 1, new_position);
 
 		// Insert the new stop
-		self.positions.insert(index, (new_position, Some(new_color)));
+		self.positions.insert(index, (new_position, new_color));
 
 		Some(index)
 	}
@@ -174,7 +200,31 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient
-			Self::Gradient(Gradient { positions, .. }) => positions[0].1.unwrap_or(Color::BLACK),
+			Self::Gradient(Gradient { positions, .. }) => positions[0].1,
+		}
+	}
+
+	pub fn lerp(&self, other: &Self, time: f64) -> Self {
+		let transparent = Self::solid(Color::TRANSPARENT);
+		let a = if *self == Self::None { &transparent } else { self };
+		let b = if *other == Self::None { &transparent } else { other };
+
+		match (a, b) {
+			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
+			(Self::Solid(a), Self::Gradient(b)) => {
+				let mut solid_to_gradient = b.clone();
+				solid_to_gradient.positions.iter_mut().for_each(|(_, color)| *color = *a);
+				let a = &solid_to_gradient;
+				Self::Gradient(a.lerp(b, time))
+			}
+			(Self::Gradient(a), Self::Solid(b)) => {
+				let mut gradient_to_solid = a.clone();
+				gradient_to_solid.positions.iter_mut().for_each(|(_, color)| *color = *b);
+				let b = &gradient_to_solid;
+				Self::Gradient(a.lerp(b, time))
+			}
+			(Self::Gradient(a), Self::Gradient(b)) => Self::Gradient(a.lerp(b, time)),
+			_ => Self::None,
 		}
 	}
 
@@ -292,7 +342,7 @@ impl Stroke {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			color: self.color.map(|color| color.lerp(other.color.unwrap_or(color), time as f32)),
+			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
 			weight: self.weight + (other.weight - self.weight) * time,
 			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time as f32).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
@@ -436,7 +486,7 @@ impl PathStyle {
 
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		Self {
-			fill: Fill::Solid(self.fill.color().lerp(other.fill.color(), time as f32)),
+			fill: self.fill.lerp(&other.fill, time),
 			stroke: match (self.stroke.as_ref(), other.stroke.as_ref()) {
 				(Some(a), Some(b)) => Some(a.lerp(b, time)),
 				(Some(a), None) => {

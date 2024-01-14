@@ -623,18 +623,18 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	LayoutGroup::Row { widgets }
 }
 
-fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>)>, index: usize, node_id: NodeId, input_index: usize) {
+fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Color)>, index: usize, node_id: NodeId, input_index: usize) {
 	let label = TextLabel::new(format!("Gradient: {:.0}%", positions[index].0 * 100.)).tooltip("Adjustable by dragging the gradient stops in the viewport with the Gradient tool active");
 	row.push(label.widget_holder());
 	let on_update = {
 		let positions = positions.clone();
 		move |color_button: &ColorButton| {
 			let mut new_positions = positions.clone();
-			new_positions[index].1 = color_button.value;
+			new_positions[index].1 = color_button.value.unwrap();
 			TaggedValue::GradientPositions(new_positions)
 		}
 	};
-	let color = ColorButton::new(positions[index].1).on_update(update_value(on_update, node_id, input_index));
+	let color = ColorButton::new(Some(positions[index].1)).on_update(update_value(on_update, node_id, input_index)).allow_none(false);
 	add_blank_assist(row);
 	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	row.push(color.widget_holder());
@@ -668,10 +668,9 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Option<Color>
 				let mut new_positions = positions.clone();
 
 				// Blend linearly between the two colors.
-				let get_color = |index: usize| match (new_positions[index].1, new_positions.get(index + 1).and_then(|x| x.1)) {
-					(Some(a), Some(b)) => Color::from_rgbaf32((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
-					(Some(v), _) | (_, Some(v)) => Some(v),
-					_ => Some(Color::WHITE),
+				let get_color = |index: usize| match (new_positions[index].1, new_positions.get(index + 1).map(|x| x.1)) {
+					(a, Some(b)) => Color::from_rgbaf32_unchecked((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
+					(_, None) => Color::WHITE,
 				};
 				let get_pos = |index: usize| (new_positions[index].0 + new_positions.get(index + 1).map(|v| v.0).unwrap_or(1.)) / 2.;
 
