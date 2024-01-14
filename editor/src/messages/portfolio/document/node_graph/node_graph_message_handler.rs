@@ -278,6 +278,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
+	// TODO: clean up this massive function
 	fn send_graph(
 		&self,
 		network: &NodeNetwork,
@@ -386,14 +387,6 @@ impl NodeGraphMessageHandler {
 					} else {
 						LayerClassification::Layer
 					}
-					// TODO: Maybe switch to this below if perhaps it's simpler?
-					// if node.is_artboard() {
-					// 	LayerClassification::Artboard
-					// } else if node.is_folder(network) {
-					// 	LayerClassification::Folder
-					// } else {
-					// 	LayerClassification::Layer
-					// }
 				};
 
 				let data = LayerPanelEntry {
@@ -402,11 +395,8 @@ impl NodeGraphMessageHandler {
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
-					// TODO: Remove and take this from the graph data in the frontend similar to thumbnail?
 					disabled: network.disabled.contains(&node_id),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
