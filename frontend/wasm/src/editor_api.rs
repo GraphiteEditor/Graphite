@@ -26,6 +26,7 @@ use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
+use web_sys::IdleRequestOptions;
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -65,10 +66,10 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
 }
 
-fn set_timout(f: &Closure<dyn FnMut()>, delay: Duration) {
+fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 	window()
 		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay.as_millis() as i32)
-		.expect("should register `setTimout` OK");
+		.expect("should register `setTimeout` OK");
 }
 
 fn save_active_document() {
@@ -78,11 +79,13 @@ fn save_active_document() {
 
 	EDITOR_INSTANCES
 		.with(|instances| {
-			instances.try_borrow_mut().map(|mut editors| {
-				for (_, editor) in editors.iter_mut() {
-					info!("Saving active document");
-					editor.handle_message(PortfolioMessage::AutoSaveActiveDocument);
-				}
+			JS_EDITOR_HANDLES.with(|handles| {
+				instances.try_borrow_mut().map(|mut editors| {
+					editors
+						.iter_mut()
+						.flat_map(|(id, editor)| editor.handle_message(PortfolioMessage::AutoSaveActiveDocument { force: false }).into_iter().map(move |msg| (id, msg)))
+						.for_each(|(id, msg)| handles.borrow_mut().get(id).unwrap().send_frontend_message_to_js(msg));
+				})
 			})
 		})
 		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
@@ -239,10 +242,10 @@ impl JsEditorHandle {
 
 			*g.borrow_mut() = Some(Closure::new(move || {
 				save_active_document();
-				set_timout(f.borrow().as_ref().unwrap(), Duration::from_secs(30));
+				set_timeout(f.borrow().as_ref().unwrap(), Duration::from_secs(30));
 			}));
 
-			set_timout(g.borrow().as_ref().unwrap(), Duration::from_secs(0));
+			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(0));
 		}
 	}
 
