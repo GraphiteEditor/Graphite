@@ -24,6 +24,7 @@ use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
@@ -61,8 +62,30 @@ fn window() -> web_sys::Window {
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	//window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
 	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
+}
+
+fn set_timout(f: &Closure<dyn FnMut()>, delay: Duration) {
+	window()
+		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay.as_millis() as i32)
+		.expect("should register `setTimout` OK");
+}
+
+fn save_active_document() {
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	EDITOR_INSTANCES
+		.with(|instances| {
+			instances.try_borrow_mut().map(|mut editors| {
+				for (_, editor) in editors.iter_mut() {
+					info!("Saving active document");
+					editor.handle_message(PortfolioMessage::AutoSaveActiveDocument);
+				}
+			})
+		})
+		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
 }
 
 // Sends a message to the dispatcher in the Editor Backend
@@ -196,17 +219,31 @@ impl JsEditorHandle {
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
 
-		let f = std::rc::Rc::new(RefCell::new(None));
-		let g = f.clone();
+		{
+			let f = std::rc::Rc::new(RefCell::new(None));
+			let g = f.clone();
 
-		*g.borrow_mut() = Some(Closure::new(move || {
-			wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+			*g.borrow_mut() = Some(Closure::new(move || {
+				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-			// Schedule ourself for another requestAnimationFrame callback.
-			request_animation_frame(f.borrow().as_ref().unwrap());
-		}));
+				// Schedule ourself for another requestAnimationFrame callback.
+				request_animation_frame(f.borrow().as_ref().unwrap());
+			}));
 
-		request_animation_frame(g.borrow().as_ref().unwrap());
+			request_animation_frame(g.borrow().as_ref().unwrap());
+		}
+
+		{
+			let f = std::rc::Rc::new(RefCell::new(None));
+			let g = f.clone();
+
+			*g.borrow_mut() = Some(Closure::new(move || {
+				save_active_document();
+				set_timout(f.borrow().as_ref().unwrap(), Duration::from_secs(30));
+			}));
+
+			set_timout(g.borrow().as_ref().unwrap(), Duration::from_secs(0));
+		}
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
