@@ -273,8 +273,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						},
 						MenuBarEntry {
 							label: "Reset Tilt".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::SetCanvasRotation),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::SetCanvasRotation { angle_radians: 0.into() }.into()),
+							shortcut: action_keys!(NavigationMessageDiscriminant::SetCanvasTilt),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::SetCanvasTilt { angle_radians: 0.into() }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},

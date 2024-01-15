@@ -1303,7 +1303,7 @@ pub fn quantize_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 pub fn exposure_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let exposure = number_widget(document_node, node_id, 1, "Exposure", NumberInput::default().min(-20.).max(20.), true);
 	let offset = number_widget(document_node, node_id, 2, "Offset", NumberInput::default().min(-0.5).max(0.5), true);
-	let gamma_input = NumberInput::default().min(0.01).max(9.99).mode_increment().increment_step(0.1);
+	let gamma_input = NumberInput::default().min(0.01).max(9.99).increment_step(0.1);
 	let gamma_correction = number_widget(document_node, node_id, 3, "Gamma Correction", gamma_input, true);
 
 	vec![

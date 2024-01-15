@@ -26,10 +26,11 @@ pub enum NavigationMessage {
 		snap_zoom: Key,
 		zoom_from_viewport: Option<DVec2>,
 	},
+	ResetCanvasTiltAndZoomTo100Percent,
 	RotateCanvasBegin {
 		was_dispatched_from_menu: bool,
 	},
-	SetCanvasRotation {
+	SetCanvasTilt {
 		angle_radians: f64,
 	},
 	SetCanvasZoom {

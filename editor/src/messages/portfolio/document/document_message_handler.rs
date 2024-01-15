@@ -826,7 +826,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
-					responses.add(NavigationMessage::SetCanvasRotation { angle_radians: 0. });
+					responses.add(NavigationMessage::SetCanvasTilt { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
@@ -1104,7 +1104,37 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>) {
+		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
+
+		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
+			widgets: vec![
+				DropdownInput::new(
+					vec![vec![
+						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
+						MenuListEntry::new(DocumentMode::SelectMode.to_string())
+							.icon(DocumentMode::SelectMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+						MenuListEntry::new(DocumentMode::GuideMode.to_string())
+							.icon(DocumentMode::GuideMode.icon_name())
+							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+					]])
+					.selected_index(Some(self.document_mode as u32))
+					.draw_icon( true)
+					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.widget_holder(),
+				Separator::new(SeparatorType::Section).widget_holder(),
+			],
+		}]);
+
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(document_mode_layout),
+			layout_target: LayoutTarget::DocumentMode,
+		});
+
+		// Document bar (right portion of the bar above the viewport)
+
 		let snapping_state = self.snapping_state.clone();
+
 		let mut widgets = vec![
 			CheckboxInput::new(self.overlays_visible)
 				.icon("Overlays")
@@ -1211,13 +1241,27 @@ impl DocumentMessageHandler {
 				.on_update(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
 				.widget_holder(),
 			IconButton::new("ZoomReset", 24)
-				.tooltip("Zoom to 100%")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
-				.on_update(|_| NavigationMessage::SetCanvasZoom { zoom_factor: 1. }.into())
+				.tooltip("Reset Tilt and Zoom to 100%")
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::ResetCanvasTiltAndZoomTo100Percent))
+				.on_update(|_| NavigationMessage::ResetCanvasTiltAndZoomTo100Percent.into())
 				.widget_holder(),
 			PopoverButton::new(
 				"Canvas Navigation",
-				"Interactive controls in this\nmenu are coming soon.\n\nPan:\n• Middle Click Drag\n\nTilt:\n• Alt + Middle Click Drag\n\nZoom:\n• Shift + Middle Click Drag\n• Ctrl + Scroll Wheel Roll",
+				"
+					Interactive controls in this\n\
+					menu are coming soon.\n\
+					\n\
+					Pan:\n\
+					• Middle Click Drag\n\
+					\n\
+					Tilt:\n\
+					• Alt + Middle Click Drag\n\
+					\n\
+					Zoom:\n\
+					• Shift + Middle Click Drag\n\
+					• Ctrl + Scroll Wheel Roll
+				"
+				.trim(),
 			)
 			.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
@@ -1225,7 +1269,7 @@ impl DocumentMessageHandler {
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
-				.mode_increment()
+				.tooltip("Document zoom within the viewport")
 				.on_update(|number_input: &NumberInput| {
 					NavigationMessage::SetCanvasZoom {
 						zoom_factor: number_input.value.unwrap() / 100.,
@@ -1236,23 +1280,18 @@ impl DocumentMessageHandler {
 				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
 				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
 				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextButton::new("Node Graph")
-				.icon(Some(if self.graph_view_overlay_open { "GraphViewOpen".into() } else { "GraphViewClosed".into() }))
-				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
-				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
-				.widget_holder(),
 		];
-		let rotation_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
-		if rotation_value.abs() > 0.00001 {
+
+		let tilt_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
+		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(Some(rotation_value))
+				NumberInput::new(Some(tilt_value))
 					.unit("°")
 					.step(15.)
+					.tooltip("Document tilt within the viewport")
 					.on_update(|number_input: &NumberInput| {
-						NavigationMessage::SetCanvasRotation {
+						NavigationMessage::SetCanvasTilt {
 							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
 						}
 						.into()
@@ -1260,36 +1299,22 @@ impl DocumentMessageHandler {
 					.widget_holder(),
 			]);
 		}
-		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
-		let document_mode_layout = WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![
-				DropdownInput::new(
-					vec![vec![
-						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
-						MenuListEntry::new(DocumentMode::SelectMode.to_string())
-							.icon(DocumentMode::SelectMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						MenuListEntry::new(DocumentMode::GuideMode.to_string())
-							.icon(DocumentMode::GuideMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-					]])
-					.selected_index(Some(self.document_mode as u32))
-					.draw_icon( true)
-					.interactive( false) // TODO: set to true when dialogs are not spawned
-					.widget_holder(),
-				Separator::new(SeparatorType::Section).widget_holder(),
-			],
-		}]);
+		widgets.extend([
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextButton::new("Node Graph")
+				.icon(Some(if self.graph_view_overlay_open { "GraphViewOpen".into() } else { "GraphViewClosed".into() }))
+				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
+				.widget_holder(),
+		]);
+
+		let document_bar_layout = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
-		});
-
-		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(document_mode_layout),
-			layout_target: LayoutTarget::DocumentMode,
 		});
 	}
 

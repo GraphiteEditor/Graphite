@@ -147,7 +147,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 							start_offset.angle_between(end_offset)
 						};
 
-						responses.add(SetCanvasRotation { angle_radians: ptz.tilt + rotation });
+						responses.add(SetCanvasTilt { angle_radians: ptz.tilt + rotation });
 					}
 					TransformOperation::Zoom { snap_zoom_enabled, pre_commit_zoom } => {
 						let zoom_start = self.snapped_scale(ptz.zoom);
@@ -184,6 +184,12 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 
 				self.mouse_position = ipp.mouse.position;
 			}
+			ResetCanvasTiltAndZoomTo100Percent => {
+				ptz.tilt = 0.;
+				ptz.zoom = 1.;
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+			}
 			RotateCanvasBegin { was_dispatched_from_menu } => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				responses.add(FrontendMessage::UpdateInputHints {
@@ -210,7 +216,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				self.mouse_position = ipp.mouse.position;
 				self.finish_operation_with_click = was_dispatched_from_menu;
 			}
-			SetCanvasRotation { angle_radians } => {
+			SetCanvasTilt { angle_radians } => {
 				ptz.tilt = angle_radians;
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -226,7 +232,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Rotate { pre_commit_tilt, .. } => {
-							responses.add(SetCanvasRotation { angle_radians: pre_commit_tilt });
+							responses.add(SetCanvasTilt { angle_radians: pre_commit_tilt });
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
 							ptz.pan = pre_commit_pan;
@@ -323,7 +329,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 			TranslateCanvasBegin,
 			RotateCanvasBegin,
 			ZoomCanvasBegin,
-			SetCanvasRotation,
+			SetCanvasTilt,
 			WheelCanvasZoom,
 			IncreaseCanvasZoom,
 			DecreaseCanvasZoom,
