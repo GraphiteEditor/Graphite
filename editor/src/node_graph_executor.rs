@@ -558,7 +558,12 @@ impl NodeGraphExecutor {
 					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(OverlaysMessage::Draw);
 
-					let node_graph_output = result.map_err(|e| format!("Node graph evaluation failed: {e:?}"))?;
+					let Ok(node_graph_output) = result else {
+						// Clear the click targets while the graph is in an un-renderable state
+						document.metadata.update_click_targets(HashMap::new());
+
+						return Err("Node graph evaluation failed".to_string());
+					};
 
 					document.metadata.update_transforms(new_upstream_transforms);
 					document.metadata.update_click_targets(new_click_targets);
