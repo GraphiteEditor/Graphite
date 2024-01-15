@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum LayoutMessage {
 	ResendActiveWidget {
 		layout_target: LayoutTarget,
-		dirty_id: WidgetId,
+		widget_id: WidgetId,
 	},
 	SendLayout {
 		layout: Layout,

@@ -555,7 +555,6 @@ impl NodeGraphExecutor {
 					responses.extend(existing_responses);
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(BroadcastEvent::DocumentIsDirty);
 					responses.add(OverlaysMessage::Draw);
 
 					let Ok(node_graph_output) = result else {

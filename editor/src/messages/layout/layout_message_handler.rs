@@ -14,7 +14,7 @@ pub struct LayoutMessageHandler {
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
+	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, group)) = stack.pop() {
 			match group {
@@ -22,7 +22,7 @@ impl LayoutMessageHandler {
 				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
 					for (index, widget) in widgets.iter().enumerate() {
 						// Return if this is the correct ID
-						if widget.widget_id == id {
+						if widget.widget_id == widget_id {
 							widget_path.push(index);
 							return Some((widget, widget_path));
 						}
@@ -48,11 +48,11 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
-			ResendActiveWidget { layout_target, dirty_id } => {
+			ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
 					Layout::MenuLayout(_) => return,
-					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, dirty_id).map(|(widget, widget_path)| {
+					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
 						// Create a widget update diff for the relevant id
 						let new_value = DiffUpdate::Widget(widget.clone());
 						WidgetDiff { widget_path, new_value }
@@ -208,7 +208,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					Widget::TextLabel(_) => {}
 					Widget::WorkingColorsInput(_) => {}
 				};
-				responses.add(ResendActiveWidget { layout_target, dirty_id: widget_id });
+				responses.add(ResendActiveWidget { layout_target, widget_id: widget_id });
 			}
 		}
 	}

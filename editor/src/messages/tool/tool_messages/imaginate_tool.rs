@@ -18,10 +18,6 @@ pub enum ImaginateToolMessage {
 	// Standard messages
 	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
-	SelectionChanged,
 
 	// Tool-specific messages
 	DragStart,
@@ -74,9 +70,7 @@ impl ToolMetadata for ImaginateTool {
 impl ToolTransition for ImaginateTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: Some(ImaginateToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(ImaginateToolMessage::Abort.into()),
-			selection_changed: Some(ImaginateToolMessage::SelectionChanged.into()),
 			..Default::default()
 		}
 	}
@@ -112,11 +106,6 @@ impl Fsm for ImaginateToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(_, ImaginateToolMessage::DocumentIsDirty | ImaginateToolMessage::SelectionChanged) => {
-				//tool_data.path_outlines.update_selected(document.document_legacy.selected_visible_layers(), document, responses, font_cache);
-
-				self
-			}
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);

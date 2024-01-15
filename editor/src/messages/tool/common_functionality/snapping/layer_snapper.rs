@@ -323,7 +323,7 @@ impl SnapCandidatePoint {
 	pub fn handle(document_point: DVec2) -> Self {
 		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp))
 	}
-	pub fn handle_neighbours(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
+	pub fn handle_neighbors(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
 		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp));
 		point.neighbors = neighbours.into();
 		point

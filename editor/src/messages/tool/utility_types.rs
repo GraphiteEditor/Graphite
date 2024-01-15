@@ -168,7 +168,6 @@ impl DocumentToolData {
 #[derive(Clone, Debug, Default)]
 pub struct EventToMessageMap {
 	pub canvas_transformed: Option<ToolMessage>,
-	pub document_dirty: Option<ToolMessage>,
 	pub selection_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
@@ -190,7 +189,6 @@ pub trait ToolTransition {
 
 		let event_to_tool_map = self.event_to_message_map();
 		subscribe_message(event_to_tool_map.canvas_transformed, BroadcastEvent::CanvasTransformed);
-		subscribe_message(event_to_tool_map.document_dirty, BroadcastEvent::DocumentIsDirty);
 		subscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
@@ -211,7 +209,6 @@ pub trait ToolTransition {
 
 		let event_to_tool_map = self.event_to_message_map();
 		unsubscribe_message(event_to_tool_map.canvas_transformed, BroadcastEvent::CanvasTransformed);
-		unsubscribe_message(event_to_tool_map.document_dirty, BroadcastEvent::DocumentIsDirty);
 		unsubscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
 		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
 		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);

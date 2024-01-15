@@ -23,8 +23,6 @@ pub enum ArtboardToolMessage {
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -77,7 +75,6 @@ impl LayoutHolder for ArtboardTool {
 impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: Some(ArtboardToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
 			overlay_provider: Some(|overlay_context| ArtboardToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
@@ -129,7 +126,6 @@ impl ArtboardToolData {
 			.click_xray(input.mouse.position)
 			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Artboard"));
 
-		responses.add(BroadcastEvent::DocumentIsDirty);
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
 
@@ -164,8 +160,6 @@ impl ArtboardToolData {
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
-
-		responses.add(BroadcastEvent::DocumentIsDirty);
 	}
 }
 
@@ -231,8 +225,6 @@ impl Fsm for ArtboardToolFsmState {
 						dimensions: size.round().as_ivec2(),
 					});
 
-					responses.add(BroadcastEvent::DocumentIsDirty);
-
 					tool_data.drag_current = mouse_position;
 				}
 				ArtboardToolFsmState::Dragging
@@ -283,11 +275,6 @@ impl Fsm for ArtboardToolFsmState {
 					})
 				}
 
-				// Have to put message here instead of when Artboard is created
-				// This might result in a few more calls but it is not reliant on the order of messages
-
-				responses.add(BroadcastEvent::DocumentIsDirty);
-
 				ArtboardToolFsmState::Drawing
 			}
 			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerMove { .. }) => {
@@ -334,8 +321,6 @@ impl Fsm for ArtboardToolFsmState {
 				if let Some(artboard) = tool_data.selected_artboard.take() {
 					let id = artboard.to_node();
 					responses.add(GraphOperationMessage::DeleteLayer { id });
-
-					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 				ArtboardToolFsmState::Ready
 			}

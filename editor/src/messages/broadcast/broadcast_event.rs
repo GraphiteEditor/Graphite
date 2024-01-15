@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, Hash)]
 #[impl_message(Message, BroadcastMessage, TriggerEvent)]
 pub enum BroadcastEvent {
-	DocumentIsDirty,
 	CanvasTransformed,
 	ToolAbort,
 	SelectionChanged,

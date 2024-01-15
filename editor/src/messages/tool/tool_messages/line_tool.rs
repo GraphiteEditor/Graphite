@@ -38,8 +38,6 @@ impl Default for LineOptions {
 pub enum LineToolMessage {
 	// Standard messages
 	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
@@ -283,8 +281,8 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 	let constrained = snap_angle || lock_angle;
 	let snap = &mut tool_data.snap_manager;
 
-	let near_point = SnapCandidatePoint::handle_neighbours(document_points[1], [tool_data.drag_start]);
-	let far_point = SnapCandidatePoint::handle_neighbours(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
+	let near_point = SnapCandidatePoint::handle_neighbors(document_points[1], [tool_data.drag_start]);
+	let far_point = SnapCandidatePoint::handle_neighbors(2. * document_points[0] - document_points[1], [tool_data.drag_start]);
 
 	if constrained {
 		let constraint = SnapConstraint::Line {

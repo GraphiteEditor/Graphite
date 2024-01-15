@@ -101,7 +101,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::None;
 
 				responses.add(ToolMessage::UpdateHints);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			BeginGrab => {
@@ -119,7 +118,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Grabbing(Default::default());
 
 				selected.original_transforms.clear();
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
@@ -136,7 +134,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Rotating(Default::default());
 
 				selected.original_transforms.clear();
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
@@ -153,7 +150,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::Scaling(Default::default());
 
 				selected.original_transforms.clear();
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			CancelTransformOperation => {
 				selected.revert_operation();
@@ -164,7 +160,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				self.transform_operation = TransformOperation::None;
 
 				responses.add(ToolMessage::UpdateHints);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
 			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),

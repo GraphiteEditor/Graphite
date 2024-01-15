@@ -27,8 +27,6 @@ pub enum GradientToolMessage {
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -151,35 +149,6 @@ impl SelectedGradient {
 		}
 	}
 
-	/// Update the selected gradient, checking for removal or change of gradient.
-	pub fn update(gradient: &mut Option<Self>, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(inner_gradient) = gradient else {
-			return;
-		};
-
-		// Clear the gradient if layer deleted
-		if !inner_gradient.layer.exists(document.metadata()) {
-			responses.add(ToolMessage::RefreshToolOptions);
-			*gradient = None;
-			return;
-		};
-
-		// Update transform
-		inner_gradient.transform = gradient_space_transform(inner_gradient.layer, document);
-
-		// Clear if no longer a gradient
-		let Some(gradient) = get_gradient(inner_gradient.layer, &document.network) else {
-			responses.add(ToolMessage::RefreshToolOptions);
-			*gradient = None;
-			return;
-		};
-
-		if gradient.gradient_type != inner_gradient.gradient.gradient_type {
-			responses.add(ToolMessage::RefreshToolOptions);
-		}
-		inner_gradient.gradient = gradient.clone();
-	}
-
 	pub fn with_gradient_start(mut self, start: DVec2) -> Self {
 		self.gradient.start = self.transform.inverse().transform_point2(start);
 		self
@@ -250,9 +219,7 @@ impl GradientTool {
 impl ToolTransition for GradientTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: Some(GradientToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(GradientToolMessage::Abort.into()),
-			selection_changed: Some(GradientToolMessage::DocumentIsDirty.into()),
 			overlay_provider: Some(|overlay_context| GradientToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
@@ -280,13 +247,6 @@ impl Fsm for GradientToolFsmState {
 		};
 
 		match (self, event) {
-			(_, GradientToolMessage::DocumentIsDirty) => {
-				if self != GradientToolFsmState::Drawing {
-					SelectedGradient::update(&mut tool_data.selected_gradient, document, responses);
-				}
-
-				self
-			}
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
@@ -395,8 +355,6 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
-				responses.add(BroadcastEvent::DocumentIsDirty);
-
 				let mouse = input.mouse.position;
 				tool_data.drag_start = mouse;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);

@@ -421,7 +421,6 @@ impl<'a> Selected<'a> {
 					OriginalTransforms::Path(path_transforms) => Self::transform_path(&self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
 				}
 			}
-			self.responses.add(BroadcastEvent::DocumentIsDirty);
 		}
 	}
 

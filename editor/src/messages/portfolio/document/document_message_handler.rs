@@ -344,7 +344,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						skip_rerender: false,
 					});
 				}
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			BackupDocument { network } => self.backup_with_document(network, responses),
 			ClearLayersPanel => {
@@ -384,8 +383,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
 					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
 				}
-
-				responses.add(BroadcastEvent::DocumentIsDirty);
 			}
 			DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
@@ -425,7 +422,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 							skip_rerender: false,
 						});
 					}
-					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 			}
 			GraphViewOverlay { open } => {
@@ -609,7 +605,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			Redo => {
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(OverlaysMessage::Draw);
 			}
 			RenameDocument { new_name } => {
@@ -788,7 +783,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.undo_in_progress = true;
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(DocumentMessage::DocumentHistoryBackward);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(DocumentMessage::UndoFinished);
 			}

@@ -121,9 +121,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
 				responses.add(BroadcastEvent::SelectionChanged);
 
-				// Send the DocumentIsDirty message to the active tool's sub-tool message handler
-				responses.add(BroadcastEvent::DocumentIsDirty);
-
 				// Update the working colors for the active tool
 				responses.add(BroadcastEvent::WorkingColorChanged);
 

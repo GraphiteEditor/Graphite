@@ -250,7 +250,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				if self.active_document_mut().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(BroadcastEvent::DocumentIsDirty);
 				}
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
@@ -440,7 +439,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(OverlaysMessage::Draw);
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);

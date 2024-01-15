@@ -90,7 +90,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 					ptz.zoom = 1.;
 				}
 
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
@@ -214,13 +213,11 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 			SetCanvasRotation { angle_radians } => {
 				ptz.tilt = angle_radians;
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			SetCanvasZoom { zoom_factor } => {
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
@@ -246,7 +243,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				ptz.tilt = self.snapped_angle(ptz.tilt);
 				ptz.zoom = self.snapped_scale(ptz.zoom);
 				responses.add(BroadcastEvent::CanvasTransformed);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				responses.add(ToolMessage::UpdateCursor);
 				responses.add(ToolMessage::UpdateHints);
 				self.transform_operation = TransformOperation::None;
@@ -261,7 +257,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			TranslateCanvasBegin => {
@@ -278,7 +273,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				ptz.pan += transformed_delta;
-				responses.add(BroadcastEvent::DocumentIsDirty);
 				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {

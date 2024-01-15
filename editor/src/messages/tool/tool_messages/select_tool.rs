@@ -59,10 +59,6 @@ pub enum SelectToolMessage {
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
-	DocumentIsDirty,
-	#[remain::unsorted]
-	SelectionChanged,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -237,9 +233,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 impl ToolTransition for SelectTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			document_dirty: Some(SelectToolMessage::DocumentIsDirty.into()),
 			tool_abort: Some(SelectToolMessage::Abort.into()),
-			selection_changed: Some(SelectToolMessage::SelectionChanged.into()),
 			overlay_provider: Some(|overlay_context| SelectToolMessage::Overlays(overlay_context).into()),
 			..Default::default()
 		}
@@ -589,8 +583,6 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove { axis_align, duplicate, .. }) => {
 				tool_data.has_dragged = true;
-				// TODO: This is a cheat. Break out the relevant functionality from the handler above and call it from there and here.
-				responses.add_front(SelectToolMessage::DocumentIsDirty);
 
 				let axis_align = input.keyboard.key(axis_align);
 				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);

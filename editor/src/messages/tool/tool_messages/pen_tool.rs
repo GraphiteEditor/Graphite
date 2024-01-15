@@ -510,8 +510,8 @@ impl PenToolData {
 				origin: relative,
 				direction: document_pos - relative,
 			};
-			let near_point = SnapCandidatePoint::handle_neighbours(document_pos, neighbours.clone());
-			let far_point = SnapCandidatePoint::handle_neighbours(2. * relative - document_pos, neighbours);
+			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbours.clone());
+			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbours);
 			if mirror {
 				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
 				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
@@ -527,8 +527,8 @@ impl PenToolData {
 				snap.update_indicator(snapped);
 			}
 		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(document_pos, neighbours.clone()), None, false);
-			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(2. * relative - document_pos, neighbours), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbours.clone()), None, false);
+			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbours), None, false);
 			document_pos = if snapped_far.other_snap_better(&snapped) {
 				snapped.snapped_point_document
 			} else {
@@ -536,7 +536,7 @@ impl PenToolData {
 			};
 			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 		} else {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbours(document_pos, neighbours), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbours), None, false);
 			document_pos = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}
