@@ -7,6 +7,7 @@ use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
+use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -793,7 +794,7 @@ fn usvg_color(c: usvg::Color, a: f32) -> Color {
 	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
 fn usvg_transform(c: usvg::Transform) -> DAffine2 {
-	DAffine2::from_cols_array(&[c.sx as f64, c.kx as f64, c.ky as f64, c.sy as f64, c.tx as f64, c.ty as f64])
+	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
 }
 
 fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) {
@@ -810,14 +811,28 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::NodeKind::Path(path) => {
 			let subpaths = convert_usvg_path(path);
-
+			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
+			let transformed_bounds = subpaths
+				.iter()
+				.filter_map(|subpath| subpath.bounding_box_with_transform(transform * usvg_transform(node.abs_transform())))
+				.reduce(Quad::combine_bounds)
+				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
+			let centre = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
+
 			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
-				inputs[5] = NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false);
-				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
+				transform_utils::update_transform(inputs, centre.inverse() * transform * usvg_transform(node.abs_transform()) * centre);
 			});
-			apply_usvg_fill(&path.fill, modify_inputs);
+			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
+			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
+			apply_usvg_fill(
+				&path.fill,
+				modify_inputs,
+				transform * usvg_transform(node.abs_transform()),
+				bounds_transform,
+				transformed_bound_transform,
+			);
 			apply_usvg_stroke(&path.stroke, modify_inputs);
 		}
 		usvg::NodeKind::Image(_image) => {
@@ -858,24 +873,48 @@ fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyIn
 	}
 }
 
-fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsContext) {
+fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2, transformed_bound_transform: DAffine2) {
 	if let Some(fill) = &fill {
 		modify_inputs.fill_set(match &fill.paint {
 			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity.get())),
-			usvg::Paint::LinearGradient(linear) => Fill::Gradient(Gradient {
-				start: DVec2::new(linear.x1 as f64, linear.y1 as f64),
-				end: DVec2::new(linear.x2 as f64, linear.y2 as f64),
-				transform: usvg_transform(linear.transform),
-				gradient_type: GradientType::Linear,
-				positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
-			}),
-			usvg::Paint::RadialGradient(radial) => Fill::Gradient(Gradient {
-				start: DVec2::new(radial.cx as f64, radial.cy as f64),
-				end: DVec2::new(radial.fx as f64, radial.fy as f64),
-				transform: usvg_transform(radial.transform),
-				gradient_type: GradientType::Radial,
-				positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
-			}),
+			usvg::Paint::LinearGradient(linear) => {
+				let local = [DVec2::new(linear.x1 as f64, linear.y1 as f64), DVec2::new(linear.x2 as f64, linear.y2 as f64)];
+				let to_doc = if linear.base.units == usvg::Units::UserSpaceOnUse {
+					transform * usvg_transform(linear.transform)
+				} else {
+					transformed_bound_transform * usvg_transform(linear.transform)
+				};
+				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
+				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+
+				Fill::Gradient(Gradient {
+					start,
+					end,
+					transform: DAffine2::IDENTITY,
+					gradient_type: GradientType::Linear,
+					positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
+				})
+			}
+			usvg::Paint::RadialGradient(radial) => {
+				let local = [DVec2::new(radial.cx as f64, radial.cy as f64), DVec2::new(radial.fx as f64, radial.fy as f64)];
+				let to_doc = if radial.base.units == usvg::Units::UserSpaceOnUse {
+					transform * usvg_transform(radial.transform)
+				} else {
+					transformed_bound_transform * usvg_transform(radial.transform)
+				};
+				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
+				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+
+				Fill::Gradient(Gradient {
+					start,
+					end,
+					transform: DAffine2::IDENTITY,
+					gradient_type: GradientType::Radial,
+					positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
+				})
+			}
 			usvg::Paint::Pattern(_) => {
 				warn!("Skip pattern");
 				return;

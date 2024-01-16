@@ -90,7 +90,7 @@ impl LayerSnapper {
 		let tolerance = snap_tolerance(document);
 		for path in &self.paths_to_snap {
 			// Skip very short paths
-			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance {
+			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance * 2. {
 				continue;
 			}
 			let time = path.document_curve.project(point.document_point, None);
