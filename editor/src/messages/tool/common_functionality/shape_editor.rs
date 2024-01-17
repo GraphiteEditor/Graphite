@@ -64,6 +64,114 @@ pub struct ManipulatorPointInfo {
 
 pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<ManipulatorGroupId, Option<f64>>>;
 
+pub struct ClosestSegment {
+	layer: LayerNodeIdentifier,
+	start: ManipulatorGroupId,
+	end: ManipulatorGroupId,
+	bezier: Bezier,
+	t: f64,
+	bezier_point_to_viewport: DVec2,
+	closest_insertion_id: Option<ManipulatorGroupId>,
+}
+impl ClosestSegment {
+	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
+		let transform = document_metadata.transform_to_viewport(self.layer);
+		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
+		let t = self.bezier.project(layer_m_pos, None);
+		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));
+		let bezier_point = transform.transform_point2(bezier_point);
+		self.t = t;
+		self.bezier_point_to_viewport = bezier_point;
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	pub fn distance_squared(&self, mouse_position: DVec2) -> f64 {
+		self.bezier_point_to_viewport.distance_squared(mouse_position)
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	/// # MAYBE
+	/// keep it in the struct
+	pub fn split(&self) -> [Bezier; 2] {
+		self.bezier.split(TValue::Parametric(self.t))
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
+		let dist_sq = self.distance_squared(mouse_position);
+		let tolerance_sq = tolerance * tolerance;
+		tolerance_sq < dist_sq
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	///
+	/// Adjust the OutHandle for bezier curve before inserted point
+	pub fn adjust_start_handle(&self, responses: &mut VecDeque<Message>) {
+		let [first, _] = self.split();
+		let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
+		let position = first.handle_start().unwrap_or(first.start());
+		let out_handle = GraphOperationMessage::Vector {
+			layer: self.layer,
+			modification: VectorDataModification::SetManipulatorPosition { point, position },
+		};
+		responses.add(out_handle);
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	///
+	/// Adjust the InHandle for bezier curve after inserted point
+	pub fn adjust_end_handle(&self, responses: &mut VecDeque<Message>) {
+		let [_, second] = self.split();
+		let point = ManipulatorPointId::new(self.end, SelectedType::InHandle);
+		let position = second.handle_end().unwrap_or(second.end());
+		let in_handle = GraphOperationMessage::Vector {
+			layer: self.layer,
+			modification: VectorDataModification::SetManipulatorPosition { point, position },
+		};
+		responses.add(in_handle);
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	///
+	/// create closest to last mouse position manipulator group OR update its position
+	pub fn set_closest_insertion(&mut self, responses: &mut VecDeque<Message>) {
+		let [first, second] = self.split();
+
+		let layer = self.layer;
+		let anchor = first.end();
+		let in_handle = first.handle_end();
+		let out_handle = second.handle_start();
+
+		if let Some(group) = self.closest_insertion_id {
+			let msg_ctor = |ty, position| {
+				let point = ManipulatorPointId::new(group, ty);
+				let modification = VectorDataModification::SetManipulatorPosition { point, position };
+				GraphOperationMessage::Vector { layer, modification }
+			};
+
+			let move_in = in_handle.map(|in_handle| msg_ctor(SelectedType::InHandle, in_handle));
+			let move_out = out_handle.map(|out_handle| msg_ctor(SelectedType::OutHandle, out_handle));
+			let move_anchor = msg_ctor(SelectedType::Anchor, anchor);
+
+			responses.try_add(move_in);
+			responses.add(move_anchor);
+			responses.try_add(move_out);
+		} else {
+			let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
+			// self mutability needed only for this:
+			self.closest_insertion_id = Some(manipulator_group.id);
+			let modification = VectorDataModification::AddManipulatorGroup {
+				manipulator_group,
+				after_id: self.start,
+			};
+			let insert = GraphOperationMessage::Vector { layer, modification };
+			responses.add(insert);
+		};
+	}
+	/// **!!!** call after `update_closest_point` except for the first time
+	///
+	/// Set insertion point and adjust all handles for both splited bezier curves  
+	pub fn adjust_and_set_insertion(&mut self, responses: &mut VecDeque<Message>) {
+		self.set_closest_insertion(responses);
+		self.adjust_start_handle(responses);
+		self.adjust_end_handle(responses);
+	}
+}
+
 // TODO Consider keeping a list of selected manipulators to minimize traversals of the layers
 impl ShapeState {
 	// Snap, returning a viewport delta
@@ -97,7 +205,7 @@ impl ShapeState {
 						} else {
 							SnapSource::Geometry(GeometrySnapSource::Sharp)
 						};
-						let Some(position) = handle.get_position(&group) else { continue };
+						let Some(position) = handle.get_position(group) else { continue };
 						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
 
 						let mut push_neighbor = |group: ManipulatorGroup<ManipulatorGroupId>| {
@@ -895,14 +1003,7 @@ impl ShapeState {
 	}
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
-	fn closest_segment(
-		&self,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
-		layer: LayerNodeIdentifier,
-		position: glam::DVec2,
-		tolerance: f64,
-	) -> Option<(ManipulatorGroupId, ManipulatorGroupId, Bezier, f64)> {
+	fn closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
 		let transform = document_metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 		let projection_options = bezier_rs::ProjectionOptions { lut_size: 5, ..Default::default() };
@@ -924,7 +1025,15 @@ impl ShapeState {
 					closest_distance_squared = distance_squared;
 					let start = subpath.manipulator_groups()[manipulator_index];
 					let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
-					result = Some((start.id, end.id, bezier, t));
+					result = Some(ClosestSegment {
+						layer,
+						start: start.id,
+						end: end.id,
+						bezier,
+						t,
+						bezier_point_to_viewport: screenspace,
+						closest_insertion_id: None,
+					});
 				}
 			}
 		}
@@ -932,40 +1041,19 @@ impl ShapeState {
 		result
 	}
 
+	/// find closest segment on first fit layer
+	/// # MAYBE
+	/// maybe we need to find a closest segment on all layers? and only then take the closest one? <br/>
+	/// seems like a waste of resource
+	pub fn first_closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
+		self.selected_layers()
+			.find_map(|&layer| self.closest_segment(document_network, document_metadata, layer, position, tolerance))
+	}
+
 	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the Path tool).
 	pub fn split(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
-		for &layer in self.selected_layers() {
-			if let Some((start, end, bezier, t)) = self.closest_segment(document_network, document_metadata, layer, position, tolerance) {
-				let [first, second] = bezier.split(TValue::Parametric(t));
-
-				// Adjust the first manipulator group's out handle
-				let point = ManipulatorPointId::new(start, SelectedType::OutHandle);
-				let position = first.handle_start().unwrap_or(first.start());
-				let out_handle = GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorPosition { point, position },
-				};
-				responses.add(out_handle);
-
-				// Insert a new manipulator group between the existing ones
-				let manipulator_group = ManipulatorGroup::new(first.end(), first.handle_end(), second.handle_start());
-				let insert = GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::AddManipulatorGroup { manipulator_group, after_id: start },
-				};
-				responses.add(insert);
-
-				// Adjust the last manipulator group's in handle
-				let point = ManipulatorPointId::new(end, SelectedType::InHandle);
-				let position = second.handle_end().unwrap_or(second.end());
-				let in_handle = GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorPosition { point, position },
-				};
-				responses.add(in_handle);
-
-				return;
-			}
+		if let Some(mut segment) = self.first_closest_segment(document_network, document_metadata, position, tolerance) {
+			segment.adjust_and_set_insertion(responses);
 		}
 	}
 
