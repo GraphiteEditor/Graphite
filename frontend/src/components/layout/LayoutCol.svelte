@@ -25,6 +25,8 @@
 
 <!-- Excluded events because these require `|passive` or `|nonpassive` modifiers. Use a <div> for these instead: `on:wheel`, `on:touchmove`, `on:touchstart` -->
 <div
+	data-scrollable-x={scrollableX ? "" : undefined}
+	data-scrollable-y={scrollableY ? "" : undefined}
 	class={`layout-col ${className} ${extraClasses}`.trim()}
 	class:scrollable-x={scrollableX}
 	class:scrollable-y={scrollableY}

@@ -6,6 +6,8 @@
 <script lang="ts">
 	import { onMount, afterUpdate, createEventDispatcher, tick } from "svelte";
 
+	import { browserVersion } from "@graphite/utility-functions/platform";
+
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 
 	const POINTER_STRAY_DISTANCE = 100;
@@ -63,6 +65,17 @@
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
+		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
+		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
+		if (browserVersion().toLowerCase().includes("safari")) {
+			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+			if (scrollable instanceof HTMLElement) {
+				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
+				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
+				scrollable.style.overflow = isOpen ? "hidden" : "";
+			}
+		}
+
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
 			// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
