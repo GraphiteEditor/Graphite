@@ -398,12 +398,29 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DuplicateSelectedLayers => {
-				// TODO: Reimplement selected layer duplication
-				// self.backup(responses);
-				// self.layer_range_selection_reference = None;
-				// for path in self.selected_layers_sorted() {
-				// 	responses.add(DocumentOperation::DuplicateLayer { path: path.to_vec() });
-				// }
+				self.backup(responses);
+				for layer_ancestors in self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata)) {
+					let Some(layer) = layer_ancestors.last().copied() else { continue };
+					let Some(parent) = layer.parent(&self.metadata) else { continue };
+					let Some(node) = self.network().nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
+						continue;
+					};
+
+					let nodes = NodeGraphMessageHandler::copy_nodes(
+						self.network(),
+						&self
+							.network()
+							.upstream_flow_back_from_nodes(vec![node], false)
+							.enumerate()
+							.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
+							.collect(),
+					)
+					.collect();
+
+					let id = NodeId(generate_uuid());
+					let insert_index = -1;
+					responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+				}
 			}
 			FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);

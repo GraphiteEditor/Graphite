@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
+use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -12,7 +13,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use graph_craft::document::NodeNetwork;
+use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::Quad;
 
 use std::fmt;
@@ -96,21 +97,21 @@ impl ToolMetadata for SelectTool {
 }
 
 impl SelectTool {
-	// fn deep_selection_widget(&self) -> WidgetHolder {
-	// 	let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
-	// 		.iter()
-	// 		.map(|mode| {
-	// 			MenuListEntry::new(mode.to_string())
-	// 				.value(mode.to_string())
-	// 				.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
-	// 		})
-	// 		.collect();
+	fn deep_selection_widget(&self) -> WidgetHolder {
+		let layer_selection_behavior_entries = [NestedSelectionBehavior::Deepest, NestedSelectionBehavior::Shallowest]
+			.iter()
+			.map(|mode| {
+				MenuListEntry::new(mode.to_string())
+					.value(mode.to_string())
+					.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
+			})
+			.collect();
 
-	// 	DropdownInput::new(vec![layer_selection_behavior_entries])
-	// 		.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
-	// 		.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
-	// 		.widget_holder()
-	// }
+		DropdownInput::new(vec![layer_selection_behavior_entries])
+			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Shallowest) as u32))
+			.tooltip("Choose if clicking nested layers directly selects the deepest, or selects the shallowest and deepens by double clicking")
+			.widget_holder()
+	}
 
 	fn pivot_widget(&self, disabled: bool) -> WidgetHolder {
 		PivotInput::new(self.tool_data.pivot.to_pivot_position())
@@ -163,10 +164,10 @@ impl SelectTool {
 impl LayoutHolder for SelectTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
-		// widgets.push(self.deep_selection_widget()); // TODO: Reenable once Deep/Shallow Selection is implemented again
+		widgets.push(self.deep_selection_widget());
 
 		// Pivot
-		// widgets.push(Separator::new(SeparatorType::Related).widget_holder()); // TODO: Reenable once Deep/Shallow Selection is implemented again
+		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
@@ -259,7 +260,7 @@ struct SelectToolData {
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	has_dragged: bool,
-	not_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
+	duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
@@ -279,7 +280,7 @@ impl SelectToolData {
 			}
 			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
 				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
+				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::bb(layer.to_node().0), document);
 			}
 		}
 	}
@@ -300,80 +301,57 @@ impl SelectToolData {
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::DeselectAllLayers);
+		let mut duplicated_layers = Vec::new();
+		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
+			let Some(layer) = layer_ancestors.last().copied() else { continue };
+			let Some(parent) = layer.parent(&document.metadata) else { continue };
 
-		// Take the selected layers and store them in a separate list.
-		self.not_duplicated_layers = Some(self.layers_dragging.clone());
+			// Copy the layer
+			let node = layer.to_node();
+			let Some(node) = document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
+				continue;
+			};
 
-		// Duplicate each previously selected layer and select the new ones.
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			let layer = *layer_ancestors.last().unwrap();
-			// Moves the original back to its starting position.
-			responses.add_front(GraphOperationMessage::TransformChange {
+			let nodes = NodeGraphMessageHandler::copy_nodes(
+				document.network(),
+				&document
+					.network()
+					.upstream_flow_back_from_nodes(vec![node], false)
+					.enumerate()
+					.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
+					.collect(),
+			)
+			.collect();
+
+			let id = NodeId(generate_uuid());
+			let insert_index = -1;
+			let layer = LayerNodeIdentifier::new_unchecked(id);
+			responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+			duplicated_layers.push(layer);
+
+			// Moves the layer back to its starting position.
+			responses.add(GraphOperationMessage::TransformChange {
 				layer,
 				transform: DAffine2::from_translation(self.drag_start - self.drag_current),
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
 			});
-
-			// Copy the layers.
-			// Not using the Copy message allows us to retrieve the ids of the new layers to initialize the drag.
-			todo!();
-			// let layer = match document.document_legacy.layer(layer_path) {
-			// 	Ok(layer) => layer.clone(),
-			// 	Err(e) => {
-			// 		warn!("Could not access selected layer {layer_path:?}: {e:?}");
-			// 		continue;
-			// 	}
-			// };
-
-			// let layer_metadata = *document.layer_metadata(layer_path);
-			// *layer_path.last_mut().unwrap() = generate_uuid();
-
-			// responses.add(Operation::InsertLayer {
-			// 	layer: Box::new(layer),
-			// 	destination_path: layer_path.clone(),
-			// 	insert_index: -1,
-			// 	duplicating: false,
-			// });
-			// responses.add(DocumentMessage::UpdateLayerMetadata {
-			// 	layer_path: layer_path.clone(),
-			// 	layer_metadata,
-			// });
 		}
+		self.duplicated_layers = Some(duplicated_layers);
 	}
 
 	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
 	fn stop_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(originals) = self.not_duplicated_layers.take() else {
+		let Some(duplicated) = self.duplicated_layers.take() else {
 			return;
 		};
 
-		responses.add(DocumentMessage::DeselectAllLayers);
-
 		// Delete the duplicated layers
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
+		for layer_ancestors in document.metadata().shallowest_unique_layers(duplicated.iter().copied()) {
 			responses.add(GraphOperationMessage::DeleteLayer {
 				id: layer_ancestors.last().unwrap().to_node(),
 			});
 		}
-
-		// Move the original to under the mouse
-		for layer_ancestors in document.metadata().shallowest_unique_layers(originals.iter().copied()) {
-			responses.add_front(GraphOperationMessage::TransformChange {
-				layer: *layer_ancestors.last().unwrap(),
-				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
-				transform_in: TransformIn::Viewport,
-				skip_rerender: true,
-			});
-		}
-
-		// Select the originals
-		responses.add(NodeGraphMessage::SelectedNodesSet {
-			nodes: originals.iter().map(|layer| layer.to_node()).collect::<Vec<_>>(),
-		});
-
-		self.layers_dragging = originals;
 	}
 }
 
@@ -455,7 +433,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::Ready, SelectToolMessage::DragStart { add_to_selection, select_deepest: _ }) => {
+			(SelectToolFsmState::Ready, SelectToolMessage::DragStart { add_to_selection, select_deepest }) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -564,8 +542,8 @@ impl Fsm for SelectToolFsmState {
 						selected = vec![intersection];
 
 						match tool_data.nested_selection_behavior {
-							NestedSelectionBehavior::Shallowest => drag_shallowest_manipulation(responses, selected, tool_data, document),
-							NestedSelectionBehavior::Deepest => drag_deepest_manipulation(responses, selected, tool_data),
+							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
+							_ => drag_deepest_manipulation(responses, selected, tool_data),
 						}
 						tool_data.get_snap_candidates(document, input);
 						SelectToolFsmState::Dragging
@@ -579,12 +557,18 @@ impl Fsm for SelectToolFsmState {
 						SelectToolFsmState::DrawingBox
 					}
 				};
-				tool_data.not_duplicated_layers = None;
+				tool_data.duplicated_layers = None;
 
 				state
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove { axis_align, duplicate, .. }) => {
 				tool_data.has_dragged = true;
+
+				if input.keyboard.key(duplicate) && tool_data.duplicated_layers.is_none() {
+					tool_data.start_duplicates(document, responses);
+				} else if !input.keyboard.key(duplicate) && tool_data.duplicated_layers.is_some() {
+					tool_data.stop_duplicates(document, responses);
+				}
 
 				let axis_align = input.keyboard.key(axis_align);
 				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
@@ -627,22 +611,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
-				// TODO: Reenable this feature after fixing it
-				if false {
-					if input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_none() {
-						tool_data.start_duplicates(document, responses);
-					} else if !input.keyboard.key(duplicate) && tool_data.not_duplicated_layers.is_some() {
-						tool_data.stop_duplicates(document, responses);
-					}
-				}
-
 				SelectToolFsmState::Dragging
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (_center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
-						let center = false; // TODO: Reenable this feature after fixing it
+						let (center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
 
 						let center = center.then_some(bounds.center_of_transformation);
 						let snap = Some(SizeSnapData {
@@ -956,9 +930,6 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
-	// tool_data
-	// 	.snap_manager
-	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
@@ -966,9 +937,6 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Ve
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
-	// tool_data
-	// 	.snap_manager
-	// 	.start_snap(document, input, document.bounding_boxes(Some(&tool_data.layers_dragging), None, font_cache), true, true);
 }
 
 fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
