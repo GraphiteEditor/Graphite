@@ -76,7 +76,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.active_document_mut() {
 						if !document.is_auto_saved() || force {
-							info!("Saving document");
 							document.set_auto_save_state(true);
 							responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 						}

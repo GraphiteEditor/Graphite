@@ -26,7 +26,6 @@ use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
-use web_sys::IdleRequestOptions;
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
@@ -67,8 +66,9 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 }
 
 fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
+	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
 	window()
-		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay.as_millis() as i32)
+		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
 		.expect("should register `setTimeout` OK");
 }
 
