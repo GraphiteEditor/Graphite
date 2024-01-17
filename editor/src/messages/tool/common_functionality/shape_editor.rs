@@ -96,6 +96,17 @@ impl ClosestSegment {
 		(t_min, t_max)
 	}
 
+	pub fn select_insertion_point(&self, shape_editor: &mut ShapeState, add_to_selection: bool) {
+		if let Some(id) = self.closest_insertion_id {
+			if !add_to_selection {
+				shape_editor.deselect_all();
+			}
+			let point = ManipulatorPointId::new(id, SelectedType::Anchor);
+			let Some(selected_state) = shape_editor.selected_shape_state.get_mut(&self.layer) else { return };
+			selected_state.select_point(point);
+		}
+	}
+
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
 		let layer_m_pos = transform.inverse().transform_point2(mouse_position);

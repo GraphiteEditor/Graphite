@@ -312,7 +312,13 @@ impl PathToolData {
 				self.start_insertion(responses, seg);
 				self.end_insertion(responses, false)
 			} else {
-				self.start_insertion(responses, seg)
+				let state = self.start_insertion(responses, seg);
+				// next `if` always `Some(..)` actually
+				if let Some(seg) = self.segment.as_ref() {
+					seg.select_insertion_point(shape_editor, false);
+					responses.add(PathToolMessage::SelectedPointUpdated);
+				};
+				state
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
