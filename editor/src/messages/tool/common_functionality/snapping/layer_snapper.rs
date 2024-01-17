@@ -88,6 +88,7 @@ impl LayerSnapper {
 		let normals = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Normal));
 		let tangents = document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Tangent));
 		let tolerance = snap_tolerance(document);
+
 		for path in &self.paths_to_snap {
 			// Skip very short paths
 			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance * 2. {
@@ -124,8 +125,8 @@ impl LayerSnapper {
 		self.collect_paths(snap_data, point.source_index == 0);
 
 		let tolerance = snap_tolerance(document);
-		let constraint_path = if let SnapConstraint::Circle { centre, radius } = constraint {
-			Subpath::new_ellipse(centre - DVec2::splat(radius), centre + DVec2::splat(radius))
+		let constraint_path = if let SnapConstraint::Circle { center, radius } = constraint {
+			Subpath::new_ellipse(center - DVec2::splat(radius), center + DVec2::splat(radius))
 		} else {
 			let constrained_point = constraint.projection(point.document_point);
 			let direction = constraint.direction().normalize_or_zero();
@@ -178,8 +179,8 @@ impl LayerSnapper {
 				let values = BBoxSnapValues {
 					corner_source: SnapSource::Board(BoardSnapSource::Corner),
 					corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
-					centre_source: SnapSource::Board(BoardSnapSource::Centre),
-					centre_target: SnapTarget::Board(BoardSnapTarget::Centre),
+					center_source: SnapSource::Board(BoardSnapSource::Center),
+					center_target: SnapTarget::Board(BoardSnapTarget::Center),
 					..Default::default()
 				};
 				get_bbox_points(quad, &mut self.points_to_snap, values, document);
@@ -248,8 +249,8 @@ impl LayerSnapper {
 
 fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool, point: &SnapCandidatePoint, tolerance: f64, snap_results: &mut SnapResults) {
 	if normals && path.bounds.is_none() {
-		for &neighbour in &point.neighbors {
-			for t in path.document_curve.normals_to_point(neighbour) {
+		for &neighbor in &point.neighbors {
+			for t in path.document_curve.normals_to_point(neighbor) {
 				let normal_point = path.document_curve.evaluate(TValue::Parametric(t));
 				let distance = normal_point.distance(point.document_point);
 				if distance > tolerance {
@@ -269,8 +270,8 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 		}
 	}
 	if tangents && path.bounds.is_none() {
-		for &neighbour in &point.neighbors {
-			for t in path.document_curve.tangents_to_point(neighbour) {
+		for &neighbor in &point.neighbors {
+			for t in path.document_curve.tangents_to_point(neighbor) {
 				let tangent_point = path.document_curve.evaluate(TValue::Parametric(t));
 				let distance = tangent_point.distance(point.document_point);
 				if distance > tolerance {
@@ -327,9 +328,9 @@ impl SnapCandidatePoint {
 	pub fn handle(document_point: DVec2) -> Self {
 		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp))
 	}
-	pub fn handle_neighbors(document_point: DVec2, neighbours: impl Into<Vec<DVec2>>) -> Self {
+	pub fn handle_neighbors(document_point: DVec2, neighbors: impl Into<Vec<DVec2>>) -> Self {
 		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp));
-		point.neighbors = neighbours.into();
+		point.neighbors = neighbors.into();
 		point
 	}
 }
@@ -339,8 +340,8 @@ pub struct BBoxSnapValues {
 	corner_target: SnapTarget,
 	edge_source: SnapSource,
 	edge_target: SnapTarget,
-	centre_source: SnapSource,
-	centre_target: SnapTarget,
+	center_source: SnapSource,
+	center_target: SnapTarget,
 }
 impl BBoxSnapValues {
 	pub const BOUNDING_BOX: Self = Self {
@@ -348,8 +349,8 @@ impl BBoxSnapValues {
 		corner_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Corner),
 		edge_source: SnapSource::BoundingBox(BoundingBoxSnapSource::EdgeMidpoint),
 		edge_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
-		centre_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Centre),
-		centre_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Centre),
+		center_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Center),
+		center_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Center),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
@@ -363,8 +364,8 @@ pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values:
 			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad)));
 		}
 	}
-	if document.snapping_state.target_enabled(values.centre_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.centre_source, values.centre_target, Some(quad)));
+	if document.snapping_state.target_enabled(values.center_target) {
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad)));
 	}
 }
 

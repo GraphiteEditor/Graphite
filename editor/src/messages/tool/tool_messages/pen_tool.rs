@@ -490,12 +490,12 @@ impl PenToolData {
 	}
 
 	/// Snap the angle of the line from relative to position if the key is pressed.
-	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>, neighbour: bool) -> DVec2 {
+	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let document = snap_data.document;
 		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
 
-		let neighbours = relative.filter(|_| neighbour).map_or(Vec::new(), |neighbour| vec![neighbour]);
+		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| snap_angle || lock_angle) {
 			let resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
@@ -510,8 +510,8 @@ impl PenToolData {
 				origin: relative,
 				direction: document_pos - relative,
 			};
-			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbours.clone());
-			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbours);
+			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone());
+			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors);
 			if mirror {
 				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
 				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
@@ -527,8 +527,8 @@ impl PenToolData {
 				snap.update_indicator(snapped);
 			}
 		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbours.clone()), None, false);
-			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbours), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone()), None, false);
+			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors), None, false);
 			document_pos = if snapped_far.other_snap_better(&snapped) {
 				snapped.snapped_point_document
 			} else {
@@ -536,7 +536,7 @@ impl PenToolData {
 			};
 			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
 		} else {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbours), None, false);
+			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors), None, false);
 			document_pos = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}

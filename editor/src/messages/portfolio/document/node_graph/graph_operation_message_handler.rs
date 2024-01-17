@@ -793,6 +793,7 @@ pub fn load_network_structure(document_network: &NodeNetwork, document_metadata:
 fn usvg_color(c: usvg::Color, a: f32) -> Color {
 	Color::from_rgbaf32_unchecked(c.red as f32 / 255., c.green as f32 / 255., c.blue as f32 / 255., a)
 }
+
 fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
 }
@@ -819,10 +820,10 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
-			let centre = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
+			let center = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
 
 			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
-				transform_utils::update_transform(inputs, centre.inverse() * transform * usvg_transform(node.abs_transform()) * centre);
+				transform_utils::update_transform(inputs, center.inverse() * transform * usvg_transform(node.abs_transform()) * center);
 			});
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
@@ -868,7 +869,7 @@ fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyIn
 				line_join_miter_limit: stroke.miterlimit.get() as f64,
 			})
 		} else {
-			warn!("Skip non solid stroke")
+			warn!("Skip non-solid stroke")
 		}
 	}
 }
@@ -879,13 +880,17 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 			usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity.get())),
 			usvg::Paint::LinearGradient(linear) => {
 				let local = [DVec2::new(linear.x1 as f64, linear.y1 as f64), DVec2::new(linear.x2 as f64, linear.y2 as f64)];
-				let to_doc = if linear.base.units == usvg::Units::UserSpaceOnUse {
-					transform * usvg_transform(linear.transform)
+
+				let to_doc_transform = if linear.base.units == usvg::Units::UserSpaceOnUse {
+					transform
 				} else {
-					transformed_bound_transform * usvg_transform(linear.transform)
+					transformed_bound_transform
 				};
+				let to_doc = to_doc_transform * usvg_transform(linear.transform);
+
 				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 
 				Fill::Gradient(Gradient {
@@ -898,13 +903,17 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 			}
 			usvg::Paint::RadialGradient(radial) => {
 				let local = [DVec2::new(radial.cx as f64, radial.cy as f64), DVec2::new(radial.fx as f64, radial.fy as f64)];
-				let to_doc = if radial.base.units == usvg::Units::UserSpaceOnUse {
-					transform * usvg_transform(radial.transform)
+
+				let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
+					transform
 				} else {
-					transformed_bound_transform * usvg_transform(radial.transform)
+					transformed_bound_transform
 				};
+				let to_doc = to_doc_transform * usvg_transform(radial.transform);
+
 				let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
+
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 
 				Fill::Gradient(Gradient {

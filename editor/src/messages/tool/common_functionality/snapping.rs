@@ -31,7 +31,7 @@ pub enum SnapConstraint {
 	},
 	Direction(DVec2),
 	Circle {
-		centre: DVec2,
+		center: DVec2,
 		radius: f64,
 	},
 }
@@ -39,14 +39,14 @@ impl SnapConstraint {
 	pub fn projection(&self, point: DVec2) -> DVec2 {
 		match *self {
 			Self::Line { origin, direction } if direction != DVec2::ZERO => (point - origin).project_onto(direction) + origin,
-			Self::Circle { centre, radius } => {
-				let from_centre = point - centre;
-				let distance = from_centre.length();
+			Self::Circle { center, radius } => {
+				let from_center = point - center;
+				let distance = from_center.length();
 				if distance > 0. {
-					centre + radius * from_centre / distance
+					center + radius * from_center / distance
 				} else {
-					// Point is exactly at the centre, so project right
-					centre + DVec2::new(radius, 0.)
+					// Point is exactly at the center, so project right
+					center + DVec2::new(radius, 0.)
 				}
 			}
 			_ => point,

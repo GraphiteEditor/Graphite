@@ -100,7 +100,7 @@ impl ShapeState {
 						let Some(position) = handle.get_position(&group) else { continue };
 						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
 
-						let mut push_neighbour = |group: ManipulatorGroup<ManipulatorGroupId>| {
+						let mut push_neighbor = |group: ManipulatorGroup<ManipulatorGroupId>| {
 							if !state.is_selected(ManipulatorPointId::new(group.id, SelectedType::Anchor)) {
 								point.neighbors.push(to_document.transform_point2(group.anchor));
 							}
@@ -108,15 +108,15 @@ impl ShapeState {
 						if handle == SelectedType::Anchor {
 							// Previous anchor (looping if closed)
 							if index > 0 {
-								push_neighbour(subpath.manipulator_groups()[index - 1]);
+								push_neighbor(subpath.manipulator_groups()[index - 1]);
 							} else if subpath.closed() {
-								push_neighbour(subpath.manipulator_groups()[subpath.len() - 1]);
+								push_neighbor(subpath.manipulator_groups()[subpath.len() - 1]);
 							}
 							// Next anchor (looping if closed)
 							if index + 1 < subpath.len() {
-								push_neighbour(subpath.manipulator_groups()[index + 1]);
+								push_neighbor(subpath.manipulator_groups()[index + 1]);
 							} else if subpath.closed() {
-								push_neighbour(subpath.manipulator_groups()[0]);
+								push_neighbor(subpath.manipulator_groups()[0]);
 							}
 						}
 

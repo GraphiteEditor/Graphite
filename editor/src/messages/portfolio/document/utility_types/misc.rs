@@ -77,7 +77,7 @@ impl Default for SnappingState {
 				edges: true,
 				corners: true,
 				edge_midpoints: false,
-				centres: true,
+				centers: true,
 			},
 			nodes: NodeSnapping {
 				paths: true,
@@ -107,7 +107,7 @@ impl SnappingState {
 				BoundingBoxSnapTarget::Corner => self.bounds.corners,
 				BoundingBoxSnapTarget::Edge => self.bounds.edges,
 				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
-				BoundingBoxSnapTarget::Centre => self.bounds.centres,
+				BoundingBoxSnapTarget::Center => self.bounds.centers,
 			},
 			SnapTarget::Geometry(nodes) if self.geometry_snapping => match nodes {
 				GeometrySnapTarget::Smooth => self.nodes.smooth_nodes,
@@ -129,7 +129,7 @@ pub struct BoundsSnapping {
 	pub edges: bool,
 	pub corners: bool,
 	pub edge_midpoints: bool,
-	pub centres: bool,
+	pub centers: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeSnapping {
@@ -217,12 +217,12 @@ impl GridSnapping {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundingBoxSnapSource {
 	Corner,
-	Centre,
+	Center,
 	EdgeMidpoint,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoardSnapSource {
-	Centre,
+	Center,
 	Corner,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,7 +254,7 @@ pub enum BoundingBoxSnapTarget {
 	Corner,
 	Edge,
 	EdgeMidpoint,
-	Centre,
+	Center,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapTarget {
@@ -270,7 +270,7 @@ pub enum GeometrySnapTarget {
 pub enum BoardSnapTarget {
 	Edge,
 	Corner,
-	Centre,
+	Center,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GridSnapTarget {
