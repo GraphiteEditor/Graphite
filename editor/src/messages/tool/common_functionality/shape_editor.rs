@@ -9,6 +9,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{get_
 
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use graph_craft::document::NodeNetwork;
+use graphene_core::transform::Transform;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
@@ -70,14 +71,41 @@ pub struct ClosestSegment {
 	end: ManipulatorGroupId,
 	bezier: Bezier,
 	t: f64,
+	t_min: f64,
+	t_max: f64,
 	bezier_point_to_viewport: DVec2,
 	closest_insertion_id: Option<ManipulatorGroupId>,
 }
 impl ClosestSegment {
+	fn calc_t_min_max(bezier: &Bezier) -> (f64, f64) {
+		const LEN_ITER: usize = 100;
+		const T_ERR: f64 = 0.001;
+		const T_MIN: f64 = 0.075;
+		const MODEL_CURVE_LEN: f64 = 400.;
+
+		// 0.065 is enough (on scale 1.) for a curve with len ~ 400
+		// when len of curve is more -- just take linear coef ://
+		let len = bezier.length(Some(LEN_ITER));
+		let len_coef = (len / MODEL_CURVE_LEN).max(0.25);
+		let t_min_eucl = T_MIN / len_coef;
+		let t_max_eucl = 1. - t_min_eucl;
+		// we need parametric values because they are faster to calc
+		let t_min = bezier.euclidean_to_parametric(t_min_eucl, T_ERR);
+		let t_max = bezier.euclidean_to_parametric(t_max_eucl, T_ERR);
+
+		(t_min, t_max)
+	}
+
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
 		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
-		let t = self.bezier.project(layer_m_pos, None);
+
+		let scale = transform.decompose_scale().x.max(1.).sqrt();
+		// linear approximation of parametric t-value ranges:
+		let t_min = self.t_min / scale;
+		let t_max = 1. - ((1. - self.t_max) / scale);
+
+		let t = self.bezier.project(layer_m_pos, None).max(t_min).min(t_max);
 		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));
 		let bezier_point = transform.transform_point2(bezier_point);
 		self.t = t;
@@ -1025,12 +1053,15 @@ impl ShapeState {
 					closest_distance_squared = distance_squared;
 					let start = subpath.manipulator_groups()[manipulator_index];
 					let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
+					let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier);
 					result = Some(ClosestSegment {
 						layer,
 						start: start.id,
 						end: end.id,
 						bezier,
 						t,
+						t_min,
+						t_max,
 						bezier_point_to_viewport: screenspace,
 						closest_insertion_id: None,
 					});
