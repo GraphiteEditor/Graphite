@@ -181,7 +181,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
 		entry!(KeyDown(Delete); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Backspace); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
+		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::MouseDown { ctrl: Control, shift: Shift }),
 		entry!(KeyDown(Rmb); action_dispatch=PathToolMessage::RightClick),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt: Alt, shift: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
@@ -191,7 +191,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
 			add_to_selection: Shift
 		}),
-		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::InsertPoint),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSharp),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),

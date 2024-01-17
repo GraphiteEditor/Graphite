@@ -35,18 +35,19 @@ pub enum PathToolMessage {
 	BreakPath,
 	Delete,
 	DeleteAndBreakPath,
-	DragStart {
-		add_to_selection: Key,
-	},
 	DragStop {
 		shift_mirror_distance: Key,
 	},
 	Enter {
 		add_to_selection: Key,
 	},
-	InsertPoint,
+	FlipSharp,
 	ManipulatorAngleMakeSharp,
 	ManipulatorAngleMakeSmooth,
+	MouseDown {
+		ctrl: Key,
+		shift: Key,
+	},
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
@@ -156,8 +157,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant;
-				InsertPoint,
-				DragStart,
+				FlipSharp,
+				MouseDown,
 				Delete,
 				NudgeSelectedPoints,
 				Enter,
@@ -166,7 +167,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
-				InsertPoint,
+				FlipSharp,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -175,7 +176,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			DrawingBox => actions!(PathToolMessageDiscriminant;
-				InsertPoint,
+				FlipSharp,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -185,8 +186,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			InsertPoint => actions!(PathToolMessageDiscriminant;
-				InsertPoint,
-				DragStart,
+				MouseDown,
 				PointerMove,
 				Delete,
 				Enter,
@@ -286,11 +286,12 @@ impl PathToolData {
 
 	fn mouse_down(
 		&mut self,
-		shift: bool,
 		shape_editor: &mut ShapeState,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
+		shift: bool,
+		ctrl: bool,
 	) -> PathToolFsmState {
 		self.opposing_handle_lengths = None;
 		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
@@ -307,7 +308,12 @@ impl PathToolData {
 		}
 		// We didn't find a point nearby, so trying to add point into close segment path
 		else if let Some(seg) = shape_editor.first_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
-			self.start_insertion(responses, seg)
+			if ctrl {
+				self.start_insertion(responses, seg);
+				self.end_insertion(responses, false)
+			} else {
+				self.start_insertion(responses, seg)
+			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input.mouse.position, &document.network) {
@@ -419,13 +425,12 @@ impl Fsm for PathToolFsmState {
 				self
 			}
 			// Mouse down
-			(_, PathToolMessage::DragStart { add_to_selection }) => match tool_data.try_end_insertion(responses, self, false) {
-				Some(state) => state,
-				None => {
-					let shift = input.keyboard.get(add_to_selection as usize);
-					tool_data.mouse_down(shift, shape_editor, document, input, responses)
-				}
-			},
+			(Self::InsertPoint, PathToolMessage::MouseDown { .. }) => tool_data.end_insertion(responses, false),
+			(_, PathToolMessage::MouseDown { ctrl, shift }) => {
+				let shift = input.keyboard.get(shift as usize);
+				let ctrl = input.keyboard.get(ctrl as usize);
+				tool_data.mouse_down(shape_editor, document, input, responses, shift, ctrl)
+			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
@@ -510,17 +515,8 @@ impl Fsm for PathToolFsmState {
 				shape_editor.delete_point_and_break_path(&document.network, responses);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::InsertPoint) => {
-				if let Some(state) = tool_data.try_end_insertion(responses, self, false) {
-					return state;
-				} else {
-					// First we try and flip the sharpness (if they have clicked on an anchor)
-					if !shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses) {
-						// If not, then we try and split the path that may have been clicked upon
-						shape_editor.split(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
-					}
-				}
-
+			(_, PathToolMessage::FlipSharp) => {
+				shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				self
 			}
