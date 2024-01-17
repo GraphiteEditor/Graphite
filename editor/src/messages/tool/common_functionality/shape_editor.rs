@@ -65,6 +65,11 @@ pub struct ManipulatorPointInfo {
 
 pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<ManipulatorGroupId, Option<f64>>>;
 
+struct ClosestSegmentInfo {
+	pub bezier: Bezier,
+	pub t: f64,
+	pub bezier_point_to_viewport: DVec2,
+}
 pub struct ClosestSegment {
 	layer: LayerNodeIdentifier,
 	start: ManipulatorGroupId,
@@ -73,10 +78,35 @@ pub struct ClosestSegment {
 	t: f64,
 	t_min: f64,
 	t_max: f64,
+	scale: f64,
+	stroke_width: f64,
 	bezier_point_to_viewport: DVec2,
 	closest_insertion_id: Option<ManipulatorGroupId>,
 }
 impl ClosestSegment {
+	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroupId, end: ManipulatorGroupId) -> Self {
+		const STROKE_WIDTH_PERCENT: f64 = 0.7; // 0.5 is half a line but it's convenient to reserve slightly more than half a line
+		let bezier = info.bezier;
+		let t = info.t;
+		let bezier_point_to_viewport = info.bezier_point_to_viewport;
+		let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier);
+		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64;
+		let stroke_width = stroke_width * STROKE_WIDTH_PERCENT; // we need STROKE_WIDTH_PERCENT of the line width
+		Self {
+			layer,
+			start,
+			end,
+			bezier,
+			t,
+			t_min,
+			t_max,
+			scale: 1.,
+			stroke_width,
+			bezier_point_to_viewport,
+			closest_insertion_id: None,
+		}
+	}
+
 	fn calc_t_min_max(bezier: &Bezier) -> (f64, f64) {
 		const LEN_ITER: usize = 100;
 		const T_ERR: f64 = 0.001;
@@ -111,7 +141,8 @@ impl ClosestSegment {
 		let transform = document_metadata.transform_to_viewport(self.layer);
 		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
 
-		let scale = transform.decompose_scale().x.max(1.).sqrt();
+		self.scale = transform.decompose_scale().x.max(1.);
+		let scale = self.scale.sqrt();
 		// linear approximation of parametric t-value ranges:
 		let t_min = self.t_min / scale;
 		let t_max = 1. - ((1. - self.t_max) / scale);
@@ -135,8 +166,10 @@ impl ClosestSegment {
 	/// **!!!** call after `update_closest_point` except for the first time
 	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
 		let dist_sq = self.distance_squared(mouse_position);
+		let stroke_width = self.scale * self.stroke_width;
+		let stroke_width_sq = stroke_width * stroke_width;
 		let tolerance_sq = tolerance * tolerance;
-		tolerance_sq < dist_sq
+		(stroke_width_sq + tolerance_sq) < dist_sq
 	}
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
@@ -1045,14 +1078,18 @@ impl ShapeState {
 	fn closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
 		let transform = document_metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
-		let projection_options = bezier_rs::ProjectionOptions { lut_size: 5, ..Default::default() };
 
-		let mut result = None;
+		let scale = transform.decompose_scale().x;
+		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
+		let lut_size = ((5. + scale) as usize).min(20); // need more precision at large scale
+		let projection_options = bezier_rs::ProjectionOptions { lut_size, ..Default::default() };
+
+		let mut closest_index = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
 		let subpaths = get_subpaths(layer, document_network)?;
 
-		for subpath in subpaths {
+		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			for (manipulator_index, bezier) in subpath.iter().enumerate() {
 				let t = bezier.project(layer_pos, Some(projection_options));
 				let layerspace = bezier.evaluate(TValue::Parametric(t));
@@ -1062,25 +1099,22 @@ impl ShapeState {
 
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
-					let start = subpath.manipulator_groups()[manipulator_index];
-					let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
-					let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier);
-					result = Some(ClosestSegment {
-						layer,
-						start: start.id,
-						end: end.id,
+					let info = ClosestSegmentInfo {
 						bezier,
 						t,
-						t_min,
-						t_max,
 						bezier_point_to_viewport: screenspace,
-						closest_insertion_id: None,
-					});
+					};
+					closest_index = Some(((subpath_index, manipulator_index), info))
 				}
 			}
 		}
 
-		result
+		closest_index.map(|((subpath_index, manipulator_index), info)| {
+			let subpath = &subpaths[subpath_index];
+			let start = subpath.manipulator_groups()[manipulator_index];
+			let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
+			ClosestSegment::new(info, layer, document_network, start.id, end.id)
+		})
 	}
 
 	/// find closest segment on first fit layer

@@ -194,6 +194,14 @@ pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> O
 	Some((text, font, font_size))
 }
 
+pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<f32> {
+	if let TaggedValue::F32(width) = NodeGraphLayer::new(layer, network)?.find_input("Stroke", 2)? {
+		Some(*width)
+	} else {
+		None
+	}
+}
+
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network: &NodeNetwork, node_name: &str) -> bool {
 	NodeGraphLayer::new(layer, document_network).is_some_and(|layer| layer.find_node_inputs(node_name).is_some())
