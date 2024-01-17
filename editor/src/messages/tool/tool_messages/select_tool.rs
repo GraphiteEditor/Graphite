@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{self, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -274,7 +274,9 @@ impl SelectToolData {
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
 		self.snap_candidates.clear();
 		for &layer in &self.layers_dragging {
-			snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
+			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
+				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
+			}
 			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
 				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
 				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
@@ -642,13 +644,13 @@ impl Fsm for SelectToolFsmState {
 						let (_center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
 						let center = false; // TODO: Reenable this feature after fixing it
 
-						let centre = center.then_some(bounds.center_of_transformation);
+						let center = center.then_some(bounds.center_of_transformation);
 						let snap = Some(SizeSnapData {
 							manager: &mut tool_data.snap_manager,
 							points: &mut tool_data.snap_candidates,
 							snap_data: SnapData::ignore(document, input, &tool_data.layers_dragging),
 						});
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, centre, constrain, snap);
+						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 						let pivot_transform = DAffine2::from_translation(pivot);

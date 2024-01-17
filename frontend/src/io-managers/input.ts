@@ -272,7 +272,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
-		Array.from(dataTransfer.items).forEach((item) => {
+		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
 					if (text.startsWith("graphite/layer: ")) {
@@ -284,10 +284,17 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			}
 
 			const file = item.getAsFile();
+
+			if (file?.type === "svg") {
+				const text = await file.text();
+				editor.instance.pasteSvg(text);
+
+				return;
+			}
+
 			if (file?.type.startsWith("image")) {
-				extractPixelData(file).then((imageData) => {
-					editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
-				});
+				const imageData = await extractPixelData(file);
+				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 		});
 	}
@@ -327,6 +334,19 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 				// Read an image from the clipboard and pass it to the editor to be loaded
 				const imageType = item.types.find((type) => type.startsWith("image/"));
+
+				if (imageType === "svg") {
+					const blob = await item.getType("text/plain");
+					const reader = new FileReader();
+					reader.onload = () => {
+						const text = reader.result as string;
+						editor.instance.pasteSvg(text);
+					};
+					reader.readAsText(blob);
+
+					return;
+				}
+
 				if (imageType) {
 					const blob = await item.getType(imageType);
 					const reader = new FileReader();

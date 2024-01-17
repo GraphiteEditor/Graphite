@@ -153,8 +153,8 @@ impl ArtboardToolData {
 			return;
 		};
 
-		let centre = from_center.then_some(bounds.center_of_transformation);
-		let (position, size) = movement.new_size(mouse_position, bounds.transform, centre, constrain_square, None);
+		let center = from_center.then_some(bounds.center_of_transformation);
+		let (position, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
 		responses.add(GraphOperationMessage::ResizeArtboard {
 			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),

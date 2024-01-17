@@ -278,19 +278,8 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	// TODO: clean up this massive function
-	fn send_graph(
-		&self,
-		network: &NodeNetwork,
-		graph_view_overlay_open: bool,
-		metadata: &mut DocumentMetadata,
-		selected_nodes: &mut SelectedNodes,
-		collapsed: &CollapsedLayers,
-		responses: &mut VecDeque<Message>,
-	) {
-		metadata.load_structure(network, selected_nodes);
-
-		let links = network
+	fn collect_links(network: &NodeNetwork) -> Vec<FrontendNodeLink> {
+		network
 			.nodes
 			.iter()
 			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
@@ -312,8 +301,10 @@ impl NodeGraphMessageHandler {
 					None
 				}
 			})
-			.collect::<Vec<_>>();
+			.collect::<Vec<_>>()
+	}
 
+	fn collect_nodes(&self, links: &Vec<FrontendNodeLink>, network: &NodeNetwork) -> Vec<FrontendNode> {
 		let connected_node_to_output_lookup = links.iter().map(|link| ((link.link_start, link.link_start_output_index), link.link_end)).collect::<HashMap<_, _>>();
 
 		let mut nodes = Vec::new();
@@ -376,7 +367,12 @@ impl NodeGraphMessageHandler {
 				disabled: network.disabled.contains(&node_id),
 				errors: errors.map(|e| format!("{e:?}")),
 			});
+		}
+		nodes
+	}
 
+	fn update_layer_panel(network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+		for (&node_id, node) in &network.nodes {
 			if node.is_layer() {
 				let layer = LayerNodeIdentifier::new(node_id, network);
 				let layer_classification = {
@@ -402,12 +398,19 @@ impl NodeGraphMessageHandler {
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
 		}
+	}
+
+	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+		metadata.load_structure(network, selected_nodes);
 
 		responses.add(DocumentMessage::DocumentStructureChanged);
-		if graph_view_overlay_open {
+		responses.add(PropertiesPanelMessage::Refresh);
+		Self::update_layer_panel(network, metadata, collapsed, responses);
+		if graph_open {
+			let links = Self::collect_links(network);
+			let nodes = self.collect_nodes(&links, network);
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
 		}
-		responses.add(PropertiesPanelMessage::Refresh);
 	}
 
 	/// Updates the frontend's selection state in line with the backend

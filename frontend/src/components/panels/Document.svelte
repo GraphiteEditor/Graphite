@@ -116,9 +116,15 @@
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			const file = item.getAsFile();
+			if (file?.type.includes("svg")) {
+				const svgData = await file.text();
+				editor.instance.pasteSvg(svgData, e.clientX, e.clientY);
+
+				return;
+			}
+
 			if (file?.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
-
 				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 			}
 		});

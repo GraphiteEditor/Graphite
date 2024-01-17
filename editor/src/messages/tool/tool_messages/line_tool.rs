@@ -258,7 +258,7 @@ impl Fsm for LineToolFsmState {
 	}
 }
 
-fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, centre: bool) -> Message {
+fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> Message {
 	let document_to_viewport = snap_data.document.metadata.document_to_viewport;
 	let mut document_points = [tool_data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.drag_current)];
 
@@ -289,7 +289,7 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 			origin: document_points[0],
 			direction: document_points[1] - document_points[0],
 		};
-		if centre {
+		if center {
 			let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
 			let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
 			let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };
@@ -301,7 +301,7 @@ fn generate_transform(tool_data: &mut LineToolData, snap_data: SnapData, lock_an
 			document_points[1] = snapped.snapped_point_document;
 			snap.update_indicator(snapped);
 		}
-	} else if centre {
+	} else if center {
 		let snapped = snap.free_snap(&snap_data, &near_point, None, false);
 		let snapped_far = snap.free_snap(&snap_data, &far_point, None, false);
 		let best = if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far };

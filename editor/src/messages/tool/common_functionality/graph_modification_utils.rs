@@ -34,6 +34,19 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
+/// Create a new group layer from an svg
+pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	let insert_index = -1;
+	responses.add(GraphOperationMessage::NewSvg {
+		id,
+		svg,
+		transform,
+		parent,
+		insert_index,
+	});
+	LayerNodeIdentifier::new_unchecked(id)
+}
+
 /// Batch set all of the manipulator groups to mirror on a specific layer
 pub fn set_manipulator_mirror_angle(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, mirror_angle: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {

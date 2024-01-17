@@ -65,6 +65,14 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "data");
+
+		if (data.type.includes("svg")) {
+			const svg = new TextDecoder().decode(data.content);
+			editor.instance.pasteSvg(svg);
+
+			return;
+		}
+
 		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
 		editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});

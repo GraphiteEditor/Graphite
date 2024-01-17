@@ -57,6 +57,7 @@ web-sys = { workspace = true, features = [
 	"CanvasRenderingContext2d",
 	"TextMetrics",
 ] }
+usvg = "0.37"
 
 
 [dev-dependencies]
