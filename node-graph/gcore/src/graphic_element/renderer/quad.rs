@@ -26,11 +26,6 @@ impl Quad {
 		self.edges().into_iter().map(|[start, end]| bezier_rs::Bezier::from_linear_dvec2(start, end))
 	}
 
-	/// Generates a [crate::vector::Subpath] of the quad
-	pub fn subpath(&self) -> crate::vector::Subpath {
-		crate::vector::Subpath::from_points(self.0.into_iter(), true)
-	}
-
 	/// Generates the axis aligned bounding box of the quad
 	pub fn bounding_box(&self) -> [DVec2; 2] {
 		[
