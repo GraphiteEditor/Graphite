@@ -35,7 +35,7 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 
 Graphite strives to unshackle the creativity of every budding artist and seasoned professional by building the best comprehensive art and design tool that's accessible to all.
 
-Mission success will come when Graphite is an industry standard. A cohesive product vision and prioritizing innovation over imitation will make that possible.
+Mission success will come when Graphite is an industry standard. A cohesive product vision and focus on innovation over imitation is the strategy that will make that possible.
 
 </div>
 <div class="section">

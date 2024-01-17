@@ -12,7 +12,7 @@ css = ["logo.css"]
 
 <article>
 
-Graphite's logo is represented by the end of a pencil protruding from a hexagon and drawing a sketch mark.
+Graphite's logo is represented by the end of a pencil, drawing a sketch mark, that is protruding from a hexagon.
 
 The pencil and its streak, composed of the substance graphite, signifies the software's name and its role as a drawing tool and versatile art medium.
 

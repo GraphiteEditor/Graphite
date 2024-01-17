@@ -67,16 +67,19 @@ js = ["image-interaction.js", "video-embed.js"]
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #4" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
@@ -91,6 +94,7 @@ js = ["image-interaction.js", "video-embed.js"]
 			<button class="dot active" data-carousel-dot></button>
 			<button class="dot" data-carousel-dot></button>
 			<button class="dot" data-carousel-dot></button>
+			<button class="dot" data-carousel-dot></button>
 			<button class="direction next" data-carousel-next>
 				<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 					<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
@@ -100,7 +104,10 @@ js = ["image-interaction.js", "video-embed.js"]
 		</div>
 		<div class="screenshot-description">
 			<p class="active" data-carousel-description>
-				<em>Valley of Spires</em> — <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
+				<em>Valley of Spires</em> — Vector art made with the Pen and Gradient tools. <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
+			</p>
+			<p data-carousel-description>
+				<em>Procedural String Lights</em> — Partly made in the node graph (pictured) to auto-place light bulbs along the wire. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Open this artwork</a> to explore it yourself.
 			</p>
 			<p data-carousel-description>
 				Design mockup for the work-in-progress raster editing pipeline. Some of these raster-specific nodes are not implemented yet, but will be soon!
@@ -300,7 +307,7 @@ You'll receive your first newsletter email with the next major Graphite news.
 **Get started with Graphite by following along to a hands-on quickstart tutorial.**
 
 <div class="video-embed aspect-16x9">
-	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
 </div>
 
 </div>
@@ -323,12 +330,26 @@ This new capability has just recently shown its potential. Now, expanding Graphi
 <section id="proceduralism-demo">
 <div class="section">
 
-Proceduralism lets you create sophisticated design elements that are easy to edit and reuse. The holiday string lights shown below are built from a simple group of nodes, allowing you to effortlessly reshape the wire and update the bulb appearance and spacing. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> and try dragging the wire layer's points with the Path tool (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="vertical-align: bottom"><polygon fill="#aaa" points="5,0 5,17 10,12 17,12" /><path fill="#78bae5" d="M20.77,14.36c-0.35-0.42-0.98-0.48-1.41-0.13c-1.04,0.87-2.19,1.6-3.36,2.24V16h-6v2.9c-2.88,0.84-5.07,1.1-5.11,1.11c-0.55,0.06-0.94,0.56-0.88,1.11C4.06,21.62,4.5,22,5,22c0.04,0,0.07,0,0.11-0.01c0.17-0.02,2.18-0.26,4.89-1.01V22h6v-3.28c1.6-0.79,3.2-1.75,4.64-2.95C21.06,15.42,21.12,14.78,20.77,14.36z M14,20h-2v-2h2V20z" /></svg>).
+Proceduralism lets you create sophisticated design elements that are easy to edit and reuse. The holiday string lights shown below are built from a simple group of nodes, allowing you to effortlessly reshape the wire and update the bulb appearance and spacing. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> and try dragging the wire layer's points with the Path tool (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="vertical-align: middle"><polygon fill="#aaa" points="5,0 5,17 10,12 17,12" /><path fill="#78bae5" d="M20.77,14.36c-0.35-0.42-0.98-0.48-1.41-0.13c-1.04,0.87-2.19,1.6-3.36,2.24V16h-6v2.9c-2.88,0.84-5.07,1.1-5.11,1.11c-0.55,0.06-0.94,0.56-0.88,1.11C4.06,21.62,4.5,22,5,22c0.04,0,0.07,0,0.11-0.01c0.17-0.02,2.18-0.26,4.89-1.01V22h6v-3.28c1.6-0.79,3.2-1.75,4.64-2.95C21.06,15.42,21.12,14.78,20.77,14.36z M14,20h-2v-2h2V20z" /></svg>).
 
 <div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
 		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
 	</video>
+</div>
+<div class="demo-artwork">
+	<a href="https://editor.graphite.rs/#demo/procedural-string-lights">
+		<img src="https://static.graphite.rs/content/index/procedural-string-lights-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Procedural String Lights" />
+	</a>
+	<p>
+		<span class="balance-text">
+			<em>Procedural String Lights</em>
+		</span>
+		<br />
+		<span class="balance-text">
+			<a href="https://editor.graphite.rs/#demo/procedural-string-lights">Open this artwork</a> to explore it yourself.
+		</span>
+	</p>
 </div>
 
 </div>
@@ -337,7 +358,7 @@ Proceduralism lets you create sophisticated design elements that are easy to edi
 <section id="proceduralism-features">
 <div class="section">
 
-Graphite's data-driven approach to graphic design affords unique capabilities (while in alpha, these remain a work in progress):
+Graphite's procedural, data-driven approach to graphic design affords unique capabilities (while in alpha, these remain a work in progress):
 
 <div class="informational-group features four-wide">
 	<div class="informational">

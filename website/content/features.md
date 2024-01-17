@@ -10,7 +10,7 @@ css = ["features.css"]
 
 # Graphite features
 
-The current alpha version of Graphite provides tools for vector art and graphic design conforming to the ubiquitous SVG format. It also supports some experimental, rudimentary raster editing that is evolving with each release. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—non-destructive editing and procedural design workflow which is unique for a vector editor. This page explains where the project is at and where it's heading next.
+The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and non-destructive editing workflow which is a unique feature among vector editing software.
 
 </div>
 </section>
@@ -119,9 +119,13 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>New viewport overlays system</span>
 		</div>
-		<div class="informational ongoing" title="Development Ongoing">
+		<div class="informational complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Layer and grid snapping</span>
+		</div>
+		<div class="informational complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Imported SVG file editing</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -164,10 +168,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Procedurally-defined vector data</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Imported SVG file editing</span>
-		</div>
-		<div class="informational">
 			<img class="atlas" style="--atlas-index: 30" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>CAD-like constraint relationships</span>
 		</div>
@@ -196,6 +196,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Code editor for custom nodes</span>
 		</div>
 		<div class="informational">
+			<img class="atlas" style="--atlas-index: 27" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Interactive graph auto-layout</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Document history system</span>
 		</div>
@@ -222,10 +226,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 25" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Reconfigurable workspace panels</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 27" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Interactive graph auto-layout</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />

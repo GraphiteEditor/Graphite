@@ -43,7 +43,7 @@ On the right, the **window buttons** provide platform-specific controls for the 
 
 The **workspace** is the editor's main content area. It houses the **panels** packed next to one another. The **gutter** lines between neighboring panels may be dragged to resize them.
 
-<p><img src="https://static.graphite.rs/content/learn/interface/workspace.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The workspace" /></p>
+<p><img src="https://static.graphite.rs/content/learn/interface/workspace__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The workspace" /></p>
 
 ### Panels
 
@@ -57,7 +57,7 @@ Beneath the panel tab bar, the **panel body** displays the content for its panel
 
 The bar running across the bottom of the editor is called the **status bar**.
 
-<p><img src="https://static.graphite.rs/content/learn/interface/status-bar.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Status bar" /></p>
+<p><img src="https://static.graphite.rs/content/learn/interface/status-bar__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Status bar" /></p>
 
 ### Input hints
 

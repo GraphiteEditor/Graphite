@@ -5,7 +5,7 @@ title = "Features and limitations"
 order = 1
 +++
 
-Please keep in mind that Graphite is alpha software, meaning it is actively changing and improving. Remember to save your work frequently because crashes are not unheard of.
+Please bear in mind that Graphite is alpha software, meaning it is actively changing and improving. Remember to save your work frequently because crashes are not unheard of.
 
 ## Current capabilities
 
@@ -23,52 +23,55 @@ Raster image editing is a growing capability that will develop over time into th
 
 A prototype Brush tool exists letting you draw simple doodles and sketches. However it is very limited in its capabilities and there are multiple bugs and performance issues with the feature. It can be used in a limited capacity, but don't expect to paint anything too impressive using raster brushes quite yet.
 
-The raster-based Imaginate feature enables you to synthesize artwork using generative AI based on text descriptions. With it, you can also nondestructively modify your vector art and imported images. You can inpaint (or outpaint) the content in a specific masked part of an image or use it to touch up quick-and-dirty compositions.
+The raster-based Imaginate feature enables you to synthesize artwork using generative AI based on text descriptions. With it, you can also nondestructively modify your vector art and imported images. You can inpaint (or outpaint) the content in a specific masked part of an image or use it to touch up quick-and-dirty compositions. This feature is temporarily out of comission but will be resurrected, and further improved upon, in early 2024.
 
 ### Procedural design
 
-Procedural content generation workflows let you describe *how* a creative decision becomes a visual outcome rather than doing it all yourself. For example, copying a shape 50 times around the inside of a circle would be a lot of work if done by hand but it's easy for the computer to do it. And if you decide you prefer 60 instead of 50 instances, or you want to change the copied shape, or you opt for a different circle radius, you can avoid doing even more manual work by editing the parameters instead of doing all the laborious changes yourself each time. You're able to build a *procedure* that the computer carries out on your behalf.
+A procedural content generation workflow lets you describe *how* a creative decision becomes a visual outcome rather than doing it all yourself. For example, copying a shape 25 times around the inside of a circle would be a lot of work if done by hand but it's easy for the computer to do it. And if you decide 10 instances may look better than 25, or you want to change the copied shape, or you opt for a different circle radius, it's easy to just update a numerical parameter. That saves you from laboriously placing every shape all over again. You're able to build a *procedure* that the computer carries out on your behalf.
 
-The aforementioned example takes the form of the *Circular Repeat* node:
+The aforementioned example takes the form of the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="Circular Repeat" /> node which is represented as this box-shaped entity with colored *connectors* on either end. *Nodes* encode certain operations (or functions) in the procedure that generates your artwork. Once you've drawn some content, you can see the nodes which generate it by opening the *node graph* with the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/node-graph-button.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="'Node Graph' button" /> button located to the top right of the viewport. This example may have a node setup which looks like this:
 
-<p><img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="Circular Repeat node" /></p>
+<p><img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/shape-fill-circular-repeat-layer.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Shape" /></p>
 
-Nodes are boxes that encode a certain operation (or function) in the procedure that generates your artwork. On the left, this node takes the input of your shape to be duplicated. On the right, the modified data (with the repeated shape) is the output. Links are wired from the outputs of nodes to the inputs of others, left to right, in the *node graph* which can be accessed by clicking this button located in the bottom left corner of the Graphite editor:
+Starting from the left, the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/shape-node.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="Shape" /> node generates some geometry (in this case, drawn using the *Pen* tool). Next, the shape data feeds through the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/fill-node.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="Fill" /> node to apply a blue color. At this point, the shape data looks like so:
 
-<p><img src="https://static.graphite.rs/content/learn/interface/document-panel/graph-view-button-while-closed.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Open node graph button" /></p>
+<p><img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/blue-arch-shape.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /></p>
 
-The node's properties give additional controls over settings like *Angle Offset* (what angle to start at), *Radius* (how large the circle pattern should be), and *Count* (how many copies to make):
+Next, that is fed into the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="Circular Repeat" /> node which has several *parameters* you can modify and get different output data based on your choices, like in these examples:
 
-<p><img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="Circular Repeat node parameters" /></p>
+<style class="table-1-style">
+.table-1-style + table td {
+	vertical-align: middle;
+	text-align: center;
+}
+</style>
 
+| | |
+|-|-|
+| <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> |
+| <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> |
+| <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> |
+| <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" alt="" /> |
 
-These parameters can also be exposed into the graph so they are driven by the calculated numerical outputs of other nodes instead of values you pick by hand.
+The node's properties offer controls over settings like *Angle Offset* (what angle to start at), *Radius* (distance from the center), and *Count* (how many copies to distribute). These parameters can also be exposed into the graph so they are driven by the calculated numerical outputs of other nodes instead of values you pick by hand.
 
 ## Status and limitations
 
 Please make yourself aware of these factors to better understand and work around the rough edges in today's Graphite editor.
 
-### Unstable document format
+### Evolving document format
 
-Artwork you save as a `.graphite` document file will eventually fail to open in future versions of the Graphite editor because of code changes. Since the implementations are in flux for many systems, file format stability isn't possible yet during this alpha stage of development. A redesigned file format with a `.gdd` (Graphite Design Document) extension will replace `.graphite` files and it will be built with backwards-compatability in mind.
+Saved documents will eventually fail to render in future versions of the Graphite editor because of code changes. Since node implementations and other systems are in flux, file format stability isn't possible yet during this alpha stage of development. If a file opens but there's a rendering error, you may need to open the node graph and replace outdated nodes by creating new ones near the site of an error. Later in the development roadmap, a redesigned file format with a `.gdd` (Graphite Design Document) extension will replace `.graphite` files and it will be built with seamless backwards-compatability in mind.
 
-Sometimes an error will appear when opening an outdated document. Other times, it may open but result in a crash or broken functionality when editing. With some technical know-how, it might be possible to manually edit the JSON serialization format, but this is not officially supported.
+### Limited raster capabilities
 
-<!-- To open an outdated file, [look here](https://github.com/GraphiteEditor/Graphite/deployments/activity_log?environment=graphite-editor+%28Production%29) for the previous version of the Graphite editor that was published before the date you saved the document. Click "View deployment" to open it. -->
+While you can import bitmap images, apply image effects in the node graph, and draw brush strokes, there is not much tooling yet to make the overall raster workflow that useful. Marquee selection is an upcoming feature in the first half of 2024 which will significantly improve the utility of raster editing in Graphite. Hardware accelerated rendering, to offload work from the CPU to GPU, is also planned for early 2024 which will drastically improve the performance.
 
-### No vector import
+### Performance bottlenecks
 
-While you can export your artwork as an SVG file for use elsewhere, there is not support yet for importing an SVG file to be edited.
+Graphite has several temporary performance bottlenecks that currently yield poor performance when working with raster content, complex vector artwork, and large procedural node graphs. Each of these limitations will be resolved by finishing the implementations of the incomplete systems that impose slowdowns in their current forms. For example, caching in the node graph isn't operational and GPU-accelerated rendering isn't enabled yet. This will be a central focus throughout 2024.
 
-### Unstable node graph interactions
-
-The node graph implementation was completed very recently. There are still a number of bugs and unexpected limitations that can arise. If the graph isn't updating, it may have become invalid. You can check if there are errors by opening the JavaScript console with the <kbd>F12</kbd> key, and if you see node graph evaluation errors, undo your changes to before the unsupported graph edit.
-
-### No snapping system
-
-Previous versions of Graphite had a mediocre snapping system for helping you draw with precise alignment between elements in your artwork. To accommodate implementing the node graph, this code had to be removed because it conflicted. An improved version of the feature will be [rebuilt](https://github.com/GraphiteEditor/Graphite/issues/1206) in the near future.
-
-### Limited Safari support
+### Best-effort Safari support
 
 Old versions of Safari lack the minimum web standards features Graphite requires to run. The latest version of the browser still won't run Graphite as well as Chrome and you may encounter extra bugs because we have limited resources to regularly test for Safari issues.
 

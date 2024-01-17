@@ -25,7 +25,7 @@
 	--font-size-heading-h2: 42px;
 	--font-size-subheading: 24px;
 	--font-size-body: 18px;
-	--font-size-article-h2: 30px;
+	--font-size-article-h2: 32px;
 	--font-size-article-h3: 24px;
 	--font-size-article-h4: 18px;
 
@@ -186,6 +186,7 @@ p ~ .image-comparison,
 p + .link,
 p + section,
 p + table,
+p + style + table,
 p ~ .video-background,
 p ~ .video-embed,
 .video-embed + p,

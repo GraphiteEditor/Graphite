@@ -297,28 +297,6 @@
 #vector-art {
 	.section {
 		align-items: center;
-
-		.demo-artwork {
-			display: flex;
-			align-items: center;
-			margin-top: 20px;
-
-			img {
-				width: 128px;
-				height: 128px;
-				border: 12px solid var(--color-walnut);
-				vertical-align: top;
-				flex: 0 0 auto;
-			}
-
-			p {
-				display: flex;
-				flex-direction: column;
-				max-width: 300px;
-				margin-left: 40px;
-				text-align: left;
-			}
-		}
 	}
 }
 // ▙ VECTOR ART ▟
@@ -408,3 +386,25 @@
 	}
 }
 // ▙ GET INVOLVED ▟
+
+.demo-artwork {
+	display: flex;
+	align-items: center;
+	margin-top: 20px;
+
+	img {
+		width: 128px;
+		height: 128px;
+		border: 12px solid var(--color-walnut);
+		vertical-align: top;
+		flex: 0 0 auto;
+	}
+
+	p {
+		display: flex;
+		flex-direction: column;
+		max-width: 300px;
+		margin-left: 40px;
+		text-align: left;
+	}
+}
