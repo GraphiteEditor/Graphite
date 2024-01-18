@@ -399,6 +399,13 @@ impl ShapeState {
 		self.selected_shape_state.keys()
 	}
 
+	/// iterate over all selected layers in order from top to bottomm
+	/// # WARN
+	/// iterate over all layers of the document
+	pub fn sorted_selected_layers<'a>(&'a self, document_metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		document_metadata.all_layers().filter(|layer| self.selected_shape_state.contains_key(layer))
+	}
+
 	pub fn has_selected_layers(&self) -> bool {
 		!self.selected_shape_state.is_empty()
 	}
@@ -1118,12 +1125,13 @@ impl ShapeState {
 	}
 
 	/// find closest segment on first fit layer
-	/// # MAYBE
-	/// maybe we need to find a closest segment on all layers? and only then take the closest one? <br/>
-	/// seems like a waste of resource
 	pub fn first_closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
-		self.selected_layers()
-			.find_map(|&layer| self.closest_segment(document_network, document_metadata, layer, position, tolerance))
+		let closest_seg = |layer| self.closest_segment(document_network, document_metadata, layer, position, tolerance);
+		match self.selected_shape_state.len() {
+			0 => None,
+			1 => self.selected_layers().next().copied().and_then(closest_seg),
+			_ => self.sorted_selected_layers(document_metadata).find_map(closest_seg),
+		}
 	}
 
 	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the Path tool).
