@@ -196,7 +196,7 @@ impl LayerSnapper {
 				continue;
 			};
 			let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-			let values = BBoxSnapValues::bb(layer.to_node().0);
+			let values = BBoxSnapValues::bbox(layer.to_node().0);
 			get_bbox_points(quad, &mut self.points_to_snap, values, document);
 		}
 	}
@@ -344,7 +344,7 @@ pub struct BBoxSnapValues {
 	center_target: SnapTarget,
 }
 impl BBoxSnapValues {
-	pub const fn bb(id: u64) -> Self {
+	pub const fn bbox(id: u64) -> Self {
 		Self {
 			corner_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Corner),
 			corner_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Corner),

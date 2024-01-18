@@ -164,10 +164,12 @@ impl SelectTool {
 impl LayoutHolder for SelectTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = Vec::new();
+
+		// Select mode (Deep/Shallow)
 		widgets.push(self.deep_selection_widget());
 
 		// Pivot
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
@@ -180,13 +182,11 @@ impl LayoutHolder for SelectTool {
 		let disabled = self.tool_data.selected_layers_count == 0;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.flip_widgets(disabled));
-		widgets.push(PopoverButton::new("Flip", "Coming soon").disabled(disabled).widget_holder());
 
 		// Boolean
 		if self.tool_data.selected_layers_count >= 2 {
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.extend(self.boolean_widgets());
-			widgets.push(PopoverButton::new("Boolean", "Coming soon").widget_holder());
 		}
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -280,7 +280,7 @@ impl SelectToolData {
 			}
 			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
 				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::bb(layer.to_node().0), document);
+				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::bbox(layer.to_node().0), document);
 			}
 		}
 	}
