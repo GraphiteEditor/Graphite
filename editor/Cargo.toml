@@ -46,6 +46,7 @@ dyn-any = { workspace = true }
 graphene-core = { path = "../node-graph/gcore" }
 graphene-std = { path = "../node-graph/gstd", features = ["serde"] }
 num_enum = "0.6.1"
+usvg = { workspace = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 # Remove when `core::cell::LazyCell` is stabilized (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
@@ -57,7 +58,6 @@ web-sys = { workspace = true, features = [
 	"CanvasRenderingContext2d",
 	"TextMetrics",
 ] }
-usvg = "0.37"
 
 
 [dev-dependencies]

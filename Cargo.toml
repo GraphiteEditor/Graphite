@@ -68,7 +68,7 @@ url = "2.4.0"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
 vello = { git = "https://github.com/linebender/vello", version = "0.0.1" }
 vello_svg = { git = "https://github.com/linebender/vello", version = "0.0.1" }
-resvg = { version = "0.35.0" }
+resvg = { version = "0.36.0" }
 rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
@@ -86,7 +86,7 @@ num-traits = { version = "0.2.15", default-features = false, features = [
 ] }
 js-sys = { version = "0.3.55" }
 web-sys = { version = "0.3.55" }
-usvg = "0.35.0"
+usvg = "0.36.0"
 spirv = "0.2.0"
 fern = { version = "0.6", features = ["colored"] }
 
