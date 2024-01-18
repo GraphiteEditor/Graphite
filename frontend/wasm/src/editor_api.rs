@@ -83,7 +83,7 @@ fn save_active_document() {
 				instances.try_borrow_mut().map(|mut editors| {
 					editors
 						.iter_mut()
-						.flat_map(|(id, editor)| editor.handle_message(PortfolioMessage::AutoSaveActiveDocument { force: false }).into_iter().map(move |msg| (id, msg)))
+						.flat_map(|(id, editor)| editor.handle_message(PortfolioMessage::AutoSaveAllDocuments).into_iter().map(move |msg| (id, msg)))
 						.for_each(|(id, msg)| handles.borrow_mut().get(id).unwrap().send_frontend_message_to_js(msg));
 				})
 			})

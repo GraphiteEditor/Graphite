@@ -678,7 +678,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SaveDocument => {
 				self.set_save_state(true);
-				responses.add(PortfolioMessage::AutoSaveActiveDocument { force: true });
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
