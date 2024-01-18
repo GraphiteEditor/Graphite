@@ -20,7 +20,7 @@ pub struct Pivot {
 impl Default for Pivot {
 	fn default() -> Self {
 		Self {
-			pivot: Some(DVec2::ONE),
+			pivot: None,
 			viewport_pos: DVec2::ZERO,
 		}
 	}

@@ -226,16 +226,23 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+		log::debug!("click_targets: {:?}", new_click_targets);
 		self.click_targets = new_click_targets;
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_targets
+		// log::debug!("click_target: {:?}", self.click_targets.get(&layer));
+
+		let bbox = self
+			.click_targets
 			.get(&layer)?
 			.iter()
 			.filter_map(|click_target| click_target.subpath.bounding_box_with_transform(transform))
-			.reduce(Quad::combine_bounds)
+			.reduce(Quad::combine_bounds);
+
+		// log::debug!("bounding_boux: {:?}", bbox);
+		bbox
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.

@@ -390,6 +390,7 @@ impl Fsm for SelectToolFsmState {
 				let selected_layers_count = document.selected_nodes.selected_layers(document.metadata()).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
+				log::debug!("selected_layers: {}", selected_layers_count);
 
 				// Outline selected layers
 				for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
@@ -409,6 +410,7 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_layers(document.network(), document.metadata())
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
+				log::debug!("transform: {:?}", transform);
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
 					.selected_nodes
@@ -419,6 +421,7 @@ impl Fsm for SelectToolFsmState {
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
 					.reduce(graphene_core::renderer::Quad::combine_bounds);
+				log::debug!("bounds: {:?}", bounds);
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
@@ -513,6 +516,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 					tool_data.get_snap_candidates(document, input);
 
@@ -536,6 +540,7 @@ impl Fsm for SelectToolFsmState {
 						);
 
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 
 					tool_data.layers_dragging = selected;
