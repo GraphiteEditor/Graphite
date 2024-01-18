@@ -487,6 +487,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(MenuBarMessage::SendLayout);
+					responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 				}
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {

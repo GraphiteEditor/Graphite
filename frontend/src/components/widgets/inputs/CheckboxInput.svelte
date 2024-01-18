@@ -105,5 +105,9 @@
 				background: var(--color-8-uppergray);
 			}
 		}
+
+		+ .text-label.text-label {
+			margin-left: 8px;
+		}
 	}
 </style>

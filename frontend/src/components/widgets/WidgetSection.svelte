@@ -111,6 +111,7 @@
 			padding: 0 7px;
 			padding-top: 1px;
 			margin-top: -1px;
+			background: var(--color-3-darkgray);
 			border: 1px solid var(--color-2-mildblack);
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;

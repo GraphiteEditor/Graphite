@@ -1168,8 +1168,6 @@ impl DocumentMessageHandler {
 				.options_widget(vec![
 					LayoutGroup::Row {
 						widgets: vec![
-							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).table_align(true).min_width(96).widget_holder(),
-							Separator::new(SeparatorType::Related).widget_holder(),
 							CheckboxInput::new(snapping_state.bounding_box_snapping)
 								.tooltip(SnappingOptions::BoundingBoxes.to_string())
 								.on_update(move |input: &CheckboxInput| {
@@ -1181,13 +1179,11 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
-							Separator::new(SeparatorType::Related).widget_holder(),
+							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder(),
 						],
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							TextLabel::new(SnappingOptions::Geometry.to_string()).table_align(true).min_width(96).widget_holder(),
-							Separator::new(SeparatorType::Related).widget_holder(),
 							CheckboxInput::new(self.snapping_state.geometry_snapping)
 								.tooltip(SnappingOptions::Geometry.to_string())
 								.on_update(|input: &CheckboxInput| {
@@ -1199,6 +1195,7 @@ impl DocumentMessageHandler {
 									.into()
 								})
 								.widget_holder(),
+							TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder(),
 						],
 					},
 				])

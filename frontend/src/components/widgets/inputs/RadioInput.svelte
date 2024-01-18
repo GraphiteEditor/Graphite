@@ -12,6 +12,7 @@
 	export let entries: RadioEntries;
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
+	export let minWidth = 0;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 
@@ -23,7 +24,7 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled }}>
+<LayoutRow class="radio-input" classes={{ disabled }} styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : "" }}>
 	{#each entries as entry, index}
 		<button class:active={index === selectedIndex} class:mixed class:disabled on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
 			{#if entry.icon}
@@ -43,11 +44,15 @@
 			fill: var(--color-e-nearwhite);
 			height: 24px;
 			margin: 0;
-			padding: 0 4px;
+			padding: 0;
 			border: none;
 			display: flex;
 			align-items: center;
 			justify-content: center;
+			// `min-width: fit-content` and `flex: 1 1 0` together allow us to occupy space such that we're always at least the content width,
+			// but if the container is set wider, we distribute the space evenly (so buttons with short and long labels would have equal widths).
+			min-width: fit-content;
+			flex: 1 1 0;
 
 			&.mixed {
 				background: var(--color-4-dimgray);
@@ -100,11 +105,20 @@
 			&:last-of-type {
 				border-radius: 0 2px 2px 0;
 			}
-		}
 
-		.text-label {
-			margin: 0 4px;
-			overflow: hidden;
+			.icon-label {
+				margin: 0 4px;
+
+				+ .text-label {
+					margin-left: 0;
+				}
+			}
+
+			.text-label {
+				margin: 0 8px;
+				overflow: hidden;
+				flex: 0 0 auto;
+			}
 		}
 
 		&.combined-before button:first-of-type,

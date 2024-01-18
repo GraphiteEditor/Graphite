@@ -108,7 +108,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Origin").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(grid.origin.x))
 				.label("X")
 				.unit(" px")
@@ -127,11 +127,12 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Type").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
 				RadioEntryData::new("Rectangular").on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGLE)),
 				RadioEntryData::new("Isometric").on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
 			])
+			.min_width(200)
 			.selected_index(Some(if matches!(grid.grid_type, GridType::Rectangle { .. }) { 0 } else { 1 }))
 			.widget_holder(),
 		],
@@ -141,7 +142,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		GridType::Rectangle { spacing } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
 				TextLabel::new("Spacing").table_align(true).widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(spacing.x))
 					.label("X")
 					.unit(" px")
@@ -162,10 +163,9 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Spacing").table_align(true).widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+					TextLabel::new("Y Spacing").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(y_axis_spacing))
-						.label("Y")
 						.unit(" px")
 						.min(0.)
 						.min_width(200)
@@ -175,22 +175,17 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			});
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Angle A").table_align(true).widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+					TextLabel::new("Angles").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(angle_a))
 						.unit("°")
-						.min_width(200)
+						.min_width(98)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_a()))
 						.widget_holder(),
-				],
-			});
-			widgets.push(LayoutGroup::Row {
-				widgets: vec![
-					TextLabel::new("Angle B").table_align(true).widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(angle_b))
 						.unit("°")
-						.min_width(200)
+						.min_width(98)
 						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_b()))
 						.widget_holder(),
 				],
