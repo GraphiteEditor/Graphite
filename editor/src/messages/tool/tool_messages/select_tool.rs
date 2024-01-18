@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
+use crate::messages::tool;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
@@ -260,7 +261,7 @@ struct SelectToolData {
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	has_dragged: bool,
-	duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
+	non_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
@@ -280,7 +281,7 @@ impl SelectToolData {
 			}
 			if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) {
 				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::bbox(layer.to_node().0), document);
+				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 			}
 		}
 	}
@@ -301,7 +302,8 @@ impl SelectToolData {
 
 	/// Duplicates the currently dragging layers. Called when Alt is pressed and the layers have not yet been duplicated.
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let mut duplicated_layers = Vec::new();
+		self.non_duplicated_layers = Some(self.layers_dragging.clone());
+		let mut new_dragging = Vec::new();
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
 			let Some(layer) = layer_ancestors.last().copied() else { continue };
 			let Some(parent) = layer.parent(&document.metadata) else { continue };
@@ -323,12 +325,6 @@ impl SelectToolData {
 			)
 			.collect();
 
-			let id = NodeId(generate_uuid());
-			let insert_index = -1;
-			let layer = LayerNodeIdentifier::new_unchecked(id);
-			responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
-			duplicated_layers.push(layer);
-
 			// Moves the layer back to its starting position.
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
@@ -336,22 +332,42 @@ impl SelectToolData {
 				transform_in: TransformIn::Viewport,
 				skip_rerender: true,
 			});
+
+			let id = NodeId(generate_uuid());
+			let insert_index = -1;
+			let layer = LayerNodeIdentifier::new_unchecked(id);
+			responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+			new_dragging.push(layer);
 		}
-		self.duplicated_layers = Some(duplicated_layers);
+		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+		self.layers_dragging = new_dragging;
 	}
 
 	/// Removes the duplicated layers. Called when Alt is released and the layers have previously been duplicated.
 	fn stop_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		let Some(duplicated) = self.duplicated_layers.take() else {
+		let Some(original) = self.non_duplicated_layers.take() else {
 			return;
 		};
 
 		// Delete the duplicated layers
-		for layer_ancestors in document.metadata().shallowest_unique_layers(duplicated.iter().copied()) {
+		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
 			responses.add(GraphOperationMessage::DeleteLayer {
 				id: layer_ancestors.last().unwrap().to_node(),
 			});
 		}
+
+		for &layer in &original {
+			responses.add(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation(self.drag_current - self.drag_start),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: true,
+			});
+		}
+		let nodes = original.iter().map(|layer| layer.to_node()).collect();
+		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+		self.layers_dragging = original;
 	}
 }
 
@@ -516,11 +532,14 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = selected;
 
 					SelectToolFsmState::RotatingBounds
-				} else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata())))
-					&& tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest
-				{
+				} else if intersection.is_some_and(|intersection| selected.iter().any(|selected_layer| intersection.starts_with(*selected_layer, document.metadata()))) {
 					responses.add(DocumentMessage::StartTransaction);
-					tool_data.select_single_layer = intersection;
+
+					if tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+						tool_data.select_single_layer = intersection;
+					} else {
+						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(&document.metadata).find(|ancestor| selected.contains(ancestor)));
+					}
 
 					tool_data.layers_dragging = selected;
 
@@ -530,7 +549,7 @@ impl Fsm for SelectToolFsmState {
 				} else {
 					tool_data.layers_dragging = selected;
 
-					if !input.keyboard.key(add_to_selection) && tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest {
+					if !input.keyboard.key(add_to_selection) {
 						responses.add(DocumentMessage::DeselectAllLayers);
 						tool_data.layers_dragging.clear();
 					}
@@ -557,16 +576,16 @@ impl Fsm for SelectToolFsmState {
 						SelectToolFsmState::DrawingBox
 					}
 				};
-				tool_data.duplicated_layers = None;
+				tool_data.non_duplicated_layers = None;
 
 				state
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove { axis_align, duplicate, .. }) => {
 				tool_data.has_dragged = true;
 
-				if input.keyboard.key(duplicate) && tool_data.duplicated_layers.is_none() {
+				if input.keyboard.key(duplicate) && tool_data.non_duplicated_layers.is_none() {
 					tool_data.start_duplicates(document, responses);
-				} else if !input.keyboard.key(duplicate) && tool_data.duplicated_layers.is_some() {
+				} else if !input.keyboard.key(duplicate) && tool_data.non_duplicated_layers.is_some() {
 					tool_data.stop_duplicates(document, responses);
 				}
 
@@ -574,7 +593,11 @@ impl Fsm for SelectToolFsmState {
 				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
 				let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_start);
 
-				let snap_data = SnapData::ignore(document, input, &tool_data.layers_dragging);
+				// Ignore the non duplicated layers if the current layers have not spawned yet.
+				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_target(layer).is_some());
+				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
+
+				let snap_data = SnapData::ignore(document, input, ignore);
 				let mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 				let mut offset = mouse_delta_document;
 				let mut best_snap = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(mouse_position));
@@ -918,15 +941,29 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
+fn not_artboard<'a>(document: &'a DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + 'a {
+	|&layer| !document.metadata.is_artboard(layer)
+}
+
 fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	let layer = selected[0];
-	let ancestor = layer
-		.ancestors(document.metadata())
-		.find(|&ancestor| document.selected_nodes.selected_layers_contains(ancestor, document.metadata()));
+	for layer in selected {
+		let ancestor = layer
+			.ancestors(document.metadata())
+			.filter(not_artboard(document))
+			.find(|&ancestor| document.selected_nodes.selected_layers_contains(ancestor, document.metadata()));
 
-	let new_selected = ancestor.unwrap_or_else(|| layer.child_of_root(document.metadata()));
+		let new_selected = ancestor.unwrap_or_else(|| {
+			layer
+				.ancestors(document.metadata())
+				.take_while(|&layer| layer != LayerNodeIdentifier::ROOT)
+				.filter(not_artboard(document))
+				.last()
+				.unwrap_or(layer)
+		});
+		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
+		tool_data.layers_dragging.push(new_selected);
+	}
 
-	tool_data.layers_dragging = vec![new_selected];
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
@@ -945,7 +982,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 		return;
 	}
 
-	let Some(new_selected) = layer.ancestors(document.metadata()).find(|ancestor| {
+	let Some(new_selected) = layer.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 		ancestor
 			.parent(document.metadata())
 			.is_some_and(|parent| document.selected_nodes.selected_layers_contains(parent, document.metadata()))

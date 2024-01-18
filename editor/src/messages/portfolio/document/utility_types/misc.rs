@@ -107,7 +107,7 @@ impl SnappingState {
 				BoundingBoxSnapTarget::Corner => self.bounds.corners,
 				BoundingBoxSnapTarget::Edge => self.bounds.edges,
 				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
-				BoundingBoxSnapTarget::Center(_) => self.bounds.centers,
+				BoundingBoxSnapTarget::Center => self.bounds.centers,
 			},
 			SnapTarget::Geometry(nodes) if self.geometry_snapping => match nodes {
 				GeometrySnapTarget::Smooth => self.nodes.smooth_nodes,
@@ -217,7 +217,7 @@ impl GridSnapping {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundingBoxSnapSource {
 	Corner,
-	Center(u64),
+	Center,
 	EdgeMidpoint,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,7 +254,7 @@ pub enum BoundingBoxSnapTarget {
 	Corner,
 	Edge,
 	EdgeMidpoint,
-	Center(u64),
+	Center,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapTarget {
