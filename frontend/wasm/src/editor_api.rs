@@ -72,61 +72,66 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 		.expect("should register `setTimeout` OK");
 }
 
-fn save_active_document() {
+fn with_editor(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
 
-	EDITOR_INSTANCES
-		.with(|instances| {
-			JS_EDITOR_HANDLES.with(|handles| {
-				instances.try_borrow_mut().map(|mut editors| {
-					editors
-						.iter_mut()
-						.flat_map(|(id, editor)| editor.handle_message(PortfolioMessage::AutoSaveAllDocuments).into_iter().map(move |msg| (id, msg)))
-						.for_each(|(id, msg)| handles.borrow_mut().get(id).unwrap().send_frontend_message_to_js(msg));
+	EDITOR_INSTANCES.with(|instances| {
+		JS_EDITOR_HANDLES.with(|handles| {
+			instances
+				.try_borrow_mut()
+				.map(|mut editors| {
+					for (id, editor) in editors.iter_mut() {
+						let Ok(mut handles) = handles.try_borrow_mut() else {
+							log::error!("Failed to borrow editor handles");
+							continue;
+						};
+						match handles.get_mut(&id) {
+							Some(js_editor) => f(editor, js_editor),
+							None => log::error!("Editor id ({id}) has no corresponding JsEditorHandle id"),
+						}
+					}
 				})
-			})
+				.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
 		})
-		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
+	});
+}
+
+fn auto_save_all_documents() {
+	with_editor(|editor, handle| {
+		for msg in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
+			handle.send_frontend_message_to_js(msg);
+		}
+	});
 }
 
 // Sends a message to the dispatcher in the Editor Backend
 async fn poll_node_graph_evaluation() {
-	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
+
+	// Mutably borrow the editors, and if successful, we can access them in the closure
 	editor::node_graph_executor::run_node_graph().await;
 
-	// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
-	EDITOR_INSTANCES
-		.with(|instances| {
-			JS_EDITOR_HANDLES.with(|handles| {
-				// Mutably borrow the editors, and if successful, we can access them in the closure
-				instances.try_borrow_mut().map(|mut editors| {
-					// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-					for (id, editor) in editors.iter_mut() {
-						let handles = handles.borrow_mut();
-						let handle = handles.get(id).unwrap();
-						let mut messages = VecDeque::new();
-						editor.poll_node_graph_evaluation(&mut messages);
-						// Send each `FrontendMessage` to the JavaScript frontend
+	with_editor(|editor, handle| {
+		// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+		let mut messages = VecDeque::new();
+		editor.poll_node_graph_evaluation(&mut messages);
 
-						let mut responses = Vec::new();
-						for message in messages.into_iter() {
-							responses.extend(editor.handle_message(message));
-						}
+		// Send each `FrontendMessage` to the JavaScript frontend
+		let mut responses = Vec::new();
+		for message in messages.into_iter() {
+			responses.extend(editor.handle_message(message));
+		}
 
-						for response in responses.into_iter() {
-							handle.send_frontend_message_to_js(response);
-						}
-						// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-					}
-				})
-			})
-		})
-		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
+		for response in responses.into_iter() {
+			handle.send_frontend_message_to_js(response);
+		}
+
+		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+	})
 }
 
 #[wasm_bindgen]
@@ -241,8 +246,8 @@ impl JsEditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move || {
-				save_active_document();
-				set_timeout(f.borrow().as_ref().unwrap(), Duration::from_secs(30));
+				auto_save_all_documents();
+				set_timeout(f.borrow().as_ref().unwrap(), editor::consts::AUTO_SAVE_TIMEOUT);
 			}));
 
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(0));
