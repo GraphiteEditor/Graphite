@@ -119,7 +119,7 @@ async fn poll_node_graph_evaluation() {
 		editor.poll_node_graph_evaluation(&mut messages);
 
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|msg| editor.handle_message(message)) {
+		for response in messages.into_iter().flat_map(|msg| editor.handle_message(msg)) {
 			handle.send_frontend_message_to_js(response);
 		}
 
