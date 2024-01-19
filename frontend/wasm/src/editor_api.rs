@@ -112,21 +112,14 @@ async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	// Mutably borrow the editors, and if successful, we can access them in the closure
 	editor::node_graph_executor::run_node_graph().await;
 
 	with_editor(|editor, handle| {
-		// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
 		let mut messages = VecDeque::new();
 		editor.poll_node_graph_evaluation(&mut messages);
 
 		// Send each `FrontendMessage` to the JavaScript frontend
-		let mut responses = Vec::new();
-		for message in messages.into_iter() {
-			responses.extend(editor.handle_message(message));
-		}
-
-		for response in responses.into_iter() {
+		for response in messages.into_iter().flat_map(|msg| editor.handle_message(message)) {
 			handle.send_frontend_message_to_js(response);
 		}
 
