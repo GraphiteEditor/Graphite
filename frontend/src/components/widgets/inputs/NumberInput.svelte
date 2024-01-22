@@ -27,8 +27,8 @@
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
 	export let defaultValue: number = 0;
-	let isFakeValueUsed: boolean = false;
-	let cancelableFakeValue: number | undefined = undefined;
+	let isCancelValueUsed: boolean = false;
+	let cancelableValue: number | undefined = undefined;
 
 	// Number presentation
 	export let displayDecimalPlaces = 2;
@@ -104,6 +104,32 @@
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
 	});
+
+	
+	// ===========================
+	// CANCEL VALUE FNS
+	// ===========================
+
+	/** say that we not use cancel value anymore */
+	function resetCancelValue() {
+		isCancelValueUsed = false;
+	}
+	/** save value for cancelation if needed */
+	function setCancelValue() {
+		if (!isCancelValueUsed) {
+			cancelableValue = value
+			isCancelValueUsed = true
+		}
+	}
+	function getCancelValue(): number | undefined {
+		return isCancelValueUsed ? cancelableValue : undefined
+	}
+	/** update value with old value (as it was before actions that should be canceled) */
+	function cancelValue() {
+		let oldValue = getCancelValue()
+		updateValue(oldValue)
+		resetCancelValue()
+	}
 
 	// ===============================
 	// TRACKING AND UPDATING THE VALUE
@@ -210,8 +236,7 @@
 	}
 
 	function onTextChangeCanceled() {
-		let oldValue = isFakeValueUsed ? cancelableFakeValue : undefined
-		updateValue(oldValue);
+		cancelValue()
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
@@ -234,7 +259,7 @@
 
 	function textFocus() {
 		editing = true;
-		isFakeValueUsed = false;
+		resetCancelValue();
 		self?.selectAllText(text);
 		addEventListener("keydown", textValueChangeByArrow);
 	}
@@ -258,10 +283,7 @@
 		let prevValue = calcTextField() ?? value ?? defaultValue
 		let newValue = toValidValue(prevValue + delta)
 		
-		if (!isFakeValueUsed) {
-			cancelableFakeValue = value
-			isFakeValueUsed = true
-		}
+		setCancelValue()
 
 		text = `${newValue}`
 		dispatch("value", newValue);
@@ -313,9 +335,14 @@
 	}
 
 	function onIncrement(direction: "Decrease" | "Increase") {
-		if (arrowButtonTimeoutId) stopIncrement();
-		
+		if (arrowButtonTimeoutId) stopIncrement()
+
+		addEventListener("pointerup", onLR_ArrowsUp)
+		addEventListener("keydown", onLR_arrowsEsc)
+
 		arrowLastDirection = direction
+		resetCancelValue()
+		setCancelValue()
 		increment(direction)
 
 		const INC_DELTAS_MS = [350, 250, 200, 150, 150, 100, 75]
@@ -332,7 +359,16 @@
 		// setInterval(rep_action, INC_DELTAS_MS[inc_index])
 	}
 	
+	function onLR_arrowsEsc(e: KeyboardEvent) {
+		if (e.key == "Escape") {
+			stopIncrement()
+			cancelValue()
+		}
+	}
+
 	function stopIncrement() {
+		removeEventListener("pointerup", onLR_ArrowsUp)
+		removeEventListener("keydown", onLR_arrowsEsc)
 		clearTimeout(arrowButtonTimeoutId)
 		arrowButtonTimeoutId = undefined
 	}
@@ -697,8 +733,8 @@
 >
 	{#if value !== undefined}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
-			<button class="arrow left" on:mousedown={(e) => onLR_ArrowsDown(e, "Decrease")} on:focusout={() => {onLR_ArrowsFocusOff("Decrease")}} on:mouseup={onLR_ArrowsUp} tabindex="-1" />
-			<button class="arrow right" on:mousedown={(e) => onLR_ArrowsDown(e, "Increase")} on:focusout={() => {onLR_ArrowsFocusOff("Increase")}} on:mouseup={onLR_ArrowsUp} tabindex="-1" />
+			<button class="arrow left"  on:mousedown={(e) => onLR_ArrowsDown(e, "Decrease")} on:focusout={() => {onLR_ArrowsFocusOff("Decrease")}} tabindex="-1" />
+			<button class="arrow right" on:mousedown={(e) => onLR_ArrowsDown(e, "Increase")} on:focusout={() => {onLR_ArrowsFocusOff("Increase")}} tabindex="-1" />
 		{/if}
 		{#if mode === "Range"}
 			<input
