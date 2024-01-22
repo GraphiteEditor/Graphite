@@ -26,6 +26,9 @@
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
+	export let defaultValue: number = 0;
+	let isFakeValueUsed: boolean = false;
+	let cancelableFakeValue: number | undefined = undefined;
 
 	// Number presentation
 	export let displayDecimalPlaces = 2;
@@ -204,7 +207,8 @@
 	}
 
 	function onTextChangeCanceled() {
-		updateValue(undefined);
+		let oldValue = isFakeValueUsed ? cancelableFakeValue : undefined
+		updateValue(oldValue);
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
@@ -227,6 +231,7 @@
 
 	function textFocus() {
 		editing = true;
+		isFakeValueUsed = false;
 		self?.selectAllText(text);
 		addEventListener("keydown", textValueChangeByArrow);
 	}
@@ -240,18 +245,23 @@
 	function textValueChangeByArrow(e: KeyboardEvent) {
 		let key = e.key
 		let shift = e.shiftKey
-		let delta = shift ? 10 : 1
+		let delta = shift ? 10 : (!ctrlKeyDown || isInteger) ? 1 : 0.1 
 
 		if (key == "ArrowDown") delta = -delta
 		else if (key != "ArrowUp") return
 		
 		e.preventDefault()
 		
-		let prevValue = calcTextField() ?? value
-		if (prevValue === undefined) return
+		let prevValue = calcTextField() ?? value ?? defaultValue
+		let newValue = toValidValue(prevValue + delta)
+		
+		if (!isFakeValueUsed) {
+			cancelableFakeValue = value
+			isFakeValueUsed = true
+		}
 
-		let newValue = toValidValue(prevValue + delta) 
 		text = `${newValue}`
+		dispatch("value", newValue);
 	}
 
 	// =============================
