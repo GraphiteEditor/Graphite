@@ -81,6 +81,9 @@
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
+	let arrowLastDirection: "Decrease" | "Increase" | undefined = undefined;
+	let arrowButtonTimeoutId: NodeJS.Timeout | undefined = undefined;
+
 	$: watchValue(value);
 
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
@@ -268,7 +271,7 @@
 	// INCREMENT MODE: ARROW BUTTONS
 	// =============================
 
-	function onIncrement(direction: "Decrease" | "Increase") {
+	function increment(direction: "Decrease" | "Increase") {
 		if (value === undefined) return;
 
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
@@ -289,6 +292,49 @@
 			None: () => {},
 		};
 		actions[incrementBehavior]();
+	}
+
+	function onLR_ArrowsDown(e: MouseEvent, direction: "Decrease" | "Increase") {
+		// button must be exact left
+		if (e.buttons == BUTTONS_LEFT) {
+			onIncrement(direction)
+		}
+	}
+	function onLR_ArrowsUp(e: MouseEvent) {
+		// button must not contain left
+		if (!(e.buttons & BUTTONS_LEFT)) {
+			stopIncrement()
+		}
+	}
+	function onLR_ArrowsFocusOff(direction: "Decrease" | "Increase") {
+		if (arrowLastDirection == direction) {
+			stopIncrement()
+		}
+	}
+
+	function onIncrement(direction: "Decrease" | "Increase") {
+		if (arrowButtonTimeoutId) stopIncrement();
+		
+		arrowLastDirection = direction
+		increment(direction)
+
+		const INC_DELTAS_MS = [350, 250, 200, 150, 150, 100, 75]
+		let inc_index = 0
+
+		let rep_action = () => {
+			increment(direction)
+			inc_index = Math.min(inc_index + 1, INC_DELTAS_MS.length - 1)
+			let ms = INC_DELTAS_MS[inc_index]
+			arrowButtonTimeoutId = setTimeout(rep_action, ms)
+		}
+
+		arrowButtonTimeoutId = setTimeout(rep_action, INC_DELTAS_MS[inc_index])
+		// setInterval(rep_action, INC_DELTAS_MS[inc_index])
+	}
+	
+	function stopIncrement() {
+		clearTimeout(arrowButtonTimeoutId)
+		arrowButtonTimeoutId = undefined
 	}
 
 	// =======================================
@@ -651,8 +697,8 @@
 >
 	{#if value !== undefined}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
-			<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />
-			<button class="arrow right" on:click={() => onIncrement("Increase")} tabindex="-1" />
+			<button class="arrow left" on:mousedown={(e) => onLR_ArrowsDown(e, "Decrease")} on:focusout={() => {onLR_ArrowsFocusOff("Decrease")}} on:mouseup={onLR_ArrowsUp} tabindex="-1" />
+			<button class="arrow right" on:mousedown={(e) => onLR_ArrowsDown(e, "Increase")} on:focusout={() => {onLR_ArrowsFocusOff("Increase")}} on:mouseup={onLR_ArrowsUp} tabindex="-1" />
 		{/if}
 		{#if mode === "Range"}
 			<input
