@@ -134,10 +134,7 @@
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
-			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
-			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
-
-			if (isInteger) newValueValidated = Math.round(newValueValidated);
+			newValueValidated = toValidValue(newValueValidated)
 
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
@@ -154,6 +151,19 @@
 	// ================
 	// HELPER FUNCTIONS
 	// ================
+
+	/**
+	 * return best valid input value (checks min/max/rounding/etc)
+	 * @param newValue value that needs to be coverted to valid 
+	 */
+	function toValidValue(newValue: number): number {
+		if (typeof min === "number" && !Number.isNaN(min)) newValue = Math.max(newValue, min);
+		if (typeof max === "number" && !Number.isNaN(max)) newValue = Math.min(newValue, max);
+
+		if (isInteger) newValue = Math.round(newValue);
+		
+		return newValue
+	}
 
 	function displayText(displayValue: number | undefined): string {
 		if (displayValue === undefined) return "-";
@@ -178,9 +188,7 @@
 		else if (unitIsHiddenWhenEditing) text = String(value);
 		else text = `${value}${unPluralize(unit, value)}`;
 
-		editing = true;
-
-		self?.selectAllText(text);
+		textFocus();
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -189,15 +197,10 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
-		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
-
-		let newValue = evaluateMathExpression(textWithLeadingZeroes);
-		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
+		let newValue = calcTextField()
 		updateValue(newValue);
 
-		editing = false;
-		self?.unFocus();
+		textUnFocus();
 	}
 
 	function onTextChangeCanceled() {
@@ -207,9 +210,48 @@
 		rangeSliderValue = valueOrZero;
 		rangeSliderValueAsRendered = valueOrZero;
 
-		editing = false;
+		textUnFocus();
+	}
 
+	/**
+	 * return calculated value of input (if it's valid) 
+	 */
+	function calcTextField(): number | undefined {
+		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
+		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
+
+		let newValue = evaluateMathExpression(textWithLeadingZeroes);
+		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
+		return newValue
+	}
+
+	function textFocus() {
+		editing = true;
+		self?.selectAllText(text);
+		addEventListener("keydown", textValueChangeByArrow);
+	}
+
+	function textUnFocus() {
+		editing = false;
 		self?.unFocus();
+		removeEventListener("keydown", textValueChangeByArrow);
+	}
+
+	function textValueChangeByArrow(e: KeyboardEvent) {
+		let key = e.key
+		let shift = e.shiftKey
+		let delta = shift ? 10 : 1
+
+		if (key == "ArrowDown") delta = -delta
+		else if (key != "ArrowUp") return
+		
+		e.preventDefault()
+		
+		let prevValue = calcTextField() ?? value
+		if (prevValue === undefined) return
+
+		let newValue = toValidValue(prevValue + delta) 
+		text = `${newValue}`
 	}
 
 	// =============================
@@ -253,7 +295,7 @@
 
 	function onDragPointerDown(e: PointerEvent) {
 		// Only drag the number with left click (and when it's valid to do so)
-		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled) return;
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled || editing) return;
 
 		// Don't drag the text value from is input element
 		e.preventDefault();
