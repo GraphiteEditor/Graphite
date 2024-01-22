@@ -709,6 +709,35 @@
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
 	}
+	
+	// ===========================
+	// ALL MODES: WHHEL
+	// ===========================
+
+	function onWheel(e: WheelEvent): boolean {
+		if (!ctrlKeyDown) return false
+		// prevent zoom
+		e.preventDefault()
+
+		// in range mode we don't want to switch to text input mode
+		// but therefore we cannot cancel value (at least so easy)
+		if (!editing && mode === "Increment") {
+			//allow to use Esc/Enter
+			textFocus()
+			// save value for `Esc` case
+			setCancelValue()
+		}
+		
+		// TODO: whellPointerLock & MAYBE: better `Esc`/`Enter`
+		//     | highly possible that some discussion about it will be attached to this commit	
+		
+		let delta = -e.deltaY
+		if (delta == 0) delta = e.deltaX
+
+		if (delta > 0) increment("Increase")
+		else if(delta < 0) increment("Decrease")
+		return true
+	}
 </script>
 
 <FieldInput
@@ -723,6 +752,7 @@
 	on:textChanged={onTextChanged}
 	on:textChangeCanceled={onTextChangeCanceled}
 	on:pointerdown={onDragPointerDown}
+	on:wheel={onWheel}
 	{label}
 	{disabled}
 	{tooltip}
@@ -750,7 +780,10 @@
 				on:input={onSliderInput}
 				on:pointerup={onSliderPointerUp}
 				on:contextmenu|preventDefault
-				on:wheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
+				on:wheel={(e) => {
+					/* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()
+					onWheel(e)
+				}}
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
