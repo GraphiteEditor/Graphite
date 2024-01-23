@@ -263,6 +263,32 @@ impl JsEditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = commitLayout)]
+	pub fn commit_layout(&self, layout_target: JsValue, widget_id: u64) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		match from_value(layout_target) {
+			Ok(layout_target) => {
+				let message = LayoutMessage::CommitLayout { layout_target, widget_id };
+				self.dispatch(message);
+				Ok(())
+			}
+			target => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}")).into()),
+		}
+	}
+
+	#[wasm_bindgen(js_name = commitAndUpdateLayout)]
+	pub fn commit_and_update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				self.dispatch(LayoutMessage::CommitLayout { layout_target, widget_id });
+				self.dispatch(LayoutMessage::UpdateLayout { layout_target, widget_id, value });
+				Ok(())
+			}
+			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
+		}
+	}
+
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: String) {
 		let message = PreferencesMessage::Load { preferences };

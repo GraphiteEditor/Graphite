@@ -31,7 +31,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ color: Color }>();
+	const dispatch = createEventDispatcher<{ color: Color; start: undefined }>();
 
 	export let color: Color;
 	export let allowNone = false;
@@ -149,6 +149,8 @@
 	function addEvents() {
 		document.addEventListener("pointermove", onPointerMove);
 		document.addEventListener("pointerup", onPointerUp);
+
+		dispatch("start");
 	}
 
 	function removeEvents() {

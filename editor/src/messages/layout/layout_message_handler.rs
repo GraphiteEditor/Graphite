@@ -48,6 +48,21 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
+			CommitLayout { layout_target, widget_id } => {
+				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
+					layout
+				} else {
+					warn!("CommitLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+					return;
+				};
+
+				if layout.iter_mut().find(|widget| widget.widget_id == widget_id).is_none() {
+					warn!("CommitLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+					return;
+				}
+
+				responses.add(DocumentMessage::StartTransaction);
+			}
 			ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {

@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Layout)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum LayoutMessage {
+	CommitLayout {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
+	},
 	ResendActiveWidget {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,

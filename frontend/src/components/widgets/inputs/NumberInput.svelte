@@ -11,7 +11,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ value: number | undefined }>();
+	const dispatch = createEventDispatcher<{ value: number | undefined; start: undefined }>();
 
 	// Label
 	export let label: string | undefined = undefined;
@@ -293,6 +293,8 @@
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
+		dispatch("start");
+
 		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
 		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
 		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
@@ -474,6 +476,10 @@
 		removeEventListener("keydown", sliderAbortFromDragging);
 	}
 
+	function onSliderPointerDown() {
+		dispatch("start");
+	}
+
 	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.
 	// This function also helps recover and clean up if the window loses focus while dragging the slider.
 	// Since we reuse the function for both the "pointermove" and "keydown" events, it is split into parts that only run for a `PointerEvent` or `KeyboardEvent`.
@@ -603,6 +609,7 @@
 				bind:value={rangeSliderValue}
 				on:input={onSliderInput}
 				on:pointerup={onSliderPointerUp}
+				on:pointerdown={onSliderPointerDown}
 				on:contextmenu|preventDefault
 				on:wheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
 				bind:this={inputRangeElement}

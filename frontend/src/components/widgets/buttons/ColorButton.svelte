@@ -7,7 +7,7 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ value: Color }>();
+	const dispatch = createEventDispatcher<{ value: Color; start: undefined }>();
 
 	let open = false;
 
@@ -30,6 +30,9 @@
 		on:color={({ detail }) => {
 			value = detail;
 			dispatch("value", detail);
+		}}
+		on:start={() => {
+			dispatch("start");
 		}}
 		{allowNone}
 	/>
