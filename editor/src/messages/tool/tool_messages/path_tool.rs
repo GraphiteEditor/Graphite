@@ -239,6 +239,7 @@ struct PathToolData {
 	/// The available information varies depending on whether `None`, `One`, or `Multiple` points are currently selected.
 	selection_status: SelectionStatus,
 	segment: Option<ClosestSegment>,
+	double_click_handled: bool,
 }
 
 impl PathToolData {
@@ -295,6 +296,7 @@ impl PathToolData {
 		shift: bool,
 		ctrl: bool,
 	) -> PathToolFsmState {
+		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
@@ -440,6 +442,7 @@ impl Fsm for PathToolFsmState {
 
 			// `Self::InsertPoint` case:
 			(Self::InsertPoint, PathToolMessage::MouseDown { .. } | PathToolMessage::Enter { .. }) => {
+				tool_data.double_click_handled = true;
 				let shift = input.keyboard.get(Key::Shift as usize);
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { shift })
 			}
@@ -550,8 +553,10 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSharp) => {
-				shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
-				responses.add(PathToolMessage::SelectedPointUpdated);
+				if !tool_data.double_click_handled {
+					shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
+					responses.add(PathToolMessage::SelectedPointUpdated);
+				}
 				self
 			}
 			(_, PathToolMessage::Abort) => {
