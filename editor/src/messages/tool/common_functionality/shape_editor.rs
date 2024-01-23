@@ -69,6 +69,7 @@ struct ClosestSegmentInfo {
 	pub bezier: Bezier,
 	pub t: f64,
 	pub bezier_point_to_viewport: DVec2,
+	pub layer_scale: DVec2,
 }
 pub struct ClosestSegment {
 	layer: LayerNodeIdentifier,
@@ -88,7 +89,7 @@ impl ClosestSegment {
 		let bezier = info.bezier;
 		let t = info.t;
 		let bezier_point_to_viewport = info.bezier_point_to_viewport;
-		let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier);
+		let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier, info.layer_scale);
 		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64;
 		let stroke_width = stroke_width * STROKE_WIDTH_PERCENT; // we need STROKE_WIDTH_PERCENT of the line width
 		Self {
@@ -112,7 +113,7 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
-	fn calc_t_min_max(bezier: &Bezier) -> (f64, f64) {
+	fn calc_t_min_max(bezier: &Bezier, layer_scale: DVec2) -> (f64, f64) {
 		const LEN_ITER: usize = 100;
 		const T_ERR: f64 = 0.001;
 		const T_MIN: f64 = 0.075;
@@ -120,7 +121,7 @@ impl ClosestSegment {
 
 		// 0.065 is enough (on scale 1.) for a curve with len ~ 400
 		// when len of curve is more -- just take linear coef ://
-		let len = bezier.length(Some(LEN_ITER));
+		let len = bezier.apply_transformation(|point| point * layer_scale).length(Some(LEN_ITER));
 		let len_coef = (len / MODEL_CURVE_LEN).max(0.25);
 		let t_min_eucl = T_MIN / len_coef;
 		let t_max_eucl = 1. - t_min_eucl;
@@ -138,7 +139,7 @@ impl ClosestSegment {
 		let transform = document_metadata.transform_to_viewport(self.layer);
 		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
 
-		self.scale = transform.decompose_scale().x.max(1.);
+		self.scale = document_metadata.document_to_viewport.decompose_scale().x.max(1.);
 		let scale = self.scale.sqrt();
 		// linear approximation of parametric t-value ranges:
 		let t_min = self.t_min / scale;
@@ -1085,7 +1086,7 @@ impl ShapeState {
 		let transform = document_metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 
-		let scale = transform.decompose_scale().x;
+		let scale = document_metadata.document_to_viewport.decompose_scale().x;
 		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
 		let lut_size = ((5. + scale) as usize).min(20); // need more precision at large scale
 		let projection_options = bezier_rs::ProjectionOptions { lut_size, ..Default::default() };
@@ -1105,9 +1106,12 @@ impl ShapeState {
 
 				if distance_squared < closest_distance_squared {
 					closest_distance_squared = distance_squared;
+
 					let info = ClosestSegmentInfo {
 						bezier,
 						t,
+						// needs for correct length calc when there is non 1x1 layer scale
+						layer_scale: transform.decompose_scale() / scale,
 						bezier_point_to_viewport: screenspace,
 					};
 					closest = Some(((subpath_index, manipulator_index), info))
