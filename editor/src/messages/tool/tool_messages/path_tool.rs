@@ -41,7 +41,12 @@ pub enum PathToolMessage {
 	Enter {
 		add_to_selection: Key,
 	},
+	Escape,
 	FlipSharp,
+	/// GRS keys: Grab / Rotate / Scale
+	GRS {
+		key: Key,
+	},
 	ManipulatorAngleMakeSharp,
 	ManipulatorAngleMakeSmooth,
 	MouseDown {
@@ -186,11 +191,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			InsertPoint => actions!(PathToolMessageDiscriminant;
+				Enter,
 				MouseDown,
 				PointerMove,
+				Escape,
 				Delete,
-				Enter,
 				RightClick,
+				GRS,
 			),
 		}
 	}
@@ -216,6 +223,11 @@ enum PathToolFsmState {
 	InsertPoint,
 }
 
+enum InsertEndKind {
+	Abort,
+	Add { shift: bool },
+}
+
 #[derive(Default)]
 struct PathToolData {
 	snap_manager: SnapManager,
@@ -230,57 +242,47 @@ struct PathToolData {
 }
 
 impl PathToolData {
-	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, mut seg: ClosestSegment) -> PathToolFsmState {
+	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, seg: ClosestSegment) -> PathToolFsmState {
 		if self.segment.is_some() {
 			warn!("segment was `Some(..)` before `start_insertion`")
 		}
-		responses.add(DocumentMessage::StartTransaction);
-		seg.adjust_and_set_insertion(responses);
 		self.segment = Some(seg);
+		responses.add(OverlaysMessage::Draw);
 		PathToolFsmState::InsertPoint
 	}
 
-	fn update_insertion(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> PathToolFsmState {
+	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
 		const DISTANCE_FAR_TOLERANCE: f64 = 50.;
 
 		if let Some(seg) = &mut self.segment {
-			let mouse_position = input.mouse.position;
 			seg.update_closest_point(&document.metadata, mouse_position);
 			if seg.too_far(mouse_position, DISTANCE_FAR_TOLERANCE) {
-				self.end_insertion(responses, true)
+				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
-				seg.adjust_and_set_insertion(responses);
 				PathToolFsmState::InsertPoint
 			}
 		} else {
+			warn!("segment was `None` on `update_insertion`");
 			PathToolFsmState::Ready
 		}
 	}
 
-	fn try_end_insertion(&mut self, responses: &mut VecDeque<Message>, state: PathToolFsmState, abort: bool) -> Option<PathToolFsmState> {
-		if state == PathToolFsmState::InsertPoint {
-			Some(self.end_insertion(responses, abort))
-		} else {
-			None
-		}
-	}
-
-	fn end_insertion(&mut self, responses: &mut VecDeque<Message>, abort: bool) -> PathToolFsmState {
+	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
 		match self.segment.as_mut() {
 			None => {
 				warn!("segment was `None` before `end_insertion`")
 			}
 			Some(seg) => {
-				if abort {
-					responses.add(DocumentMessage::AbortTransaction);
-				} else {
-					seg.adjust_and_set_insertion(responses);
+				if let InsertEndKind::Add { shift } = kind {
+					responses.add(DocumentMessage::StartTransaction);
+					seg.adjusted_insert_and_select(shape_editor, responses, shift);
 					responses.add(DocumentMessage::CommitTransaction);
 				}
 			}
 		}
 
 		self.segment = None;
+		responses.add(OverlaysMessage::Draw);
 		PathToolFsmState::Ready
 	}
 
@@ -307,18 +309,12 @@ impl PathToolData {
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so trying to add point into close segment path
-		else if let Some(seg) = shape_editor.first_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
+		else if let Some(seg) = shape_editor.upper_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
 			if ctrl {
 				self.start_insertion(responses, seg);
-				self.end_insertion(responses, false)
+				self.end_insertion(shape_editor, responses, InsertEndKind::Add { shift })
 			} else {
-				let state = self.start_insertion(responses, seg);
-				// next `if` always `Some(..)` actually
-				if let Some(seg) = self.segment.as_ref() {
-					seg.select_insertion_point(shape_editor, false);
-					responses.add(PathToolMessage::SelectedPointUpdated);
-				};
-				state
+				self.start_insertion(responses, seg)
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
@@ -420,18 +416,52 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				path_overlays(document, shape_editor, &mut overlay_context);
 
-				if self == Self::DrawingBox {
-					overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]))
-				} else if self == Self::Dragging {
-					tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				let mut ret = self;
+				match self {
+					Self::DrawingBox => {
+						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]));
+					}
+					Self::Dragging => {
+						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+					}
+					Self::InsertPoint => {
+						ret = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
+						if let Some(seg) = &tool_data.segment {
+							overlay_context.pivot(seg.closest_point_to_viewport());
+						}
+					}
+					_ => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
+				ret
+			}
+
+			// `Self::InsertPoint` case:
+			(Self::InsertPoint, PathToolMessage::MouseDown { .. } | PathToolMessage::Enter { .. }) => {
+				let shift = input.keyboard.get(Key::Shift as usize);
+				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Add { shift })
+			}
+			(Self::InsertPoint, PathToolMessage::PointerMove { .. }) => {
+				responses.add(OverlaysMessage::Draw);
+				// `tool_data.update_insertion` would be called on `::Draw`
+				// we anyway should to call it on `::Draw` because we can changhe scale by ctrl+scroll without `::PointerMove`
 				self
 			}
+			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
+			(Self::InsertPoint, PathToolMessage::GRS { key: propagate }) => {
+				// MAYBE: use `InputMapperMessage::KeyDown(..)` instead
+				match propagate {
+					Key::KeyG => responses.add(TransformLayerMessage::BeginGrab),
+					Key::KeyR => responses.add(TransformLayerMessage::BeginRotate),
+					Key::KeyS => responses.add(TransformLayerMessage::BeginScale),
+					_ => warn!("unexpected GRS key"),
+				}
+				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
+			}
+
 			// Mouse down
-			(Self::InsertPoint, PathToolMessage::MouseDown { .. }) => tool_data.end_insertion(responses, false),
 			(_, PathToolMessage::MouseDown { ctrl, shift }) => {
 				let shift = input.keyboard.get(shift as usize);
 				let ctrl = input.keyboard.get(ctrl as usize);
@@ -504,8 +534,6 @@ impl Fsm for PathToolFsmState {
 
 			// Delete key
 			(_, PathToolMessage::Delete) => {
-				tool_data.try_end_insertion(responses, self, true);
-
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.delete_selected_points(responses);
@@ -526,11 +554,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				self
 			}
-			(Self::InsertPoint, PathToolMessage::PointerMove { .. }) => tool_data.update_insertion(document, input, responses),
-			(Self::InsertPoint, PathToolMessage::RightClick) => tool_data.end_insertion(responses, true),
-			(Self::InsertPoint, PathToolMessage::Enter { .. }) => tool_data.end_insertion(responses, false),
 			(_, PathToolMessage::Abort) => {
-				tool_data.try_end_insertion(responses, self, true);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -596,10 +620,10 @@ impl Fsm for PathToolFsmState {
 				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 				HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 			])]),
-			PathToolFsmState::InsertPoint => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Insert Point"),
-				HintInfo::mouse(MouseMotion::Rmb, "Undo Insertion"),
-			])]),
+			PathToolFsmState::InsertPoint => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Insertion").prepend_slash()]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
