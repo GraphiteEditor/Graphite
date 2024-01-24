@@ -1,7 +1,10 @@
 {
+	// NOTE: Keep this in sync with `.devcontainer/devcontainer.json`
 	"recommendations": [
 		// Rust
 		"rust-lang.rust-analyzer",
+		"tamasfe.even-better-toml",
+		"serayuzgur.crates",
 		// Web
 		"dbaeumer.vscode-eslint",
 		"svelte.svelte-vscode",
@@ -14,6 +17,5 @@
 		"waderyan.gitblame",
 		"qezhu.gitlink",
 		"wmaurer.change-case",
-		"shalimski.swapdiff"
 	]
 }
