@@ -61,6 +61,7 @@ pub enum PenToolMessage {
 		break_handle: Key,
 		lock_angle: Key,
 	},
+	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
 }
@@ -198,6 +199,17 @@ struct ModifierState {
 	lock_angle: bool,
 	break_handle: bool,
 }
+
+impl Default for ModifierState {
+	fn default() -> Self {
+		ModifierState {
+			snap_angle: false,
+			lock_angle: false,
+			break_handle: false,
+		}
+	}
+}
+
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	weight: f64,
@@ -665,6 +677,7 @@ impl Fsm for PenToolFsmState {
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
+				responses.add(DocumentMessage::StartTransaction);
 				tool_data.check_break(document, transform, responses);
 				PenToolFsmState::DraggingHandle
 			}
@@ -713,6 +726,12 @@ impl Fsm for PenToolFsmState {
 
 				self
 			}
+			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => tool_data
+				.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
+				.unwrap_or(PenToolFsmState::PlacingAnchor),
+			(_, PenToolMessage::Redo) => tool_data
+				.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
+				.unwrap_or(PenToolFsmState::PlacingAnchor),
 			_ => self,
 		}
 	}
