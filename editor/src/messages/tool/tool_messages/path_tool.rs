@@ -302,10 +302,11 @@ impl PathToolData {
 		let document_metadata = document.metadata();
 
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.select_point(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
-			self.start_dragging_point(selected_points, input, document, responses);
-			responses.add(OverlaysMessage::Draw);
-
+		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
+			if let Some(selected_points) = selected_points.try_to_selected_points() {
+				self.start_dragging_point(selected_points, input, document, responses);
+				responses.add(OverlaysMessage::Draw);
+			}
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so trying to add point into close segment path
@@ -523,7 +524,7 @@ impl Fsm for PathToolFsmState {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
 					if clicked_selected {
 						shape_editor.deselect_all();
-						shape_editor.select_point(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
+						shape_editor.change_point_selection(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
 						responses.add(OverlaysMessage::Draw);
 					}
 				}

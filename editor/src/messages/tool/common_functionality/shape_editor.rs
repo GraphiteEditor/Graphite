@@ -57,6 +57,19 @@ pub struct SelectedPointsInfo {
 	pub offset: DVec2,
 }
 
+pub enum ChangePointSelectionInfo {
+	SelectedPoints(SelectedPointsInfo),
+	UnselectedPoint { point: ManipulatorPointInfo, offset: DVec2 },
+}
+impl ChangePointSelectionInfo {
+	pub fn try_to_selected_points(self) -> Option<SelectedPointsInfo> {
+		match self {
+			Self::SelectedPoints(info) => Some(info),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct ManipulatorPointInfo {
 	pub layer: LayerNodeIdentifier,
@@ -308,16 +321,16 @@ impl ShapeState {
 		selected_state.select_point(point);
 	}
 
-	/// Select the first point within the selection threshold.
+	/// Select/Unselect the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
-	pub fn select_point(
+	pub fn change_point_selection(
 		&mut self,
 		document_network: &NodeNetwork,
 		document_metadata: &DocumentMetadata,
 		mouse_position: DVec2,
 		select_threshold: f64,
 		add_to_selection: bool,
-	) -> Option<SelectedPointsInfo> {
+	) -> Option<ChangePointSelectionInfo> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
@@ -335,6 +348,9 @@ impl ShapeState {
 			// Should we select or deselect the point?
 			let new_selected = if already_selected { !add_to_selection } else { true };
 
+			// Offset to snap the selected point to the cursor
+			let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
+
 			// This is selecting the manipulator only for now, next to generalize to points
 			if new_selected {
 				let retain_existing_selection = add_to_selection || already_selected;
@@ -346,21 +362,23 @@ impl ShapeState {
 				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.select_point(manipulator_point_id);
 
-				// Offset to snap the selected point to the cursor
-				let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
-
 				let points = self
 					.selected_shape_state
 					.iter()
 					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
 					.collect();
 
-				return Some(SelectedPointsInfo { points, offset });
+				return Some(ChangePointSelectionInfo::SelectedPoints(SelectedPointsInfo { points, offset }));
 			} else {
 				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.deselect_point(manipulator_point_id);
 
-				return None;
+				let point = ManipulatorPointInfo {
+					layer,
+					point_id: manipulator_point_id,
+				};
+
+				return Some(ChangePointSelectionInfo::UnselectedPoint { point, offset });
 			}
 		}
 		None
