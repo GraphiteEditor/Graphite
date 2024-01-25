@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
-use crate::consts::{DRAG_THRESHOLD, INSERT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
-use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, SelectionType};
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
@@ -428,7 +428,7 @@ impl Fsm for PathToolFsmState {
 					Self::InsertPoint => {
 						ret = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
 						if let Some(seg) = &tool_data.segment {
-							overlay_context.square(seg.closest_point_to_viewport(), SelectionType::Temporary);
+							overlay_context.square(seg.closest_point_to_viewport(), true, Some(COLOR_OVERLAY_YELLOW));
 						}
 					}
 					_ => {}

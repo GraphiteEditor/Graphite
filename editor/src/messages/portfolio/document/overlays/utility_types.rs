@@ -46,26 +46,26 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn handle(&mut self, position: DVec2, selection: SelectionType) {
+	pub fn handle(&mut self, position: DVec2, selected: bool) {
 		self.render_context.begin_path();
 		let position = position.round();
 		self.render_context
 			.arc(position.x + 0.5, position.y + 0.5, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.)
 			.expect("draw circle");
 
-		let fill = selection.color();
+		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
 		self.render_context.fill();
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}
 
-	pub fn square(&mut self, position: DVec2, selection: SelectionType) {
+	pub fn square(&mut self, position: DVec2, selected: bool, color_selected: Option<&str>) {
 		self.render_context.begin_path();
 		let corner = position - DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE) / 2.;
 		self.render_context
 			.rect(corner.x.round(), corner.y.round(), MANIPULATOR_GROUP_MARKER_SIZE, MANIPULATOR_GROUP_MARKER_SIZE);
-		let fill = selection.color();
+		let fill = if selected { color_selected.unwrap_or(COLOR_OVERLAY_BLUE) } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
 		self.render_context.fill();
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
@@ -147,30 +147,5 @@ impl OverlayContext {
 		self.render_context
 			.fill_text(text, pos.x + padding, pos.y - padding - metrics.font_bounding_box_descent())
 			.expect("draw text");
-	}
-}
-
-pub enum SelectionType {
-	Selected,
-	Temporary,
-	Unselected,
-}
-impl SelectionType {
-	pub fn is_selected(self) -> bool {
-		matches!(self, Self::Selected)
-	}
-	pub fn from_selection(selected: bool) -> Self {
-		if selected {
-			Self::Selected
-		} else {
-			Self::Unselected
-		}
-	}
-	pub fn color(self) -> &'static str {
-		match self {
-			Self::Selected => COLOR_OVERLAY_BLUE,
-			Self::Temporary => COLOR_OVERLAY_YELLOW,
-			Self::Unselected => COLOR_OVERLAY_WHITE,
-		}
 	}
 }
