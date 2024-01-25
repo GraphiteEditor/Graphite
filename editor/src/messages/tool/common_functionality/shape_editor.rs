@@ -1,6 +1,6 @@
 use super::graph_modification_utils;
 use super::snapping::{group_smooth, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{DRAG_THRESHOLD, INSERT_TOO_CLOSE_DISTANCE};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
@@ -116,15 +116,11 @@ impl ClosestSegment {
 	fn calc_t_min_max(bezier: &Bezier, layer_scale: DVec2) -> (f64, f64) {
 		const LEN_ITER: usize = 100;
 		const T_ERR: f64 = 0.001;
-		const T_MIN: f64 = 0.075;
-		const MODEL_CURVE_LEN: f64 = 400.;
 
-		// 0.065 is enough (on scale 1.) for a curve with len ~ 400
-		// when len of curve is more -- just take linear coef ://
 		let len = bezier.apply_transformation(|point| point * layer_scale).length(Some(LEN_ITER));
-		let len_coef = (len / MODEL_CURVE_LEN).max(0.25);
-		let t_min_eucl = T_MIN / len_coef;
-		let t_max_eucl = 1. - t_min_eucl;
+		let too_close_t = (INSERT_TOO_CLOSE_DISTANCE / len).min(0.5);
+		let t_min_eucl = too_close_t;
+		let t_max_eucl = 1. - too_close_t;
 		// we need parametric values because they are faster to calc
 		let t_min = bezier.euclidean_to_parametric(t_min_eucl, T_ERR);
 		let t_max = bezier.euclidean_to_parametric(t_max_eucl, T_ERR);
@@ -140,10 +136,9 @@ impl ClosestSegment {
 		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
 
 		self.scale = document_metadata.document_to_viewport.decompose_scale().x.max(1.);
-		let scale = self.scale.sqrt();
 		// linear approximation of parametric t-value ranges:
-		let t_min = self.t_min / scale;
-		let t_max = 1. - ((1. - self.t_max) / scale);
+		let t_min = self.t_min / self.scale;
+		let t_max = 1. - ((1. - self.t_max) / self.scale);
 
 		let t = self.bezier.project(layer_m_pos, None).max(t_min).min(t_max);
 		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));

@@ -1,6 +1,6 @@
 use crate::consts::{BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, SELECTION_DRAG_ANGLE};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, SelectionType};
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 
@@ -246,7 +246,7 @@ impl BoundingBoxManager {
 		overlay_context.quad(self.transform * Quad::from_box(self.bounds));
 
 		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(position, false);
+			overlay_context.square(position, SelectionType::Unselected);
 		}
 	}
 

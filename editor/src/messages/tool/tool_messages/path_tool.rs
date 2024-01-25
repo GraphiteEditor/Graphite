@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
-use crate::consts::{DRAG_THRESHOLD, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_THRESHOLD, INSERT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, SelectionType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
@@ -253,11 +253,9 @@ impl PathToolData {
 	}
 
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
-		const DISTANCE_FAR_TOLERANCE: f64 = 50.;
-
 		if let Some(seg) = &mut self.segment {
 			seg.update_closest_point(&document.metadata, mouse_position);
-			if seg.too_far(mouse_position, DISTANCE_FAR_TOLERANCE) {
+			if seg.too_far(mouse_position, INSERT_TOO_FAR_DISTANCE) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
@@ -429,7 +427,7 @@ impl Fsm for PathToolFsmState {
 					Self::InsertPoint => {
 						ret = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
 						if let Some(seg) = &tool_data.segment {
-							overlay_context.pivot(seg.closest_point_to_viewport());
+							overlay_context.square(seg.closest_point_to_viewport(), SelectionType::Temporary);
 						}
 					}
 					_ => {}
