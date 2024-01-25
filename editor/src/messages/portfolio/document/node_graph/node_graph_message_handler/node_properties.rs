@@ -251,7 +251,7 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 			.filter(|x| !x.is_empty())
 			.map(|x| x.parse::<f64>().ok())
 			.collect::<Option<Vec<_>>>()
-			.map(|numbers| numbers.chunks_exact(2).map(|vals| DVec2::new(vals[0], vals[1])).collect())
+			.map(|numbers| numbers.chunks_exact(2).map(|values| DVec2::new(values[0], values[1])).collect())
 			.map(TaggedValue::VecDVec2)
 	};
 
@@ -2053,6 +2053,19 @@ pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _
 		LayoutGroup::Row { widgets: stop_offset }.with_tooltip("Exclude some distance from the end of the path after the last instance"),
 		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip("Round 'Spacing' to a nearby value that divides into the path length evenly"),
 	]
+}
+
+pub fn poisson_disk_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let spacing = number_widget(
+		document_node,
+		node_id,
+		1,
+		"Separation Disk Diameter",
+		NumberInput::default().min(0.01).mode_range().range_min(Some(1.)).range_max(Some(100.)),
+		true,
+	);
+
+	vec![LayoutGroup::Row { widgets: spacing }]
 }
 
 pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

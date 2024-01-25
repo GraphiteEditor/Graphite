@@ -3,7 +3,7 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
 use crate::TValue;
 
-use glam::{DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
@@ -23,6 +23,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-linear/solo" title="Intersection Demo"></iframe>
+	///
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-quadratic/solo" title="Intersection Demo"></iframe>
+	///
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		self.iter()
@@ -35,7 +39,6 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -48,7 +51,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-self/solo" title="Self-Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
@@ -66,6 +69,28 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			});
 		});
 		intersections_vec
+	}
+
+	/// Calculates the intersection points the subpath has with a given rectangle and returns a list of `(usize, f64)` tuples,
+	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
+	/// that curve where the intersection occurred.
+	/// Expects the following:
+	/// - `corner1`: any corner of the axis-aligned box to intersect with
+	/// - `corner2`: the corner opposite to `corner1`
+	/// - `error`: an optional f64 value to provide an error bound
+	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-rectangle/solo" title="Intersection Demo"></iframe>
+	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+		[
+			Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
+			Bezier::from_linear_coordinates(corner2.x, corner1.y, corner2.x, corner2.y),
+			Bezier::from_linear_coordinates(corner2.x, corner2.y, corner1.x, corner2.y),
+			Bezier::from_linear_coordinates(corner1.x, corner2.y, corner1.x, corner1.y),
+		]
+		.iter()
+		.flat_map(|bezier| self.intersections(bezier, error, minimum_separation))
+		.collect()
 	}
 
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
@@ -102,6 +127,54 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/bounding-box/solo" title="Bounding Box Demo"></iframe>
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64) -> Vec<DVec2> {
+		let Some(bounding_box) = self.bounding_box() else { return Vec::new() };
+		let (offset_x, offset_y) = bounding_box[0].into();
+		let (width, height) = (bounding_box[1] - bounding_box[0]).into();
+
+		// TODO: Optimize the following code and make it more robust
+
+		let mut shape = self.clone();
+		shape.set_closed(true);
+		shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
+
+		let (sin13, cos13) = f64::sin_cos(13.);
+		let (sin13, cos13) = (sin13 * 100000000000., cos13 * 100000000000.);
+		let point_in_shape_checker = |point: DVec2| {
+			let (x, y) = point.into();
+			// We (inefficiently) check for odd crossings in two directions and make sure they agree to reduce how often anchor points cause a double-increment
+			// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
+			shape.intersections(&Bezier::from_linear_coordinates(x, y, x + sin13, y + cos13), None, None).len() % 2 == 1
+				&& shape.intersections(&Bezier::from_linear_coordinates(x, y, x - cos13, y - sin13), None, None).len() % 2 == 1
+		};
+
+		let square_edges_intersect_shape_checker = |corner1: DVec2, corner2: DVec2| {
+			[
+				Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
+				Bezier::from_linear_coordinates(corner2.x, corner1.y, corner2.x, corner2.y),
+				Bezier::from_linear_coordinates(corner2.x, corner2.y, corner1.x, corner2.y),
+				Bezier::from_linear_coordinates(corner1.x, corner2.y, corner1.x, corner1.y),
+			]
+			.iter()
+			.any(|bezier| !self.intersections(bezier, None, None).is_empty())
+		};
+
+		let square_not_outside_shape_checker = |point: DVec2, size| {
+			// We want to know if any part of the square's area exists within the path shape.
+			// First we check if the top left corner is contained, because if so that means at least that part of the square is within the shape.
+			// Failing that, we check if any of the square's four edges intersect the path, which would indicate some part of the square crossed into the shape.
+			// Thus, we catch any squares on the border or interior, leaving only squares that live outside the shape (or fully surround the shape, but the squares should be smaller than the shape unless the diameter is really large)
+			point_in_shape_checker(point) || square_edges_intersect_shape_checker(point, (point.x + size, point.y + size).into())
+		};
+
+		let mut points = crate::poisson_disk::poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_not_outside_shape_checker, rng);
+		for point in &mut points {
+			point.x += offset_x;
+			point.y += offset_y;
+		}
+		points
 	}
 
 	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
@@ -222,7 +295,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		compute_circular_subpath_details(left, arc_point, right, center, None)
 	}
 
-	/// Returns the two manipulator groups that create a sqaure cap between the end of `self` and the beginning of `other`.
+	/// Returns the two manipulator groups that create a square cap between the end of `self` and the beginning of `other`.
 	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;

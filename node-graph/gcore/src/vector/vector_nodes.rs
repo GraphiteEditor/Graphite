@@ -7,6 +7,7 @@ use core::future::Future;
 
 use bezier_rs::{Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
+use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Clone, Copy)]
 pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
@@ -277,6 +278,30 @@ async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct PoissonDiskPoints<SeparationDiskDiameter> {
+	separation_disk_diameter: SeparationDiskDiameter,
+}
+
+#[node_macro::node_fn(PoissonDiskPoints)]
+fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f32) -> VectorData {
+	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+	for subpath in &mut vector_data.subpaths.iter_mut() {
+		if subpath.manipulator_groups().len() < 3 {
+			continue;
+		}
+
+		subpath.apply_transform(vector_data.transform);
+
+		let points = subpath.poisson_disk_points(separation_disk_diameter as f64, || rng.gen::<f64>()).into_iter().map(|point| point.into());
+		*subpath = Subpath::from_anchors(points, false);
+
+		subpath.apply_transform(vector_data.transform.inverse());
+	}
+
+	vector_data
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct LengthsOfSegmentsOfSubpaths;
 
 #[node_macro::node_fn(LengthsOfSegmentsOfSubpaths)]
@@ -323,8 +348,10 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	source: impl Node<Footprint, Output = SourceFuture>,
 	target: impl Node<Footprint, Output = TargetFuture>,
 	start_index: u32,
-	time: f64,
+	time: f32,
 ) -> VectorData {
+	let time = time as f64;
+
 	let mut source = self.source.eval(footprint).await;
 	let mut target = self.target.eval(footprint).await;
 
