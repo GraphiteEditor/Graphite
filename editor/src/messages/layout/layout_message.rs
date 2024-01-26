@@ -10,6 +10,7 @@ pub enum LayoutMessage {
 	CommitLayout {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
+		value: serde_json::Value,
 	},
 	ResendActiveWidget {
 		layout_target: LayoutTarget,

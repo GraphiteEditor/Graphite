@@ -36,6 +36,10 @@ fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, no
 	optionally_update_value(move |v| Some(value(v)), node_id, input_index)
 }
 
+fn commit_value<T>(_: &T) -> Message {
+	DocumentMessage::StartTransaction.into()
+}
+
 fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetHolder {
 	ParameterExposeButton::new()
 		.exposed(exposed)
@@ -84,6 +88,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextInput::new(x.clone())
 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	}
@@ -102,6 +107,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextAreaInput::new(x.clone())
 				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	}
@@ -120,6 +126,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(*x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	}
@@ -144,6 +151,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(dvec2.y))
@@ -152,6 +160,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap())), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		]);
 	} else if let NodeInput::Value {
@@ -170,6 +179,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(ivec2.y as f64))
@@ -179,6 +189,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64)))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		]);
 	} else if let NodeInput::Value {
@@ -197,6 +208,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(0.))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_x, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(uvec2.y as f64))
@@ -206,6 +218,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 				.min(min.unwrap_or(0.))
 				.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 				.on_update(update_value(update_y, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		]);
 	}
@@ -286,6 +299,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.on_update(update_value(from_font_input, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		]);
 
@@ -296,6 +310,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 			FontInput::new(font.font_family.clone(), font.font_style.clone())
 				.is_style_picker(true)
 				.on_update(update_value(from_font_input, node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		]);
 		second_widgets = Some(second_row);
@@ -324,6 +339,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			number_props
 				.value(Some(x))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	} else if let NodeInput::Value {
@@ -336,6 +352,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	} else if let NodeInput::Value {
@@ -348,6 +365,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	}
@@ -365,7 +383,11 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 		let calculation_modes = [RedGreenBlue::Red, RedGreenBlue::Green, RedGreenBlue::Blue];
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index)));
+			entries.push(
+				MenuListEntry::new(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index))
+					.on_commit(commit_value),
+			);
 		}
 		let entries = vec![entries];
 
@@ -387,7 +409,11 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 	{
 		let entries = NoiseType::list()
 			.iter()
-			.map(|noise_type| MenuListEntry::new(noise_type.to_string()).on_update(update_value(move |_| TaggedValue::NoiseType(*noise_type), node_id, index)))
+			.map(|noise_type| {
+				MenuListEntry::new(noise_type.to_string())
+					.on_update(update_value(move |_| TaggedValue::NoiseType(*noise_type), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -408,7 +434,11 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	{
 		let entries = FractalType::list()
 			.iter()
-			.map(|fractal_type| MenuListEntry::new(fractal_type.to_string()).on_update(update_value(move |_| TaggedValue::FractalType(*fractal_type), node_id, index)))
+			.map(|fractal_type| {
+				MenuListEntry::new(fractal_type.to_string())
+					.on_update(update_value(move |_| TaggedValue::FractalType(*fractal_type), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -430,7 +460,9 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 		let entries = CellularDistanceFunction::list()
 			.iter()
 			.map(|cellular_distance_function| {
-				MenuListEntry::new(cellular_distance_function.to_string()).on_update(update_value(move |_| TaggedValue::CellularDistanceFunction(*cellular_distance_function), node_id, index))
+				MenuListEntry::new(cellular_distance_function.to_string())
+					.on_update(update_value(move |_| TaggedValue::CellularDistanceFunction(*cellular_distance_function), node_id, index))
+					.on_commit(commit_value)
 			})
 			.collect();
 
@@ -455,7 +487,11 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 	{
 		let entries = CellularReturnType::list()
 			.iter()
-			.map(|cellular_return_type| MenuListEntry::new(cellular_return_type.to_string()).on_update(update_value(move |_| TaggedValue::CellularReturnType(*cellular_return_type), node_id, index)))
+			.map(|cellular_return_type| {
+				MenuListEntry::new(cellular_return_type.to_string())
+					.on_update(update_value(move |_| TaggedValue::CellularReturnType(*cellular_return_type), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -476,7 +512,11 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	{
 		let entries = DomainWarpType::list()
 			.iter()
-			.map(|domain_warp_type| MenuListEntry::new(domain_warp_type.to_string()).on_update(update_value(move |_| TaggedValue::DomainWarpType(*domain_warp_type), node_id, index)))
+			.map(|domain_warp_type| {
+				MenuListEntry::new(domain_warp_type.to_string())
+					.on_update(update_value(move |_| TaggedValue::DomainWarpType(*domain_warp_type), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -500,7 +540,11 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 			.map(|category| {
 				category
 					.iter()
-					.map(|blend_mode| MenuListEntry::new(blend_mode.to_string()).on_update(update_value(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index)))
+					.map(|blend_mode| {
+						MenuListEntry::new(blend_mode.to_string())
+							.on_update(update_value(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index))
+							.on_commit(commit_value)
+					})
 					.collect()
 			})
 			.collect();
@@ -526,7 +570,11 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 		let calculation_modes = LuminanceCalculation::list();
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
-			entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index)));
+			entries.push(
+				MenuListEntry::new(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index))
+					.on_commit(commit_value),
+			);
 		}
 		let entries = vec![entries];
 
@@ -547,7 +595,11 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 	{
 		let entries = [("Butt", LineCap::Butt), ("Round", LineCap::Round), ("Square", LineCap::Square)]
 			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::LineCap(val), node_id, index)))
+			.map(|(name, val)| {
+				RadioEntryData::new(name)
+					.on_update(update_value(move |_| TaggedValue::LineCap(val), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -567,7 +619,11 @@ fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	{
 		let entries = [("Miter", LineJoin::Miter), ("Bevel", LineJoin::Bevel), ("Round", LineJoin::Round)]
 			.into_iter()
-			.map(|(name, val)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::LineJoin(val), node_id, index)))
+			.map(|(name, val)| {
+				RadioEntryData::new(name)
+					.on_update(update_value(move |_| TaggedValue::LineJoin(val), node_id, index))
+					.on_commit(commit_value)
+			})
 			.collect();
 
 		widgets.extend_from_slice(&[
@@ -586,8 +642,12 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	} = &document_node.inputs[index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Solid").on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index)),
-			RadioEntryData::new("Gradient").on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index)),
+			RadioEntryData::new("Solid")
+				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index))
+				.on_commit(commit_value),
+			RadioEntryData::new("Gradient")
+				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index))
+				.on_commit(commit_value),
 		];
 
 		widgets.extend_from_slice(&[
@@ -611,8 +671,12 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	} = &document_node.inputs[index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Linear").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index)),
-			RadioEntryData::new("Radial").on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index)),
+			RadioEntryData::new("Linear")
+				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index))
+				.on_commit(commit_value),
+			RadioEntryData::new("Radial")
+				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index))
+				.on_commit(commit_value),
 		];
 
 		widgets.extend_from_slice(&[
@@ -634,7 +698,10 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Color)>, inde
 			TaggedValue::GradientPositions(new_positions)
 		}
 	};
-	let color = ColorButton::new(Some(positions[index].1)).on_update(update_value(on_update, node_id, input_index)).allow_none(false);
+	let color = ColorButton::new(Some(positions[index].1))
+		.on_update(update_value(on_update, node_id, input_index))
+		.on_commit(commit_value)
+		.allow_none(false);
 	add_blank_assist(row);
 	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	row.push(color.widget_holder());
@@ -657,6 +724,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Color)>, inde
 			IconButton::new("Remove", 16)
 				.tooltip("Remove this gradient stop")
 				.on_update(update_value(on_update, node_id, input_index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		);
 	}
@@ -689,6 +757,7 @@ fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Color)>, inde
 			IconButton::new("Add", 16)
 				.tooltip("Add a gradient stop after this")
 				.on_update(update_value(on_update, node_id, input_index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		);
 	}
@@ -720,6 +789,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 			.icon(Some("Swap".into()))
 			.tooltip("Reverse the order of each color stop")
 			.on_update(update_value(on_update, node_id, input_index))
+			.on_commit(commit_value)
 			.widget_holder();
 
 		if widgets.is_empty() {
@@ -746,6 +816,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 				color_props
 					.value(Some(x as Color))
 					.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.unwrap()), node_id, index))
+					.on_commit(commit_value)
 					.widget_holder(),
 			])
 		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
@@ -754,6 +825,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 				color_props
 					.value(x)
 					.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value), node_id, index))
+					.on_commit(commit_value)
 					.widget_holder(),
 			])
 		}
@@ -773,6 +845,7 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CurveInput::new(curve.clone())
 				.on_update(update_value(|x: &CurveInput| TaggedValue::Curve(x.value.clone()), node_id, index))
+				.on_commit(commit_value)
 				.widget_holder(),
 		])
 	}
@@ -1114,9 +1187,15 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	} = &document_node.inputs[output_channel_index]
 	{
 		let entries = vec![
-			RadioEntryData::new(RedGreenBlue::Red.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Red), node_id, output_channel_index)),
-			RadioEntryData::new(RedGreenBlue::Green.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index)),
-			RadioEntryData::new(RedGreenBlue::Blue.to_string()).on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index)),
+			RadioEntryData::new(RedGreenBlue::Red.to_string())
+				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Red), node_id, output_channel_index))
+				.on_commit(commit_value),
+			RadioEntryData::new(RedGreenBlue::Green.to_string())
+				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index))
+				.on_commit(commit_value),
+			RadioEntryData::new(RedGreenBlue::Blue.to_string())
+				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index))
+				.on_commit(commit_value),
 		];
 		output_channel.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
 	};
@@ -1203,7 +1282,11 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 			.map(|section| {
 				section
 					.iter()
-					.map(|choice| MenuListEntry::new(choice.to_string()).on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index)))
+					.map(|choice| {
+						MenuListEntry::new(choice.to_string())
+							.on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index))
+							.on_commit(commit_value)
+					})
 					.collect()
 			})
 			.collect();
@@ -1247,8 +1330,12 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	} = &document_node.inputs[mode_index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Relative").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index)),
-			RadioEntryData::new("Absolute").on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index)),
+			RadioEntryData::new("Relative")
+				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index))
+				.on_commit(commit_value),
+			RadioEntryData::new("Absolute")
+				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index))
+				.on_commit(commit_value),
 		];
 		mode.push(RadioInput::new(entries).selected_index(Some(relative_or_absolute as u32)).widget_holder());
 	};
@@ -1439,6 +1526,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			widgets.push(
 				PivotInput::new(pivot.into())
 					.on_update(update_value(|pivot: &PivotInput| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
+					.on_commit(commit_value)
 					.widget_holder(),
 			);
 		} else {
@@ -1469,6 +1557,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 						node_id,
 						index,
 					))
+					.on_commit(commit_value)
 					.widget_holder(),
 			]);
 		}
@@ -1695,6 +1784,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 					.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap()), node_id, seed_index))
+					.on_commit(commit_value)
 					.mode(NumberInputMode::Increment)
 					.widget_holder(),
 			])
@@ -1762,6 +1852,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						node_id,
 						resolution_index,
 					))
+					.on_commit(commit_value)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(vec2.x))
@@ -1775,6 +1866,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						node_id,
 						resolution_index,
 					))
+					.on_commit(commit_value)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(vec2.y))
@@ -1788,6 +1880,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 						node_id,
 						resolution_index,
 					))
+					.on_commit(commit_value)
 					.widget_holder(),
 			])
 		}
@@ -1815,7 +1908,11 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let sampling_methods = ImaginateSamplingMethod::list();
 			let mut entries = Vec::with_capacity(sampling_methods.len());
 			for method in sampling_methods {
-				entries.push(MenuListEntry::new(method.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index)));
+				entries.push(
+					MenuListEntry::new(method.to_string())
+						.on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index))
+						.on_commit(commit_value),
+				);
 			}
 			let entries = vec![entries];
 

@@ -48,7 +48,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
-			CommitLayout { layout_target, widget_id } => {
+			CommitLayout { layout_target, widget_id, value } => {
 				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
 					layout
 				} else {
@@ -56,12 +56,80 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					return;
 				};
 
-				if layout.iter_mut().find(|widget| widget.widget_id == widget_id).is_none() {
+				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
+					widget_holder
+				} else {
 					warn!("CommitLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
-				}
+				};
 
-				responses.add(DocumentMessage::StartTransaction);
+				#[remain::sorted]
+				match &mut widget_holder.widget {
+					Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
+						let callback_message = (breadcrumb_trail_buttons.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::CheckboxInput(checkbox_input) => {
+						let callback_message = (checkbox_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::ColorButton(color_button) => {
+						let callback_message = (color_button.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::CurveInput(curve_input) => {
+						let callback_message = (curve_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::DropdownInput(dropdown_input) => {
+						let update_value = value.as_u64().expect("DropdownInput commit was not of type: u64");
+						let callback_message = (dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::FontInput(font_input) => {
+						let callback_message = (font_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::IconButton(icon_button) => {
+						let callback_message = (icon_button.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::InvisibleStandinInput(invisible) => {
+						let callback_message = (invisible.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::NumberInput(number_input) => {
+						let callback_message = (number_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::ParameterExposeButton(parameter_expose_button) => {
+						let callback_message = (parameter_expose_button.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::PivotInput(pivot_input) => {
+						let callback_message = (pivot_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::RadioInput(radio_input) => {
+						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
+						radio_input.selected_index = Some(update_value as u32);
+						let callback_message = (radio_input.entries[update_value as usize].on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::TextAreaInput(text_area_input) => {
+						let callback_message = (text_area_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::TextButton(text_button) => {
+						let callback_message = (text_button.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					Widget::TextInput(text_input) => {
+						let callback_message = (text_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					_ => {}
+				};
 			}
 			ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target

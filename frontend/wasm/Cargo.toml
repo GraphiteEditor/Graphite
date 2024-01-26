@@ -24,6 +24,7 @@ graph-craft = { workspace = true }
 log = { workspace = true }
 graphene-core = { workspace = true, features = ["std", "alloc"] }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 wasm-bindgen = { workspace = true }
 serde-wasm-bindgen = "0.6"
 js-sys = { workspace = true }

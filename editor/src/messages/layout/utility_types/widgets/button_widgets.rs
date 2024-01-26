@@ -30,6 +30,10 @@ pub struct IconButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<IconButton>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -79,6 +83,10 @@ pub struct ParameterExposeButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ParameterExposeButton>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
@@ -111,6 +119,10 @@ pub struct TextButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextButton>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
@@ -140,6 +152,10 @@ pub struct ColorButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ColorButton>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
@@ -160,4 +176,8 @@ pub struct BreadcrumbTrailButtons {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<u64>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
