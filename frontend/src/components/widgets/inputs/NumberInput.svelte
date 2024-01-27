@@ -26,7 +26,7 @@
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
-	export let defaultValue: number = 0;
+	export let defaultValue: number | undefined = undefined; // max !== undefined ? max : min !== undefined ? min : 0;
 	let isCancelValueUsed: boolean = false;
 	let cancelableValue: number | undefined = undefined;
 
@@ -58,6 +58,8 @@
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
+
+	let unsubscribeOnDestroy: (() => void) | undefined = undefined;
 
 	let self: FieldInput | undefined;
 	let inputRangeElement: HTMLInputElement | undefined;
@@ -103,6 +105,10 @@
 		removeEventListener("keydown", trackCtrl);
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
+		if (unsubscribeOnDestroy) {
+			unsubscribeOnDestroy()
+			unsubscribeOnDestroy = undefined
+		}
 	});
 
 	
@@ -280,7 +286,7 @@
 		
 		e.preventDefault()
 		
-		let prevValue = calcTextField() ?? value ?? defaultValue
+		let prevValue = calcTextField() ?? value ?? defaultValue ?? 0
 		let newValue = toValidValue(prevValue + delta)
 		
 		setCancelValue()
@@ -711,11 +717,11 @@
 	}
 	
 	// ===========================
-	// ALL MODES: WHHEL
+	// ALL MODES: WHEEL
 	// ===========================
 
-	function onWheel(e: WheelEvent): boolean {
-		if (!ctrlKeyDown) return false
+	function onWheel(e: WheelEvent) {
+		if (!ctrlKeyDown) return
 		// prevent zoom
 		e.preventDefault()
 
@@ -736,7 +742,73 @@
 
 		if (delta > 0) increment("Increase")
 		else if(delta < 0) increment("Decrease")
-		return true
+	}
+	
+	// ===========================
+	// ALL MODES: POINTER ENTER
+	// ===========================
+
+	function onPointerEnter(e: PointerEvent) {
+		var element = e.target
+		if (!element) return
+		var elem = element
+		
+		let onKeyDown = (e: KeyboardEvent) => {
+			if (ctrlKeyDown && !editing) {
+				let key = e.key
+				if (key == "/" && !isInteger && value !== undefined) {
+					if (value != 0) updateValue(1. / value)
+					else if (max !== undefined) updateValue(max)
+				} else if (key == "-" && value !== undefined) {
+					// prevent page scaling
+					e.preventDefault()
+					// prevent canvas scaling
+					e.stopImmediatePropagation()
+					let negative_allowed = (min ?? -1) < 0
+					if (negative_allowed) updateValue(-value)
+				} else if (key == "Enter" && !editing) {
+					onTextFocused()
+				} else if (key == "Backspace") {
+					// prevent text removing in Text Tool
+					e.preventDefault()
+					// shouldn't delete currently selected points
+					e.stopImmediatePropagation()
+					if (defaultValue !== undefined) {
+						updateValue(defaultValue)
+					}
+				} else if (key == "c") {
+					e.stopImmediatePropagation()
+					let write = value === undefined ? "" : `${value}`
+					navigator.clipboard.writeText(write)
+				}
+			}
+		};
+
+		let onPaste = (e: ClipboardEvent) => {
+			if (!editing) {
+				let clipboardText = e.clipboardData?.getData("text")
+				if (clipboardText === undefined) return
+				let num = parseFloat(clipboardText)
+				if (!Number.isNaN(num)) {
+					updateValue(num)
+				}
+			}
+		};
+
+		let options = { capture: true }
+
+		let onPointerLeave = () => {
+			removeEventListener("keydown", onKeyDown, options);
+			removeEventListener("paste", onPaste, options);
+			elem.removeEventListener("pointerleave", onPointerLeave);
+			unsubscribeOnDestroy = undefined
+		};
+
+		addEventListener("keydown", onKeyDown, options);
+		addEventListener("paste", onPaste, options);
+		elem.addEventListener("pointerleave", onPointerLeave);
+		// needed, for example, when we use Ctrl+Backspace on Tilt NumberInput  
+		unsubscribeOnDestroy = onPointerLeave
 	}
 </script>
 
@@ -753,6 +825,7 @@
 	on:textChangeCanceled={onTextChangeCanceled}
 	on:pointerdown={onDragPointerDown}
 	on:wheel={onWheel}
+	on:pointerenter={onPointerEnter}
 	{label}
 	{disabled}
 	{tooltip}
@@ -784,6 +857,7 @@
 					/* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()
 					onWheel(e)
 				}}
+				on:pointerenter={onPointerEnter}
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}

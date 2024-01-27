@@ -86,6 +86,7 @@
 			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
 			on:pointerdown
 			on:wheel
+			on:pointerenter
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
 		/>
@@ -106,6 +107,7 @@
 			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
 			on:pointerdown
 			on:wheel
+			on:pointerenter
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 		/>
 	{/if}
