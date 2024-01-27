@@ -112,7 +112,7 @@
 		/>
 	{/if}
 	{#if label}
-		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		<label for={`field-input-${id}`} on:pointerdown on:wheel on:pointerenter>{label}</label>
 	{/if}
 	<slot />
 </LayoutRow>

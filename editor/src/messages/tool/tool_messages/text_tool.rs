@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
+use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_FONT_STYLE};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -32,7 +32,7 @@ pub struct TextOptions {
 impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
-			font_size: 24,
+			font_size: DEFAULT_FONT_SIZE,
 			font_name: DEFAULT_FONT_FAMILY.into(),
 			font_style: DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
@@ -114,6 +114,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 		.int()
 		.min(1.)
 		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.default_value(Some(DEFAULT_FONT_SIZE as f64))
 		.on_update(|number_input: &NumberInput| TextToolMessage::UpdateOptions(TextOptionsUpdate::FontSize(number_input.value.unwrap() as u32)).into())
 		.widget_holder();
 	vec![

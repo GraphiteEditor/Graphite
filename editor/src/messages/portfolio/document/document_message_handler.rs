@@ -1295,6 +1295,7 @@ impl DocumentMessageHandler {
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
+				.default_value(Some(100.))
 				.tooltip("Document zoom within the viewport")
 				.on_update(|number_input: &NumberInput| {
 					NavigationMessage::SetCanvasZoom {
@@ -1315,6 +1316,7 @@ impl DocumentMessageHandler {
 				NumberInput::new(Some(tilt_value))
 					.unit("°")
 					.step(15.)
+					.default_value(Some(0.))
 					.tooltip("Document tilt within the viewport")
 					.on_update(|number_input: &NumberInput| {
 						NavigationMessage::SetCanvasTilt {
@@ -1408,6 +1410,7 @@ impl DocumentMessageHandler {
 					.max(100.)
 					.range_min(Some(0.))
 					.range_max(Some(100.))
+					.default_value(Some(100.))
 					.mode_range()
 					.on_update(|number_input: &NumberInput| {
 						if let Some(value) = number_input.value {

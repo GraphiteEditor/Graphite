@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::consts::{DEFAULT_LINE_WEIGHT, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -32,7 +32,7 @@ pub struct PenOptions {
 impl Default for PenOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_LINE_WEIGHT,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
 		}
@@ -104,6 +104,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.default_value(Some(DEFAULT_LINE_WEIGHT))
 		.on_update(|number_input: &NumberInput| PenToolMessage::UpdateOptions(PenOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }

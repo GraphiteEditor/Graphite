@@ -179,6 +179,9 @@ pub struct NumberInput {
 	#[serde(rename = "isInteger")]
 	pub is_integer: bool,
 
+	#[serde(rename = "defaultValue")]
+	pub default_value: Option<f64>,
+
 	// Number presentation
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "2"))]

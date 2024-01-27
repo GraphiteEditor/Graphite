@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::consts::DEFAULT_LINE_WEIGHT;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -29,7 +30,7 @@ impl Default for PolygonOptions {
 	fn default() -> Self {
 		Self {
 			vertices: 5,
-			line_weight: 5.,
+			line_weight: DEFAULT_LINE_WEIGHT,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
 			primitive_shape_type: PrimitiveShapeType::Polygon,
@@ -115,6 +116,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.default_value(Some(DEFAULT_LINE_WEIGHT))
 		.on_update(|number_input: &NumberInput| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }

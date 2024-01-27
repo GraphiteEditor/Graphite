@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{DEFAULT_LINE_WEIGHT, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -27,7 +27,7 @@ pub struct SplineOptions {
 impl Default for SplineOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_LINE_WEIGHT,
 			fill: ToolColorOptions::new_none(),
 			stroke: ToolColorOptions::new_primary(),
 		}
@@ -91,6 +91,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.default_value(Some(DEFAULT_LINE_WEIGHT))
 		.on_update(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }

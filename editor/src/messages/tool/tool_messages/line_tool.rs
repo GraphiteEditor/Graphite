@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::consts::{DEFAULT_LINE_WEIGHT, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -26,7 +26,7 @@ pub struct LineOptions {
 impl Default for LineOptions {
 	fn default() -> Self {
 		Self {
-			line_weight: 5.,
+			line_weight: DEFAULT_LINE_WEIGHT,
 			stroke: ToolColorOptions::new_primary(),
 		}
 	}
@@ -82,6 +82,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
+		.default_value(Some(DEFAULT_LINE_WEIGHT))
 		.on_update(|number_input: &NumberInput| LineToolMessage::UpdateOptions(LineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
 		.widget_holder()
 }

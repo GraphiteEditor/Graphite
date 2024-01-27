@@ -2,6 +2,7 @@
 
 use super::document_node_types::NodePropertiesContext;
 use super::FrontendGraphDataType;
+use crate::consts::DEFAULT_LINE_WEIGHT;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -2106,7 +2107,14 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	let miter_limit_index = 7;
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
-	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
+	let weight = number_widget(
+		document_node,
+		node_id,
+		weight_index,
+		"Weight",
+		NumberInput::default().unit("px").min(0.).default_value(Some(DEFAULT_LINE_WEIGHT)),
+		true,
+	);
 	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
 	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), true);
 	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);

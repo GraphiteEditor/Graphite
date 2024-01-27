@@ -41,6 +41,9 @@ pub const PIVOT_DIAMETER: f64 = 5.;
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 
+// Pen/Line/Brush/... tools
+pub const DEFAULT_LINE_WEIGHT: f64 = 5.;
+
 // Path tool
 pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
@@ -69,6 +72,7 @@ pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 
 // Fonts
+pub const DEFAULT_FONT_SIZE: u32 = 24;
 pub const DEFAULT_FONT_FAMILY: &str = "Cabin";
 pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 
