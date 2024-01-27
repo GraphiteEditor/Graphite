@@ -125,9 +125,9 @@ pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> [
 /// Compute the cube root of a number.
 fn cube_root(f: f64) -> f64 {
 	if f < 0. {
-		-(-f).powf(1. / 3.)
+		-(-f).cbrt()
 	} else {
-		f.powf(1. / 3.)
+		f.cbrt()
 	}
 }
 
@@ -149,14 +149,14 @@ pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> [Op
 	} else if discriminant > 0. {
 		// When discriminant > 0, there is one real and two imaginary roots
 		let q_divided_by_2 = q / 2.;
-		let square_root_discriminant = discriminant.powf(1. / 2.);
+		let square_root_discriminant = discriminant.sqrt();
 
 		roots[0] = Some(cube_root(-q_divided_by_2 + square_root_discriminant) - cube_root(q_divided_by_2 + square_root_discriminant) - a / 3.);
 	} else {
 		// Otherwise, discriminant < 0 and there are three real roots
 		let p_divided_by_3 = p / 3.;
 		let a_divided_by_3 = a / 3.;
-		let cube_root_r = (-p_divided_by_3).powf(1. / 2.);
+		let cube_root_r = (-p_divided_by_3).sqrt();
 		let phi = (-q / (2. * cube_root_r.powi(3))).acos();
 
 		let two_times_cube_root_r = 2. * cube_root_r;
@@ -271,8 +271,8 @@ pub fn dvec2_compare(a: DVec2, b: DVec2, max_abs_diff: f64) -> BVec2 {
 }
 
 /// Determine if the values in a `DVec2` are within a given range independently by using a max absolute value difference comparison.
-pub fn dvec2_approximately_in_range(point: DVec2, min: DVec2, max: DVec2, max_abs_diff: f64) -> BVec2 {
-	(point.cmpge(min) & point.cmple(max)) | dvec2_compare(point, min, max_abs_diff) | dvec2_compare(point, max, max_abs_diff)
+pub fn dvec2_approximately_in_range(point: DVec2, min_corner: DVec2, max_corner: DVec2, max_abs_diff: f64) -> BVec2 {
+	(point.cmpge(min_corner) & point.cmple(max_corner)) | dvec2_compare(point, min_corner, max_abs_diff) | dvec2_compare(point, max_corner, max_abs_diff)
 }
 
 /// Calculate a new position for a point given its original position, a unit vector in the desired direction, and a distance to move it by.

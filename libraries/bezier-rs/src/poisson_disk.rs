@@ -1,6 +1,8 @@
 use core::f64;
 use glam::DVec2;
 
+const DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING: usize = 8;
+
 /// Fast (O(n) with respect to time and memory) algorithm for generating a maximal set of points using Poisson-disk sampling.
 /// Based on the paper:
 /// "Poisson Disk Point Sets by Hierarchical Dart Throwing"
@@ -10,7 +12,7 @@ pub fn poisson_disk_sample(
 	height: f64,
 	diameter: f64,
 	point_in_shape_checker: impl Fn(DVec2) -> bool,
-	square_not_outside_shape_checker: impl Fn(DVec2, f64) -> bool,
+	square_edges_intersect_shape_checker: impl Fn(DVec2, f64) -> bool,
 	rng: impl FnMut() -> f64,
 ) -> Vec<DVec2> {
 	let mut rng = rng;
@@ -26,7 +28,7 @@ pub fn poisson_disk_sample(
 	let base_level_grid_size = greater_dimension / (greater_dimension * std::f64::consts::SQRT_2 / (diameter / 2.)).ceil();
 
 	// Initialize the problem by including all base-level squares in the active list since they're all part of the yet-to-be-targetted dartboard domain
-	let base_level = ActiveListLevel::new_filled(base_level_grid_size, width, height, |&point| square_not_outside_shape_checker(point, base_level_grid_size));
+	let base_level = ActiveListLevel::new_filled(base_level_grid_size, width, height, &point_in_shape_checker, &square_edges_intersect_shape_checker);
 	// In the future, if necessary, this could be turned into a fixed-length array with worst-case length `f64::MANTISSA_DIGITS`
 	let mut active_list_levels = vec![base_level];
 
@@ -43,14 +45,17 @@ pub fn poisson_disk_sample(
 		let active_square_size = level.square_size();
 
 		// Skip this target square if it's within range of any current points, since more nearby points could have been added after this square was included in the active list
-		if !square_not_covered(active_square, active_square_size / 2., diameter_squared, &points_grid) {
+		if !square_not_covered(active_square.top_left_corner(), active_square_size / 2., diameter_squared, &points_grid) {
 			continue;
 		}
 
 		// Throw a dart by picking a random point within this target square
-		let x = active_square.x + rng() * active_square_size;
-		let y = active_square.y + rng() * active_square_size;
-		let point = (x, y).into();
+		let point = {
+			let active_top_left_corner = active_square.top_left_corner();
+			let x = active_top_left_corner.x + rng() * active_square_size;
+			let y = active_top_left_corner.y + rng() * active_square_size;
+			(x, y).into()
+		};
 
 		// If the dart hit a valid spot, save that point (we're now permanently done with this target square's region)
 		if point_not_covered(point, diameter_squared, &points_grid) {
@@ -61,28 +66,52 @@ pub fn poisson_disk_sample(
 		}
 		// Otherwise, subdivide this target square and add valid sub-squares back to the active list for later targetting
 		else {
+			// Discard any targetable domain smaller than this limited number of subdivision levels since it's too small to matter
+			let next_level_deeper_level = active_square_level + 1;
+			if next_level_deeper_level > DEEPEST_SUBDIVISION_LEVEL_BEFORE_DISCARDING {
+				continue;
+			}
+
 			// If necessary for the following step, add another layer of depth to store squares at the next subdivision level
-			if active_list_levels.len() <= active_square_level + 1 {
+			if active_list_levels.len() <= next_level_deeper_level {
 				active_list_levels.push(ActiveListLevel::new(active_square_size / 2.))
 			}
 
 			// Get the list of active squares at the level of depth beneath this target square's level
-			let next_level_deeper = &mut active_list_levels[active_square_level + 1];
+			let next_level_deeper = &mut active_list_levels[next_level_deeper_level];
 
 			// Subdivide this target square into four sub-squares; running out of numerical precision will make this terminate at very small scales
 			let subdivided_size = active_square_size / 2.;
+			let active_top_left_corner = active_square.top_left_corner();
 			let subdivided = [
-				(active_square.x, active_square.y).into(),
-				(active_square.x + subdivided_size, active_square.y).into(),
-				(active_square.x, active_square.y + subdivided_size).into(),
-				(active_square.x + subdivided_size, active_square.y + subdivided_size).into(),
+				active_top_left_corner + DVec2::new(0., 0.),
+				active_top_left_corner + DVec2::new(subdivided_size, 0.),
+				active_top_left_corner + DVec2::new(0., subdivided_size),
+				active_top_left_corner + DVec2::new(subdivided_size, subdivided_size),
 			];
 
 			// Add the sub-squares which aren't within the radius of a nearby point to the sub-level's active list
 			let half_subdivided_size = subdivided_size / 2.;
-			let new_sub_squares = subdivided
-				.into_iter()
-				.filter(|&sub_square| square_not_covered(sub_square, half_subdivided_size, diameter_squared, &points_grid) && square_not_outside_shape_checker(sub_square, subdivided_size));
+			let new_sub_squares = subdivided.into_iter().filter_map(|sub_square| {
+				// Any sub-squares within the radius of a nearby point are filtered out
+				if !square_not_covered(sub_square, half_subdivided_size, diameter_squared, &points_grid) {
+					return None;
+				}
+
+				// let square_edges_intersect_shape = square_edges_intersect_shape_checker(sub_square, subdivided_size);
+
+				// // We can exit early, without doing the expensive upcoming checks, if this case holds.
+				// // If this sub-square's parent is known to not be fully inside the shape, that might mean that parent intersects the shape's border. So the parent is either outside the shape or intersecting it.
+				// // Therefore this sub-square might also intersect the border, so we check that. If it doesn't intersect, that means this sub-square is fully outside the shape, so we filter it out.
+				// if !active_square.fully_in_shape() && !square_edges_intersect_shape {
+				// 	return None;
+				// };
+
+				// // The sub-square is fully inside the shape if its top-left corner is inside and its edges don't intersect the shape border
+				// let sub_square_inside_shape = point_in_shape_checker(sub_square) && !square_edges_intersect_shape;
+
+				Some(ActiveSquare::new(sub_square, /*sub_square_inside_shape*/ false))
+			});
 			next_level_deeper.add_squares(new_sub_squares);
 		}
 	}
@@ -142,12 +171,30 @@ where
 	a.flat_map(move |i| (b.clone().map(move |j| (i.clone(), j))))
 }
 
+/// A square (represented by its top left corner position and width/height of `square_size`) that is currently a candidate for targetting by the dart throwing process.
+/// The positive sign bit encodes if the square is contained entirely within the masking shape, or negative if it's outside or intersects the shape path.
+pub struct ActiveSquare(DVec2);
+
+impl ActiveSquare {
+	pub fn new(top_left_corner: DVec2, fully_in_shape: bool) -> Self {
+		Self(if fully_in_shape { top_left_corner } else { -top_left_corner })
+	}
+
+	pub fn top_left_corner(&self) -> DVec2 {
+		self.0.abs()
+	}
+
+	pub fn fully_in_shape(&self) -> bool {
+		self.0.x.is_sign_positive()
+	}
+}
+
 pub struct ActiveListLevel {
-	/// List of squares (represented by their top left corner position and width/height of `square_size`) that are currently candidates for targetting by the dart throwing process
-	active_squares: Vec<DVec2>,
+	/// List of all subdivided squares of the same size that are currently candidates for targetting by the dart throwing process
+	active_squares: Vec<ActiveSquare>,
 	/// Width and height of the squares in this level of subdivision
 	square_size: f64,
-	/// Current sum of all
+	/// Current sum of the area in all active squares in this subdivision level
 	total_area: f64,
 }
 
@@ -162,15 +209,23 @@ impl ActiveListLevel {
 	}
 
 	#[inline(always)]
-	pub fn new_filled(square_size: f64, width: f64, height: f64, point_in_shape_checker: impl Fn(&DVec2) -> bool) -> Self {
+	pub fn new_filled(square_size: f64, width: f64, height: f64, point_in_shape_checker: impl Fn(DVec2) -> bool, square_edges_intersect_shape_checker: impl Fn(DVec2, f64) -> bool) -> Self {
 		// These should divide evenly but rounding is to protect against small numerical imprecision errors
 		let x_squares = (width / square_size).round() as usize;
 		let y_squares = (height / square_size).round() as usize;
 
 		// Populate each square with its top-left corner coordinate
 		let active_squares: Vec<_> = cartesian_product(0..x_squares, 0..y_squares)
-			.map(|(x, y)| (x as f64 * square_size, y as f64 * square_size).into())
-			.filter(point_in_shape_checker)
+			.filter_map(|(x, y)| {
+				let corner = (x as f64 * square_size, y as f64 * square_size).into();
+
+				let point_in_shape = point_in_shape_checker(corner);
+				let square_edges_intersect_shape = square_edges_intersect_shape_checker(corner, square_size);
+				let square_not_outside_shape = point_in_shape || square_edges_intersect_shape;
+				let square_in_shape = point_in_shape && !square_edges_intersect_shape;
+
+				square_not_outside_shape.then_some(ActiveSquare::new(corner, square_in_shape))
+			})
 			.collect();
 
 		// Sum every square's area to get the total
@@ -185,14 +240,14 @@ impl ActiveListLevel {
 
 	#[must_use]
 	#[inline(always)]
-	pub fn take_square(&mut self, active_square_index: usize) -> DVec2 {
+	pub fn take_square(&mut self, active_square_index: usize) -> ActiveSquare {
 		let targetted_square = self.active_squares.swap_remove(active_square_index);
 		self.total_area = self.square_size.powi(2) * self.active_squares.len() as f64;
 		targetted_square
 	}
 
 	#[inline(always)]
-	pub fn add_squares(&mut self, new_squares: impl Iterator<Item = DVec2>) {
+	pub fn add_squares(&mut self, new_squares: impl Iterator<Item = ActiveSquare>) {
 		for new_square in new_squares {
 			self.active_squares.push(new_square);
 		}
