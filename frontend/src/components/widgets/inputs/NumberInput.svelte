@@ -84,7 +84,7 @@
 	let ctrlKeyDown = false;
 
 	let arrowLastDirection: "Decrease" | "Increase" | undefined = undefined;
-	let arrowButtonTimeoutId: NodeJS.Timeout | undefined = undefined;
+	let arrowButtonTimeoutId: number | undefined = undefined;
 
 	$: watchValue(value);
 
@@ -106,12 +106,11 @@
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
 		if (unsubscribeOnDestroy) {
-			unsubscribeOnDestroy()
-			unsubscribeOnDestroy = undefined
+			unsubscribeOnDestroy();
+			unsubscribeOnDestroy = undefined;
 		}
 	});
 
-	
 	// ===========================
 	// CANCEL VALUE FNS
 	// ===========================
@@ -123,18 +122,18 @@
 	/** save value for cancelation if needed */
 	function setCancelValue() {
 		if (!isCancelValueUsed) {
-			cancelableValue = value
-			isCancelValueUsed = true
+			cancelableValue = value;
+			isCancelValueUsed = true;
 		}
 	}
 	function getCancelValue(): number | undefined {
-		return isCancelValueUsed ? cancelableValue : undefined
+		return isCancelValueUsed ? cancelableValue : undefined;
 	}
 	/** update value with old value (as it was before actions that should be canceled) */
 	function cancelValue() {
-		let oldValue = getCancelValue()
-		updateValue(oldValue)
-		resetCancelValue()
+		let oldValue = getCancelValue();
+		updateValue(oldValue);
+		resetCancelValue();
 	}
 
 	// ===============================
@@ -172,7 +171,7 @@
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
-			newValueValidated = toValidValue(newValueValidated)
+			newValueValidated = toValidValue(newValueValidated);
 
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
@@ -192,15 +191,16 @@
 
 	/**
 	 * return best valid input value (checks min/max/rounding/etc)
-	 * @param newValue value that needs to be coverted to valid 
+	 * @param newValue value that needs to be coverted to valid
 	 */
 	function toValidValue(newValue: number): number {
-		if (typeof min === "number" && !Number.isNaN(min)) newValue = Math.max(newValue, min);
-		if (typeof max === "number" && !Number.isNaN(max)) newValue = Math.min(newValue, max);
+		let validValue = newValue;
+		if (typeof min === "number" && !Number.isNaN(min)) validValue = Math.max(validValue, min);
+		if (typeof max === "number" && !Number.isNaN(max)) validValue = Math.min(validValue, max);
 
-		if (isInteger) newValue = Math.round(newValue);
-		
-		return newValue
+		if (isInteger) validValue = Math.round(validValue);
+
+		return validValue;
 	}
 
 	function displayText(displayValue: number | undefined): string {
@@ -235,14 +235,14 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		let newValue = calcTextField()
+		let newValue = calcTextField();
 		updateValue(newValue);
 
 		textUnFocus();
 	}
 
 	function onTextChangeCanceled() {
-		cancelValue()
+		cancelValue();
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
@@ -252,7 +252,7 @@
 	}
 
 	/**
-	 * return calculated value of input (if it's valid) 
+	 * return calculated value of input (if it's valid)
 	 */
 	function calcTextField(): number | undefined {
 		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
@@ -260,7 +260,7 @@
 
 		let newValue = evaluateMathExpression(textWithLeadingZeroes);
 		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
-		return newValue
+		return newValue;
 	}
 
 	function textFocus() {
@@ -277,21 +277,21 @@
 	}
 
 	function textValueChangeByArrow(e: KeyboardEvent) {
-		let key = e.key
-		let shift = e.shiftKey
-		let delta = shift ? 10 : (!ctrlKeyDown || isInteger) ? 1 : 0.1 
+		let key = e.key;
+		let shift = e.shiftKey;
+		let delta = shift ? 10 : !ctrlKeyDown || isInteger ? 1 : 0.1;
 
-		if (key == "ArrowDown") delta = -delta
-		else if (key != "ArrowUp") return
-		
-		e.preventDefault()
-		
-		let prevValue = calcTextField() ?? value ?? defaultValue ?? 0
-		let newValue = toValidValue(prevValue + delta)
-		
-		setCancelValue()
+		if (key == "ArrowDown") delta = -delta;
+		else if (key != "ArrowUp") return;
 
-		text = `${newValue}`
+		e.preventDefault();
+
+		let prevValue = calcTextField() ?? value ?? defaultValue ?? 0;
+		let newValue = toValidValue(prevValue + delta);
+
+		setCancelValue();
+
+		text = `${newValue}`;
 		dispatch("value", newValue);
 	}
 
@@ -322,61 +322,64 @@
 		actions[incrementBehavior]();
 	}
 
-	function onLR_ArrowsDown(e: MouseEvent, direction: "Decrease" | "Increase") {
+	/** Left/Right Button Arrows down */
+	function onButtonArrowsDown(e: MouseEvent, direction: "Decrease" | "Increase") {
 		// button must be exact left
 		if (e.buttons == BUTTONS_LEFT) {
-			onIncrement(direction)
+			onIncrement(direction);
 		}
 	}
-	function onLR_ArrowsUp(e: MouseEvent) {
+	/** Left/Right Button Arrows up */
+	function onButtonArrowsUp(e: MouseEvent) {
 		// button must not contain left
 		if (!(e.buttons & BUTTONS_LEFT)) {
-			stopIncrement()
+			stopIncrement();
 		}
 	}
-	function onLR_ArrowsFocusOff(direction: "Decrease" | "Increase") {
+	/** needed to Left/Right Button Arrows stop incrementing when we alt+tab browser window */
+	function onButtonArrowsFocusOff(direction: "Decrease" | "Increase") {
 		if (arrowLastDirection == direction) {
-			stopIncrement()
+			stopIncrement();
 		}
 	}
 
 	function onIncrement(direction: "Decrease" | "Increase") {
-		if (arrowButtonTimeoutId) stopIncrement()
+		if (arrowButtonTimeoutId) stopIncrement();
 
-		addEventListener("pointerup", onLR_ArrowsUp)
-		addEventListener("keydown", onLR_arrowsEsc)
+		addEventListener("pointerup", onButtonArrowsUp);
+		addEventListener("keydown", onButtonArrowsEsc);
 
-		arrowLastDirection = direction
-		resetCancelValue()
-		setCancelValue()
-		increment(direction)
+		arrowLastDirection = direction;
+		resetCancelValue();
+		setCancelValue();
+		increment(direction);
 
-		const INC_DELTAS_MS = [350, 250, 200, 150, 150, 100, 75]
-		let inc_index = 0
+		const INC_DELTAS_MS = [350, 250, 200, 150, 150, 100, 75];
+		let incIndex = 0;
 
-		let rep_action = () => {
-			increment(direction)
-			inc_index = Math.min(inc_index + 1, INC_DELTAS_MS.length - 1)
-			let ms = INC_DELTAS_MS[inc_index]
-			arrowButtonTimeoutId = setTimeout(rep_action, ms)
-		}
+		let repAction = () => {
+			increment(direction);
+			incIndex = Math.min(incIndex + 1, INC_DELTAS_MS.length - 1);
+			let ms = INC_DELTAS_MS[incIndex];
+			arrowButtonTimeoutId = window.setTimeout(repAction, ms);
+		};
 
-		arrowButtonTimeoutId = setTimeout(rep_action, INC_DELTAS_MS[inc_index])
+		arrowButtonTimeoutId = window.setTimeout(repAction, INC_DELTAS_MS[incIndex]);
 		// setInterval(rep_action, INC_DELTAS_MS[inc_index])
 	}
-	
-	function onLR_arrowsEsc(e: KeyboardEvent) {
+	/** cancel value changes for Left/Right Button Arrows on `Esc` down (when LR buttons still pressed) */
+	function onButtonArrowsEsc(e: KeyboardEvent) {
 		if (e.key == "Escape") {
-			stopIncrement()
-			cancelValue()
+			stopIncrement();
+			cancelValue();
 		}
 	}
 
 	function stopIncrement() {
-		removeEventListener("pointerup", onLR_ArrowsUp)
-		removeEventListener("keydown", onLR_arrowsEsc)
-		clearTimeout(arrowButtonTimeoutId)
-		arrowButtonTimeoutId = undefined
+		removeEventListener("pointerup", onButtonArrowsUp);
+		removeEventListener("keydown", onButtonArrowsEsc);
+		clearTimeout(arrowButtonTimeoutId);
+		arrowButtonTimeoutId = undefined;
 	}
 
 	// =======================================
@@ -715,100 +718,100 @@
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
 	}
-	
+
 	// ===========================
 	// ALL MODES: WHEEL
 	// ===========================
 
 	function onWheel(e: WheelEvent) {
-		if (!ctrlKeyDown) return
+		if (!ctrlKeyDown) return;
 		// prevent zoom
-		e.preventDefault()
+		e.preventDefault();
 
 		// in range mode we don't want to switch to text input mode
 		// but therefore we cannot cancel value (at least so easy)
 		if (!editing && mode === "Increment") {
 			//allow to use Esc/Enter
-			textFocus()
+			textFocus();
 			// save value for `Esc` case
-			setCancelValue()
+			setCancelValue();
 		}
-		
-		// TODO: whellPointerLock & MAYBE: better `Esc`/`Enter`
-		//     | highly possible that some discussion about it will be attached to this commit	
-		
-		let delta = -e.deltaY
-		if (delta == 0) delta = e.deltaX
 
-		if (delta > 0) increment("Increase")
-		else if(delta < 0) increment("Decrease")
+		// TODO: whellPointerLock & MAYBE: better `Esc`/`Enter`
+		//     | highly possible that some discussion about it will be attached to this commit
+
+		let delta = -e.deltaY;
+		if (delta == 0) delta = e.deltaX;
+
+		if (delta > 0) increment("Increase");
+		else if (delta < 0) increment("Decrease");
 	}
-	
+
 	// ===========================
 	// ALL MODES: POINTER ENTER
 	// ===========================
 
 	function onPointerEnter(e: PointerEvent) {
-		var element = e.target
-		if (!element) return
-		var elem = element
-		
+		var element = e.target;
+		if (!element) return;
+		var elem = element;
+
 		let onKeyDown = (e: KeyboardEvent) => {
 			if (ctrlKeyDown && !editing) {
-				let key = e.key
+				let key = e.key;
 				if (key == "/" && !isInteger && value !== undefined) {
-					if (value != 0) updateValue(1. / value)
-					else if (max !== undefined) updateValue(max)
+					if (value != 0) updateValue(1 / value);
+					else if (max !== undefined) updateValue(max);
 				} else if (key == "-" && value !== undefined) {
 					// prevent page scaling
-					e.preventDefault()
+					e.preventDefault();
 					// prevent canvas scaling
-					e.stopImmediatePropagation()
-					let negative_allowed = (min ?? -1) < 0
-					if (negative_allowed) updateValue(-value)
+					e.stopImmediatePropagation();
+					let negativeAllowed = (min ?? -1) < 0;
+					if (negativeAllowed) updateValue(-value);
 				} else if (key == "Enter" && !editing) {
-					onTextFocused()
+					onTextFocused();
 				} else if (key == "Backspace") {
 					// prevent text removing in Text Tool
-					e.preventDefault()
+					e.preventDefault();
 					// shouldn't delete currently selected points
-					e.stopImmediatePropagation()
+					e.stopImmediatePropagation();
 					if (defaultValue !== undefined) {
-						updateValue(defaultValue)
+						updateValue(defaultValue);
 					}
 				} else if (key == "c") {
-					e.stopImmediatePropagation()
-					let write = value === undefined ? "" : `${value}`
-					navigator.clipboard.writeText(write)
+					e.stopImmediatePropagation();
+					let write = value === undefined ? "" : `${value}`;
+					navigator.clipboard.writeText(write);
 				}
 			}
 		};
 
 		let onPaste = (e: ClipboardEvent) => {
 			if (!editing) {
-				let clipboardText = e.clipboardData?.getData("text")
-				if (clipboardText === undefined) return
-				let num = parseFloat(clipboardText)
+				let clipboardText = e.clipboardData?.getData("text");
+				if (clipboardText === undefined) return;
+				let num = parseFloat(clipboardText);
 				if (!Number.isNaN(num)) {
-					updateValue(num)
+					updateValue(num);
 				}
 			}
 		};
 
-		let options = { capture: true }
+		let options = { capture: true };
 
 		let onPointerLeave = () => {
 			removeEventListener("keydown", onKeyDown, options);
 			removeEventListener("paste", onPaste, options);
 			elem.removeEventListener("pointerleave", onPointerLeave);
-			unsubscribeOnDestroy = undefined
+			unsubscribeOnDestroy = undefined;
 		};
 
 		addEventListener("keydown", onKeyDown, options);
 		addEventListener("paste", onPaste, options);
 		elem.addEventListener("pointerleave", onPointerLeave);
-		// needed, for example, when we use Ctrl+Backspace on Tilt NumberInput  
-		unsubscribeOnDestroy = onPointerLeave
+		// needed, for example, when we use Ctrl+Backspace on Tilt NumberInput
+		unsubscribeOnDestroy = onPointerLeave;
 	}
 </script>
 
@@ -836,8 +839,22 @@
 >
 	{#if value !== undefined}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
-			<button class="arrow left"  on:mousedown={(e) => onLR_ArrowsDown(e, "Decrease")} on:focusout={() => {onLR_ArrowsFocusOff("Decrease")}} tabindex="-1" />
-			<button class="arrow right" on:mousedown={(e) => onLR_ArrowsDown(e, "Increase")} on:focusout={() => {onLR_ArrowsFocusOff("Increase")}} tabindex="-1" />
+			<button
+				class="arrow left"
+				on:mousedown={(e) => onButtonArrowsDown(e, "Decrease")}
+				on:focusout={() => {
+					onButtonArrowsFocusOff("Decrease");
+				}}
+				tabindex="-1"
+			/>
+			<button
+				class="arrow right"
+				on:mousedown={(e) => onButtonArrowsDown(e, "Increase")}
+				on:focusout={() => {
+					onButtonArrowsFocusOff("Increase");
+				}}
+				tabindex="-1"
+			/>
 		{/if}
 		{#if mode === "Range"}
 			<input
@@ -854,8 +871,8 @@
 				on:pointerup={onSliderPointerUp}
 				on:contextmenu|preventDefault
 				on:wheel={(e) => {
-					/* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()
-					onWheel(e)
+					/* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur();
+					onWheel(e);
 				}}
 				on:pointerenter={onPointerEnter}
 				bind:this={inputRangeElement}
