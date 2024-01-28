@@ -1,8 +1,7 @@
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
+use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, STRICT_MAX_ABSOLUTE_DIFFERENCE};
 use crate::ManipulatorGroup;
 
 use glam::{BVec2, DMat2, DVec2};
-use std::f64::consts::PI;
 
 #[derive(Copy, Clone, PartialEq)]
 /// A structure which can be used to reference a particular point along a `Bezier`.
@@ -122,51 +121,6 @@ pub fn solve_quadratic(discriminant: f64, two_times_a: f64, b: f64, c: f64) -> [
 	roots
 }
 
-/// Compute the cube root of a number.
-fn cube_root(f: f64) -> f64 {
-	if f < 0. {
-		-(-f).cbrt()
-	} else {
-		f.cbrt()
-	}
-}
-
-// TODO: Use an `impl Iterator` return type instead of a `Vec`
-/// Solve a cubic of the form `x^3 + px + q`, derivation from: <https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm>.
-pub fn solve_reformatted_cubic(discriminant: f64, a: f64, p: f64, q: f64) -> [Option<f64>; 3] {
-	let mut roots = [None; 3];
-	if discriminant.abs() <= STRICT_MAX_ABSOLUTE_DIFFERENCE {
-		// When discriminant is 0 (check for approximation because of floating point errors), all roots are real, and 2 are repeated
-		// filter out repeated roots (ie. roots whose distance is less than some epsilon)
-		let q_divided_by_2 = q / 2.;
-		let a_divided_by_3 = a / 3.;
-		let root_1 = 2. * cube_root(-q_divided_by_2) - a_divided_by_3;
-		let root_2 = cube_root(q_divided_by_2) - a_divided_by_3;
-		if (root_1 - root_2).abs() > MIN_SEPARATION_VALUE {
-			roots[0] = Some(root_1);
-		}
-		roots[1] = Some(root_2);
-	} else if discriminant > 0. {
-		// When discriminant > 0, there is one real and two imaginary roots
-		let q_divided_by_2 = q / 2.;
-		let square_root_discriminant = discriminant.sqrt();
-
-		roots[0] = Some(cube_root(-q_divided_by_2 + square_root_discriminant) - cube_root(q_divided_by_2 + square_root_discriminant) - a / 3.);
-	} else {
-		// Otherwise, discriminant < 0 and there are three real roots
-		let p_divided_by_3 = p / 3.;
-		let a_divided_by_3 = a / 3.;
-		let cube_root_r = (-p_divided_by_3).sqrt();
-		let phi = (-q / (2. * cube_root_r.powi(3))).acos();
-
-		let two_times_cube_root_r = 2. * cube_root_r;
-		roots[0] = Some(two_times_cube_root_r * (phi / 3.).cos() - a_divided_by_3);
-		roots[1] = Some(two_times_cube_root_r * ((phi + 2. * PI) / 3.).cos() - a_divided_by_3);
-		roots[2] = Some(two_times_cube_root_r * ((phi + 4. * PI) / 3.).cos() - a_divided_by_3);
-	}
-	roots
-}
-
 // TODO: Use an `impl Iterator` return type instead of a `Vec`
 /// Solve a cubic of the form `ax^3 + bx^2 + ct + d`.
 pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
@@ -180,16 +134,45 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 			solve_quadratic(discriminant, 2. * b, c, d)
 		}
 	} else {
-		// convert at^3 + bt^2 + ct + d ==> t^3 + a't^2 + b't + c'
-		let new_a = b / a;
-		let new_b = c / a;
-		let new_c = d / a;
-
-		// Refactor cubic to be of the form: a(t^3 + pt + q), derivation from: https://trans4mind.com/personal_development/mathematics/polynomials/cubicAlgebra.htm
-		let p = (3. * new_b - new_a * new_a) / 3.;
-		let q = (2. * new_a.powi(3) - 9. * new_a * new_b + 27. * new_c) / 27.;
-		let discriminant = (p / 3.).powi(3) + (q / 2.).powi(2);
-		solve_reformatted_cubic(discriminant, new_a, p, q)
+		// https://momentsingraphics.de/CubicRoots.html
+		let d_recip = a.recip();
+		const ONETHIRD: f64 = 1. / 3.;
+		let scaled_c2 = b * (ONETHIRD * d_recip);
+		let scaled_c1 = c * (ONETHIRD * d_recip);
+		let scaled_c0 = d * d_recip;
+		if !(scaled_c0.is_finite() && scaled_c1.is_finite() && scaled_c2.is_finite()) {
+			// cubic coefficient is zero or nearly so.
+			return solve_quadratic(c * c - 4. * b * d, 2. * b, c, d);
+		}
+		let (c0, c1, c2) = (scaled_c0, scaled_c1, scaled_c2);
+		// (d0, d1, d2) is called "Delta" in article
+		let d0 = (-c2).mul_add(c2, c1);
+		let d1 = (-c1).mul_add(c2, c0);
+		let d2 = c2 * c0 - c1 * c1;
+		// d is called "Discriminant"
+		let d = 4.0 * d0 * d2 - d1 * d1;
+		// de is called "Depressed.x", Depressed.y = d0
+		let de = (-2.0 * c2).mul_add(d0, d1);
+		if d < 0.0 {
+			let sq = (-0.25 * d).sqrt();
+			let r = -0.5 * de;
+			let t1 = (r + sq).cbrt() + (r - sq).cbrt();
+			[Some(t1 - c2), None, None]
+		} else if d == 0.0 {
+			let t1 = (-d0).sqrt().copysign(de);
+			[Some(t1 - c2), Some(-2.0 * t1 - c2), None]
+		} else {
+			let th = d.sqrt().atan2(-de) * ONETHIRD;
+			// (th_cos, th_sin) is called "CubicRoot"
+			let (th_sin, th_cos) = th.sin_cos();
+			// (r0, r1, r2) is called "Root"
+			let r0 = th_cos;
+			let ss3 = th_sin * 3.0f64.sqrt();
+			let r1 = 0.5 * (-th_cos + ss3);
+			let r2 = 0.5 * (-th_cos - ss3);
+			let t = 2.0 * (-d0).sqrt();
+			[Some(t.mul_add(r0, -c2)), Some(t.mul_add(r1, -c2)), Some(t.mul_add(r2, -c2))]
+		}
 	}
 }
 

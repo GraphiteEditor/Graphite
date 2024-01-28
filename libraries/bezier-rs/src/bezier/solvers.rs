@@ -134,15 +134,20 @@ impl Bezier {
 		match self.handles {
 			BezierHandles::Linear => [[None; 3]; 2],
 			BezierHandles::Quadratic { handle } => {
-				let a = handle - self.start;
-				let b = self.end - handle;
-				let b_minus_a = b - a;
-				[utils::solve_linear(b_minus_a.x, a.x), utils::solve_linear(b_minus_a.y, a.y)]
+				let d0 = handle - self.start;
+				let d1 = self.end - handle;
+				let dd = d1 - d0;
+				let a = (dd.x != 0.).then(|| -d0.x / dd.x);
+				let b = (dd.y != 0.0).then(|| -d0.y / dd.y);
+				[[a, None, None], [b, None, None]]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
-				let b = 6. * (self.start - 2. * handle_start + handle_end);
-				let c = 3. * (handle_start - self.start);
+				let d0 = handle_start - self.start;
+				let d1 = handle_end - handle_start;
+				let d2 = self.end - handle_end;
+				let a = d0 - 2. * d1 + d2;
+				let b = 2.0 * (d1 - d0);
+				let c = d0;
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
 				[
