@@ -160,7 +160,7 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 			[Some(t1 - c2), None, None]
 		} else if d == 0.0 {
 			let t1 = (-d0).sqrt().copysign(de);
-			[Some(t1 - c2), Some(-2.0 * t1 - c2), None]
+			[Some(t1 - c2), Some(-2.0 * t1 - c2).filter(|&a| a != t1 - c2), None]
 		} else {
 			let th = d.sqrt().atan2(-de) * ONETHIRD;
 			// (th_cos, th_sin) is called "CubicRoot"
@@ -304,7 +304,8 @@ mod tests {
 		a.len() == b.len() && a.into_iter().zip(b).all(|(a, b)| f64_compare(a, b, max_abs_diff))
 	}
 
-	fn collect_roots(roots: [Option<f64>; 3]) -> Vec<f64> {
+	fn collect_roots(mut roots: [Option<f64>; 3]) -> Vec<f64> {
+		roots.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 		roots.into_iter().flatten().collect()
 	}
 
@@ -325,7 +326,7 @@ mod tests {
 		assert!(roots1 == vec![0.]);
 
 		let roots2 = collect_roots(solve_cubic(1., 3., 0., -4.));
-		assert!(roots2 == vec![1., -2.]);
+		assert!(roots2 == vec![-2., 1.]);
 
 		// p == 0
 		let roots3 = collect_roots(solve_cubic(1., 0., 0., -1.));
@@ -337,11 +338,11 @@ mod tests {
 
 		// discriminant < 0
 		let roots5 = collect_roots(solve_cubic(1., 3., 0., -1.));
-		assert!(f64_compare_vector(roots5, vec![0.532, -2.879, -0.653], MAX_ABSOLUTE_DIFFERENCE));
+		assert!(f64_compare_vector(roots5, vec![-2.879, -0.653, 0.532], MAX_ABSOLUTE_DIFFERENCE));
 
 		// quadratic
 		let roots6 = collect_roots(solve_cubic(0., 3., 0., -3.));
-		assert!(roots6 == vec![1., -1.]);
+		assert!(roots6 == vec![-1., 1.]);
 
 		// linear
 		let roots7 = collect_roots(solve_cubic(0., 0., 1., -1.));
