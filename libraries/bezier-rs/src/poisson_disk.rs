@@ -45,7 +45,7 @@ pub fn poisson_disk_sample(
 		let active_square_size = level.square_size();
 
 		// Skip this target square if it's within range of any current points, since more nearby points could have been added after this square was included in the active list
-		if !square_not_covered(active_square.top_left_corner(), active_square_size / 2., diameter_squared, &points_grid) {
+		if !square_not_covered_by_poisson_points(active_square.top_left_corner(), active_square_size / 2., diameter_squared, &points_grid) {
 			continue;
 		}
 
@@ -58,7 +58,7 @@ pub fn poisson_disk_sample(
 		};
 
 		// If the dart hit a valid spot, save that point (we're now permanently done with this target square's region)
-		if point_not_covered(point, diameter_squared, &points_grid) {
+		if point_not_covered_by_poisson_points(point, diameter_squared, &points_grid) {
 			// Silently reject the point if it lies outside the shape
 			if active_square.fully_in_shape() || point_in_shape_checker(point) {
 				points_grid.insert(point);
@@ -94,7 +94,7 @@ pub fn poisson_disk_sample(
 			let half_subdivided_size = subdivided_size / 2.;
 			let new_sub_squares = subdivided.into_iter().filter_map(|sub_square| {
 				// Any sub-squares within the radius of a nearby point are filtered out
-				if !square_not_covered(sub_square, half_subdivided_size, diameter_squared, &points_grid) {
+				if !square_not_covered_by_poisson_points(sub_square, half_subdivided_size, diameter_squared, &points_grid) {
 					return None;
 				}
 
@@ -136,7 +136,7 @@ fn target_active_square(active_list_levels: &[ActiveListLevel], rng: &mut impl F
 	panic!("index_into_area couldn't be be mapped to a square in any level of the active lists");
 }
 
-fn point_not_covered(point: DVec2, diameter_squared: f64, points_grid: &AccelerationGrid) -> bool {
+fn point_not_covered_by_poisson_points(point: DVec2, diameter_squared: f64, points_grid: &AccelerationGrid) -> bool {
 	points_grid.nearby_points(point).all(|nearby_point| {
 		let x_separation = nearby_point.x - point.x;
 		let y_separation = nearby_point.y - point.y;
@@ -145,7 +145,7 @@ fn point_not_covered(point: DVec2, diameter_squared: f64, points_grid: &Accelera
 	})
 }
 
-fn square_not_covered(point: DVec2, half_square_size: f64, diameter_squared: f64, points_grid: &AccelerationGrid) -> bool {
+fn square_not_covered_by_poisson_points(point: DVec2, half_square_size: f64, diameter_squared: f64, points_grid: &AccelerationGrid) -> bool {
 	let square_center_x = point.x + half_square_size;
 	let square_center_y = point.y + half_square_size;
 

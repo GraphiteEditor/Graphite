@@ -45,33 +45,56 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		intersection_t_values
 	}
 
-	pub fn ray_test_crossings(&self, ray_start: DVec2, ray_direction: DVec2) -> usize {
+	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
+	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_count_prerotated`].
+	pub fn ray_test_crossings_count(&self, ray_start: DVec2, ray_direction: DVec2) -> usize {
 		self.iter().map(|bezier| bezier.ray_test_crossings(ray_start, ray_direction).count()).sum()
 	}
 
-	pub fn ray_test_crossings_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_subpath: &Self) -> usize {
+	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`ray_test_crossings_count`] which provides an easier interface by taking a ray direction vector.
+	/// Instead, this version requires a rotation matrix for the ray's rotation and a prerotated version of this subpath that has had its rotation applied.
+	pub fn ray_test_crossings_count_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_subpath: &Self) -> usize {
 		self.iter()
 			.zip(rotated_subpath.iter())
 			.map(|(bezier, rotated_bezier)| bezier.ray_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier).count())
 			.sum()
 	}
 
+	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
+	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
+	/// If this needs to be called frequently, consider instead using [`point_inside_prerotated`] and moving this function's setup code into your own logic before the repeated call.
 	pub fn point_inside(&self, point: DVec2) -> bool {
 		// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
 		const SIN_13DEG: f64 = 0.22495105434;
 		const COS_13DEG: f64 = 0.97437006478;
+		const DIRECTION1: DVec2 = DVec2::new(SIN_13DEG, COS_13DEG);
+		const DIRECTION2: DVec2 = DVec2::new(-COS_13DEG, -SIN_13DEG);
 
 		// We (inefficiently) check for odd crossings in two directions and make sure they agree to reduce how often anchor points cause a double-increment
-		let test1 = self.ray_test_crossings(point, DVec2::new(SIN_13DEG, COS_13DEG)) % 2 == 1;
-		let test2 = self.ray_test_crossings(point, DVec2::new(-COS_13DEG, -SIN_13DEG)) % 2 == 1;
+		let test1 = self.ray_test_crossings_count(point, DIRECTION1) % 2 == 1;
+		let test2 = self.ray_test_crossings_count(point, DIRECTION2) % 2 == 1;
 
 		test1 && test2
 	}
 
+	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
+	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
+	/// This version of the function is for better performance when calling it frequently because it lets the caller precompute the rotations once instead of every call.
+	/// If that isn't important, use [`point_inside`] which provides an easier interface.
+	/// Instead, this version requires a pair of rotation matrices for the ray's rotation and a pair of prerotated versions of this subpath.
+	/// They should face in different directions that are unlikely to align in the real world. Consider using the following rotations:
+	/// ```rs
+	/// const SIN_13DEG: f64 = 0.22495105434;
+	/// const COS_13DEG: f64 = 0.97437006478;
+	/// const DIRECTION1: DVec2 = DVec2::new(SIN_13DEG, COS_13DEG);
+	/// const DIRECTION2: DVec2 = DVec2::new(-COS_13DEG, -SIN_13DEG);
+	/// ```
 	pub fn point_inside_prerotated(&self, point: DVec2, rotation_matrix1: DMat2, rotation_matrix2: DMat2, rotated_subpath1: &Self, rotated_subpath2: &Self) -> bool {
 		// We (inefficiently) check for odd crossings in two directions and make sure they agree to reduce how often anchor points cause a double-increment
-		let test1 = self.ray_test_crossings_prerotated(point, rotation_matrix1, rotated_subpath1) % 2 == 1;
-		let test2 = self.ray_test_crossings_prerotated(point, rotation_matrix2, rotated_subpath2) % 2 == 1;
+		let test1 = self.ray_test_crossings_count_prerotated(point, rotation_matrix1, rotated_subpath1) % 2 == 1;
+		let test2 = self.ray_test_crossings_count_prerotated(point, rotation_matrix2, rotated_subpath2) % 2 == 1;
 
 		test1 && test2
 	}
@@ -124,6 +147,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		.collect()
 	}
 
+	/// Checks if any intersections exist between this subpath and the four edges of the rectangle defined by the top-left `corner1` and bottom-right `corner2`.
+	/// This is faster than calling [`rectangle_intersections`]`.len()` because it short-circuits as soon as an intersection is found.
 	pub fn rectangle_intersections_exist(&self, corner1: DVec2, corner2: DVec2) -> bool {
 		let rotate_by_90deg = |point| DMat2::from_angle(std::f64::consts::FRAC_PI_2) * point;
 
@@ -209,6 +234,48 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.bounding_box()).reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
 	}
 
+	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
+	pub fn bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
+		self.iter()
+			.map(|bezier| bezier.apply_transformation(|v| transform.transform_point2(v)).bounding_box())
+			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
+	}
+
+	/// Returns list of `t`-values representing the inflection points of the subpath.
+	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/inflections/solo" title="Inflections Demo"></iframe>
+	pub fn inflections(&self) -> Vec<f64> {
+		let number_of_curves = self.len_segments() as f64;
+		let inflection_t_values: Vec<f64> = self
+			.iter()
+			.enumerate()
+			.flat_map(|(index, bezier)| {
+				bezier
+					.inflections()
+					.into_iter()
+					// Convert t-values of bezier curve to t-values of subpath
+					.map(move |t| ((index as f64) + t) / number_of_curves)
+			})
+			.collect();
+
+		// TODO: Consider the shared point between adjacent beziers.
+		inflection_t_values
+	}
+
+	/// Does a path contain a point? Based on the non zero winding
+	pub fn contains_point(&self, target_point: DVec2) -> bool {
+		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+	}
+
+	/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
+	/// The `separation_disk_diameter` determines the minimum distance between all points from one another.
+	/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:
+	/// - It's inside the shape
+	/// - It's not closer than `separation_disk_diameter` to any other point from a previous accepted dart throw
+	/// This repeats until accepted darts fill all possible areas between one another.
+	///
+	/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
+	/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
 	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64) -> Vec<DVec2> {
 		let Some(bounding_box) = self.bounding_box() else { return Vec::new() };
 		let (offset_x, offset_y) = bounding_box[0].into();
@@ -247,39 +314,6 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			point.y += offset_y;
 		}
 		points
-	}
-
-	/// Return the min and max corners that represent the bounding box of the subpath, after a given affine transform.
-	pub fn bounding_box_with_transform(&self, transform: glam::DAffine2) -> Option<[DVec2; 2]> {
-		self.iter()
-			.map(|bezier| bezier.apply_transformation(|v| transform.transform_point2(v)).bounding_box())
-			.reduce(|bbox1, bbox2| [bbox1[0].min(bbox2[0]), bbox1[1].max(bbox2[1])])
-	}
-
-	/// Returns list of `t`-values representing the inflection points of the subpath.
-	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
-	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/inflections/solo" title="Inflections Demo"></iframe>
-	pub fn inflections(&self) -> Vec<f64> {
-		let number_of_curves = self.len_segments() as f64;
-		let inflection_t_values: Vec<f64> = self
-			.iter()
-			.enumerate()
-			.flat_map(|(index, bezier)| {
-				bezier
-					.inflections()
-					.into_iter()
-					// Convert t-values of bezier curve to t-values of subpath
-					.map(move |t| ((index as f64) + t) / number_of_curves)
-			})
-			.collect();
-
-		// TODO: Consider the shared point between adjacent beziers.
-		inflection_t_values
-	}
-
-	/// Does a path contain a point? Based on the non zero winding
-	pub fn contains_point(&self, target_point: DVec2) -> bool {
-		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
 	}
 
 	/// Returns the manipulator point that is needed for a miter join if it is possible.

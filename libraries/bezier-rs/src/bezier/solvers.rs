@@ -181,6 +181,7 @@ impl Bezier {
 		[endpoints_min, endpoints_max]
 	}
 
+	/// Return the min and max corners that represent the bounding box enclosing this Bezier's two anchor points and any handles.
 	pub fn bounding_box_of_anchors_and_handles(&self) -> [DVec2; 2] {
 		match self.handles {
 			BezierHandles::Linear => [self.start.min(self.end), self.start.max(self.end)],
@@ -361,8 +362,7 @@ impl Bezier {
 			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);
 
 			// Calculate line's bounding box
-			let min_corner = other.start.min(other.end);
-			let max_corner = other.start.max(other.end);
+			let [min_corner, max_corner] = other.bounding_box_of_anchors_and_handles();
 
 			return list_intersection_t
 				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
@@ -377,15 +377,21 @@ impl Bezier {
 		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
 	}
 
-	pub fn line_test_crossings(&self, point_on_line: DVec2, ray_direction: DVec2) -> impl Iterator<Item = f64> + '_ {
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
+	/// If this needs to be called frequently with a line of the same rotation angle, consider instead using [`line_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	pub fn line_test_crossings(&self, point_on_line: DVec2, direction_vector: DVec2) -> impl Iterator<Item = f64> + '_ {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
-		let angle = ray_direction.angle_between(DVec2::new(0., 1.));
+		let angle = direction_vector.angle_between(DVec2::new(0., 1.));
 		let rotation_matrix = DMat2::from_angle(angle);
 		let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
 
 		self.line_test_crossings_prerotated(point_on_line, rotation_matrix, rotated_bezier)
 	}
 
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given infinite line.
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`line_test_crossings`] which wraps this and provides an easier interface by taking a line rotation vector.
+	/// Instead, this version requires a rotation matrix for the line's rotation and a version of this Bezier segment that has had its rotation already applied.
 	pub fn line_test_crossings_prerotated(&self, point_on_line: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
 		// Translate the bezier such that the line becomes aligned on top of the x-axis
 		let vertical_distance = (rotation_matrix.x_axis.x * point_on_line.x) + (rotation_matrix.y_axis.x * point_on_line.y);
@@ -395,6 +401,8 @@ impl Bezier {
 		translated_bezier.find_tvalues_for_x(0.)
 	}
 
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given ray. (`ray_direction` does not need to be normalized.)
+	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
 	pub fn ray_test_crossings(&self, ray_start: DVec2, ray_direction: DVec2) -> impl Iterator<Item = f64> + '_ {
 		// Rotate the bezier and the line by the angle that the line makes with the x axis
 		let angle = ray_direction.angle_between(DVec2::new(0., 1.));
@@ -404,6 +412,10 @@ impl Bezier {
 		self.ray_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier)
 	}
 
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given infinite ray.
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`ray_test_crossings`] which wraps this and provides an easier interface by taking a ray direction vector.
+	/// Instead, this version requires a rotation matrix for the ray's rotation and a version of this Bezier segment that has had its rotation already applied.
 	pub fn ray_test_crossings_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
 		// Intersection t-values include those beyond the [0-1] range where the segment's ends extend through the X-axis
 		let intersection_t_values_on_rotated_bezier = self.line_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier);
