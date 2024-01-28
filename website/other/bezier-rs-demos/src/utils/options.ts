@@ -1,11 +1,11 @@
 import { BEZIER_T_VALUE_VARIANTS, CAP_VARIANTS, JOIN_VARIANTS, SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
 
 export const tSliderOptions = {
+	variable: "t",
 	min: 0,
 	max: 1,
 	step: 0.01,
 	default: 0.5,
-	variable: "t",
 };
 
 export const errorOptions = {
@@ -30,6 +30,14 @@ export const intersectionErrorOptions = {
 	max: 0.525,
 	step: 0.0025,
 	default: 0.02,
+};
+
+export const separationDiskDiameter = {
+	variable: "separation_disk_diameter",
+	min: 2.5,
+	max: 25,
+	step: 0.1,
+	default: 5,
 };
 
 export const bezierTValueVariantOptions = {

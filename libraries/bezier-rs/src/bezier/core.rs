@@ -127,10 +127,10 @@ impl Bezier {
 	pub fn write_curve_argument(&self, svg: &mut String) -> std::fmt::Result {
 		match self.handles {
 			BezierHandles::Linear => svg.push_str(SVG_ARG_LINEAR),
-			BezierHandles::Quadratic { handle } => write!(svg, "{SVG_ARG_QUADRATIC}{},{}", handle.x, handle.y)?,
-			BezierHandles::Cubic { handle_start, handle_end } => write!(svg, "{SVG_ARG_CUBIC}{},{} {},{}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)?,
+			BezierHandles::Quadratic { handle } => write!(svg, "{SVG_ARG_QUADRATIC}{:.6},{:.6}", handle.x, handle.y)?,
+			BezierHandles::Cubic { handle_start, handle_end } => write!(svg, "{SVG_ARG_CUBIC}{:.6},{:.6} {:.6},{:.6}", handle_start.x, handle_start.y, handle_end.x, handle_end.y)?,
 		}
-		write!(svg, " {},{}", self.end.x, self.end.y)
+		write!(svg, " {:.6},{:.6}", self.end.x, self.end.y)
 	}
 
 	/// Return the string argument used to create the lines connecting handles to endpoints in an SVG `path`
@@ -138,17 +138,17 @@ impl Bezier {
 		match self.handles {
 			BezierHandles::Linear => None,
 			BezierHandles::Quadratic { handle } => {
-				let handle_line = format!("{SVG_ARG_LINEAR}{} {}", handle.x, handle.y);
+				let handle_line = format!("{SVG_ARG_LINEAR}{:.6} {:.6}", handle.x, handle.y);
 				Some(format!(
-					"{SVG_ARG_MOVE}{} {} {handle_line} {SVG_ARG_MOVE}{} {} {handle_line}",
+					"{SVG_ARG_MOVE}{:.6} {:.6} {handle_line} {SVG_ARG_MOVE}{:.6} {:.6} {handle_line}",
 					self.start.x, self.start.y, self.end.x, self.end.y
 				))
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let handle_start_line = format!("{SVG_ARG_LINEAR}{} {}", handle_start.x, handle_start.y);
+				let handle_start_line = format!("{SVG_ARG_LINEAR}{:.6} {:.6}", handle_start.x, handle_start.y);
 				let handle_end_line = format!("{SVG_ARG_LINEAR}{} {}", handle_end.x, handle_end.y);
 				Some(format!(
-					"{SVG_ARG_MOVE}{} {} {handle_start_line} {SVG_ARG_MOVE}{} {} {handle_end_line}",
+					"{SVG_ARG_MOVE}{:.6} {:.6} {handle_start_line} {SVG_ARG_MOVE}{:.6} {:.6} {handle_end_line}",
 					self.start.x, self.start.y, self.end.x, self.end.y
 				))
 			}

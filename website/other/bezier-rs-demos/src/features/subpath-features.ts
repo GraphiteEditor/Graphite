@@ -1,4 +1,4 @@
-import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions } from "@/utils/options";
+import { capOptions, joinOptions, tSliderOptions, subpathTValueVariantOptions, intersectionErrorOptions, minimumSeparationOptions, separationDiskDiameter } from "@/utils/options";
 import type { SubpathCallback, SubpathInputOption, WasmSubpathInstance } from "@/utils/types";
 import { SUBPATH_T_VALUE_VARIANTS } from "@/utils/types";
 
@@ -59,12 +59,17 @@ const subpathFeatures = {
 		name: "Bounding Box",
 		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
 	},
+	"poisson-disk-points": {
+		name: "Poisson-Disk Points",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.poisson_disk_points(options.separation_disk_diameter),
+		inputOptions: [separationDiskDiameter],
+	},
 	inflections: {
 		name: "Inflections",
 		callback: (subpath: WasmSubpathInstance): string => subpath.inflections(),
 	},
 	"intersect-linear": {
-		name: "Intersect (Line Segment)",
+		name: "Intersect (Linear Segment)",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
 			subpath.intersect_line_segment(
 				[
@@ -105,9 +110,22 @@ const subpathFeatures = {
 			),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
-	"self-intersect": {
-		name: "Self Intersect",
+	"intersect-self": {
+		name: "Intersect (Self)",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string => subpath.self_intersections(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"intersect-rectangle": {
+		name: "Intersect (Rectangle)",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>): string =>
+			subpath.intersect_rectangle(
+				[
+					[75, 50],
+					[175, 150],
+				],
+				options.error,
+				options.minimum_separation,
+			),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	curvature: {

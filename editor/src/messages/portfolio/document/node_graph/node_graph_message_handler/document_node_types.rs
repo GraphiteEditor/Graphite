@@ -2707,6 +2707,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Poisson-Disk Points",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Separation Disk Diameter", TaggedValue::F32(10.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::poisson_disk_points_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Splines from Points",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
@@ -2723,7 +2735,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Source", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Target", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Start Index", TaggedValue::U32(0), false),
-				DocumentInputType::value("Time", TaggedValue::F64(0.5), false),
+				DocumentInputType::value("Time", TaggedValue::F32(0.5), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			manual_composition: Some(concrete!(Footprint)),

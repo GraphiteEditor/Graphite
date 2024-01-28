@@ -580,7 +580,7 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "bezier-rs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dyn-any",
  "glam",
@@ -2329,6 +2329,7 @@ dependencies = [
  "node-macro",
  "num-derive",
  "num-traits",
+ "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rustybuzz 0.8.0",
  "serde",

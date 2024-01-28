@@ -3,7 +3,7 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
 use crate::TValue;
 
-use glam::{DMat2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use std::f64::consts::PI;
 
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
@@ -23,6 +23,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `error`: an optional f64 value to provide an error bound
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-linear/solo" title="Intersection Demo"></iframe>
+	///
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-quadratic/solo" title="Intersection Demo"></iframe>
+	///
 	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		self.iter()
@@ -35,11 +39,64 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-cubic/solo" title="Intersection Demo"></iframe>
 	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 		intersection_t_values
+	}
+
+	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
+	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_count_prerotated`].
+	pub fn ray_test_crossings_count(&self, ray_start: DVec2, ray_direction: DVec2) -> usize {
+		self.iter().map(|bezier| bezier.ray_test_crossings(ray_start, ray_direction).count()).sum()
+	}
+
+	/// Returns how many times a given ray intersects with this subpath. (`ray_direction` does not need to be normalized.)
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`ray_test_crossings_count`] which provides an easier interface by taking a ray direction vector.
+	/// Instead, this version requires a rotation matrix for the ray's rotation and a prerotated version of this subpath that has had its rotation applied.
+	pub fn ray_test_crossings_count_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_subpath: &Self) -> usize {
+		self.iter()
+			.zip(rotated_subpath.iter())
+			.map(|(bezier, rotated_bezier)| bezier.ray_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier).count())
+			.sum()
+	}
+
+	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
+	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
+	/// If this needs to be called frequently, consider instead using [`point_inside_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	pub fn point_inside(&self, point: DVec2) -> bool {
+		// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
+		const SIN_13DEG: f64 = 0.22495105434;
+		const COS_13DEG: f64 = 0.97437006478;
+		const DIRECTION1: DVec2 = DVec2::new(SIN_13DEG, COS_13DEG);
+		const DIRECTION2: DVec2 = DVec2::new(-COS_13DEG, -SIN_13DEG);
+
+		// We (inefficiently) check for odd crossings in two directions and make sure they agree to reduce how often anchor points cause a double-increment
+		let test1 = self.ray_test_crossings_count(point, DIRECTION1) % 2 == 1;
+		let test2 = self.ray_test_crossings_count(point, DIRECTION2) % 2 == 1;
+
+		test1 && test2
+	}
+
+	/// Returns true if the given point is inside this subpath. Open paths are NOT automatically closed so you'll need to call `set_closed(true)` before calling this.
+	/// Self-intersecting subpaths use the `evenodd` fill rule for checking in/outside-ness: <https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/fill-rule>.
+	/// This version of the function is for better performance when calling it frequently because it lets the caller precompute the rotations once instead of every call.
+	/// If that isn't important, use [`point_inside`] which provides an easier interface.
+	/// Instead, this version requires a pair of rotation matrices for the ray's rotation and a pair of prerotated versions of this subpath.
+	/// They should face in different directions that are unlikely to align in the real world. Consider using the following rotations:
+	/// ```rs
+	/// const SIN_13DEG: f64 = 0.22495105434;
+	/// const COS_13DEG: f64 = 0.97437006478;
+	/// const DIRECTION1: DVec2 = DVec2::new(SIN_13DEG, COS_13DEG);
+	/// const DIRECTION2: DVec2 = DVec2::new(-COS_13DEG, -SIN_13DEG);
+	/// ```
+	pub fn point_inside_prerotated(&self, point: DVec2, rotation_matrix1: DMat2, rotation_matrix2: DMat2, rotated_subpath1: &Self, rotated_subpath2: &Self) -> bool {
+		// We (inefficiently) check for odd crossings in two directions and make sure they agree to reduce how often anchor points cause a double-increment
+		let test1 = self.ray_test_crossings_count_prerotated(point, rotation_matrix1, rotated_subpath1) % 2 == 1;
+		let test2 = self.ray_test_crossings_count_prerotated(point, rotation_matrix2, rotated_subpath2) % 2 == 1;
+
+		test1 && test2
 	}
 
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
@@ -48,7 +105,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/self-intersect/solo" title="Self-Intersection Demo"></iframe>
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-self/solo" title="Self-Intersection Demo"></iframe>
 	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
@@ -66,6 +123,79 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			});
 		});
 		intersections_vec
+	}
+
+	/// Calculates the intersection points the subpath has with a given rectangle and returns a list of `(usize, f64)` tuples,
+	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
+	/// that curve where the intersection occurred.
+	/// Expects the following:
+	/// - `corner1`: any corner of the axis-aligned box to intersect with
+	/// - `corner2`: the corner opposite to `corner1`
+	/// - `error`: an optional f64 value to provide an error bound
+	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
+	/// <iframe frameBorder="0" width="100%" height="375px" src="https://graphite.rs/libraries/bezier-rs#subpath/intersect-rectangle/solo" title="Intersection Demo"></iframe>
+	pub fn rectangle_intersections(&self, corner1: DVec2, corner2: DVec2, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+		[
+			Bezier::from_linear_coordinates(corner1.x, corner1.y, corner2.x, corner1.y),
+			Bezier::from_linear_coordinates(corner2.x, corner1.y, corner2.x, corner2.y),
+			Bezier::from_linear_coordinates(corner2.x, corner2.y, corner1.x, corner2.y),
+			Bezier::from_linear_coordinates(corner1.x, corner2.y, corner1.x, corner1.y),
+		]
+		.iter()
+		.flat_map(|bezier| self.intersections(bezier, error, minimum_separation))
+		.collect()
+	}
+
+	/// Checks if any intersections exist between this subpath and the four edges of the rectangle defined by the top-left `corner1` and bottom-right `corner2`.
+	/// This is faster than calling [`rectangle_intersections`]`.len()` because it short-circuits as soon as an intersection is found.
+	pub fn rectangle_intersections_exist(&self, corner1: DVec2, corner2: DVec2) -> bool {
+		let rotate_by_90deg = |point| DMat2::from_angle(std::f64::consts::FRAC_PI_2) * point;
+
+		for bezier in self.iter() {
+			// Check that the two bounding boxes don't intersect, since we can avoid doing intersection's cubic root finding in that case
+			let [bezier_corner1, bezier_corner2] = bezier.bounding_box_of_anchors_and_handles();
+			if !(((corner1.x <= bezier_corner1.x) && (bezier_corner1.x <= corner2.x) || (corner1.x <= bezier_corner2.x) && (bezier_corner2.x <= corner2.x))
+				&& corner1.y <= bezier_corner2.y
+				&& corner2.y >= bezier_corner1.y
+				|| ((corner1.y <= bezier_corner1.y) && (bezier_corner1.y <= corner2.y) || (corner1.y <= bezier_corner2.y) && (bezier_corner2.y <= corner2.y))
+					&& corner1.x <= bezier_corner2.x
+					&& corner2.x >= bezier_corner1.x)
+			{
+				continue;
+			}
+
+			// Original rotation axis
+			if bezier.line_test_crossings_prerotated(corner1, DMat2::IDENTITY, bezier).any(|intersection_point| {
+				let (_, y) = bezier.unrestricted_parametric_evaluate(intersection_point).into();
+				y >= corner1.y && y <= corner2.y
+			}) {
+				return true;
+			}
+			if bezier.line_test_crossings_prerotated(corner2, DMat2::IDENTITY, bezier).any(|intersection_point| {
+				let (_, y) = bezier.unrestricted_parametric_evaluate(intersection_point).into();
+				y >= corner1.y && y <= corner2.y
+			}) {
+				return true;
+			}
+
+			// Perpendicular to original rotation axis
+			let rotated_bezier = bezier.apply_transformation(rotate_by_90deg);
+			if bezier.line_test_crossings_prerotated(corner1, DMat2::IDENTITY, rotated_bezier).any(|intersection_point| {
+				let (x, _) = bezier.unrestricted_parametric_evaluate(intersection_point).into();
+				x >= corner1.x && x <= corner2.x
+			}) {
+				return true;
+			}
+			if bezier.line_test_crossings_prerotated(corner2, DMat2::IDENTITY, rotated_bezier).any(|intersection_point| {
+				let (x, _) = bezier.unrestricted_parametric_evaluate(intersection_point).into();
+				x >= corner1.x && x <= corner2.x
+			}) {
+				return true;
+			}
+		}
+
+		false
 	}
 
 	/// Returns a normalized unit vector representing the tangent on the subpath based on the parametric `t`-value provided.
@@ -135,6 +265,55 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Does a path contain a point? Based on the non zero winding
 	pub fn contains_point(&self, target_point: DVec2) -> bool {
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+	}
+
+	/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
+	/// The `separation_disk_diameter` determines the minimum distance between all points from one another.
+	/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:
+	/// - It's inside the shape
+	/// - It's not closer than `separation_disk_diameter` to any other point from a previous accepted dart throw
+	/// This repeats until accepted darts fill all possible areas between one another.
+	///
+	/// While the conceptual process described above asymptotically slows down and is never guaranteed to produce a maximal set in finite time,
+	/// this is implemented with an algorithm that produces a maximal set in O(n) time. The slowest part is actually checking if points are inside the subpath shape.
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64, rng: impl FnMut() -> f64) -> Vec<DVec2> {
+		let Some(bounding_box) = self.bounding_box() else { return Vec::new() };
+		let (offset_x, offset_y) = bounding_box[0].into();
+		let (width, height) = (bounding_box[1] - bounding_box[0]).into();
+
+		// TODO: Optimize the following code and make it more robust
+
+		let mut shape = self.clone();
+		shape.set_closed(true);
+		shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
+
+		const SIN_13DEG: f64 = 0.22495105434;
+		const COS_13DEG: f64 = 0.97437006478;
+		let rotated_subpath = |ray_direction: DVec2| {
+			// Rotate the bezier and the line by the angle that the line makes with the x axis
+			let angle = ray_direction.angle_between(DVec2::new(0., 1.));
+			let rotation_matrix = DMat2::from_angle(angle);
+
+			let mut prerotated = shape.clone();
+			prerotated.apply_transform(DAffine2::from_angle(angle));
+			(rotation_matrix, prerotated)
+		};
+		// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
+		let (matrix1, prerotated1) = rotated_subpath(DVec2::new(SIN_13DEG, COS_13DEG));
+		let (matrix2, prerotated2) = rotated_subpath(DVec2::new(-COS_13DEG, -SIN_13DEG));
+		let point_in_shape_checker = |point: DVec2| shape.point_inside_prerotated(point, matrix1, matrix2, &prerotated1, &prerotated2);
+
+		let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
+			let corner2 = corner1 + DVec2::splat(size);
+			self.rectangle_intersections_exist(corner1, corner2)
+		};
+
+		let mut points = crate::poisson_disk::poisson_disk_sample(width, height, separation_disk_diameter, point_in_shape_checker, square_edges_intersect_shape_checker, rng);
+		for point in &mut points {
+			point.x += offset_x;
+			point.y += offset_y;
+		}
+		points
 	}
 
 	/// Returns the manipulator point that is needed for a miter join if it is possible.
@@ -222,7 +401,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		compute_circular_subpath_details(left, arc_point, right, center, None)
 	}
 
-	/// Returns the two manipulator groups that create a sqaure cap between the end of `self` and the beginning of `other`.
+	/// Returns the two manipulator groups that create a square cap between the end of `self` and the beginning of `other`.
 	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;

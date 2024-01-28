@@ -4,6 +4,7 @@ use crate::utils::{parse_cap, parse_join};
 use bezier_rs::{Bezier, ManipulatorGroup, Subpath, SubpathTValue, TValueType};
 
 use glam::DVec2;
+use js_sys::Math;
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
 
@@ -171,7 +172,7 @@ impl WasmSubpath {
 			None => wrap_svg_tag(subpath_svg),
 			Some(bounding_box) => {
 				let content = format!(
-					"{subpath_svg}<rect x={} y ={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
+					"{subpath_svg}<rect x={} y={} width=\"{}\" height=\"{}\" style=\"fill:{NONE};stroke:{RED};stroke-width:1\" />",
 					bounding_box[0].x,
 					bounding_box[0].y,
 					bounding_box[1].x - bounding_box[0].x,
@@ -180,6 +181,21 @@ impl WasmSubpath {
 				wrap_svg_tag(content)
 			}
 		}
+	}
+
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64) -> String {
+		let r = separation_disk_diameter / 2.;
+
+		let subpath_svg = self.to_default_svg();
+		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random);
+
+		let points_style = format!("<style class=\"poisson\">style.poisson ~ circle {{ fill: {RED}; opacity: 0.25; }}</style>");
+		let content = points
+			.iter()
+			.map(|point| format!("<circle cx=\"{}\" cy=\"{}\" r=\"{r}\" />", point.x, point.y))
+			.collect::<Vec<_>>()
+			.join("");
+		wrap_svg_tag(format!("{subpath_svg}{points_style}{content}"))
 	}
 
 	pub fn inflections(&self) -> String {
@@ -340,6 +356,37 @@ impl WasmSubpath {
 			.fold(String::new(), |acc, item| format!("{acc}{item}"));
 
 		wrap_svg_tag(format!("{subpath_svg}{self_intersections_svg}"))
+	}
+
+	pub fn intersect_rectangle(&self, js_points: JsValue, error: f64, minimum_separation: f64) -> String {
+		let points: [DVec2; 2] = serde_wasm_bindgen::from_value(js_points).unwrap();
+
+		let subpath_svg = self.to_default_svg();
+
+		let mut rectangle_svg = String::new();
+		[
+			Bezier::from_linear_coordinates(points[0].x, points[0].y, points[1].x, points[0].y),
+			Bezier::from_linear_coordinates(points[1].x, points[0].y, points[1].x, points[1].y),
+			Bezier::from_linear_coordinates(points[1].x, points[1].y, points[0].x, points[1].y),
+			Bezier::from_linear_coordinates(points[0].x, points[1].y, points[0].x, points[0].y),
+		]
+		.iter()
+		.for_each(|line| line.to_svg(&mut rectangle_svg, CURVE_ATTRIBUTES.to_string().replace(BLACK, RED), String::new(), String::new(), String::new()));
+
+		let intersections_svg = self
+			.0
+			.rectangle_intersections(points[0], points[1], Some(error), Some(minimum_separation))
+			.iter()
+			.map(|(segment_index, intersection_t)| {
+				let point = self.0.evaluate(SubpathTValue::Parametric {
+					segment_index: *segment_index,
+					t: *intersection_t,
+				});
+				draw_circle(point, 4., RED, 1.5, WHITE)
+			})
+			.fold(String::new(), |acc, item| format!("{acc}{item}"));
+
+		wrap_svg_tag(format!("{subpath_svg}{rectangle_svg}{intersections_svg}"))
 	}
 
 	pub fn curvature(&self, t: f64, t_variant: String) -> String {
