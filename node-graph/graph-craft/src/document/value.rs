@@ -73,6 +73,7 @@ pub enum TaggedValue {
 	Footprint(graphene_core::transform::Footprint),
 	RenderOutput(RenderOutput),
 	Palette(Vec<Color>),
+	RichText(graphene_core::text::RichText),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -150,6 +151,7 @@ impl Hash for TaggedValue {
 			Self::Footprint(x) => x.hash(state),
 			Self::RenderOutput(x) => x.hash(state),
 			Self::Palette(x) => x.hash(state),
+			Self::RichText(x) => x.hash(state),
 		}
 	}
 }
@@ -214,6 +216,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(x) => Box::new(x),
 			TaggedValue::RenderOutput(x) => Box::new(x),
 			TaggedValue::Palette(x) => Box::new(x),
+			TaggedValue::RichText(x) => Box::new(x),
 		}
 	}
 
@@ -228,6 +231,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			TaggedValue::Color(x) => format!("Color {x:?}"),
+			TaggedValue::RichText(x) => format!("\"rich{}\"", x.text),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -290,6 +294,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 			TaggedValue::Palette(_) => concrete!(Vec<Color>),
+			TaggedValue::RichText(_) => concrete!(graphene_core::text::RichText),
 		}
 	}
 
@@ -357,6 +362,7 @@ impl<'a> TaggedValue {
 			}
 			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<Color>>() => Ok(TaggedValue::Palette(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::text::RichText>() => Ok(TaggedValue::RichText(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}

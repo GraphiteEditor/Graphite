@@ -16,7 +16,8 @@ std = [
 	"glam/std",
 	"specta",
 	"num-traits/std",
-	"rustybuzz",
+	"cosmic-text",
+	"unicode-segmentation",
 	"image",
 ]
 default = ["serde", "kurbo", "log", "std", "rand_chacha", "wasm"]
@@ -52,7 +53,8 @@ image = { workspace = true, optional = true, default-features = false, features 
 	"png",
 ] }
 specta = { workspace = true, optional = true }
-rustybuzz = { workspace = true, optional = true }
+cosmic-text = { workspace = true, optional = true }
+unicode-segmentation = { version = "1.10", optional = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true, default-features = false, features = ["i128"] }
 wasm-bindgen = { workspace = true, optional = true }

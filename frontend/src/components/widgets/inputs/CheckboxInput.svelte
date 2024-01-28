@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import { ICONS } from "@graphite/utility-functions/icons";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -35,7 +36,16 @@
 </script>
 
 <LayoutRow class="checkbox-input">
-	<input type="checkbox" id={`checkbox-input-${id}`} {checked} on:change={(_) => dispatch("checked", inputElement?.checked)} {disabled} tabindex={disabled ? -1 : 0} bind:this={inputElement} />
+	<input
+		type="checkbox"
+		id={`checkbox-input-${id}`}
+		{checked}
+		style:height={`${ICONS[icon].size}px`}
+		on:change={(_) => dispatch("checked", inputElement?.checked)}
+		{disabled}
+		tabindex={disabled ? -1 : 0}
+		bind:this={inputElement}
+	/>
 	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
@@ -59,7 +69,6 @@
 		// Unchecked
 		label {
 			display: flex;
-			height: 16px;
 			// Provides rounded corners for the :focus outline
 			border-radius: 2px;
 
