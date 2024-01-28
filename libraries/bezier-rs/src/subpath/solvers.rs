@@ -128,6 +128,18 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let rotate_by_90deg = |point| DMat2::from_angle(std::f64::consts::FRAC_PI_2) * point;
 
 		for bezier in self.iter() {
+			// Check that the two bounding boxes don't intersect, since we can avoid doing intersection's cubic root finding in that case
+			let [bezier_corner1, bezier_corner2] = bezier.bounding_box_of_anchors_and_handles();
+			if !(((corner1.x <= bezier_corner1.x) && (bezier_corner1.x <= corner2.x) || (corner1.x <= bezier_corner2.x) && (bezier_corner2.x <= corner2.x))
+				&& corner1.y <= bezier_corner2.y
+				&& corner2.y >= bezier_corner1.y
+				|| ((corner1.y <= bezier_corner1.y) && (bezier_corner1.y <= corner2.y) || (corner1.y <= bezier_corner2.y) && (bezier_corner2.y <= corner2.y))
+					&& corner1.x <= bezier_corner2.x
+					&& corner2.x >= bezier_corner1.x)
+			{
+				continue;
+			}
+
 			// Original rotation axis
 			if bezier.line_test_crossings_prerotated(corner1, DMat2::IDENTITY, bezier).any(|intersection_point| {
 				let (_, y) = bezier.unrestricted_parametric_evaluate(intersection_point).into();

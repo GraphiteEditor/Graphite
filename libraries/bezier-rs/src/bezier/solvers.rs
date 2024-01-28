@@ -181,6 +181,14 @@ impl Bezier {
 		[endpoints_min, endpoints_max]
 	}
 
+	pub fn bounding_box_of_anchors_and_handles(&self) -> [DVec2; 2] {
+		match self.handles {
+			BezierHandles::Linear => [self.start.min(self.end), self.start.max(self.end)],
+			BezierHandles::Quadratic { handle } => [self.start.min(self.end).min(handle), self.start.max(self.end).max(handle)],
+			BezierHandles::Cubic { handle_start, handle_end } => [self.start.min(self.end).min(handle_start).min(handle_end), self.start.max(self.end).max(handle_start).max(handle_end)],
+		}
+	}
+
 	/// Returns `true` if the bounding box of the bezier is contained entirely within a rectangle defined by its minimum and maximum corners.
 	pub fn is_contained_within(&self, min_corner: DVec2, max_corner: DVec2) -> bool {
 		let [bounding_box_min, bounding_box_max] = self.bounding_box();
@@ -380,7 +388,7 @@ impl Bezier {
 
 	pub fn line_test_crossings_prerotated(&self, point_on_line: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
 		// Translate the bezier such that the line becomes aligned on top of the x-axis
-		let vertical_distance = (rotation_matrix * point_on_line).x;
+		let vertical_distance = (rotation_matrix.x_axis.x * point_on_line.x) + (rotation_matrix.y_axis.x * point_on_line.y);
 		let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
 		// Compute the roots of the resulting bezier curve

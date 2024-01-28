@@ -60,7 +60,7 @@ pub fn poisson_disk_sample(
 		// If the dart hit a valid spot, save that point (we're now permanently done with this target square's region)
 		if point_not_covered(point, diameter_squared, &points_grid) {
 			// Silently reject the point if it lies outside the shape
-			if point_in_shape_checker(point) {
+			if active_square.fully_in_shape() || point_in_shape_checker(point) {
 				points_grid.insert(point);
 			}
 		}
@@ -98,19 +98,16 @@ pub fn poisson_disk_sample(
 					return None;
 				}
 
-				// let square_edges_intersect_shape = square_edges_intersect_shape_checker(sub_square, subdivided_size);
-
-				// // We can exit early, without doing the expensive upcoming checks, if this case holds.
-				// // If this sub-square's parent is known to not be fully inside the shape, that might mean that parent intersects the shape's border. So the parent is either outside the shape or intersecting it.
-				// // Therefore this sub-square might also intersect the border, so we check that. If it doesn't intersect, that means this sub-square is fully outside the shape, so we filter it out.
-				// if !active_square.fully_in_shape() && !square_edges_intersect_shape {
-				// 	return None;
-				// };
-
-				// // The sub-square is fully inside the shape if its top-left corner is inside and its edges don't intersect the shape border
-				// let sub_square_inside_shape = point_in_shape_checker(sub_square) && !square_edges_intersect_shape;
-
-				Some(ActiveSquare::new(sub_square, /*sub_square_inside_shape*/ false))
+				// Fully inside the shape
+				if active_square.fully_in_shape() {
+					Some(ActiveSquare::new(sub_square, true))
+				}
+				// Intersecting the shape's border
+				else {
+					// The sub-square is fully inside the shape if its top-left corner is inside and its edges don't intersect the shape border
+					let sub_square_fully_inside_shape = !square_edges_intersect_shape_checker(sub_square, subdivided_size) && point_in_shape_checker(sub_square);
+					Some(ActiveSquare::new(sub_square, sub_square_fully_inside_shape))
+				}
 			});
 			next_level_deeper.add_squares(new_sub_squares);
 		}

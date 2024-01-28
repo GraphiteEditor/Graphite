@@ -150,7 +150,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			return Ok(());
 		}
 		let start = transform.transform_point2(self[0].anchor);
-		write!(svg, "{SVG_ARG_MOVE}{},{}", start.x, start.y)?;
+		write!(svg, "{SVG_ARG_MOVE}{:.6},{:.6}", start.x, start.y)?;
 		for bezier in self.iter() {
 			bezier.apply_transformation(|pos| transform.transform_point2(pos)).write_curve_argument(svg)?;
 			svg.push(' ');
