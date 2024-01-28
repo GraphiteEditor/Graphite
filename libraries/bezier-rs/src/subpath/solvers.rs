@@ -322,8 +322,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let in_tangent = in_segment.tangent(TValue::Parametric(1.));
 		let out_tangent = out_segment.tangent(TValue::Parametric(0.));
 
-		let normalized_in_tangent = in_tangent.normalize();
-		let normalized_out_tangent = out_tangent.normalize();
+		let normalized_in_tangent = in_tangent.try_normalize()?;
+		let normalized_out_tangent = out_tangent.try_normalize()?;
 
 		// The tangents must not be parallel for the miter join
 		if !normalized_in_tangent.abs_diff_eq(normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) && !normalized_in_tangent.abs_diff_eq(-normalized_out_tangent, MAX_ABSOLUTE_DIFFERENCE) {
@@ -333,8 +333,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let intersection_to_end = out_segment.start() - intersection;
 
 			// Draw the miter join if the intersection occurs in the correct direction with respect to the path
-			if start_to_intersection.normalize().abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
-				&& intersection_to_end.normalize().abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
+			if start_to_intersection.try_normalize()?.abs_diff_eq(in_tangent, MAX_ABSOLUTE_DIFFERENCE)
+				&& intersection_to_end.try_normalize()?.abs_diff_eq(out_tangent, MAX_ABSOLUTE_DIFFERENCE)
 				&& miter_limit >= 1. / (start_to_intersection.angle_between(-intersection_to_end).abs() / 2.).sin()
 			{
 				return Some(ManipulatorGroup {

@@ -12,7 +12,6 @@ use graphene_core::memo::IORecord;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice,
 };
-use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
 use glam::{DVec2, IVec2, UVec2};
@@ -109,7 +108,27 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
-		])
+		]);
+	} else if let NodeInput::Value {
+		tagged_value: TaggedValue::RichText(x),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let text = x.clone();
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextAreaInput::new(x.text.clone())
+				.on_update(update_value(
+					move |x: &TextAreaInput| {
+						let mut text = text.clone();
+						text.text = x.value.clone();
+						TaggedValue::RichText(text)
+					},
+					node_id,
+					index,
+				))
+				.widget_holder(),
+		]);
 	}
 	widgets
 }
@@ -282,40 +301,6 @@ fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 		])
 	}
 	widgets
-}
-
-fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> (Vec<WidgetHolder>, Option<Vec<WidgetHolder>>) {
-	let mut first_widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
-	let mut second_widgets = None;
-
-	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
-
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::Font(font),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		first_widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			FontInput::new(font.font_family.clone(), font.font_style.clone())
-				.on_update(update_value(from_font_input, node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		]);
-
-		let mut second_row = vec![TextLabel::new("").widget_holder()];
-		add_blank_assist(&mut second_row);
-		second_row.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			FontInput::new(font.font_family.clone(), font.font_style.clone())
-				.is_style_picker(true)
-				.on_update(update_value(from_font_input, node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		]);
-		second_widgets = Some(second_row);
-	}
-	(first_widgets, second_widgets)
 }
 
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
@@ -1594,16 +1579,11 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let text = text_area_widget(document_node, node_id, 1, "Text", true);
-	let (font, style) = font_inputs(document_node, node_id, 2, "Font", true);
-	let size = number_widget(document_node, node_id, 3, "Size", NumberInput::default().unit(" px").min(1.), true);
+	let text = text_area_widget(document_node, node_id, 1, "Rich Text", true);
+	let line_width = number_widget(document_node, node_id, 2, "Line Width", NumberInput::default().min(0.), true);
+	let path = start_widgets(document_node, node_id, 3, "Path", FrontendGraphDataType::Vector, false);
 
-	let mut result = vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: font }];
-	if let Some(style) = style {
-		result.push(LayoutGroup::Row { widgets: style });
-	}
-	result.push(LayoutGroup::Row { widgets: size });
-	result
+	vec![LayoutGroup::Row { widgets: text }, LayoutGroup::Row { widgets: line_width }, LayoutGroup::Row { widgets: path }]
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

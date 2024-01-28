@@ -517,15 +517,6 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// A text box was committed
-	#[wasm_bindgen(js_name = onChangeText)]
-	pub fn on_change_text(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextToolMessage::TextChange { new_text };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
 	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>, is_default: bool) -> Result<(), JsValue> {
@@ -542,11 +533,18 @@ impl JsEditorHandle {
 	}
 
 	/// A text box was changed
-	#[wasm_bindgen(js_name = updateBounds)]
-	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
-		let message = TextToolMessage::UpdateBounds { new_text };
+	#[wasm_bindgen(js_name = onTextInput)]
+	pub fn on_text_input(&self, input_type: String, data: Option<String>) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextInput { input_type, data };
 		self.dispatch(message);
+		Ok(())
+	}
 
+	/// A text box was changed
+	#[wasm_bindgen(js_name = onTextNavigate)]
+	pub fn on_text_navigate(&self, key: String, shift: bool, ctrl: bool) -> Result<(), JsValue> {
+		let message = TextToolMessage::TextNavigate { key, shift, ctrl };
+		self.dispatch(message);
 		Ok(())
 	}
 

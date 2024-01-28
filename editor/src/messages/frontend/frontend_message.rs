@@ -6,7 +6,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
 
 use graph_craft::document::NodeId;
-use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
 #[impl_message(Message, Frontend)]
@@ -24,15 +23,6 @@ pub enum FrontendMessage {
 	},
 	DisplayEditableTextbox {
 		text: String,
-		#[serde(rename = "lineWidth")]
-		line_width: Option<f64>,
-		#[serde(rename = "fontSize")]
-		font_size: f64,
-		color: Color,
-		url: String,
-		transform: [f64; 6],
-	},
-	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
 	},
 	DisplayRemoveEditableTextbox,
@@ -94,7 +84,6 @@ pub enum FrontendMessage {
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
-	TriggerTextCommit,
 	TriggerTextCopy {
 		#[serde(rename = "copyText")]
 		copy_text: String,

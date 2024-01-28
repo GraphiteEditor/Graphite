@@ -7,7 +7,6 @@ use crate::messages::prelude::*;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::renderer::Quad;
-use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
@@ -180,17 +179,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
-			GraphOperationMessage::NewTextLayer {
-				id,
-				text,
-				font,
-				size,
-				parent,
-				insert_index,
-			} => {
+			GraphOperationMessage::NewTextLayer { id, text, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
-					modify_inputs.insert_text(text, font, size, layer);
+					modify_inputs.insert_text(text, layer);
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
@@ -318,10 +310,11 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Image(_image) => {
 			warn!("Skip image")
 		}
-		usvg::Node::Text(text) => {
-			let font = Font::new(crate::consts::DEFAULT_FONT_FAMILY.to_string(), crate::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), font, 24., layer);
-			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
+		usvg::Node::Text(_text) => {
+			warn!("Skip text");
+			// let font = Font::new(crate::consts::DEFAULT_FONT_FAMILY.to_string(), crate::consts::DEFAULT_FONT_STYLE.to_string());
+			// modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), layer);
+			// modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}
 	}
 }

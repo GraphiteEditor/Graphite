@@ -94,6 +94,7 @@ import AlignRight from "@graphite-frontend/assets/icon-16px-solid/align-right.sv
 import AlignTop from "@graphite-frontend/assets/icon-16px-solid/align-top.svg";
 import AlignVerticalCenter from "@graphite-frontend/assets/icon-16px-solid/align-vertical-center.svg";
 import Artboard from "@graphite-frontend/assets/icon-16px-solid/artboard.svg";
+import Bold from "@graphite-frontend/assets/icon-16px-solid/bold.svg";
 import BooleanDifference from "@graphite-frontend/assets/icon-16px-solid/boolean-difference.svg";
 import BooleanIntersect from "@graphite-frontend/assets/icon-16px-solid/boolean-intersect.svg";
 import BooleanSubtractBack from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-back.svg";
@@ -119,6 +120,7 @@ import GraphViewOpen from "@graphite-frontend/assets/icon-16px-solid/graph-view-
 import GraphiteLogo from "@graphite-frontend/assets/icon-16px-solid/graphite-logo.svg";
 import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg";
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
+import Italic from "@graphite-frontend/assets/icon-16px-solid/italic.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
 import NewLayer from "@graphite-frontend/assets/icon-16px-solid/new-layer.svg";
@@ -167,6 +169,7 @@ const SOLID_16PX = {
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
 	Artboard: { svg: Artboard, size: 16 },
+	Bold: { svg: Bold, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },
@@ -192,6 +195,7 @@ const SOLID_16PX = {
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
 	IconsGrid: { svg: IconsGrid, size: 16 },
 	Image: { svg: Image, size: 16 },
+	Italic: { svg: Italic, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },

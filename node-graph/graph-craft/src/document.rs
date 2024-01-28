@@ -3,6 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
+use graphene_core::vector::VectorData;
 use graphene_core::{GraphicGroup, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
@@ -1160,42 +1161,40 @@ impl NodeNetwork {
 		self.nodes.extend(extraction_nodes);
 	}
 
-	/// Due to the adaptive resolution system, nodes that take a `GraphicGroup` as input must call the upstream node with the `Footprint` parameter.
+	/// Due to the adaptive resolution system, nodes that take a `GraphicGroup` or `VectorData` as input must call the upstream node with the `Footprint` parameter.
 	///
-	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty`, in order to satisfy the type system.
+	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty` or `VectorData::empty()`, in order to satisfy the type system.
 	/// This is because the standard value node takes in `()`.
 	pub fn resolve_empty_stacks(&mut self) {
 		const EMPTY_STACK: &str = "Empty Stack";
 
-		let new_id = generate_uuid();
-		let mut used = false;
+		for target_tagged_value in [TaggedValue::GraphicGroup(GraphicGroup::EMPTY), TaggedValue::VectorData(VectorData::empty())] {
+			let new_id = generate_uuid();
+			let mut used = false;
 
-		// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
-		for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
-			for input in &mut node.inputs {
-				if let NodeInput::Value {
-					tagged_value: TaggedValue::GraphicGroup(graphic_group),
-					..
-				} = input
-				{
-					if *graphic_group == GraphicGroup::EMPTY {
-						*input = NodeInput::node(NodeId(new_id), 0);
-						used = true;
+			// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
+			for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
+				for input in &mut node.inputs {
+					if let NodeInput::Value { tagged_value, .. } = input {
+						if *tagged_value == target_tagged_value {
+							*input = NodeInput::node(NodeId(new_id), 0);
+							used = true;
+						}
 					}
 				}
 			}
-		}
 
-		// Only insert the node if necessary.
-		if used {
-			let new_node = DocumentNode {
-				name: EMPTY_STACK.to_string(),
-				implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
-				manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
-				inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), false)],
-				..Default::default()
-			};
-			self.nodes.insert(NodeId(new_id), new_node);
+			// Only insert the node if necessary.
+			if used {
+				let new_node = DocumentNode {
+					name: EMPTY_STACK.to_string(),
+					implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+					manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
+					inputs: vec![NodeInput::value(target_tagged_value, false)],
+					..Default::default()
+				};
+				self.nodes.insert(NodeId(new_id), new_node);
+			}
 		}
 	}
 

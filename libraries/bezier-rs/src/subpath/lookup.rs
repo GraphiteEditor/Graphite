@@ -35,7 +35,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
 	pub fn global_euclidean_to_local_euclidean(&self, global_t: f64, lengths: &[f64], total_length: f64) -> (usize, f64) {
 		let mut accumulator = 0.;
-		for (index, length) in lengths.iter().enumerate() {
+		for (index, &length) in lengths.iter().enumerate() {
 			let length_ratio = length / total_length;
 			if (index == 0 || accumulator <= global_t) && global_t <= accumulator + length_ratio {
 				return (index, ((global_t - accumulator) / length_ratio).clamp(0., 1.));

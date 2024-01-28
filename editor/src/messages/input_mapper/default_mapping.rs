@@ -134,6 +134,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=TextToolMessage::Select),
+		entry!(PointerMove; action_dispatch=TextToolMessage::Drag),
 		entry!(KeyUp(Lmb); action_dispatch=TextToolMessage::Interact),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::CommitText),

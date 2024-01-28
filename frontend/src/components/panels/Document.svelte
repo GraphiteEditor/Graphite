@@ -2,16 +2,13 @@
 	import { getContext, onMount, tick } from "svelte";
 
 	import type { DocumentState } from "@graphite/state-providers/document";
-	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
-		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
-		TriggerTextCommit,
 		TriggerViewportResize,
 		UpdateDocumentArtwork,
 		UpdateDocumentRulers,
@@ -37,7 +34,7 @@
 	const document = getContext<DocumentState>("document");
 
 	// Interactive text editing
-	let textInput: undefined | HTMLDivElement = undefined;
+	let textInput: undefined | HTMLInputElement = undefined;
 	let showTextInput: boolean;
 	let textInputMatrix: number[];
 
@@ -286,54 +283,39 @@
 		canvasCursor = cursorString;
 	}
 
-	// Text entry
-	export function triggerTextCommit() {
-		if (!textInput) return;
-		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.instance.onChangeText(textCleaned);
-	}
-
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
-		showTextInput = true;
+		if (!showTextInput) {
+			showTextInput = true;
+			await tick();
 
-		await tick();
+			if (!textInput) {
+				return;
+			}
 
+			textInput.style.transformOrigin = "0 0";
+			textInput.style.width = "20px";
+			textInput.style.height = "auto";
+			textInput.style.color = "transparent";
+			textInput.style.background = "transparent";
+			textInput.style.opacity = "0";
+
+			textInput.onkeydown = (e) => editor.instance.onTextNavigate(e.key, e.shiftKey, e.ctrlKey);
+			textInput.ondrag = (e) => e.preventDefault();
+
+			textInput.onbeforeinput = (e) => {
+				e.preventDefault();
+				editor.instance.onTextInput(e.inputType, e.data || undefined);
+			};
+			addEventListener("compositionend", (e) => editor.instance.onTextInput("compositionend", e.data || undefined));
+		}
 		if (!textInput) {
 			return;
 		}
-
-		if (displayEditableTextbox.text === "") textInput.textContent = "";
-		else textInput.textContent = `${displayEditableTextbox.text}\n`;
-
-		textInput.contentEditable = "true";
-		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.lineWidth ? `${displayEditableTextbox.lineWidth}px` : "max-content";
-		textInput.style.height = "auto";
-		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
-
-		textInput.oninput = () => {
-			if (!textInput) return;
-			editor.instance.updateBounds(textInputCleanup(textInput.innerText));
-		};
+		textInput.value = displayEditableTextbox.text;
 		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
-
-		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
-
-		const range = window.document.createRange();
-		range.selectNodeContents(textInput);
-
-		const selection = window.getSelection();
-		if (selection) {
-			selection.removeAllRanges();
-			selection.addRange(range);
-		}
 
 		textInput.focus();
-		textInput.click();
+		textInput.setSelectionRange(0, textInput.value.length);
 
 		// Sends the text input element used for interactively editing with the text tool in a custom event
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
@@ -399,18 +381,10 @@
 		});
 
 		// Text entry
-		editor.subscriptions.subscribeJsMessage(TriggerTextCommit, async () => {
-			await tick();
-
-			triggerTextCommit();
-		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextbox, async (data) => {
 			await tick();
 
 			displayEditableTextbox(data);
-		});
-		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
-			textInputMatrix = data.transform;
 		});
 		editor.subscriptions.subscribeJsMessage(DisplayRemoveEditableTextbox, async () => {
 			await tick();
@@ -491,7 +465,7 @@
 						</svg>
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
+								<input bind:this={textInput} style:transform="matrix({textInputMatrix})" />
 							{/if}
 						</div>
 						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>

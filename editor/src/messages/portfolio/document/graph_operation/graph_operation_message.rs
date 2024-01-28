@@ -8,7 +8,6 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
-use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
@@ -89,9 +88,7 @@ pub enum GraphOperationMessage {
 	},
 	NewTextLayer {
 		id: NodeId,
-		text: String,
-		font: Font,
-		size: f64,
+		text: graphene_core::text::RichText,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},

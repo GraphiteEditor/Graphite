@@ -264,8 +264,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				self.persistent_data.font_cache.insert(font, preview_url, data, is_default);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
 
-				if self.active_document_mut().is_some() {
+				if self.active_document_id().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(TextToolMessage::RefreshFonts);
 				}
 			}
 			PortfolioMessage::ImaginateCheckServerStatus => {
