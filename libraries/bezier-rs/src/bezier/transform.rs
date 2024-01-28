@@ -272,9 +272,9 @@ impl Bezier {
 			_ => *self,
 		};
 
-		let should_flip_direction = (self.start - intersection).normalize().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
+		let should_flip_direction = (self.start - intersection).normalize_or_zero().abs_diff_eq(normal_start, MAX_ABSOLUTE_DIFFERENCE);
 		intermediate.apply_transformation(|point| {
-			let mut direction_unit_vector = (intersection - point).normalize();
+			let mut direction_unit_vector = (intersection - point).normalize_or_zero();
 			if should_flip_direction {
 				direction_unit_vector *= -1.;
 			}

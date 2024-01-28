@@ -11,12 +11,6 @@ export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | Mou
 	);
 }
 
-// Necessary because innerText puts an extra newline character at the end when the text is more than one line.
-export function textInputCleanup(text: string): string {
-	if (text[text.length - 1] === "\n") return text.slice(0, -1);
-	return text;
-}
-
 // This function tries to find what scan code the user pressed, even if using a non-US keyboard.
 // Directly using `KeyboardEvent.code` scan code only works on a US QWERTY layout, because alternate layouts like
 // QWERTZ (German) or AZERTY (French) will end up reporting the wrong keys.

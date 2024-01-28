@@ -111,7 +111,6 @@ impl Debug for Bezier {
 		debug_struct_ref.field("end", &self.end).finish()
 	}
 }
-
 #[cfg(feature = "dyn-any")]
 unsafe impl dyn_any::StaticType for Bezier {
 	type Static = Bezier;

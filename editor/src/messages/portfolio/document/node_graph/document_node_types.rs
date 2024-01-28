@@ -2482,9 +2482,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Text Generator".to_string(),
 						inputs: vec![
 							NodeInput::Network(concrete!(application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>)),
-							NodeInput::Network(concrete!(String)),
-							NodeInput::Network(concrete!(graphene_core::text::Font)),
+							NodeInput::Network(concrete!(graphene_core::text::RichText)),
 							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::vector::VectorData)),
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::text::TextGeneratorNode<_, _, _>")),
 						..Default::default()
@@ -2505,9 +2505,16 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::none(),
-				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
-				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
-				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
+				DocumentInputType::value(
+					"Rich Text",
+					TaggedValue::RichText(graphene_core::text::RichText::new(
+						"Rich Text",
+						[graphene_core::text::TextSpan::new(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into()), 24.)],
+					)),
+					false,
+				),
+				DocumentInputType::value("Line Length", TaggedValue::F64(f64::MAX), false),
+				DocumentInputType::value("Path", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_section_font,

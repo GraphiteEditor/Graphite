@@ -72,7 +72,7 @@ glam = { version = "0.25", default-features = false, features = ["serde"] }
 node-macro = { path = "node-graph/node-macro" }
 base64 = { version = "0.21" }
 image = { version = "0.24", default-features = false, features = ["png"] }
-rustybuzz = { version = "0.10.0" }
+cosmic-text = { version = "0.10", default-features = false, features = ["std"] }
 num-derive = { version = "0.4" }
 num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",

@@ -7,7 +7,7 @@ use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::Font;
+use graphene_core::text::RichText;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
@@ -226,13 +226,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
+	pub fn insert_text(&mut self, rich_text: RichText, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
 				NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
-				NodeInput::value(TaggedValue::String(text), false),
-				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
+				NodeInput::value(TaggedValue::RichText(rich_text), false),
+				NodeInput::value(TaggedValue::F64(f64::MAX), false),
+				NodeInput::value(TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), false),
 			],
 			Default::default(),
 		);
