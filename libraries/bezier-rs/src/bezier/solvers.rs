@@ -592,9 +592,14 @@ impl Bezier {
 	///
 	/// Cast a ray to the left and count intersections.
 	pub fn winding(&self, target_point: DVec2) -> i32 {
-		let extrema = self.get_extrema_t_list();
+		let [x_extrema_t, y_extrema_t] = self.unrestricted_local_extrema();
+		let x_extrema_t = x_extrema_t.map(|t| t.filter(|&t| t > 0. && t < 1.));
+		let y_extrema_t = y_extrema_t.map(|t| t.filter(|&t| t > 0. && t < 1.));
+		let mut extrema = [Some(0.), Some(1.), x_extrema_t[0], x_extrema_t[1], x_extrema_t[2], y_extrema_t[0], y_extrema_t[1], y_extrema_t[2]];
+		extrema.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
 		extrema
 			.windows(2)
+			.flat_map(|t| t[0].and_then(|first| t[1].map(|second| [first, second])))
 			.map(|t| self.trim(TValue::Parametric(t[0]), TValue::Parametric(t[1])).pre_split_winding_number(target_point))
 			.sum()
 	}
