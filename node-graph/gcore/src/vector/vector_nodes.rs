@@ -207,20 +207,13 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 
 	let mut result = I::default();
 	for point in points_list {
-		let translation = points.transform.transform_point2(point) + instance_center;
-		let translation_matrix = DAffine2::from_translation(translation);
-
+		let centre_transform = DAffine2::from_translation(instance_center);
 		let rotation = (rng.gen::<f64>() - 0.5) * random_rotation;
-		let rotation_matrix = DAffine2::from_angle(rotation / 360. * std::f64::consts::TAU);
-
 		let scale = random_scale_min + rng.gen::<f64>() * (random_scale_max - random_scale_min);
-		let scale_matrix = DAffine2::from_scale(DVec2::splat(scale));
-
-		let combined_matrix = translation_matrix * rotation_matrix * scale_matrix;
 
 		result.concat(
 			&instance,
-			combined_matrix, // DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation / 360. * std::f64::consts::TAU, translation),
+			DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation / 360. * std::f64::consts::TAU, points.transform.transform_point2(point)) * centre_transform,
 		);
 	}
 
