@@ -229,6 +229,15 @@ impl<'a> VectorModificationState<'a> {
 		}
 	}
 
+	fn shift_group_to_head(&mut self, id: ManipulatorGroupId) {
+		for subpath in self.subpaths.iter_mut() {
+			if let Some(index) = subpath.manipulator_index_from_id(id) {
+				subpath.shift_manipulator_group_to_head(index);
+				break;
+			}
+		}
+	}
+
 	fn remove_point(&mut self, point: ManipulatorPointId) {
 		for subpath in self.subpaths.iter_mut() {
 			if point.manipulator_type == SelectedType::Anchor {
@@ -300,6 +309,7 @@ impl<'a> VectorModificationState<'a> {
 			VectorDataModification::SetClosed { index, closed } => self.subpaths[index].set_closed(closed),
 			VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => self.set_mirror(id, mirror_angle),
 			VectorDataModification::SetManipulatorPosition { point, position } => self.set_position(point, position),
+			VectorDataModification::ShiftManipulatorGroup { id } => self.shift_group_to_head(id),
 			VectorDataModification::ToggleManipulatorHandleMirroring { id } => self.toggle_mirror(id),
 			VectorDataModification::UpdateSubpaths { subpaths } => *self.subpaths = subpaths,
 		}

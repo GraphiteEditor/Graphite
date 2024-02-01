@@ -675,6 +675,44 @@ impl ShapeState {
 		}
 	}
 
+	/// Break closed curve.
+	pub fn break_closed_curve(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			if state.selected_points.len() > 1 {
+				return;
+			}
+			for &point in &state.selected_points {
+				let Some(subpaths) = get_subpaths(layer, document_network) else {
+					continue;
+				};
+				if !subpaths[0].closed {
+					continue;
+				}
+				let Some(&group) = graph_modification_utils::get_manipulator_from_id(subpaths, point.group) else {
+					continue;
+				};
+
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification: VectorDataModification::ShiftManipulatorGroup { id: group.id },
+				});
+
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification: VectorDataModification::AddEndManipulatorGroup {
+						subpath_index: 0,
+						manipulator_group: ManipulatorGroup::new(group.anchor, group.in_handle, group.out_handle),
+					},
+				});
+
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification: VectorDataModification::SetClosed { index: 0, closed: false },
+				});
+			}
+		}
+	}
+
 	/// Toggle if the handles should mirror angle across the anchor position.
 	pub fn toggle_handle_mirroring_on_selected(&self, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {

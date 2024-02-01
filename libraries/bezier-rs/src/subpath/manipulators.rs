@@ -51,6 +51,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups.remove(index)
 	}
 
+	pub fn shift_manipulator_group_to_head(&mut self, index: usize) {
+		self.manipulator_groups.rotate_left(index);
+	}
+
 	/// Inserts a `ManipulatorGroup` at a certain point along the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	pub fn insert(&mut self, t: SubpathTValue) {
