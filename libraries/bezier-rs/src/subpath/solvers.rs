@@ -292,7 +292,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		shape.set_closed(true);
 		shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
 
-		let point_in_shape_checker = |point: DVec2| shape.winding_order(point) % 2 == 1;
+		let point_in_shape_checker = |point: DVec2| shape.winding_order(point) != 0;
 
 		let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
 			let corner2 = corner1 + DVec2::splat(size);
