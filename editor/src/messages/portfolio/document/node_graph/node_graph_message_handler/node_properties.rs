@@ -2043,7 +2043,7 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 		node_id,
 		2,
 		"Random Scale Min",
-		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)),
+		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
 		true,
 	);
 	let random_scale_max = number_widget(
@@ -2051,24 +2051,24 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 		node_id,
 		3,
 		"Random Scale Max",
-		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)),
+		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
 		true,
 	);
 
-	let random_rotation = number_widget(document_node, node_id, 4, "Random Rotation", NumberInput::default().min(0.).max(360.).mode_range(), true);
+	let random_rotation = number_widget(document_node, node_id, 4, "Random Rotation", NumberInput::default().min(0.).max(360.).mode_range().unit("°"), true);
 
 	vec![
-		LayoutGroup::Row { widgets: instance },
-		LayoutGroup::Row { widgets: random_scale_min },
-		LayoutGroup::Row { widgets: random_scale_max },
-		LayoutGroup::Row { widgets: random_rotation },
+		LayoutGroup::Row { widgets: instance }.with_tooltip("Artwork to be copied and placed at each point"),
+		LayoutGroup::Row { widgets: random_scale_min }.with_tooltip("Minimum range of randomized sizes given to each instance"),
+		LayoutGroup::Row { widgets: random_scale_max }.with_tooltip("Maximum range of randomized sizes given to each instance"),
+		LayoutGroup::Row { widgets: random_rotation }.with_tooltip("Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise"),
 	]
 }
 
 pub fn sample_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.), true);
-	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.), true);
-	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.), true);
+	let spacing = number_widget(document_node, node_id, 1, "Spacing", NumberInput::default().min(1.).unit(" px"), true);
+	let start_offset = number_widget(document_node, node_id, 2, "Start Offset", NumberInput::default().min(0.).unit(" px"), true);
+	let stop_offset = number_widget(document_node, node_id, 3, "Stop Offset", NumberInput::default().min(0.).unit(" px"), true);
 	let adaptive_spacing = bool_widget(document_node, node_id, 4, "Adaptive Spacing", true);
 
 	vec![
