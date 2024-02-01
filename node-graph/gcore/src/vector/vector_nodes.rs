@@ -175,9 +175,12 @@ impl ConcatElement for GraphicGroup {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CopyToPoints<Points, Instance> {
+pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomRotation> {
 	points: Points,
 	instance: Instance,
+	random_scale_min: RandomScaleMin,
+	random_scale_max: RandomScaleMax,
+	random_rotation: RandomRotation,
 }
 
 #[node_macro::node_fn(CopyToPoints)]
@@ -185,19 +188,36 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = FP>,
 	instance: impl Node<Footprint, Output = FI>,
+	random_scale_min: f32,
+	random_scale_max: f32,
+	random_rotation: f32,
 ) -> I {
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
+	let random_scale_min = random_scale_min as f64;
+	let random_scale_max = random_scale_max as f64;
+	let random_rotation = random_rotation as f64;
 
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
 
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
+	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+
 	let mut result = I::default();
 	for point in points_list {
-		let translation = points.transform.transform_point2(point) + instance_center;
-		result.concat(&instance, DAffine2::from_translation(translation));
+		let center_transform = DAffine2::from_translation(instance_center);
+
+		let translation = points.transform.transform_point2(point);
+
+		let rotation = (rng.gen::<f64>() - 0.5) * random_rotation;
+		let rotation = rotation / 360. * std::f64::consts::TAU;
+
+		let scale = random_scale_min + rng.gen::<f64>() * (random_scale_max - random_scale_min);
+		let scale = DVec2::splat(scale);
+
+		result.concat(&instance, DAffine2::from_scale_angle_translation(scale, rotation, translation) * center_transform);
 	}
 
 	result
