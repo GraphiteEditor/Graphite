@@ -1,8 +1,11 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::utility_funcitons::should_extend;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -41,6 +44,8 @@ impl Default for FreehandOptions {
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
+	#[remain::unsorted]
+	Overlays(OverlayContext),
 	#[remain::unsorted]
 	Abort,
 	#[remain::unsorted]
@@ -169,6 +174,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
+			overlay_provider: Some(|overlay_context: OverlayContext| FreehandToolMessage::Overlays(overlay_context).into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -178,6 +184,7 @@ impl ToolTransition for FreehandTool {
 
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
+	inserting: bool,
 	last_point: DVec2,
 	dragged: bool,
 	weight: f64,
@@ -190,40 +197,64 @@ impl Fsm for FreehandToolFsmState {
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
 		let ToolActionHandlerData {
-			document, global_tool_data, input, ..
+			document,
+			global_tool_data,
+			input,
+			shape_editor,
+			..
 		} = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else {
 			return self;
 		};
 		match (self, event) {
+			(_, FreehandToolMessage::Overlays(mut overlay_context)) => {
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
+
+				self
+			}
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(DocumentMessage::DeselectAllLayers);
 
 				let parent = document.new_layer_parent();
 				let transform = document.metadata().transform_to_viewport(parent);
 				let pos = transform.inverse().transform_point2(input.mouse.position);
 
 				tool_data.dragged = false;
+				tool_data.inserting = false;
 				tool_data.last_point = pos;
 
 				tool_data.weight = tool_options.line_weight;
 
-				let subpath = bezier_rs::Subpath::from_anchors([pos], false);
+				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+					let manipulator_group = ManipulatorGroup::new_anchor(pos);
+					let modification = if from_start {
+						tool_data.inserting = true;
+						VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group }
+					} else {
+						VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group }
+					};
+					responses.add(GraphOperationMessage::Vector { layer, modification });
+					tool_data.dragged = true;
+					tool_data.last_point = pos;
+					tool_data.layer = Some(layer);
+				} else {
+					responses.add(DocumentMessage::DeselectAllLayers);
+					let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
-				tool_data.layer = Some(layer);
+					let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
+					tool_data.layer = Some(layer);
 
-				responses.add(GraphOperationMessage::FillSet {
-					layer,
-					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
-				});
+					responses.add(GraphOperationMessage::FillSet {
+						layer,
+						fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
+					});
 
-				responses.add(GraphOperationMessage::StrokeSet {
-					layer,
-					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
-				});
+					responses.add(GraphOperationMessage::StrokeSet {
+						layer,
+						stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
+					});
+				}
 
 				FreehandToolFsmState::Drawing
 			}
@@ -234,7 +265,11 @@ impl Fsm for FreehandToolFsmState {
 
 					if tool_data.last_point != pos {
 						let manipulator_group = ManipulatorGroup::new_anchor(pos);
-						let modification = VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group };
+						let modification = if tool_data.inserting {
+							VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
+						} else {
+							VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
+						};
 						responses.add(GraphOperationMessage::Vector { layer, modification });
 						tool_data.dragged = true;
 						tool_data.last_point = pos;
