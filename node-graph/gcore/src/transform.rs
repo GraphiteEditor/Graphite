@@ -244,7 +244,7 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 where
 	Fut::Output: TransformMut,
 {
-	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
+	// TODO: This is hack and might break for Vector data because the pivot may be incorrect
 	let transform = DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
 		let pivot_transform = DAffine2::from_translation(pivot);
