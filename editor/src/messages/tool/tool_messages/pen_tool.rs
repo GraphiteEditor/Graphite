@@ -642,7 +642,6 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
-				debug!("pen tool overlays");
 				path_overlays(document, shape_editor, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
