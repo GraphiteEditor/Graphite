@@ -184,7 +184,7 @@ impl ToolTransition for FreehandTool {
 
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
-	inserting: bool,
+	extend_from_start: bool,
 	last_point: DVec2,
 	dragged: bool,
 	weight: f64,
@@ -221,7 +221,7 @@ impl Fsm for FreehandToolFsmState {
 				let pos = transform.inverse().transform_point2(input.mouse.position);
 
 				tool_data.dragged = false;
-				tool_data.inserting = false;
+				tool_data.extend_from_start = false;
 				tool_data.last_point = pos;
 
 				tool_data.weight = tool_options.line_weight;
@@ -229,7 +229,7 @@ impl Fsm for FreehandToolFsmState {
 				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 					let manipulator_group = ManipulatorGroup::new_anchor(pos);
 					let modification = if from_start {
-						tool_data.inserting = true;
+						tool_data.extend_from_start = true;
 						VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group }
 					} else {
 						VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group }
@@ -265,7 +265,7 @@ impl Fsm for FreehandToolFsmState {
 
 					if tool_data.last_point != pos {
 						let manipulator_group = ManipulatorGroup::new_anchor(pos);
-						let modification = if tool_data.inserting {
+						let modification = if tool_data.extend_from_start {
 							VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
 						} else {
 							VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
