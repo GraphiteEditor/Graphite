@@ -177,8 +177,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=LineToolMessage::PointerMove { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
-		entry!(KeyDown(Delete); modifiers=[Control], action_dispatch=PathToolMessage::BreakPath),
-		entry!(KeyDown(Backspace); modifiers=[Control], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Delete); modifiers=[Shift, Control], action_dispatch=PathToolMessage::BreakPath),
+		entry!(KeyDown(Backspace); modifiers=[Shift, Control], action_dispatch=PathToolMessage::BreakPath),
 		entry!(KeyDown(Lmb); action_dispatch=PathToolMessage::DragStart { add_to_selection: Shift }),
 		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=PathToolMessage::PointerMove { alt: Alt, shift: Shift }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),

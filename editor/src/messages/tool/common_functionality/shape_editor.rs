@@ -699,9 +699,16 @@ impl ShapeState {
 
 				responses.add(GraphOperationMessage::Vector {
 					layer,
+					modification: VectorDataModification::RemoveManipulatorPoint {
+						point: ManipulatorPointId::new(group.id, SelectedType::InHandle),
+					},
+				});
+
+				responses.add(GraphOperationMessage::Vector {
+					layer,
 					modification: VectorDataModification::AddEndManipulatorGroup {
 						subpath_index: 0,
-						manipulator_group: ManipulatorGroup::new(group.anchor, group.in_handle, group.out_handle),
+						manipulator_group: ManipulatorGroup::new(group.anchor, group.in_handle, None),
 					},
 				});
 
