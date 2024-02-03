@@ -446,7 +446,7 @@ async fn imaginate_maybe_fail<'a, P: Pixel, F: Fn(ImaginateStatus)>(
 fn image_to_base64<P: Pixel>(image: Image<P>) -> Result<String, Error> {
 	use base64::prelude::*;
 
-	let Image { width, height, data } = image;
+	let Image { width, height, data, .. } = image;
 
 	fn cast_with_f32<S: Pixel, D: image::Pixel<Subpixel = f32>>(data: Vec<S>, width: u32, height: u32) -> Result<DynamicImage, Error>
 	where
@@ -485,7 +485,12 @@ fn base64_to_image<D: AsRef<[u8]>, P: Pixel>(base64_data: D) -> Result<Image<P>,
 		_ => return Err(Error::UnsupportedPixelType(core::any::type_name::<P>())),
 	};
 
-	Ok(Image { data: result_data, width, height })
+	Ok(Image {
+		data: result_data,
+		width,
+		height,
+		base64_string: None,
+	})
 }
 
 pub fn pick_safe_imaginate_resolution((width, height): (f64, f64)) -> (u64, u64) {

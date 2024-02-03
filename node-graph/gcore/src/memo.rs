@@ -45,6 +45,50 @@ impl<T, CachedNode> MemoNode<T, CachedNode> {
 	}
 }
 
+// Caches the output of a given Node and acts as a proxy
+#[derive(Default)]
+pub struct ImpureMemoNode<I, T, CachedNode> {
+	cache: Cell<Option<T>>,
+	node: CachedNode,
+	_phantom: std::marker::PhantomData<I>,
+}
+
+impl<'i, 'o: 'i, I: 'i, T: 'i + Clone + 'o, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
+where
+	CachedNode: for<'any_input> Node<'any_input, I>,
+	for<'a> <CachedNode as Node<'a, I>>::Output: core::future::Future<Output = T> + 'a,
+{
+	// TODO: This should return a reference to the cached cached_value
+	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
+	type Output = Pin<Box<dyn Future<Output = T> + 'i>>;
+	fn eval(&'i self, input: I) -> Pin<Box<dyn Future<Output = T> + 'i>> {
+		Box::pin(async move {
+			if let Some(cached_value) = self.cache.take() {
+				self.cache.set(Some(cached_value.clone()));
+				cached_value
+			} else {
+				let value = self.node.eval(input).await;
+				self.cache.set(Some(value.clone()));
+				value
+			}
+		})
+	}
+
+	fn reset(&self) {
+		self.cache.set(None);
+	}
+}
+
+impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
+	pub const fn new(node: CachedNode) -> ImpureMemoNode<I, T, CachedNode> {
+		ImpureMemoNode {
+			cache: Cell::new(None),
+			node,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+}
+
 /// Stores both what a node was called with and what it returned.
 #[derive(Clone, Debug)]
 pub struct IORecord<I, O> {
