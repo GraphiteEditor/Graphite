@@ -111,6 +111,7 @@ fn sample(footprint: Footprint, image_frame: ImageFrame<Color>) -> ImageFrame<Co
 		width: new_width,
 		height: new_height,
 		data: vec,
+		base64_string: None,
 	};
 	// we need to adjust the offset if we truncate the offset calculation
 
@@ -750,7 +751,12 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 		}
 	}
 	ImageFrame {
-		image: Image { width, height, data },
+		image: Image {
+			width,
+			height,
+			data,
+			..Default::default()
+		},
 		transform: DAffine2::from_translation(offset) * DAffine2::from_scale(size),
 		..Default::default()
 	}

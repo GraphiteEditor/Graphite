@@ -1025,6 +1025,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "MemoizeImpure",
+			category: "Structural",
+			implementation: NodeImplementation::proto("graphene_core::memo::ImpureMemoNode<_, _, _>"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			manual_composition: Some(concrete!(Footprint)),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Image",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
