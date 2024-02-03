@@ -311,8 +311,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	RenderOutput::Svg(render.svg.to_svg_string())
 }
 
-#[cfg(any(feature = "resvg", feature = "vello"))]
-fn render_canvas(
+async fn render_canvas(
 	data: impl GraphicElementRendered,
 	mut render: SvgRender,
 	render_params: RenderParams,
@@ -331,11 +330,14 @@ fn render_canvas(
 	let canvas = &surface_handle.surface;
 	canvas.set_width(resolution.x);
 	canvas.set_height(resolution.y);
-	let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
+	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+	#[cfg(any(feature = "resvg", feature = "vello"))]
+	{
+		let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
 
-	if let Some(exec) = editor.application_io.gpu_executor() {
-		todo!()
-	} else {
+		if let Some(exec) = editor.application_io.gpu_executor() {
+			todo!()
+		}
 		let pixmap_size = usvg_tree.size.to_int_size();
 		let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
 		resvg::render(&usvg_tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
@@ -344,17 +346,19 @@ fn render_canvas(
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");
 		context.put_image_data(&image_data, 0.0, 0.0).unwrap();
 	}
-	/*
-	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
-	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+	#[cfg(not(any(feature = "resvg", feature = "vello")))]
+	{
+		use base64::Engine;
+		let preamble = "data:image/svg+xml;base64,";
+		let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+		base64_string.push_str(preamble);
+		base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
 
-	let image_data = web_sys::HtmlImageElement::new().unwrap();
-	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
-	*/
+		let image_data = web_sys::HtmlImageElement::new().unwrap();
+		image_data.set_src(base64_string.as_str());
+		wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+		context.draw_image_with_html_image_element(&image_data, 0.0, 0.0).unwrap();
+	}
 	let frame = SurfaceHandleFrame {
 		surface_handle,
 		transform: glam::DAffine2::IDENTITY,
@@ -384,7 +388,7 @@ where
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
 				#[cfg(any(feature = "resvg", feature = "vello"))]
-				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
+				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await).await,
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
 		})

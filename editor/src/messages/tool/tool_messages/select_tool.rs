@@ -390,7 +390,6 @@ impl Fsm for SelectToolFsmState {
 				let selected_layers_count = document.selected_nodes.selected_layers(document.metadata()).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
-				log::debug!("selected_layers: {}", selected_layers_count);
 
 				// Outline selected layers
 				for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
@@ -410,7 +409,6 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_layers(document.network(), document.metadata())
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
-				log::debug!("transform: {:?}", transform);
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
 					.selected_nodes
@@ -421,7 +419,6 @@ impl Fsm for SelectToolFsmState {
 							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
 					})
 					.reduce(graphene_core::renderer::Quad::combine_bounds);
-				log::debug!("bounds: {:?}", bounds);
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
@@ -516,6 +513,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						log::debug!("setting pivot");
 						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 					tool_data.get_snap_candidates(document, input);
@@ -540,9 +538,11 @@ impl Fsm for SelectToolFsmState {
 						);
 
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						log::debug!("setting pivot");
 						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 
+					log::debug!("start rotating");
 					tool_data.layers_dragging = selected;
 
 					SelectToolFsmState::RotatingBounds
@@ -557,6 +557,7 @@ impl Fsm for SelectToolFsmState {
 						tool_data.select_single_layer = intersection.and_then(|intersection| intersection.ancestors(&document.metadata).find(|ancestor| selected.contains(ancestor)));
 					}
 
+					log::debug!("start dragging");
 					tool_data.layers_dragging = selected;
 
 					tool_data.get_snap_candidates(document, input);
@@ -565,6 +566,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				// Dragging a selection box
 				else {
+					log::debug!("make selection");
 					tool_data.layers_dragging = selected;
 
 					if !input.keyboard.key(add_to_selection) {
@@ -712,6 +714,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let angle = {
+						log::debug!("center: {:?}", bounds.center_of_transformation);
 						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
 						let end_offset = input.mouse.position - bounds.center_of_transformation;
 

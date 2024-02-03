@@ -369,6 +369,7 @@ impl<'a> Selected<'a> {
 	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let Some(&original_transform) = original_transform else { return };
 		let to = document_metadata.downstream_transform_to_viewport(layer);
+		log::debug!("to: {to:?} transformation: {transformation:?}, original_transform: {original_transform:?}");
 		let new = to.inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
@@ -406,10 +407,13 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
+		log::debug!("applying tranform: {transformation:?}");
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 			for layer_ancestors in self.document_metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
+
+				log::debug!("layer_arcestors: {layer_ancestors:?}");
 
 				match &self.original_transforms {
 					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
@@ -420,6 +424,7 @@ impl<'a> Selected<'a> {
 	}
 
 	pub fn update_transforms(&mut self, delta: DAffine2) {
+		log::debug!("update_transforms: pivot: {:?}", self.pivot);
 		let pivot = DAffine2::from_translation(*self.pivot);
 		let transformation = pivot * delta * pivot.inverse();
 		self.apply_transformation(transformation);

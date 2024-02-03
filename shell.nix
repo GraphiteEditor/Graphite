@@ -36,23 +36,24 @@ let
 in
   # Make a shell with the dependencies we need
   pkgs.mkShell {
-    packages = [
+    packages = with pkgs; [
       rustc-wasm
-      pkgs.nodejs
-      pkgs.cargo
-      pkgs.cargo-watch
-      pkgs.wasm-pack
+      nodejs
+      cargo
+      cargo-watch
+      wasm-pack
 
-      pkgs.openssl
-      pkgs.glib
-      pkgs.gtk3
-      pkgs.libsoup
-      pkgs.webkitgtk
-
-      pkgs.pkg-config
+      openssl
+      glib
+      gtk3
+      libsoup
+      webkitgtk
+      binaryen
+      
+      pkg-config
 
       # Use Mold as a Linke
-      pkgs.mold
+      mold
     ];
 
     # Hacky way to run cago through Mold

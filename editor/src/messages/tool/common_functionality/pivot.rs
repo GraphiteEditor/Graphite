@@ -33,12 +33,12 @@ impl Pivot {
 	}
 
 	pub fn update_pivot(&mut self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
-		log::debug!("adding_overlay for pivot at ");
+		//log::debug!("adding_overlay for pivot at ");
 		if let Some(pivot) = self.pivot {
 			let viewport_transform = document.metadata().document_to_viewport;
 			let pivot = viewport_transform.transform_point2(pivot);
 			self.viewport_pos = pivot;
-			log::debug!("adding_overlay for pivot at {:?}", pivot);
+			//log::debug!("adding_overlay for pivot at {:?}", pivot);
 			overlay_context.pivot(pivot);
 		}
 	}
@@ -52,6 +52,7 @@ impl Pivot {
 	pub fn set_viewport_position(&mut self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let viewport_transform = document.metadata().document_to_viewport.inverse();
 		self.pivot = Some(viewport_transform.transform_point2(position));
+		log::debug!("setting pivot to {:?}", self.pivot);
 		for layer in document.selected_nodes.selected_visible_layers(document.network(), document.metadata()) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			let pivot = transform.inverse().transform_point2(position);
@@ -64,6 +65,6 @@ impl Pivot {
 
 	/// Answers if the pointer is currently positioned over the pivot.
 	pub fn is_over(&self, mouse: DVec2) -> bool {
-		self.pivot.filter(|&pivot| mouse.distance_squared(self.viewport_pos) < (PIVOT_DIAMETER / 2.).powi(2)).is_some()
+		mouse.distance_squared(self.viewport_pos) < (PIVOT_DIAMETER / 2.).powi(2)
 	}
 }
