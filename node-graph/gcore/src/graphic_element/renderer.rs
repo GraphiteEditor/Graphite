@@ -1,7 +1,7 @@
 mod quad;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
-use crate::transform::{Transform, TransformMut};
+use crate::transform::Transform;
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
@@ -264,7 +264,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for mut element in self.elements.iter().cloned() {
+		for element in self.elements.iter().cloned() {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {

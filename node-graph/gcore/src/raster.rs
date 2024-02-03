@@ -645,6 +645,7 @@ mod test {
 			width: 5,
 			height: 5,
 			data: vec![Color::from_rgbf32_unchecked(1., 0., 0.); 25],
+			base64_string: None,
 		});
 		let image = image.then(ImageRefNode::new());
 		let window = WindowNode::new(radius, image);
