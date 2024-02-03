@@ -88,6 +88,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 			data: image.image.data.iter().map(|c| quantization::quantize_color(*c, quantization)).collect(),
 			width: image.image.width,
 			height: image.image.height,
+			..Default::default()
 		},
 		transform: image.transform,
 		alpha_blending: image.alpha_blending,
