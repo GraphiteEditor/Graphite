@@ -133,7 +133,6 @@ pub enum VectorDataModification {
 	SetClosed { index: usize, closed: bool },
 	SetManipulatorHandleMirroring { id: ManipulatorGroupId, mirror_angle: bool },
 	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ShiftManipulatorGroup { id: ManipulatorGroupId },
 	ToggleManipulatorHandleMirroring { id: ManipulatorGroupId },
 	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
