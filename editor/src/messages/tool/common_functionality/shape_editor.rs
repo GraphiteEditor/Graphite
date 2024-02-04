@@ -685,44 +685,63 @@ impl ShapeState {
 			let mut new_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::new();
 
 			for subpath in subpaths {
-				let mut updated = false;
-				for &point in &state.selected_points {
-					let Some(&group) = subpath.manipulator_from_id(point.group) else {
-						continue;
+				let mut points: Vec<_> = state
+					.selected_points
+					.iter()
+					.filter_map(|&point| {
+						let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
+							return None;
+						};
+						let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
+							return None;
+						};
+						Some((manipulator_index, manipulator))
+					})
+					.collect();
+
+				points.sort_by(|&a, &b| {
+					return match a.0 > b.0 {
+						true => std::cmp::Ordering::Greater,
+						false => std::cmp::Ordering::Less,
 					};
+				});
 
-					let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
-						continue;
-					};
-					updated = true;
-					if subpath.closed {
-						let mut first_half = subpath.manipulator_groups()[..manipulator_index].to_vec();
-						first_half.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+				match points.len() {
+					0 => new_subpaths.push(subpath.clone()),
+					_ => {
+						let mut last_manipulator_index = 0;
+						let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
+						let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
+						for (i, &(manipulator_index, group)) in points.iter().enumerate() {
+							debug!("index: {}", manipulator_index);
+							let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+							if i != 0 {
+								segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
+							}
 
-						let mut second_half = subpath.manipulator_groups()[manipulator_index + 1..].to_vec();
-						second_half.insert(0, ManipulatorGroup::new(group.anchor, None, group.in_handle));
+							segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
 
-						second_half.extend(first_half);
+							if subpath.closed && i == 0 {
+								to_extend_with_last_group = Some(segment);
+							} else {
+								new_subpaths.push(bezier_rs::Subpath::new(segment, false));
+							}
 
-						new_subpaths.push(bezier_rs::Subpath::new(second_half, false));
-					} else {
-						// Do not need to handle first and last manipulator.
-						if manipulator_index == 0 || manipulator_index == subpath.len() - 1 {
-							continue;
+							last_manipulator_index = manipulator_index + 1;
+							last_manipulator_group = Some(group);
 						}
 
-						let mut first_half = subpath.manipulator_groups()[..manipulator_index].to_vec();
-						first_half.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+						let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+						final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
 
-						let mut second_half = subpath.manipulator_groups()[manipulator_index + 1..].to_vec();
-						second_half.insert(0, ManipulatorGroup::new(group.anchor, None, group.in_handle));
+						if let Some(group) = to_extend_with_last_group {
+							final_segment.extend(group);
+						}
 
-						new_subpaths.push(bezier_rs::Subpath::new(first_half, false));
-						new_subpaths.push(bezier_rs::Subpath::new(second_half, false));
+						new_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+
+						debug!("123");
 					}
-				}
-				if !updated {
-					new_subpaths.push(subpath.clone());
 				}
 			}
 
@@ -731,6 +750,11 @@ impl ShapeState {
 				modification: VectorDataModification::UpdateSubpaths { subpaths: new_subpaths },
 			});
 		}
+	}
+
+	/// Delete point and break path.
+	pub fn delete_point_and_break_path(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		debug!("delete point and break path");
 	}
 
 	/// Toggle if the handles should mirror angle across the anchor position.

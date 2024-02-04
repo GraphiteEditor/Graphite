@@ -34,6 +34,7 @@ pub enum PathToolMessage {
 	// Tool-specific messages
 	BreakPath,
 	Delete,
+	DeleteAndBreakPath,
 	DragStart {
 		add_to_selection: Key,
 	},
@@ -161,6 +162,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Enter,
 				SelectAllPoints,
 				BreakPath,
+				DeleteAndBreakPath,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
@@ -169,6 +171,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				SelectAllPoints,
 				BreakPath,
+				DeleteAndBreakPath,
 			),
 			DrawingBox => actions!(PathToolMessageDiscriminant;
 				InsertPoint,
@@ -178,6 +181,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Enter,
 				SelectAllPoints,
 				BreakPath,
+				DeleteAndBreakPath,
 			),
 		}
 	}
@@ -424,6 +428,10 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::BreakPath) => {
 				shape_editor.break_path_at_selected_point(&document.network, responses);
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeleteAndBreakPath) => {
+				shape_editor.delete_point_and_break_path(&document.network, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::InsertPoint) => {
