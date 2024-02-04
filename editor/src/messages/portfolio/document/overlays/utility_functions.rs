@@ -52,3 +52,28 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 		}
 	}
 }
+
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
+	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+		let Some(subpaths) = get_subpaths(layer, &document.network) else { continue };
+		let transform = document.metadata().transform_to_viewport(layer);
+		let selected = shape_editor.selected_shape_state.get(&layer);
+		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
+
+		let mut manipulator_groups = get_manipulator_groups(subpaths);
+
+		if let Some(first_manipulator) = manipulator_groups.next() {
+			let anchor = first_manipulator.anchor;
+			let anchor_position = transform.transform_point2(anchor);
+
+			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(first_manipulator.id, SelectedType::Anchor)));
+		};
+
+		if let Some(last_manipulator) = manipulator_groups.last() {
+			let anchor = last_manipulator.anchor;
+			let anchor_position = transform.transform_point2(anchor);
+
+			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(last_manipulator.id, SelectedType::Anchor)));
+		};
+	}
+}
