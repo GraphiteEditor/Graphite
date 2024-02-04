@@ -584,6 +584,7 @@ version = "0.4.0"
 dependencies = [
  "dyn-any",
  "glam",
+ "log",
  "serde",
 ]
 

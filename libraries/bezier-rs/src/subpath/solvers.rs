@@ -160,12 +160,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		for bezier in self.iter() {
 			// Check that the two bounding boxes don't intersect, since we can avoid doing intersection's cubic root finding in that case
 			let [bezier_corner1, bezier_corner2] = bezier.bounding_box_of_anchors_and_handles();
-			if !(((corner1.x <= bezier_corner1.x) && (bezier_corner1.x <= corner2.x) || (corner1.x <= bezier_corner2.x) && (bezier_corner2.x <= corner2.x))
-				&& corner1.y <= bezier_corner2.y
-				&& corner2.y >= bezier_corner1.y
-				|| ((corner1.y <= bezier_corner1.y) && (bezier_corner1.y <= corner2.y) || (corner1.y <= bezier_corner2.y) && (bezier_corner2.y <= corner2.y))
-					&& corner1.x <= bezier_corner2.x
-					&& corner2.x >= bezier_corner1.x)
+			if !(((corner1.x < bezier_corner1.x) && (bezier_corner1.x < corner2.x) || (corner1.x < bezier_corner2.x) && (bezier_corner2.x < corner2.x))
+				&& corner1.y < bezier_corner2.y
+				&& corner2.y > bezier_corner1.y
+				|| ((corner1.y < bezier_corner1.y) && (bezier_corner1.y < corner2.y) || (corner1.y < bezier_corner2.y) && (bezier_corner2.y < corner2.y))
+					&& corner1.x < bezier_corner2.x
+					&& corner2.x > bezier_corner1.x)
 			{
 				continue;
 			}
