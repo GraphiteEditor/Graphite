@@ -99,6 +99,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		test1 && test2
 	}
 
+	/// Computes the winding number contribution of the subpath.
+	pub fn winding_order(&self, point: DVec2) -> i32 {
+		self.iter().map(|segment| segment.winding(point)).sum()
+	}
+
 	/// Returns a list of `t` values that correspond to the self intersection points of the subpath. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
@@ -287,21 +292,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		shape.set_closed(true);
 		shape.apply_transform(DAffine2::from_translation((-offset_x, -offset_y).into()));
 
-		const SIN_13DEG: f64 = 0.22495105434;
-		const COS_13DEG: f64 = 0.97437006478;
-		let rotated_subpath = |ray_direction: DVec2| {
-			// Rotate the bezier and the line by the angle that the line makes with the x axis
-			let angle = ray_direction.angle_between(DVec2::new(0., 1.));
-			let rotation_matrix = DMat2::from_angle(angle);
-
-			let mut prerotated = shape.clone();
-			prerotated.apply_transform(DAffine2::from_angle(angle));
-			(rotation_matrix, prerotated)
-		};
-		// The directions use prime numbers to reduce the likelihood of running across two anchor points simultaneously
-		let (matrix1, prerotated1) = rotated_subpath(DVec2::new(SIN_13DEG, COS_13DEG));
-		let (matrix2, prerotated2) = rotated_subpath(DVec2::new(-COS_13DEG, -SIN_13DEG));
-		let point_in_shape_checker = |point: DVec2| shape.point_inside_prerotated(point, matrix1, matrix2, &prerotated1, &prerotated2);
+		let point_in_shape_checker = |point: DVec2| shape.winding_order(point) != 0;
 
 		let square_edges_intersect_shape_checker = |corner1: DVec2, size: f64| {
 			let corner2 = corner1 + DVec2::splat(size);
