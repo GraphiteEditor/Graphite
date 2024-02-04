@@ -105,7 +105,8 @@ pub fn poisson_disk_sample(
 				// Intersecting the shape's border
 				else {
 					// The sub-square is fully inside the shape if its top-left corner is inside and its edges don't intersect the shape border
-					let sub_square_fully_inside_shape = !square_edges_intersect_shape_checker(sub_square, subdivided_size) && point_in_shape_checker(sub_square);
+					let sub_square_fully_inside_shape =
+						!square_edges_intersect_shape_checker(sub_square, subdivided_size) && point_in_shape_checker(sub_square) && point_in_shape_checker(sub_square + subdivided_size);
 					Some(ActiveSquare::new(sub_square, sub_square_fully_inside_shape))
 				}
 			});
@@ -219,7 +220,7 @@ impl ActiveListLevel {
 				let point_in_shape = point_in_shape_checker(corner);
 				let square_edges_intersect_shape = square_edges_intersect_shape_checker(corner, square_size);
 				let square_not_outside_shape = point_in_shape || square_edges_intersect_shape;
-				let square_in_shape = point_in_shape && !square_edges_intersect_shape;
+				let square_in_shape = point_in_shape && point_in_shape_checker(corner + square_size) && !square_edges_intersect_shape;
 
 				square_not_outside_shape.then_some(ActiveSquare::new(corner, square_in_shape))
 			})
