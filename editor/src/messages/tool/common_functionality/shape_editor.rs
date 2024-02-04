@@ -1,6 +1,6 @@
 use super::graph_modification_utils;
 use super::snapping::{group_smooth, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
-use crate::consts::{DRAG_THRESHOLD, INSERT_TOO_CLOSE_DISTANCE};
+use crate::consts::{DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
@@ -131,12 +131,12 @@ impl ClosestSegment {
 		const T_ERR: f64 = 0.001;
 
 		let len = bezier.apply_transformation(|point| point * layer_scale).length(Some(LEN_ITER));
-		let too_close_t = (INSERT_TOO_CLOSE_DISTANCE / len).min(0.5);
-		let t_min_eucl = too_close_t;
-		let t_max_eucl = 1. - too_close_t;
+		let too_close_t = (INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE / len).min(0.5);
+		let t_min_euclidean = too_close_t;
+		let t_max_euclidean = 1. - too_close_t;
 		// we need parametric values because they are faster to calc
-		let t_min = bezier.euclidean_to_parametric(t_min_eucl, T_ERR);
-		let t_max = bezier.euclidean_to_parametric(t_max_eucl, T_ERR);
+		let t_min = bezier.euclidean_to_parametric(t_min_euclidean, T_ERR);
+		let t_max = bezier.euclidean_to_parametric(t_max_euclidean, T_ERR);
 
 		(t_min, t_max)
 	}
@@ -228,7 +228,7 @@ impl ClosestSegment {
 	}
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
-	/// Set insertion point and adjust all handles for both splited bezier curves
+	/// Set insertion point and adjust all handles for both splitted bezier curves
 	/// # return
 	/// id of inserted point
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> ManipulatorGroupId {

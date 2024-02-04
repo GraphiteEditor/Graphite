@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
+use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, SELECTION_THRESHOLD, SELECTION_TOLERANCE};
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -243,11 +243,11 @@ struct PathToolData {
 }
 
 impl PathToolData {
-	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, seg: ClosestSegment) -> PathToolFsmState {
+	fn start_insertion(&mut self, responses: &mut VecDeque<Message>, segment: ClosestSegment) -> PathToolFsmState {
 		if self.segment.is_some() {
-			warn!("segment was `Some(..)` before `start_insertion`")
+			warn!("Segment was `Some(..)` before `start_insertion`")
 		}
-		self.segment = Some(seg);
+		self.segment = Some(segment);
 		responses.add(OverlaysMessage::Draw);
 		PathToolFsmState::InsertPoint
 	}
@@ -255,13 +255,13 @@ impl PathToolData {
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
 		if let Some(seg) = &mut self.segment {
 			seg.update_closest_point(&document.metadata, mouse_position);
-			if seg.too_far(mouse_position, INSERT_TOO_FAR_DISTANCE) {
+			if seg.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
 			}
 		} else {
-			warn!("segment was `None` on `update_insertion`");
+			warn!("Segment was `None` on `update_insertion`");
 			PathToolFsmState::Ready
 		}
 	}
@@ -269,7 +269,7 @@ impl PathToolData {
 	fn end_insertion(&mut self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, kind: InsertEndKind) -> PathToolFsmState {
 		match self.segment.as_mut() {
 			None => {
-				warn!("segment was `None` before `end_insertion`")
+				warn!("Segment was `None` before `end_insertion`")
 			}
 			Some(seg) => {
 				if let InsertEndKind::Add { shift } = kind {
@@ -291,8 +291,8 @@ impl PathToolData {
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
-		shift: bool,
-		ctrl: bool,
+		add_to_selection: bool,
+		direct_insert_without_sliding: bool,
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
@@ -302,25 +302,25 @@ impl PathToolData {
 		let document_metadata = document.metadata();
 
 		// Select the first point within the threshold (in pixels)
-		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, shift) {
+		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points.try_to_selected_points() {
 				self.start_dragging_point(selected_points, input, document, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging
 		}
-		// We didn't find a point nearby, so trying to add point into close segment path
+		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
 		else if let Some(seg) = shape_editor.upper_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
-			if ctrl {
+			if direct_insert_without_sliding {
 				self.start_insertion(responses, seg);
-				self.end_insertion(shape_editor, responses, InsertEndKind::Add { shift })
+				self.end_insertion(shape_editor, responses, InsertEndKind::Add { shift: add_to_selection })
 			} else {
 				self.start_insertion(responses, seg)
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
 		else if let Some(layer) = document.click(input.mouse.position, &document.network) {
-			if shift {
+			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -428,7 +428,7 @@ impl Fsm for PathToolFsmState {
 					Self::InsertPoint => {
 						ret = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
 						if let Some(seg) = &tool_data.segment {
-							overlay_context.square(seg.closest_point_to_viewport(), true, Some(COLOR_OVERLAY_YELLOW));
+							overlay_context.square(seg.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
 						}
 					}
 					_ => {}
@@ -447,8 +447,8 @@ impl Fsm for PathToolFsmState {
 			}
 			(Self::InsertPoint, PathToolMessage::PointerMove { .. }) => {
 				responses.add(OverlaysMessage::Draw);
-				// `tool_data.update_insertion` would be called on `::Draw`
-				// we anyway should to call it on `::Draw` because we can changhe scale by ctrl+scroll without `::PointerMove`
+				// `tool_data.update_insertion` would be called on `OverlaysMessage::Draw`
+				// we anyway should to call it on `::Draw` because we can change scale by ctrl+scroll without `::PointerMove`
 				self
 			}
 			(Self::InsertPoint, PathToolMessage::Escape | PathToolMessage::Delete | PathToolMessage::RightClick) => tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort),
@@ -458,16 +458,16 @@ impl Fsm for PathToolFsmState {
 					Key::KeyG => responses.add(TransformLayerMessage::BeginGrab),
 					Key::KeyR => responses.add(TransformLayerMessage::BeginRotate),
 					Key::KeyS => responses.add(TransformLayerMessage::BeginScale),
-					_ => warn!("unexpected GRS key"),
+					_ => warn!("Unexpected GRS key"),
 				}
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			}
 
 			// Mouse down
 			(_, PathToolMessage::MouseDown { ctrl, shift }) => {
-				let shift = input.keyboard.get(shift as usize);
-				let ctrl = input.keyboard.get(ctrl as usize);
-				tool_data.mouse_down(shape_editor, document, input, responses, shift, ctrl)
+				let add_to_selection = input.keyboard.get(shift as usize);
+				let direct_insert_without_sliding = input.keyboard.get(ctrl as usize);
+				tool_data.mouse_down(shape_editor, document, input, responses, add_to_selection, direct_insert_without_sliding)
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
 				tool_data.previous_mouse_position = input.mouse.position;

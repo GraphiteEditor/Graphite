@@ -61,14 +61,16 @@ impl OverlayContext {
 	}
 
 	pub fn square(&mut self, position: DVec2, selected: bool, color_selected: Option<&str>) {
+		let color_selected = color_selected.unwrap_or(COLOR_OVERLAY_BLUE);
+
 		self.render_context.begin_path();
 		let corner = position - DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE) / 2.;
 		self.render_context
 			.rect(corner.x.round(), corner.y.round(), MANIPULATOR_GROUP_MARKER_SIZE, MANIPULATOR_GROUP_MARKER_SIZE);
-		let fill = if selected { color_selected.unwrap_or(COLOR_OVERLAY_BLUE) } else { COLOR_OVERLAY_WHITE };
+		let fill = if selected { color_selected } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
 		self.render_context.fill();
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_selected));
 		self.render_context.stroke();
 	}
 
