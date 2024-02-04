@@ -150,27 +150,27 @@ pub fn solve_cubic(a: f64, b: f64, c: f64, d: f64) -> [Option<f64>; 3] {
 		let d1 = (-c1).mul_add(c2, c0);
 		let d2 = c2 * c0 - c1 * c1;
 		// d is called "Discriminant"
-		let d = 4.0 * d0 * d2 - d1 * d1;
+		let d = 4. * d0 * d2 - d1 * d1;
 		// de is called "Depressed.x", Depressed.y = d0
-		let de = (-2.0 * c2).mul_add(d0, d1);
-		if d < 0.0 {
+		let de = (-2. * c2).mul_add(d0, d1);
+		if d < 0. {
 			let sq = (-0.25 * d).sqrt();
 			let r = -0.5 * de;
 			let t1 = (r + sq).cbrt() + (r - sq).cbrt();
 			[Some(t1 - c2), None, None]
-		} else if d == 0.0 {
+		} else if d == 0. {
 			let t1 = (-d0).sqrt().copysign(de);
-			[Some(t1 - c2), Some(-2.0 * t1 - c2).filter(|&a| a != t1 - c2), None]
+			[Some(t1 - c2), Some(-2. * t1 - c2).filter(|&a| a != t1 - c2), None]
 		} else {
 			let th = d.sqrt().atan2(-de) * ONETHIRD;
 			// (th_cos, th_sin) is called "CubicRoot"
 			let (th_sin, th_cos) = th.sin_cos();
 			// (r0, r1, r2) is called "Root"
 			let r0 = th_cos;
-			let ss3 = th_sin * 3.0f64.sqrt();
+			let ss3 = th_sin * 3_f64.sqrt();
 			let r1 = 0.5 * (-th_cos + ss3);
 			let r2 = 0.5 * (-th_cos - ss3);
-			let t = 2.0 * (-d0).sqrt();
+			let t = 2. * (-d0).sqrt();
 			[Some(t.mul_add(r0, -c2)), Some(t.mul_add(r1, -c2)), Some(t.mul_add(r2, -c2))]
 		}
 	}

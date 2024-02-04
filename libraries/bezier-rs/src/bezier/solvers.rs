@@ -138,7 +138,7 @@ impl Bezier {
 				let d1 = self.end - handle;
 				let dd = d1 - d0;
 				let a = (dd.x != 0.).then(|| -d0.x / dd.x);
-				let b = (dd.y != 0.0).then(|| -d0.y / dd.y);
+				let b = (dd.y != 0.).then(|| -d0.y / dd.y);
 				[[a, None, None], [b, None, None]]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
@@ -146,7 +146,7 @@ impl Bezier {
 				let d1 = handle_end - handle_start;
 				let d2 = self.end - handle_end;
 				let a = d0 - 2. * d1 + d2;
-				let b = 2.0 * (d1 - d0);
+				let b = 2. * (d1 - d0);
 				let c = d0;
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
@@ -760,7 +760,7 @@ mod tests {
 		let p = DVec2::new(127., 121.);
 		validate(bz, p);
 
-		let bz = Bezier::from_cubic_coordinates(55.0, 30.0, 85.0, 140.0, 175.0, 30.0, 185.0, 160.0);
+		let bz = Bezier::from_cubic_coordinates(55., 30., 85., 140., 175., 30., 185., 160.);
 		let p = DVec2::new(17., 172.);
 		validate(bz, p);
 	}

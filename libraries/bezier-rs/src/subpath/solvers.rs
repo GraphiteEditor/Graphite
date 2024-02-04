@@ -99,7 +99,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		test1 && test2
 	}
 
-	/// Compute the winding number contribution of the subpath
+	/// Computes the winding number contribution of the subpath.
 	pub fn winding_order(&self, point: DVec2) -> i32 {
 		self.iter().map(|segment| segment.winding(point)).sum()
 	}
