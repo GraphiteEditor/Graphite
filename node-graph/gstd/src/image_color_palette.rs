@@ -74,6 +74,7 @@ mod test {
 					width: 100,
 					height: 100,
 					data: vec![Color::from_rgbaf32(0.0, 0.0, 0.0, 1.0).unwrap(); 10000],
+					base64_string: None,
 				},
 				..Default::default()
 			}),

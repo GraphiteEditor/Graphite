@@ -4,6 +4,7 @@ pub(crate) mod compare;
 
 mod bezier;
 mod consts;
+mod poisson_disk;
 mod subpath;
 mod symmetrical_basis;
 mod utils;

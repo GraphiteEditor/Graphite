@@ -409,7 +409,7 @@ const bezierFeatures = {
 		})(),
 	},
 	"intersect-linear": {
-		name: "Intersect (Line Segment)",
+		name: "Intersect (Linear Segment)",
 		callback: (bezier: WasmBezierInstance): string => {
 			const line = [
 				[45, 30],
@@ -419,7 +419,7 @@ const bezierFeatures = {
 		},
 	},
 	"intersect-quadratic": {
-		name: "Intersect (Quadratic)",
+		name: "Intersect (Quadratic Segment)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const quadratic = [
 				[45, 80],
@@ -435,7 +435,7 @@ const bezierFeatures = {
 		},
 	},
 	"intersect-cubic": {
-		name: "Intersect (Cubic)",
+		name: "Intersect (Cubic Segment)",
 		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => {
 			const cubic = [
 				[65, 20],

@@ -1,6 +1,7 @@
 mod quad;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
+use crate::transform::Transform;
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
@@ -262,7 +263,16 @@ impl GraphicElementRendered for GraphicGroup {
 		self.iter().filter_map(|element| element.bounding_box(transform * self.transform)).reduce(Quad::combine_bounds)
 	}
 
-	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		for element in self.elements.iter().cloned() {
+			let mut new_click_targets = Vec::new();
+			element.add_click_targets(&mut new_click_targets);
+			for click_target in new_click_targets.iter_mut() {
+				click_target.subpath.apply_transform(element.transform())
+			}
+			click_targets.extend(new_click_targets);
+		}
+	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
 		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
@@ -453,12 +463,15 @@ impl GraphicElementRendered for ImageFrame<Color> {
 				if image.data.is_empty() {
 					return;
 				}
-				let output = image.to_png();
-				let preamble = "data:image/png;base64,";
-				let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-				base64_string.push_str(preamble);
-				base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
 
+				let base64_string = image.base64_string.clone().unwrap_or_else(|| {
+					let output = image.to_png();
+					let preamble = "data:image/png;base64,";
+					let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+					base64_string.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+					base64_string
+				});
 				render.leaf_tag("image", |attributes| {
 					attributes.push("width", 1.to_string());
 					attributes.push("height", 1.to_string());

@@ -483,7 +483,7 @@ impl Color {
 		if luminance <= 0.008856 {
 			(luminance * 903.3) / 100.
 		} else {
-			(luminance.powf(1. / 3.) * 116. - 16.) / 100.
+			(luminance.cbrt() * 116. - 16.) / 100.
 		}
 	}
 

@@ -46,6 +46,10 @@ pub struct Image<P: Pixel> {
 	pub height: u32,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
+	/// Optional: Stores a base64 string representation of the image which can be used to speed up the conversion
+	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub base64_string: Option<String>,
 }
 
 impl<P: Pixel + Debug> Debug for Image<P> {
@@ -108,6 +112,7 @@ impl<P: Pixel> Image<P> {
 			width: 0,
 			height: 0,
 			data: Vec::new(),
+			base64_string: None,
 		}
 	}
 
@@ -116,6 +121,7 @@ impl<P: Pixel> Image<P> {
 			width,
 			height,
 			data: vec![color; (width * height) as usize],
+			base64_string: None,
 		}
 	}
 
@@ -132,7 +138,12 @@ impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8_srgb(v[0], v[1], v[2], v[3])).collect();
-		Image { width, height, data }
+		Image {
+			width,
+			height,
+			data,
+			base64_string: None,
+		}
 	}
 
 	pub fn to_png(&self) -> Vec<u8> {
@@ -153,7 +164,7 @@ where
 {
 	/// Flattens each channel cast to a u8
 	pub fn to_flat_u8(&self) -> (Vec<u8>, u32, u32) {
-		let Image { width, height, data } = self;
+		let Image { width, height, data, .. } = self;
 		assert_eq!(data.len(), *width as usize * *height as usize);
 
 		// Cache the last sRGB value we computed, speeds up fills.
@@ -243,6 +254,7 @@ fn map_node<P: Pixel>(input: (u32, u32), data: Vec<P>) -> Image<P> {
 		width: input.0,
 		height: input.1,
 		data,
+		base64_string: None,
 	}
 }
 
@@ -379,6 +391,7 @@ impl From<ImageFrame<Color>> for ImageFrame<SRGBA8> {
 				data,
 				width: image.image.width,
 				height: image.image.height,
+				base64_string: None,
 			},
 			transform: image.transform,
 			alpha_blending: image.alpha_blending,
@@ -394,6 +407,7 @@ impl From<ImageFrame<SRGBA8>> for ImageFrame<Color> {
 				data,
 				width: image.image.width,
 				height: image.image.height,
+				base64_string: None,
 			},
 			transform: image.transform,
 			alpha_blending: image.alpha_blending,

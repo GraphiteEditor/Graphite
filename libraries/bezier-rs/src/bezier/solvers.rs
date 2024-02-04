@@ -134,15 +134,20 @@ impl Bezier {
 		match self.handles {
 			BezierHandles::Linear => [[None; 3]; 2],
 			BezierHandles::Quadratic { handle } => {
-				let a = handle - self.start;
-				let b = self.end - handle;
-				let b_minus_a = b - a;
-				[utils::solve_linear(b_minus_a.x, a.x), utils::solve_linear(b_minus_a.y, a.y)]
+				let d0 = handle - self.start;
+				let d1 = self.end - handle;
+				let dd = d1 - d0;
+				let a = (dd.x != 0.).then(|| -d0.x / dd.x);
+				let b = (dd.y != 0.).then(|| -d0.y / dd.y);
+				[[a, None, None], [b, None, None]]
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
-				let a = 3. * (-self.start + 3. * handle_start - 3. * handle_end + self.end);
-				let b = 6. * (self.start - 2. * handle_start + handle_end);
-				let c = 3. * (handle_start - self.start);
+				let d0 = handle_start - self.start;
+				let d1 = handle_end - handle_start;
+				let d2 = self.end - handle_end;
+				let a = d0 - 2. * d1 + d2;
+				let b = 2. * (d1 - d0);
+				let c = d0;
 				let discriminant = b * b - 4. * a * c;
 				let two_times_a = 2. * a;
 				[
@@ -179,6 +184,15 @@ impl Bezier {
 		}
 
 		[endpoints_min, endpoints_max]
+	}
+
+	/// Return the min and max corners that represent the bounding box enclosing this Bezier's two anchor points and any handles.
+	pub fn bounding_box_of_anchors_and_handles(&self) -> [DVec2; 2] {
+		match self.handles {
+			BezierHandles::Linear => [self.start.min(self.end), self.start.max(self.end)],
+			BezierHandles::Quadratic { handle } => [self.start.min(self.end).min(handle), self.start.max(self.end).max(handle)],
+			BezierHandles::Cubic { handle_start, handle_end } => [self.start.min(self.end).min(handle_start).min(handle_end), self.start.max(self.end).max(handle_start).max(handle_end)],
+		}
 	}
 
 	/// Returns `true` if the bounding box of the bezier is contained entirely within a rectangle defined by its minimum and maximum corners.
@@ -261,7 +275,7 @@ impl Bezier {
 	/// The list of `t`-values returned are filtered such that they fall within the range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/inflections/solo" title="Inflections Demo"></iframe>
 	pub fn inflections(&self) -> Vec<f64> {
-		self.unrestricted_inflections().into_iter().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
+		self.unrestricted_inflections().filter(|&t| t > 0. && t < 1.).collect::<Vec<f64>>()
 	}
 
 	/// Implementation of the algorithm to find curve intersections by iterating on bounding boxes.
@@ -343,22 +357,21 @@ impl Bezier {
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(0., 1.));
 			let rotation_matrix = DMat2::from_angle(angle);
-			let rotated_bezier = self.apply_transformation(|point| rotation_matrix.mul_vec2(point));
-			let rotated_line = [rotation_matrix.mul_vec2(other.start), rotation_matrix.mul_vec2(other.end)];
+			let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
 
 			// Translate the bezier such that the line becomes aligned on top of the x-axis
-			let vertical_distance = rotated_line[0].x;
+			let vertical_distance = (rotation_matrix * other.start).x;
 			let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
 			// Compute the roots of the resulting bezier curve
 			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);
 
-			let min = other.start.min(other.end);
-			let max = other.start.max(other.end);
+			// Calculate line's bounding box
+			let [min_corner, max_corner] = other.bounding_box_of_anchors_and_handles();
 
 			return list_intersection_t
 				// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
-				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min, max, MAX_ABSOLUTE_DIFFERENCE).all())
+				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min_corner, max_corner, MAX_ABSOLUTE_DIFFERENCE).all())
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
 				.collect::<Vec<f64>>();
@@ -367,6 +380,59 @@ impl Bezier {
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
 		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
+	}
+
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
+	/// If this needs to be called frequently with a line of the same rotation angle, consider instead using [`line_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	pub fn line_test_crossings(&self, point_on_line: DVec2, direction_vector: DVec2) -> impl Iterator<Item = f64> + '_ {
+		// Rotate the bezier and the line by the angle that the line makes with the x axis
+		let angle = direction_vector.angle_between(DVec2::new(0., 1.));
+		let rotation_matrix = DMat2::from_angle(angle);
+		let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
+
+		self.line_test_crossings_prerotated(point_on_line, rotation_matrix, rotated_bezier)
+	}
+
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given infinite line.
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`line_test_crossings`] which wraps this and provides an easier interface by taking a line rotation vector.
+	/// Instead, this version requires a rotation matrix for the line's rotation and a version of this Bezier segment that has had its rotation already applied.
+	pub fn line_test_crossings_prerotated(&self, point_on_line: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
+		// Translate the bezier such that the line becomes aligned on top of the x-axis
+		let vertical_distance = (rotation_matrix.x_axis.x * point_on_line.x) + (rotation_matrix.y_axis.x * point_on_line.y);
+		let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
+
+		// Compute the roots of the resulting bezier curve
+		translated_bezier.find_tvalues_for_x(0.)
+	}
+
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given ray. (`ray_direction` does not need to be normalized.)
+	/// If this needs to be called frequently with a ray of the same rotation angle, consider instead using [`ray_test_crossings_prerotated`] and moving this function's setup code into your own logic before the repeated call.
+	pub fn ray_test_crossings(&self, ray_start: DVec2, ray_direction: DVec2) -> impl Iterator<Item = f64> + '_ {
+		// Rotate the bezier and the line by the angle that the line makes with the x axis
+		let angle = ray_direction.angle_between(DVec2::new(0., 1.));
+		let rotation_matrix = DMat2::from_angle(angle);
+		let rotated_bezier = self.apply_transformation(|point| rotation_matrix * point);
+
+		self.ray_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier)
+	}
+
+	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given infinite ray.
+	/// This version of the function is for better performance when calling it frequently without needing to change the rotation between each call.
+	/// If that isn't important, use [`ray_test_crossings`] which wraps this and provides an easier interface by taking a ray direction vector.
+	/// Instead, this version requires a rotation matrix for the ray's rotation and a version of this Bezier segment that has had its rotation already applied.
+	pub fn ray_test_crossings_prerotated(&self, ray_start: DVec2, rotation_matrix: DMat2, rotated_bezier: Self) -> impl Iterator<Item = f64> + '_ {
+		// Intersection t-values include those beyond the [0-1] range where the segment's ends extend through the X-axis
+		let intersection_t_values_on_rotated_bezier = self.line_test_crossings_prerotated(ray_start, rotation_matrix, rotated_bezier);
+
+		intersection_t_values_on_rotated_bezier
+			// Accept the t value if it is approximately in [0, 1] and if the corresponding coordinates are within the range of the linear line
+			.filter(move |&t| {
+				let point = self.unrestricted_parametric_evaluate(t);
+				// Ensure the returned value is within the correct range
+				let in_bounds = point.cmpge(ray_start) | utils::dvec2_compare(point, ray_start, MAX_ABSOLUTE_DIFFERENCE);
+				in_bounds.x && in_bounds.y
+			})
 	}
 
 	/// Helper function to compute intersections between lists of subcurves.
@@ -531,9 +597,27 @@ impl Bezier {
 	///
 	/// Cast a ray to the left and count intersections.
 	pub fn winding(&self, target_point: DVec2) -> i32 {
-		let extrema = self.get_extrema_t_list();
-		extrema
+		let [x_extrema_t, y_extrema_t] = self.unrestricted_local_extrema();
+		let mut x_extrema_t = x_extrema_t.map(|t| t.filter(|&t| t > 0. && t < 1.));
+		let mut y_extrema_t = y_extrema_t.map(|t| t.filter(|&t| t > 0. && t < 1.));
+
+		let mut results = [None; 8];
+		results[7] = Some(1.);
+		for i in (0..7).rev() {
+			let Some(min) = x_extrema_t.iter_mut().chain(y_extrema_t.iter_mut()).max_by(|a, b| a.partial_cmp(b).unwrap()) else {
+				results[i] = Some(0.);
+				break;
+			};
+			if let Some(value) = min.take() {
+				results[i] = Some(value);
+			} else {
+				results[i] = Some(0.);
+				break;
+			}
+		}
+		results
 			.windows(2)
+			.flat_map(|t| t[0].and_then(|first| t[1].map(|second| [first, second])))
 			.map(|t| self.trim(TValue::Parametric(t[0]), TValue::Parametric(t[1])).pre_split_winding_number(target_point))
 			.sum()
 	}
@@ -676,7 +760,7 @@ mod tests {
 		let p = DVec2::new(127., 121.);
 		validate(bz, p);
 
-		let bz = Bezier::from_cubic_coordinates(55.0, 30.0, 85.0, 140.0, 175.0, 30.0, 185.0, 160.0);
+		let bz = Bezier::from_cubic_coordinates(55., 30., 85., 140., 175., 30., 185., 160.);
 		let p = DVec2::new(17., 172.);
 		validate(bz, p);
 	}

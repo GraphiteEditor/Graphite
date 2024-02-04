@@ -145,10 +145,7 @@ impl NodeRuntime {
 		// TODO: Currently we still render the document after we submit the node graph execution request.
 		// This should be avoided in the future.
 		requests.reverse();
-		requests.dedup_by_key(|x| match x {
-			NodeRuntimeMessage::ExecutionRequest(x) => Some(x.graph.current_hash()),
-			_ => None,
-		});
+		requests.dedup_by(|a, b| matches!(a, NodeRuntimeMessage::ExecutionRequest(_)) && matches!(b, NodeRuntimeMessage::ExecutionRequest(_)));
 		requests.reverse();
 		for request in requests {
 			match request {

@@ -52,16 +52,13 @@ image = { workspace = true, optional = true, default-features = false, features 
 	"png",
 ] }
 specta = { workspace = true, optional = true }
-
 rustybuzz = { workspace = true, optional = true }
-
 num-derive = { workspace = true }
 num-traits = { workspace = true, default-features = false, features = ["i128"] }
-
-
 wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
 usvg = { workspace = true }
+rand = { workspace = true, default-features = false, features = ["std_rng"] }
 
 [dependencies.web-sys]
 workspace = true

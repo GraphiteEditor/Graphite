@@ -28,19 +28,19 @@ wayland = []
 
 [dependencies]
 fastnoise-lite = { workspace = true }
-rand = { workspace = true, features = [
+rand = { workspace = true, default-features = false, features = [
 	"alloc",
 	"small_rng",
-], default-features = false }
+] }
 rand_chacha = { workspace = true }
 autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
 	"fitting",
 ] }
-graphene-core = { path = "../gcore", features = [
+graphene-core = { path = "../gcore", default-features = false, features = [
 	"std",
 	"serde",
 	"alloc",
-], default-features = false }
+] }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
 vulkan-executor = { path = "../vulkan-executor", optional = true }

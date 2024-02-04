@@ -1,0 +1,34 @@
+{
+	"image": "mcr.microsoft.com/devcontainers/universal:2",
+	"features": {
+		"ghcr.io/devcontainers/features/rust:1": {
+			"profile": "default"
+		},
+		"ghcr.io/devcontainers/features/node:1": {}
+	},
+	"onCreateCommand": "cargo install cargo-watch cargo-about",
+	"postCreateCommand": "cd frontend && npm install",
+	"customizations": {
+		"vscode": {
+			// NOTE: Keep this in sync with `.vscode/extensions.json`
+			"extensions": [
+				// Rust
+				"rust-lang.rust-analyzer",
+				"tamasfe.even-better-toml",
+				"serayuzgur.crates",
+				// Web
+				"dbaeumer.vscode-eslint",
+				"svelte.svelte-vscode",
+				"vitaliymaz.vscode-svg-previewer",
+				// Code quality
+				"wayou.vscode-todo-highlight",
+				"streetsidesoftware.code-spell-checker",
+				// Helpful
+				"mhutchie.git-graph",
+				"waderyan.gitblame",
+				"qezhu.gitlink",
+				"wmaurer.change-case"
+			]
+		}
+	}
+}

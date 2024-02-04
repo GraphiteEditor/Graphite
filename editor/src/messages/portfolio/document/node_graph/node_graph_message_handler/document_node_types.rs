@@ -1025,6 +1025,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "MemoizeImpure",
+			category: "Structural",
+			implementation: NodeImplementation::proto("graphene_core::memo::ImpureMemoNode<_, _, _>"),
+			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
+			manual_composition: Some(concrete!(Footprint)),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Image",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
@@ -2644,11 +2653,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Copy to Points",
 			category: "Vector",
 			// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
-			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _>"),
+			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Points", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Random Scale Min", TaggedValue::F32(1.), false),
+				DocumentInputType::value("Random Scale Max", TaggedValue::F32(1.), false),
+				DocumentInputType::value("Random Rotation", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::copy_to_points_properties,
@@ -2707,6 +2719,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Poisson-Disk Points",
+			category: "Vector",
+			implementation: NodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Separation Disk Diameter", TaggedValue::F32(10.), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::poisson_disk_points_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Splines from Points",
 			category: "Vector",
 			implementation: NodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
@@ -2723,7 +2747,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Source", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Target", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Start Index", TaggedValue::U32(0), false),
-				DocumentInputType::value("Time", TaggedValue::F64(0.5), false),
+				DocumentInputType::value("Time", TaggedValue::F32(0.5), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			manual_composition: Some(concrete!(Footprint)),
