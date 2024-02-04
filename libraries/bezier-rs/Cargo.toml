@@ -18,4 +18,4 @@ glam = { version = "0.24", features = ["serde"] }
 
 dyn-any = { version = "0.3.0", path = "../dyn-any", optional = true }
 serde = { version = "1.0", workspace = true, optional = true }
-log = { workspace = true }
+log = { workspace = true, optional = true }

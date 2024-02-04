@@ -367,27 +367,3 @@ impl AccelerationGrid {
 		self.cells.iter().flat_map(|cell| cell.list_cell()).collect()
 	}
 }
-
-#[test]
-fn poisson_disk_winding_order() {
-	let shape: crate::Subpath<crate::EmptyId> = crate::Subpath::new(
-		vec![
-				crate::ManipulatorGroup::new(DVec2::new(0.0,252.1262327416174),Some(DVec2::new(0.0,253.45956607495077)),Some(DVec2::new(0.0,252.1262327416174)))
-				crate::ManipulatorGroup::new(DVec2::new(72.66666666666669,88.79289940828403),Some(DVec2::new(14.0,146.12623274161717)),Some(DVec2::new(131.33333333333337,31.45956607495077)))
-				crate::ManipulatorGroup::new(DVec2::new(258.66666666666663,4.792899408284029),Some(DVec2::new(193.33333333333326,10.792899408284029)),Some(DVec2::new(324.0,-1)))
-				crate::ManipulatorGroup::new(DVec2::new(356.6666666666667,0.12623274161740028),Some(DVec2::new(356.6666666666667,0.12623274161740028)),Some(DVec2::new(356.6666666666667,0.12623274161740028)))
-				crate::ManipulatorGroup::new(DVec2::new(427.99999999999994,31.45956607495077),Some(DVec2::new(463.31654570364606,7.996416726663824)),Some(DVec2::new(392.68345429635343,54.922715423237946)))
-				crate::ManipulatorGroup::new(DVec2::new(327.33333333333337,132.12623274161763),Some(DVec2::new(373.3333333333333,80.1262327416174)),Some(DVec2::new(327.33333333333337,132.12623274161763)))
-				crate::ManipulatorGroup::new(DVec2::new(270.6666666666667,248.1262327416174),Some(DVec2::new(288.6666666666667,192.79289940828414)),Some(DVec2::new(270.6666666666667,248.1262327416174)))
-
-		],
-		true,
-	);
-
-	let [corner1, centre, corner2] = [[0., 199.45240171198344], [4.533009129817805, 203.98541084180124], [9.06601825963561, 208.51841997161904]];
-	assert_eq!(shape.winding_order(DVec2::new(corner1[0], corner1[1])) != 0, shape.winding_order(DVec2::new(centre[0], centre[1])) != 0);
-	assert_eq!(
-		shape.winding_order(DVec2::new(corner1[0], corner1[1])) != 0,
-		shape.winding_order(DVec2::new(corner2[0], corner2[1])) != 0
-	);
-}
