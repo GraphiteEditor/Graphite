@@ -713,7 +713,12 @@ impl ShapeState {
 						let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
 						let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
 						for (i, &(manipulator_index, group)) in points.iter().enumerate() {
-							debug!("index: {}", manipulator_index);
+							if manipulator_index == 0 {
+								last_manipulator_index = manipulator_index + 1;
+								last_manipulator_group = Some(group);
+								continue;
+							}
+
 							let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
 							if i != 0 {
 								segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
@@ -729,6 +734,10 @@ impl ShapeState {
 
 							last_manipulator_index = manipulator_index + 1;
 							last_manipulator_group = Some(group);
+						}
+
+						if last_manipulator_index == subpath.len() {
+							return;
 						}
 
 						let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
@@ -752,7 +761,7 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete point and break path.
+	/// Delete point and its adjacent segments, then break path.
 	pub fn delete_point_and_break_path(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		debug!("delete point and break path");
 	}
