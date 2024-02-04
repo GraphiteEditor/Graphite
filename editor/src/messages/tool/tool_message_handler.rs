@@ -177,6 +177,15 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 			}
+			ToolMessage::Redo => {
+				let tool_data = &mut self.tool_state.tool_data;
+				match tool_data.active_tool_type {
+					ToolType::Pen => {
+						responses.add(PenToolMessage::Redo);
+					}
+					_ => {}
+				}
+			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
@@ -220,6 +229,17 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 				std::mem::swap(&mut document_data.primary_color, &mut document_data.secondary_color);
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
+			}
+			ToolMessage::Undo => {
+				let tool_data = &mut self.tool_state.tool_data;
+				match tool_data.active_tool_type {
+					ToolType::Pen => {
+						responses.add(PenToolMessage::Undo);
+					}
+					_ => {
+						responses.add(BroadcastEvent::ToolAbort);
+					}
+				}
 			}
 
 			// Sub-messages
@@ -282,6 +302,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 			SelectRandomPrimaryColor,
 			ResetColors,
 			SwapColors,
+			Undo,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list.extend(self.transform_layer_handler.actions());

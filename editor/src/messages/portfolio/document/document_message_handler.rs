@@ -630,6 +630,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			Redo => {
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);
+				responses.add(ToolMessage::Redo);
 				responses.add(OverlaysMessage::Draw);
 			}
 			RenameDocument { new_name } => {
@@ -806,10 +807,11 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			Undo => {
 				self.undo_in_progress = true;
-				responses.add(BroadcastEvent::ToolAbort);
+
 				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(DocumentMessage::UndoFinished);
+				responses.add(ToolMessage::Undo);
 			}
 			UndoFinished => self.undo_in_progress = false,
 			UngroupSelectedLayers => {

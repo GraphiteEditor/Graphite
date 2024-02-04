@@ -126,6 +126,7 @@ pub enum ToolMessage {
 	},
 	DeactivateTools,
 	InitTools,
+	Redo,
 	RefreshToolOptions,
 	ResetColors,
 	SelectPrimaryColor {
@@ -136,6 +137,7 @@ pub enum ToolMessage {
 		color: Color,
 	},
 	SwapColors,
+	Undo,
 	UpdateCursor,
 	UpdateHints,
 }
