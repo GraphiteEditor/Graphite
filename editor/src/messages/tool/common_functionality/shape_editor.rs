@@ -675,48 +675,61 @@ impl ShapeState {
 		}
 	}
 
-	/// Break closed curve.
-	pub fn break_closed_curve(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+	/// Break path at selected points.
+	pub fn break_path_at_selected_point(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			if state.selected_points.len() > 1 {
-				return;
-			}
-			for &point in &state.selected_points {
-				let Some(subpaths) = get_subpaths(layer, document_network) else {
-					continue;
-				};
-				if !subpaths[0].closed {
-					continue;
+			let Some(subpaths) = get_subpaths(layer, document_network) else {
+				continue;
+			};
+
+			let mut new_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::new();
+
+			for subpath in subpaths {
+				let mut updated = false;
+				for &point in &state.selected_points {
+					let Some(&group) = subpath.manipulator_from_id(point.group) else {
+						continue;
+					};
+
+					let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
+						continue;
+					};
+					updated = true;
+					if subpath.closed {
+						let mut first_half = subpath.manipulator_groups()[..manipulator_index].to_vec();
+						first_half.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+
+						let mut second_half = subpath.manipulator_groups()[manipulator_index + 1..].to_vec();
+						second_half.insert(0, ManipulatorGroup::new(group.anchor, None, group.in_handle));
+
+						second_half.extend(first_half);
+
+						new_subpaths.push(bezier_rs::Subpath::new(second_half, false));
+					} else {
+						// Do not need to handle first and last manipulator.
+						if manipulator_index == 0 || manipulator_index == subpath.len() - 1 {
+							continue;
+						}
+
+						let mut first_half = subpath.manipulator_groups()[..manipulator_index].to_vec();
+						first_half.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+
+						let mut second_half = subpath.manipulator_groups()[manipulator_index + 1..].to_vec();
+						second_half.insert(0, ManipulatorGroup::new(group.anchor, None, group.in_handle));
+
+						new_subpaths.push(bezier_rs::Subpath::new(first_half, false));
+						new_subpaths.push(bezier_rs::Subpath::new(second_half, false));
+					}
 				}
-				let Some(&group) = graph_modification_utils::get_manipulator_from_id(subpaths, point.group) else {
-					continue;
-				};
-
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::ShiftManipulatorGroup { id: group.id },
-				});
-
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::RemoveManipulatorPoint {
-						point: ManipulatorPointId::new(group.id, SelectedType::InHandle),
-					},
-				});
-
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::AddEndManipulatorGroup {
-						subpath_index: 0,
-						manipulator_group: ManipulatorGroup::new(group.anchor, group.in_handle, None),
-					},
-				});
-
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetClosed { index: 0, closed: false },
-				});
+				if !updated {
+					new_subpaths.push(subpath.clone());
+				}
 			}
+
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::UpdateSubpaths { subpaths: new_subpaths },
+			});
 		}
 	}
 

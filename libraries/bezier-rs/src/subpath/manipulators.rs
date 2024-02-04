@@ -51,6 +51,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.manipulator_groups.remove(index)
 	}
 
+	/// shift the vec to let the element at index to be the first element.
 	pub fn shift_manipulator_group_to_head(&mut self, index: usize) {
 		self.manipulator_groups.rotate_left(index);
 	}

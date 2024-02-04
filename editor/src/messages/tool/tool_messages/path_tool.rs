@@ -423,7 +423,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
-				shape_editor.break_closed_curve(&document.network, responses);
+				shape_editor.break_path_at_selected_point(&document.network, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::InsertPoint) => {
