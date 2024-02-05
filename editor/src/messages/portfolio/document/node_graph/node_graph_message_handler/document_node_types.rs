@@ -2653,13 +2653,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Copy to Points",
 			category: "Vector",
 			// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?
-			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _>"),
+			implementation: NodeImplementation::proto("graphene_core::vector::CopyToPoints<_, _, _, _, _, _>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Points", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Random Scale Min", TaggedValue::F32(1.), false),
 				DocumentInputType::value("Random Scale Max", TaggedValue::F32(1.), false),
+				DocumentInputType::value("Random Scale Bias", TaggedValue::F32(1.), false),
 				DocumentInputType::value("Random Rotation", TaggedValue::F32(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],

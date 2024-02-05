@@ -2151,13 +2151,23 @@ pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, 
 		NumberInput::default().min(0.).mode_range().range_min(Some(0.)).range_max(Some(2.)).unit("x"),
 		true,
 	);
+	let random_scale_bias = number_widget(
+		document_node,
+		node_id,
+		4,
+		"Random Scale Bias",
+		NumberInput::default().mode_range().range_min(Some(-50.)).range_max(Some(50.)),
+		true,
+	);
 
-	let random_rotation = number_widget(document_node, node_id, 4, "Random Rotation", NumberInput::default().min(0.).max(360.).mode_range().unit("°"), true);
+	let random_rotation = number_widget(document_node, node_id, 5, "Random Rotation", NumberInput::default().min(0.).max(360.).mode_range().unit("°"), true);
 
 	vec![
 		LayoutGroup::Row { widgets: instance }.with_tooltip("Artwork to be copied and placed at each point"),
 		LayoutGroup::Row { widgets: random_scale_min }.with_tooltip("Minimum range of randomized sizes given to each instance"),
 		LayoutGroup::Row { widgets: random_scale_max }.with_tooltip("Maximum range of randomized sizes given to each instance"),
+		LayoutGroup::Row { widgets: random_scale_bias }
+			.with_tooltip("Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes)"),
 		LayoutGroup::Row { widgets: random_rotation }.with_tooltip("Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise"),
 	]
 }
