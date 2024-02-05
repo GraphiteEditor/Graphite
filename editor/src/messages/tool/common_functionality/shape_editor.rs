@@ -675,6 +675,147 @@ impl ShapeState {
 		}
 	}
 
+	pub fn break_path_at_selected_point(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(layer, document_network) else {
+				continue;
+			};
+
+			let mut broken_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::new();
+
+			for subpath in subpaths {
+				let mut points: Vec<_> = state
+					.selected_points
+					.iter()
+					.filter_map(|&point| {
+						let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
+							return None;
+						};
+						let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
+							return None;
+						};
+						Some((manipulator_index, manipulator))
+					})
+					.collect();
+
+				if points.is_empty() {
+					broken_subpaths.push(subpath.clone());
+					continue;
+				}
+
+				points.sort_by(|&a, &b| match a.0 > b.0 {
+					true => std::cmp::Ordering::Greater,
+					false => std::cmp::Ordering::Less,
+				});
+
+				let mut last_manipulator_index = 0;
+				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
+				let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
+				for (i, &(manipulator_index, group)) in points.iter().enumerate() {
+					if manipulator_index == 0 && !subpath.closed {
+						last_manipulator_index = manipulator_index + 1;
+						last_manipulator_group = Some(group);
+						continue;
+					}
+
+					let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+					if i != 0 {
+						segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
+					}
+
+					segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+
+					if subpath.closed && i == 0 {
+						to_extend_with_last_group = Some(segment);
+					} else {
+						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+					}
+
+					last_manipulator_index = manipulator_index + 1;
+					last_manipulator_group = Some(group);
+				}
+
+				if last_manipulator_index == subpath.len() && !subpath.closed {
+					continue;
+				}
+
+				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+				final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
+
+				if let Some(group) = to_extend_with_last_group {
+					final_segment.extend(group);
+				}
+
+				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+			}
+
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths },
+			});
+		}
+	}
+
+	/// Delete point(s) and adjacent segments, which breaks a closed path as open, or an open path into multiple.
+	pub fn delete_point_and_break_path(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(subpaths) = get_subpaths(layer, document_network) else {
+				continue;
+			};
+
+			let mut broken_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::with_capacity(subpaths.len());
+
+			for subpath in subpaths {
+				let mut selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| subpath.manipulator_index_from_id(point.group)).collect();
+
+				if selected_points.is_empty() {
+					broken_subpaths.push(subpath.clone());
+					continue;
+				}
+
+				selected_points.sort_by(|&a, &b| match a > b {
+					true => std::cmp::Ordering::Greater,
+					false => std::cmp::Ordering::Less,
+				});
+
+				let mut last_manipulator_index = 0;
+				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
+				for (i, &manipulator_index) in selected_points.iter().enumerate() {
+					if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
+						last_manipulator_index = manipulator_index + 1;
+						continue;
+					}
+
+					let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+					if subpath.closed && i == 0 {
+						to_extend_with_last_group = Some(segment);
+					} else {
+						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+					}
+
+					last_manipulator_index = manipulator_index + 1;
+				}
+
+				if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
+					continue;
+				}
+
+				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+
+				if let Some(group) = to_extend_with_last_group {
+					final_segment.extend(group);
+				}
+
+				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+			}
+
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths },
+			});
+		}
+	}
+
 	/// Toggle if the handles should mirror angle across the anchor position.
 	pub fn toggle_handle_mirroring_on_selected(&self, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
