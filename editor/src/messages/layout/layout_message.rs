@@ -7,11 +7,6 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, Layout)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum LayoutMessage {
-	CommitLayout {
-		layout_target: LayoutTarget,
-		widget_id: WidgetId,
-		value: serde_json::Value,
-	},
 	ResendActiveWidget {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
@@ -20,7 +15,12 @@ pub enum LayoutMessage {
 		layout: Layout,
 		layout_target: LayoutTarget,
 	},
-	UpdateLayout {
+	WidgetValueCommit {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
+		value: serde_json::Value,
+	},
+	WidgetValueUpdate {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
 		value: serde_json::Value,

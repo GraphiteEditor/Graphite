@@ -48,17 +48,29 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 		use LayoutMessage::*;
 		#[remain::sorted]
 		match message {
-			CommitLayout { layout_target, widget_id, value } => {
-				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
-					layout
-				} else {
+			ResendActiveWidget { layout_target, widget_id } => {
+				// Find the updated diff based on the specified layout target
+				let Some(diff) = (match &self.layouts[layout_target as usize] {
+					Layout::MenuLayout(_) => return,
+					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
+						// Create a widget update diff for the relevant id
+						let new_value = DiffUpdate::Widget(widget.clone());
+						WidgetDiff { widget_path, new_value }
+					}),
+				}) else {
+					return;
+				};
+				// Resend that diff
+				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
+			}
+			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
+			WidgetValueCommit { layout_target, widget_id, value } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
 					warn!("CommitLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};
 
-				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
-					widget_holder
-				} else {
+				let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
 					warn!("CommitLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};
@@ -131,34 +143,14 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 					_ => {}
 				};
 			}
-			ResendActiveWidget { layout_target, widget_id } => {
-				// Find the updated diff based on the specified layout target
-				let Some(diff) = (match &self.layouts[layout_target as usize] {
-					Layout::MenuLayout(_) => return,
-					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
-						// Create a widget update diff for the relevant id
-						let new_value = DiffUpdate::Widget(widget.clone());
-						WidgetDiff { widget_path, new_value }
-					}),
-				}) else {
-					return;
-				};
-				// Resend that diff
-				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
-			}
-			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
-			UpdateLayout { layout_target, widget_id, value } => {
+			WidgetValueUpdate { layout_target, widget_id, value } => {
 				// Look up the layout
-				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
-					layout
-				} else {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
 					warn!("UpdateLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};
 
-				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
-					widget_holder
-				} else {
+				let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
 					warn!("UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 					return;
 				};

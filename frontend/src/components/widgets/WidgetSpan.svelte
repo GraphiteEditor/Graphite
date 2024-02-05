@@ -57,16 +57,16 @@
 		return widgets;
 	}
 
-	function commitLayout(index: number) {
-		editor.instance.commitLayout(layoutTarget, widgets[index].widgetId);
+	function widgetValueCommit(index: number, value: unknown) {
+		editor.instance.widgetValueCommit(layoutTarget, widgets[index].widgetId, value);
 	}
 
-	function updateLayout(index: number, value: unknown) {
-		editor.instance.updateLayout(layoutTarget, widgets[index].widgetId, value);
+	function widgetValueUpdate(index: number, value: unknown) {
+		editor.instance.widgetValueUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
-	function commitAndUpdateLayout(index: number, value: unknown) {
-		editor.instance.commitAndUpdateLayout(layoutTarget, widgets[index].widgetId, value);
+	function widgetValueCommitAndUpdate(index: number, value: unknown) {
+		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
@@ -84,31 +84,31 @@
 	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
-			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<CheckboxInput {...exclude(checkboxInput)} on:checked={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const colorInput = narrowWidgetProps(component.props, "ColorButton")}
 		{#if colorInput}
-			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => updateLayout(index, detail)} on:start={() => commitLayout(index)} />
+			<ColorButton {...exclude(colorInput)} on:value={({ detail }) => widgetValueUpdate(index, detail)} on:startHistoryTransaction={() => widgetValueCommit(index, colorInput.value)} />
 		{/if}
 		{@const curvesInput = narrowWidgetProps(component.props, "CurveInput")}
 		{#if curvesInput}
-			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => commitAndUpdateLayout(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
+			<CurveInput {...exclude(curvesInput)} on:value={({ detail }) => debouncer((value) => widgetValueCommitAndUpdate(index, value), { debounceTime: 120 }).debounceUpdateValue(detail)} />
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
-			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
-			<ParameterExposeButton {...exclude(parameterExposeButton)} action={() => commitAndUpdateLayout(index, undefined)} />
+			<ParameterExposeButton {...exclude(parameterExposeButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const iconButton = narrowWidgetProps(component.props, "IconButton")}
 		{#if iconButton}
-			<IconButton {...exclude(iconButton)} action={() => commitAndUpdateLayout(index, undefined)} />
+			<IconButton {...exclude(iconButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
@@ -122,15 +122,15 @@
 		{#if numberInput}
 			<NumberInput
 				{...exclude(numberInput)}
-				on:value={({ detail }) => debouncer((value) => updateLayout(index, value)).debounceUpdateValue(detail)}
-				on:start={() => commitLayout(index)}
-				incrementCallbackIncrease={() => commitAndUpdateLayout(index, "Increment")}
-				incrementCallbackDecrease={() => commitAndUpdateLayout(index, "Decrement")}
+				on:value={({ detail }) => debouncer((value) => widgetValueUpdate(index, value)).debounceUpdateValue(detail)}
+				on:startHistoryTransaction={() => widgetValueCommit(index, numberInput.value)}
+				incrementCallbackIncrease={() => widgetValueCommitAndUpdate(index, "Increment")}
+				incrementCallbackDecrease={() => widgetValueCommitAndUpdate(index, "Decrement")}
 			/>
 		{/if}
 		{@const pivotInput = narrowWidgetProps(component.props, "PivotInput")}
 		{#if pivotInput}
-			<PivotInput {...exclude(pivotInput)} on:position={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<PivotInput {...exclude(pivotInput)} on:position={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
@@ -145,7 +145,7 @@
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}
-			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<RadioInput {...exclude(radioInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const separator = narrowWidgetProps(component.props, "Separator")}
 		{#if separator}
@@ -157,19 +157,19 @@
 		{/if}
 		{@const textAreaInput = narrowWidgetProps(component.props, "TextAreaInput")}
 		{#if textAreaInput}
-			<TextAreaInput {...exclude(textAreaInput)} on:commitText={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<TextAreaInput {...exclude(textAreaInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...exclude(textButton)} action={() => commitAndUpdateLayout(index, undefined)} />
+			<TextButton {...exclude(textButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}
-			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} action={(index) => commitAndUpdateLayout(index, index)} />
+			<BreadcrumbTrailButtons {...exclude(breadcrumbTrailButtons)} action={(index) => widgetValueCommitAndUpdate(index, index)} />
 		{/if}
 		{@const textInput = narrowWidgetProps(component.props, "TextInput")}
 		{#if textInput}
-			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => commitAndUpdateLayout(index, detail)} />
+			<TextInput {...exclude(textInput)} on:commitText={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const textLabel = narrowWidgetProps(component.props, "TextLabel")}
 		{#if textLabel}

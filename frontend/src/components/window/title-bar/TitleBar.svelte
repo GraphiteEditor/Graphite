@@ -54,7 +54,7 @@
 				...entry,
 
 				// Shared names with fields that need to be converted from the type used in `MenuBarEntry` to that of `MenuListEntry`
-				action: () => editor.instance.commitAndUpdateLayout(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
+				action: () => editor.instance.widgetValueCommitAndUpdate(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
 				children: entry.children ? entry.children.map((entries) => entries.map((entry) => menuBarEntryToMenuListEntry(entry))) : undefined,
 
 				// New fields in `MenuListEntry`

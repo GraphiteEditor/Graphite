@@ -7,7 +7,7 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ value: Color; start: undefined }>();
+	const dispatch = createEventDispatcher<{ value: Color; startHistoryTransaction: undefined }>();
 
 	let open = false;
 
@@ -31,8 +31,10 @@
 			value = detail;
 			dispatch("value", detail);
 		}}
-		on:start={() => {
-			dispatch("start");
+		on:startHistoryTransaction={() => {
+			// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
+			// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
+			dispatch("startHistoryTransaction");
 		}}
 		{allowNone}
 	/>
