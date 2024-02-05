@@ -15,7 +15,12 @@ pub enum LayoutMessage {
 		layout: Layout,
 		layout_target: LayoutTarget,
 	},
-	UpdateLayout {
+	WidgetValueCommit {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
+		value: serde_json::Value,
+	},
+	WidgetValueUpdate {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
 		value: serde_json::Value,

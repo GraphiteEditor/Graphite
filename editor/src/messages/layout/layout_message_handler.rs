@@ -12,6 +12,11 @@ pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
 }
 
+enum WidgetValueAction {
+	Commit,
+	Update,
+}
+
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
 	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
@@ -40,6 +45,229 @@ impl LayoutMessageHandler {
 		}
 		None
 	}
+
+	fn handle_widget_callback(&mut self, layout_target: LayoutTarget, widget_id: WidgetId, value: Value, action: WidgetValueAction, responses: &mut std::collections::VecDeque<Message>) {
+		let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+			warn!("handle_widget_callback was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+			return;
+		};
+
+		let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
+			return;
+		};
+
+		match &mut widget_holder.widget {
+			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_u64().expect("BreadcrumbTrailButtons update was not of type: u64");
+						(breadcrumb_trail_buttons.on_update.callback)(&update_value)
+					}
+				};
+				responses.add(callback_message);
+			}
+			Widget::CheckboxInput(checkbox_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (checkbox_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
+						checkbox_input.checked = update_value;
+						(checkbox_input.on_update.callback)(checkbox_input)
+					}
+				};
+				responses.add(callback_message);
+			}
+			Widget::ColorButton(color_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_object().expect("ColorButton update was not of type: object");
+						let parsed_color = (|| {
+							let is_none = update_value.get("none")?.as_bool()?;
+
+							if !is_none {
+								Some(Some(Color::from_rgbaf32(
+									update_value.get("red")?.as_f64()? as f32,
+									update_value.get("green")?.as_f64()? as f32,
+									update_value.get("blue")?.as_f64()? as f32,
+									update_value.get("alpha")?.as_f64()? as f32,
+								)?))
+							} else {
+								Some(None)
+							}
+						})()
+						.unwrap_or_else(|| panic!("ColorButton update was not able to be parsed with color data: {color_button:?}"));
+						color_button.value = parsed_color;
+						(color_button.on_update.callback)(color_button)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::CurveInput(curve_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let curve = serde_json::from_value(value).expect("CurveInput event data could not be deserialized");
+						curve_input.value = curve;
+						(curve_input.on_update.callback)(curve_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::DropdownInput(dropdown_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => {
+						let update_value = value.as_u64().expect("DropdownInput commit was not of type: u64");
+						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_commit.callback)(&())
+					}
+					WidgetValueAction::Update => {
+						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
+						dropdown_input.selected_index = Some(update_value as u32);
+						(dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&())
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::FontInput(font_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (font_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_object().expect("FontInput update was not of type: object");
+						let font_family_value = update_value.get("fontFamily").expect("FontInput update does not have a fontFamily");
+						let font_style_value = update_value.get("fontStyle").expect("FontInput update does not have a fontStyle");
+
+						let font_family = font_family_value.as_str().expect("FontInput update fontFamily was not of type: string");
+						let font_style = font_style_value.as_str().expect("FontInput update fontStyle was not of type: string");
+
+						font_input.font_family = font_family.into();
+						font_input.font_style = font_style.into();
+
+						responses.add(PortfolioMessage::LoadFont {
+							font: Font::new(font_family.into(), font_style.into()),
+							is_default: false,
+						});
+						(font_input.on_update.callback)(font_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::IconButton(icon_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => (icon_button.on_update.callback)(icon_button),
+				};
+				responses.add(callback_message);
+			}
+			Widget::IconLabel(_) => {}
+			Widget::ImageLabel(_) => {}
+			Widget::InvisibleStandinInput(invisible) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (invisible.on_commit.callback)(&()),
+					WidgetValueAction::Update => (invisible.on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::NumberInput(number_input) => {
+				match action {
+					WidgetValueAction::Commit => {
+						let callback_message = (number_input.on_commit.callback)(&());
+						responses.add(callback_message);
+					}
+					WidgetValueAction::Update => {
+						match value {
+							Value::Number(num) => {
+								let update_value = num.as_f64().unwrap();
+								number_input.value = Some(update_value);
+								let callback_message = (number_input.on_update.callback)(number_input);
+								responses.add(callback_message);
+							}
+							Value::String(str) => match str.as_str() {
+								"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
+								"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
+								_ => {
+									panic!("Invalid string found when updating `NumberInput`")
+								}
+							},
+							_ => {} // If it's some other type we could just ignore it and leave the value as is
+						}
+					}
+				}
+			}
+			Widget::ParameterExposeButton(parameter_expose_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => (parameter_expose_button.on_update.callback)(parameter_expose_button),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::PivotInput(pivot_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (pivot_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_str().expect("PivotInput update was not of type: u64");
+						pivot_input.position = update_value.into();
+						(pivot_input.on_update.callback)(pivot_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::PopoverButton(_) => {}
+			Widget::RadioInput(radio_input) => {
+				let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
+				radio_input.selected_index = Some(update_value as u32);
+				let callback_message = match action {
+					WidgetValueAction::Commit => (radio_input.entries[update_value as usize].on_commit.callback)(&()),
+					WidgetValueAction::Update => (radio_input.entries[update_value as usize].on_update.callback)(&()),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::Separator(_) => {}
+			Widget::TextAreaInput(text_area_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_area_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
+						text_area_input.value = update_value.into();
+						(text_area_input.on_update.callback)(text_area_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextButton(text_button) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_button.on_commit.callback)(&()),
+					WidgetValueAction::Update => (text_button.on_update.callback)(text_button),
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextInput(text_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (text_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let update_value = value.as_str().expect("TextInput update was not of type: string");
+						text_input.value = update_value.into();
+						(text_input.on_update.callback)(text_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TextLabel(_) => {}
+			Widget::WorkingColorsInput(_) => {}
+		};
+	}
 }
 
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
@@ -64,150 +292,11 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
 			}
 			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
-			UpdateLayout { layout_target, widget_id, value } => {
-				// Look up the layout
-				let layout = if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
-					layout
-				} else {
-					warn!("UpdateLayout was called referencing an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
-					return;
-				};
-
-				let widget_holder = if let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) {
-					widget_holder
-				} else {
-					warn!("UpdateLayout was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
-					return;
-				};
-
-				#[remain::sorted]
-				match &mut widget_holder.widget {
-					Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
-						let update_value = value.as_u64().expect("BreadcrumbTrailButtons update was not of type: u64");
-
-						let callback_message = (breadcrumb_trail_buttons.on_update.callback)(&update_value);
-						responses.add(callback_message);
-					}
-					Widget::CheckboxInput(checkbox_input) => {
-						let update_value = value.as_bool().expect("CheckboxInput update was not of type: bool");
-						checkbox_input.checked = update_value;
-						let callback_message = (checkbox_input.on_update.callback)(checkbox_input);
-						responses.add(callback_message);
-					}
-					Widget::ColorButton(color_button) => {
-						let update_value = value.as_object().expect("ColorButton update was not of type: object");
-						let parsed_color = (|| {
-							let is_none = update_value.get("none")?.as_bool()?;
-
-							if !is_none {
-								Some(Some(Color::from_rgbaf32(
-									update_value.get("red")?.as_f64()? as f32,
-									update_value.get("green")?.as_f64()? as f32,
-									update_value.get("blue")?.as_f64()? as f32,
-									update_value.get("alpha")?.as_f64()? as f32,
-								)?))
-							} else {
-								Some(None)
-							}
-						})()
-						.unwrap_or_else(|| panic!("ColorButton update was not able to be parsed with color data: {color_button:?}"));
-						color_button.value = parsed_color;
-						let callback_message = (color_button.on_update.callback)(color_button);
-						responses.add(callback_message);
-					}
-					Widget::CurveInput(curve_input) => {
-						let curve = serde_json::from_value(value).expect("CurveInput event data could not be deserialized");
-						curve_input.value = curve;
-						let callback_message = (curve_input.on_update.callback)(curve_input);
-						responses.add(callback_message);
-					}
-					Widget::DropdownInput(dropdown_input) => {
-						let update_value = value.as_u64().expect("DropdownInput update was not of type: u64");
-						dropdown_input.selected_index = Some(update_value as u32);
-						let callback_message = (dropdown_input.entries.iter().flatten().nth(update_value as usize).unwrap().on_update.callback)(&());
-						responses.add(callback_message);
-					}
-					Widget::FontInput(font_input) => {
-						let update_value = value.as_object().expect("FontInput update was not of type: object");
-						let font_family_value = update_value.get("fontFamily").expect("FontInput update does not have a fontFamily");
-						let font_style_value = update_value.get("fontStyle").expect("FontInput update does not have a fontStyle");
-
-						let font_family = font_family_value.as_str().expect("FontInput update fontFamily was not of type: string");
-						let font_style = font_style_value.as_str().expect("FontInput update fontStyle was not of type: string");
-
-						font_input.font_family = font_family.into();
-						font_input.font_style = font_style.into();
-
-						responses.add(PortfolioMessage::LoadFont {
-							font: Font::new(font_family.into(), font_style.into()),
-							is_default: false,
-						});
-						let callback_message = (font_input.on_update.callback)(font_input);
-						responses.add(callback_message);
-					}
-					Widget::IconButton(icon_button) => {
-						let callback_message = (icon_button.on_update.callback)(icon_button);
-						responses.add(callback_message);
-					}
-					Widget::IconLabel(_) => {}
-					Widget::ImageLabel(_) => {}
-					Widget::InvisibleStandinInput(invisible) => {
-						let callback_message = (invisible.on_update.callback)(&());
-						responses.add(callback_message);
-					}
-					Widget::NumberInput(number_input) => match value {
-						Value::Number(num) => {
-							let update_value = num.as_f64().unwrap();
-							number_input.value = Some(update_value);
-							let callback_message = (number_input.on_update.callback)(number_input);
-							responses.add(callback_message);
-						}
-						Value::String(str) => match str.as_str() {
-							"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
-							"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
-							_ => {
-								panic!("Invalid string found when updating `NumberInput`")
-							}
-						},
-						_ => {} // If it's some other type we could just ignore it and leave the value as is
-					},
-					Widget::ParameterExposeButton(parameter_expose_button) => {
-						let callback_message = (parameter_expose_button.on_update.callback)(parameter_expose_button);
-						responses.add(callback_message);
-					}
-					Widget::PivotInput(pivot_input) => {
-						let update_value = value.as_str().expect("PivotInput update was not of type: u64");
-						pivot_input.position = update_value.into();
-						let callback_message = (pivot_input.on_update.callback)(pivot_input);
-						responses.add(callback_message);
-					}
-					Widget::PopoverButton(_) => {}
-					Widget::RadioInput(radio_input) => {
-						let update_value = value.as_u64().expect("RadioInput update was not of type: u64");
-						radio_input.selected_index = Some(update_value as u32);
-						let callback_message = (radio_input.entries[update_value as usize].on_update.callback)(&());
-						responses.add(callback_message);
-					}
-					Widget::Separator(_) => {}
-					Widget::TextAreaInput(text_area_input) => {
-						let update_value = value.as_str().expect("TextAreaInput update was not of type: string");
-						text_area_input.value = update_value.into();
-						let callback_message = (text_area_input.on_update.callback)(text_area_input);
-						responses.add(callback_message);
-					}
-					Widget::TextButton(text_button) => {
-						let callback_message = (text_button.on_update.callback)(text_button);
-						responses.add(callback_message);
-					}
-					Widget::TextInput(text_input) => {
-						let update_value = value.as_str().expect("TextInput update was not of type: string");
-						text_input.value = update_value.into();
-						let callback_message = (text_input.on_update.callback)(text_input);
-						responses.add(callback_message);
-					}
-					Widget::TextLabel(_) => {}
-					Widget::WorkingColorsInput(_) => {}
-				};
+			WidgetValueCommit { layout_target, widget_id, value } => {
+				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
+			}
+			WidgetValueUpdate { layout_target, widget_id, value } => {
+				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
 				responses.add(ResendActiveWidget { layout_target, widget_id: widget_id });
 			}
 		}

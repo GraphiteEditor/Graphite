@@ -11,7 +11,7 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ value: number | undefined }>();
+	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
 	// Label
 	export let label: string | undefined = undefined;
@@ -293,6 +293,9 @@
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
+		// Tell the backend that we are beginning a transaction for the history system
+		startDragging();
+
 		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
 		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
 		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
@@ -430,6 +433,9 @@
 			// We're dragging now, so that's the new state.
 			rangeSliderClickDragState = "Dragging";
 
+			// Tell the backend that we are beginning a transaction for the history system
+			startDragging();
+
 			// We want to begin watching for an abort while dragging the slider.
 			addEventListener("pointermove", sliderAbortFromDragging);
 			addEventListener("keydown", sliderAbortFromDragging);
@@ -472,6 +478,12 @@
 		removeEventListener("keydown", sliderAbortFromMousedown);
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
+	}
+
+	function startDragging() {
+		// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
+		// <https://github.com/GraphiteEditor/Graphite/pull/1584#discussion_r1477592483>
+		dispatch("startHistoryTransaction");
 	}
 
 	// We want to let the user abort while dragging the slider by right clicking or pressing Escape.

@@ -499,6 +499,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// outside of this range can get rounded in f64
 				let random_bits = generate_uuid();
 				let random_value = ((random_bits >> 11) as f64).copysign(f64::from_bits(random_bits & (1 << 63)));
+
+				responses.add(DocumentMessage::StartTransaction);
 				// Set a random seed input
 				responses.add(NodeGraphMessage::SetInputValue {
 					node_id: *imaginate_node.last().unwrap(),

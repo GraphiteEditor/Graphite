@@ -249,18 +249,40 @@ impl JsEditorHandle {
 		FILE_SAVE_SUFFIX.into()
 	}
 
-	/// Update layout of a given UI
-	#[wasm_bindgen(js_name = updateLayout)]
-	pub fn update_layout(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
+	#[wasm_bindgen(js_name = widgetValueUpdate)]
+	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
-				let message = LayoutMessage::UpdateLayout { layout_target, widget_id, value };
+				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
 				self.dispatch(message);
 				Ok(())
 			}
 			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
+	}
+
+	/// Commit the value of a given UI widget to the history
+	#[wasm_bindgen(js_name = widgetValueCommit)]
+	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		let widget_id = WidgetId(widget_id);
+		match (from_value(layout_target), from_value(value)) {
+			(Ok(layout_target), Ok(value)) => {
+				let message = LayoutMessage::WidgetValueCommit { layout_target, widget_id, value };
+				self.dispatch(message);
+				Ok(())
+			}
+			(target, val) => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
+		}
+	}
+
+	/// Update the value of a given UI widget, and commit it to the history
+	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
+	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		self.widget_value_commit(layout_target.clone(), widget_id, value.clone())?;
+		self.widget_value_update(layout_target, widget_id, value)?;
+		Ok(())
 	}
 
 	#[wasm_bindgen(js_name = loadPreferences)]

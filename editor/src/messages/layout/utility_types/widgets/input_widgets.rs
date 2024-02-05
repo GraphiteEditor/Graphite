@@ -27,6 +27,10 @@ pub struct CheckboxInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CheckboxInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 impl Default for CheckboxInput {
@@ -38,6 +42,7 @@ impl Default for CheckboxInput {
 			tooltip: Default::default(),
 			tooltip_shortcut: Default::default(),
 			on_update: Default::default(),
+			on_commit: Default::default(),
 		}
 	}
 }
@@ -95,6 +100,10 @@ pub struct MenuListEntry {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -122,6 +131,10 @@ pub struct FontInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<FontInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 /// This widget allows for the flexible use of the layout system.
@@ -133,6 +146,10 @@ pub struct InvisibleStandinInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -204,6 +221,10 @@ pub struct NumberInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<NumberInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 impl NumberInput {
@@ -289,6 +310,10 @@ pub struct RadioEntryData {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -317,6 +342,10 @@ pub struct TextAreaInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextAreaInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -340,6 +369,10 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
@@ -356,6 +389,10 @@ pub struct CurveInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CurveInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
@@ -370,6 +407,10 @@ pub struct PivotInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<PivotInput>,
+
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
