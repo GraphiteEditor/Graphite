@@ -118,21 +118,14 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 		self
 	}
 
-	/// Check have the manipulator group an `in_handle`.\
-	/// Because currently`[1]` in the code often used `in_handle = Some(self.anchor)` with sense of `in_handle = None` also check such case.\
-	/// `[1]`: e.g. `Pen Tool` when create new path; `Path Tool` when flip group type from `Smooth` to `Sharp`.   
 	pub fn has_in_handle(&self) -> bool {
 		self.in_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
 	}
 
-	/// Check have the manipulator group an `in_handle`.\
-	/// Because currently`[1]` in the code often used `out_handle = Some(self.anchor)` with sense of `out_handle = None` also check such case.\
-	/// `[1]`: e.g. `Pen Tool` when create new path; `Path Tool` when flip group type from `Smooth` to `Sharp`.
 	pub fn has_out_handle(&self) -> bool {
 		self.out_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
 	}
 
-	/// See `has_in_handle` and `has_out_handle`
 	fn has_handle(anchor: DVec2, handle: DVec2) -> bool {
 		!((handle.x - anchor.x).abs() < f64::EPSILON && (handle.y - anchor.y).abs() < f64::EPSILON)
 	}

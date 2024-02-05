@@ -43,8 +43,8 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	FlipSharp,
-	/// GRS keys: Grab / Rotate / Scale
 	GRS {
+		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
 		key: Key,
 	},
 	ManipulatorAngleMakeSharp,
@@ -253,9 +253,9 @@ impl PathToolData {
 	}
 
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
-		if let Some(seg) = &mut self.segment {
-			seg.update_closest_point(&document.metadata, mouse_position);
-			if seg.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE) {
+		if let Some(closed_segment) = &mut self.segment {
+			closed_segment.update_closest_point(&document.metadata, mouse_position);
+			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
@@ -271,10 +271,10 @@ impl PathToolData {
 			None => {
 				warn!("Segment was `None` before `end_insertion`")
 			}
-			Some(seg) => {
+			Some(closed_segment) => {
 				if let InsertEndKind::Add { shift } = kind {
 					responses.add(DocumentMessage::StartTransaction);
-					seg.adjusted_insert_and_select(shape_editor, responses, shift);
+					closed_segment.adjusted_insert_and_select(shape_editor, responses, shift);
 					responses.add(DocumentMessage::CommitTransaction);
 				}
 			}
@@ -296,26 +296,25 @@ impl PathToolData {
 	) -> PathToolFsmState {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
-		let _selected_layers = shape_editor.selected_layers().cloned().collect::<Vec<_>>();
 
 		let document_network = document.network();
 		let document_metadata = document.metadata();
 
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
-			if let Some(selected_points) = selected_points.try_to_selected_points() {
+			if let Some(selected_points) = selected_points {
 				self.start_dragging_point(selected_points, input, document, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
 			PathToolFsmState::Dragging
 		}
 		// We didn't find a point nearby, so now we'll try to add a point into the closest path segment
-		else if let Some(seg) = shape_editor.upper_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
+		else if let Some(closed_segment) = shape_editor.upper_closest_segment(document_network, document_metadata, input.mouse.position, SELECTION_TOLERANCE) {
 			if direct_insert_without_sliding {
-				self.start_insertion(responses, seg);
+				self.start_insertion(responses, closed_segment);
 				self.end_insertion(shape_editor, responses, InsertEndKind::Add { shift: add_to_selection })
 			} else {
-				self.start_insertion(responses, seg)
+				self.start_insertion(responses, closed_segment)
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
@@ -417,7 +416,6 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
 				path_overlays(document, shape_editor, &mut overlay_context);
 
-				let mut ret = self;
 				match self {
 					Self::DrawingBox => {
 						overlay_context.quad(Quad::from_box([tool_data.drag_start_pos, tool_data.previous_mouse_position]));
@@ -426,17 +424,20 @@ impl Fsm for PathToolFsmState {
 						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 					}
 					Self::InsertPoint => {
-						ret = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
-						if let Some(seg) = &tool_data.segment {
-							overlay_context.square(seg.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
+						let state = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
+
+						if let Some(closest_segment) = &tool_data.segment {
+							overlay_context.square(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
 						}
+
+						responses.add(PathToolMessage::SelectedPointUpdated);
+						return state;
 					}
 					_ => {}
 				}
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
-
-				ret
+				self
 			}
 
 			// `Self::InsertPoint` case:
