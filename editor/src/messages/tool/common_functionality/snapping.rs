@@ -334,7 +334,7 @@ impl SnapManager {
 			let viewport = to_viewport.transform_point2(ind.snapped_point_document);
 
 			overlay_context.text(&format!("{:?} to {:?}", ind.source, ind.target), viewport - DVec2::new(0., 5.), "rgba(0, 0, 0, 0.8)", 3.);
-			overlay_context.square(viewport, true);
+			overlay_context.square(viewport, true, None);
 		}
 	}
 

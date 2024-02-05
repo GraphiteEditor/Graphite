@@ -246,7 +246,7 @@ impl BoundingBoxManager {
 		overlay_context.quad(self.transform * Quad::from_box(self.bounds));
 
 		for position in self.evaluate_transform_handle_positions() {
-			overlay_context.square(position, false);
+			overlay_context.square(position, false, None);
 		}
 	}
 

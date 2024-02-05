@@ -48,7 +48,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 				overlay_context.handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle)));
 			}
 
-			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor)));
+			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor)), None);
 		}
 	}
 }
@@ -66,14 +66,14 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 			let anchor = first_manipulator.anchor;
 			let anchor_position = transform.transform_point2(anchor);
 
-			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(first_manipulator.id, SelectedType::Anchor)));
+			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(first_manipulator.id, SelectedType::Anchor)), None);
 		};
 
 		if let Some(last_manipulator) = manipulator_groups.last() {
 			let anchor = last_manipulator.anchor;
 			let anchor_position = transform.transform_point2(anchor);
 
-			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(last_manipulator.id, SelectedType::Anchor)));
+			overlay_context.square(anchor_position, is_selected(selected, ManipulatorPointId::new(last_manipulator.id, SelectedType::Anchor)), None);
 		};
 	}
 }

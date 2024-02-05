@@ -31,6 +31,11 @@ pub enum BezierHandles {
 		handle_end: DVec2,
 	},
 }
+impl BezierHandles {
+	pub fn is_cubic(&self) -> bool {
+		matches!(self, Self::Cubic { .. })
+	}
+}
 
 #[cfg(feature = "dyn-any")]
 unsafe impl dyn_any::StaticType for BezierHandles {

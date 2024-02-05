@@ -117,6 +117,18 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 		std::mem::swap(&mut self.in_handle, &mut self.out_handle);
 		self
 	}
+
+	pub fn has_in_handle(&self) -> bool {
+		self.in_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
+	}
+
+	pub fn has_out_handle(&self) -> bool {
+		self.out_handle.map(|handle| Self::has_handle(self.anchor, handle)).unwrap_or(false)
+	}
+
+	fn has_handle(anchor: DVec2, handle: DVec2) -> bool {
+		!((handle.x - anchor.x).abs() < f64::EPSILON && (handle.y - anchor.y).abs() < f64::EPSILON)
+	}
 }
 
 #[derive(Copy, Clone)]
