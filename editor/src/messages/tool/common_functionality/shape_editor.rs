@@ -675,7 +675,6 @@ impl ShapeState {
 		}
 	}
 
-	/// Break path at selected points.
 	pub fn break_path_at_selected_point(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(layer, document_network) else {
@@ -699,57 +698,55 @@ impl ShapeState {
 					})
 					.collect();
 
-				points.sort_by(|&a, &b| {
-					return match a.0 > b.0 {
-						true => std::cmp::Ordering::Greater,
-						false => std::cmp::Ordering::Less,
-					};
+				if points.is_empty() {
+					broken_subpaths.push(subpath.clone());
+					continue;
+				}
+
+				points.sort_by(|&a, &b| match a.0 > b.0 {
+					true => std::cmp::Ordering::Greater,
+					false => std::cmp::Ordering::Less,
 				});
 
-				match points.len() {
-					0 => broken_subpaths.push(subpath.clone()),
-					_ => {
-						let mut last_manipulator_index = 0;
-						let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
-						let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
-						for (i, &(manipulator_index, group)) in points.iter().enumerate() {
-							if manipulator_index == 0 && !subpath.closed {
-								last_manipulator_index = manipulator_index + 1;
-								last_manipulator_group = Some(group);
-								continue;
-							}
-
-							let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-							if i != 0 {
-								segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
-							}
-
-							segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
-
-							if subpath.closed && i == 0 {
-								to_extend_with_last_group = Some(segment);
-							} else {
-								broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-							}
-
-							last_manipulator_index = manipulator_index + 1;
-							last_manipulator_group = Some(group);
-						}
-
-						if last_manipulator_index == subpath.len() && !subpath.closed {
-							continue;
-						}
-
-						let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-						final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
-
-						if let Some(group) = to_extend_with_last_group {
-							final_segment.extend(group);
-						}
-
-						broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+				let mut last_manipulator_index = 0;
+				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
+				let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
+				for (i, &(manipulator_index, group)) in points.iter().enumerate() {
+					if manipulator_index == 0 && !subpath.closed {
+						last_manipulator_index = manipulator_index + 1;
+						last_manipulator_group = Some(group);
+						continue;
 					}
+
+					let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+					if i != 0 {
+						segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
+					}
+
+					segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+
+					if subpath.closed && i == 0 {
+						to_extend_with_last_group = Some(segment);
+					} else {
+						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+					}
+
+					last_manipulator_index = manipulator_index + 1;
+					last_manipulator_group = Some(group);
 				}
+
+				if last_manipulator_index == subpath.len() && !subpath.closed {
+					continue;
+				}
+
+				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+				final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
+
+				if let Some(group) = to_extend_with_last_group {
+					final_segment.extend(group);
+				}
+
+				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
 			}
 
 			responses.add(GraphOperationMessage::Vector {
@@ -759,17 +756,17 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete point and its adjacent segments, then break path.
+	/// Delete point(s) and adjacent segments, which breaks a closed path as open, or an open path into multiple.
 	pub fn delete_point_and_break_path(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(layer, document_network) else {
 				continue;
 			};
 
-			let mut broken_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::new();
+			let mut broken_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::with_capacity(subpaths.len());
 
 			for subpath in subpaths {
-				let mut points: Vec<_> = state
+				let mut selected_points: Vec<_> = state
 					.selected_points
 					.iter()
 					.filter_map(|&point| {
@@ -783,48 +780,45 @@ impl ShapeState {
 					})
 					.collect();
 
-				points.sort_by(|&a, &b| {
-					return match a.0 > b.0 {
-						true => std::cmp::Ordering::Greater,
-						false => std::cmp::Ordering::Less,
-					};
+				if selected_points.is_empty() {
+					broken_subpaths.push(subpath.clone());
+					continue;
+				}
+
+				selected_points.sort_by(|&a, &b| match a.0 > b.0 {
+					true => std::cmp::Ordering::Greater,
+					false => std::cmp::Ordering::Less,
 				});
 
-				match points.len() {
-					0 => broken_subpaths.push(subpath.clone()),
-					_ => {
-						let mut last_manipulator_index = 0;
-						let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
-						// let mut last_manipulator_group: Option<&ManipulatorGroup<ManipulatorGroupId>> = None;
-						for (i, &(manipulator_index, _)) in points.iter().enumerate() {
-							if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
-								last_manipulator_index = manipulator_index + 1;
-								continue;
-							}
-
-							let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-							if subpath.closed && i == 0 {
-								to_extend_with_last_group = Some(segment);
-							} else {
-								broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-							}
-
-							last_manipulator_index = manipulator_index + 1;
-						}
-
-						if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
-							continue;
-						}
-
-						let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-
-						if let Some(group) = to_extend_with_last_group {
-							final_segment.extend(group);
-						}
-
-						broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+				let mut last_manipulator_index = 0;
+				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
+				for (i, &(manipulator_index, _)) in selected_points.iter().enumerate() {
+					if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
+						last_manipulator_index = manipulator_index + 1;
+						continue;
 					}
+
+					let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+					if subpath.closed && i == 0 {
+						to_extend_with_last_group = Some(segment);
+					} else {
+						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+					}
+
+					last_manipulator_index = manipulator_index + 1;
 				}
+
+				if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
+					continue;
+				}
+
+				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+
+				if let Some(group) = to_extend_with_last_group {
+					final_segment.extend(group);
+				}
+
+				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
 			}
 
 			responses.add(GraphOperationMessage::Vector {
