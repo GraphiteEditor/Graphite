@@ -175,11 +175,12 @@ impl ConcatElement for GraphicGroup {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomRotation> {
+pub struct CopyToPoints<Points, Instance, RandomScaleMin, RandomScaleMax, RandomScaleBias, RandomRotation> {
 	points: Points,
 	instance: Instance,
 	random_scale_min: RandomScaleMin,
 	random_scale_max: RandomScaleMax,
+	random_scale_bias: RandomScaleBias,
 	random_rotation: RandomRotation,
 }
 
@@ -190,12 +191,15 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	instance: impl Node<Footprint, Output = FI>,
 	random_scale_min: f32,
 	random_scale_max: f32,
+	random_scale_bias: f32,
 	random_rotation: f32,
 ) -> I {
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
 	let random_scale_min = random_scale_min as f64;
 	let random_scale_max = random_scale_max as f64;
+	let random_scale_difference = random_scale_max - random_scale_min;
+	let random_scale_bias = random_scale_bias as f64;
 	let random_rotation = random_rotation as f64;
 
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
@@ -203,7 +207,11 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
+	let mut scale_rng = rand::rngs::StdRng::seed_from_u64(0);
+	let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(0);
+
+	let do_scale = random_scale_difference.abs() > 1e-6;
+	let do_rotation = random_rotation.abs() > 1e-6;
 
 	let mut result = I::default();
 	for point in points_list {
@@ -211,13 +219,28 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 
 		let translation = points.transform.transform_point2(point);
 
-		let rotation = (rng.gen::<f64>() - 0.5) * random_rotation;
-		let rotation = rotation / 360. * std::f64::consts::TAU;
+		let rotation = if do_rotation {
+			let degrees = (rotation_rng.gen::<f64>() - 0.5) * random_rotation;
+			degrees / 360. * std::f64::consts::TAU
+		} else {
+			0.
+		};
 
-		let scale = random_scale_min + rng.gen::<f64>() * (random_scale_max - random_scale_min);
-		let scale = DVec2::splat(scale);
+		let scale = if do_scale {
+			if random_scale_bias.abs() < 1e-6 {
+				// Linear
+				random_scale_min + scale_rng.gen::<f64>() * random_scale_difference
+			} else {
+				// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
+				let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
+				let scale_factor = (1. - scale_rng.gen::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
+				random_scale_min + scale_factor * random_scale_difference
+			}
+		} else {
+			random_scale_min
+		};
 
-		result.concat(&instance, DAffine2::from_scale_angle_translation(scale, rotation, translation) * center_transform);
+		result.concat(&instance, DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation) * center_transform);
 	}
 
 	result
