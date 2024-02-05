@@ -126,6 +126,7 @@ pub enum ToolMessage {
 	},
 	DeactivateTools,
 	InitTools,
+	PreUndo,
 	Redo,
 	RefreshToolOptions,
 	ResetColors,

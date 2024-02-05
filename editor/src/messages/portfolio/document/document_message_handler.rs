@@ -809,7 +809,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			Undo => {
 				self.undo_in_progress = true;
-
+				responses.add(ToolMessage::PreUndo);
 				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(DocumentMessage::UndoFinished);
