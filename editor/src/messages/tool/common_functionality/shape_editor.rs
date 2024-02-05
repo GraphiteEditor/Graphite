@@ -95,8 +95,8 @@ pub struct ClosestSegment {
 	scale: f64,
 	stroke_width: f64,
 	bezier_point_to_viewport: DVec2,
-	have_start_handle: bool,
-	have_end_handle: bool,
+	has_start_handle: bool,
+	has_end_handle: bool,
 }
 impl ClosestSegment {
 	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroup<ManipulatorGroupId>, end: ManipulatorGroup<ManipulatorGroupId>) -> Self {
@@ -107,8 +107,8 @@ impl ClosestSegment {
 		let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier, info.layer_scale);
 		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64;
 		let stroke_width = stroke_width * STROKE_WIDTH_PERCENT; // we need STROKE_WIDTH_PERCENT of the line width
-		let have_start_handle = start.have_out_handle();
-		let have_end_handle = end.have_in_handle();
+		let has_start_handle = start.has_out_handle();
+		let has_end_handle = end.has_in_handle();
 		Self {
 			layer,
 			start: start.id,
@@ -120,14 +120,15 @@ impl ClosestSegment {
 			scale: 1.,
 			stroke_width,
 			bezier_point_to_viewport,
-			have_start_handle,
-			have_end_handle,
+			has_start_handle,
+			has_end_handle,
 		}
 	}
 
 	pub fn layer(&self) -> LayerNodeIdentifier {
 		self.layer
 	}
+
 	pub fn closest_point_to_viewport(&self) -> DVec2 {
 		self.bezier_point_to_viewport
 	}
@@ -165,16 +166,19 @@ impl ClosestSegment {
 		self.t = t;
 		self.bezier_point_to_viewport = bezier_point;
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	pub fn distance_squared(&self, mouse_position: DVec2) -> f64 {
 		self.bezier_point_to_viewport.distance_squared(mouse_position)
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	/// # MAYBE
 	/// keep it in the struct
 	pub fn split(&self) -> [Bezier; 2] {
 		self.bezier.split(TValue::Parametric(self.t))
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
 		let dist_sq = self.distance_squared(mouse_position);
@@ -183,11 +187,12 @@ impl ClosestSegment {
 		let tolerance_sq = tolerance * tolerance;
 		(stroke_width_sq + tolerance_sq) < dist_sq
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
 	/// Adjust the OutHandle for bezier curve before inserted point
 	pub fn adjust_start_handle(&self, responses: &mut VecDeque<Message>) {
-		if !self.have_start_handle {
+		if !self.has_start_handle {
 			return;
 		}
 
@@ -203,11 +208,12 @@ impl ClosestSegment {
 		};
 		responses.add(out_handle);
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
 	/// Adjust the InHandle for bezier curve after inserted point
 	pub fn adjust_end_handle(&self, responses: &mut VecDeque<Message>) {
-		if !self.have_end_handle {
+		if !self.has_end_handle {
 			return;
 		}
 
@@ -224,6 +230,7 @@ impl ClosestSegment {
 		};
 		responses.add(in_handle);
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
 	/// create closest to last mouse position manipulator group on the segment
@@ -238,7 +245,7 @@ impl ClosestSegment {
 		// `first.handle_end()` is incorrect in quadratic case
 		let in_handle = if first.handles.is_cubic() { first.handle_end() } else { first.handle_start() };
 		let out_handle = second.handle_start();
-		let (in_handle, out_handle) = match (self.have_start_handle, self.have_end_handle) {
+		let (in_handle, out_handle) = match (self.has_start_handle, self.has_end_handle) {
 			(false, false) => (None, None),
 			// If second handle is cubic then just ignore it would be incorrect:
 			(false, true) => (in_handle, if second.handles.is_cubic() { out_handle } else { None }),
@@ -257,6 +264,7 @@ impl ClosestSegment {
 
 		manipulator_group.id
 	}
+
 	/// **!!!** call after `update_closest_point` except for the first time
 	///
 	/// Set insertion point and adjust all handles for both splitted bezier curves
@@ -267,6 +275,7 @@ impl ClosestSegment {
 		self.adjust_end_handle(responses);
 		self.insert_point(responses)
 	}
+
 	/// the same as `adjusted_insert` but with selection
 	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, add_to_selection: bool) {
 		let id = self.adjusted_insert(responses);
