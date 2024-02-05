@@ -720,7 +720,7 @@ impl ShapeState {
 
 					let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
 					if i != 0 {
-						segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
+						segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
 					}
 
 					segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
@@ -740,7 +740,7 @@ impl ShapeState {
 				}
 
 				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-				final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().in_handle));
+				final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
 
 				if let Some(group) = to_extend_with_last_group {
 					final_segment.extend(group);
@@ -766,33 +766,21 @@ impl ShapeState {
 			let mut broken_subpaths = Vec::<bezier_rs::Subpath<ManipulatorGroupId>>::with_capacity(subpaths.len());
 
 			for subpath in subpaths {
-				let mut selected_points: Vec<_> = state
-					.selected_points
-					.iter()
-					.filter_map(|&point| {
-						let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
-							return None;
-						};
-						let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
-							return None;
-						};
-						Some((manipulator_index, manipulator))
-					})
-					.collect();
+				let mut selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| subpath.manipulator_index_from_id(point.group)).collect();
 
 				if selected_points.is_empty() {
 					broken_subpaths.push(subpath.clone());
 					continue;
 				}
 
-				selected_points.sort_by(|&a, &b| match a.0 > b.0 {
+				selected_points.sort_by(|&a, &b| match a > b {
 					true => std::cmp::Ordering::Greater,
 					false => std::cmp::Ordering::Less,
 				});
 
 				let mut last_manipulator_index = 0;
 				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
-				for (i, &(manipulator_index, _)) in selected_points.iter().enumerate() {
+				for (i, &manipulator_index) in selected_points.iter().enumerate() {
 					if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
 						last_manipulator_index = manipulator_index + 1;
 						continue;
