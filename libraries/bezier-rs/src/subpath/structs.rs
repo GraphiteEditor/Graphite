@@ -117,6 +117,25 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 		std::mem::swap(&mut self.in_handle, &mut self.out_handle);
 		self
 	}
+
+	/// Check have the manipulator group an `in_handle`.\
+	/// Because currently`[1]` in the code often used `in_handle = Some(self.anchor)` with sense of `in_handle = None` also check such case.\
+	/// `[1]`: e.g. `Pen Tool` when create new path; `Path Tool` when flip group type from `Smooth` to `Sharp`.   
+	pub fn have_in_handle(&self) -> bool {
+		self.in_handle.map(|handle| Self::have_handle(self.anchor, handle)).unwrap_or(false)
+	}
+
+	/// Check have the manipulator group an `in_handle`.\
+	/// Because currently`[1]` in the code often used `out_handle = Some(self.anchor)` with sense of `out_handle = None` also check such case.\
+	/// `[1]`: e.g. `Pen Tool` when create new path; `Path Tool` when flip group type from `Smooth` to `Sharp`.
+	pub fn have_out_handle(&self) -> bool {
+		self.out_handle.map(|handle| Self::have_handle(self.anchor, handle)).unwrap_or(false)
+	}
+
+	/// See `have_in_handle` and `have_out_handle`
+	fn have_handle(anchor: DVec2, handle: DVec2) -> bool {
+		!((handle.x - anchor.x).abs() < f64::EPSILON && (handle.y - anchor.y).abs() < f64::EPSILON)
+	}
 }
 
 #[derive(Copy, Clone)]

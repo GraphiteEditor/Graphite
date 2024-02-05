@@ -95,9 +95,11 @@ pub struct ClosestSegment {
 	scale: f64,
 	stroke_width: f64,
 	bezier_point_to_viewport: DVec2,
+	have_start_handle: bool,
+	have_end_handle: bool,
 }
 impl ClosestSegment {
-	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroupId, end: ManipulatorGroupId) -> Self {
+	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroup<ManipulatorGroupId>, end: ManipulatorGroup<ManipulatorGroupId>) -> Self {
 		const STROKE_WIDTH_PERCENT: f64 = 0.7; // 0.5 is half a line but it's convenient to reserve slightly more than half a line
 		let bezier = info.bezier;
 		let t = info.t;
@@ -105,10 +107,12 @@ impl ClosestSegment {
 		let (t_min, t_max) = ClosestSegment::calc_t_min_max(&bezier, info.layer_scale);
 		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64;
 		let stroke_width = stroke_width * STROKE_WIDTH_PERCENT; // we need STROKE_WIDTH_PERCENT of the line width
+		let have_start_handle = start.have_out_handle();
+		let have_end_handle = end.have_in_handle();
 		Self {
 			layer,
-			start,
-			end,
+			start: start.id,
+			end: end.id,
 			bezier,
 			t,
 			t_min,
@@ -116,6 +120,8 @@ impl ClosestSegment {
 			scale: 1.,
 			stroke_width,
 			bezier_point_to_viewport,
+			have_start_handle,
+			have_end_handle,
 		}
 	}
 
@@ -181,9 +187,16 @@ impl ClosestSegment {
 	///
 	/// Adjust the OutHandle for bezier curve before inserted point
 	pub fn adjust_start_handle(&self, responses: &mut VecDeque<Message>) {
+		if !self.have_start_handle {
+			return;
+		}
+
 		let [first, _] = self.split();
 		let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
+
+		// `first.handle_start()` is always correct
 		let position = first.handle_start().unwrap_or(first.start());
+
 		let out_handle = GraphOperationMessage::Vector {
 			layer: self.layer,
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
@@ -194,9 +207,17 @@ impl ClosestSegment {
 	///
 	/// Adjust the InHandle for bezier curve after inserted point
 	pub fn adjust_end_handle(&self, responses: &mut VecDeque<Message>) {
+		if !self.have_end_handle {
+			return;
+		}
+
 		let [_, second] = self.split();
 		let point = ManipulatorPointId::new(self.end, SelectedType::InHandle);
-		let position = second.handle_end().unwrap_or(second.end());
+
+		// `second.handle_end()` is incorrect in quadratic case
+		let position = if second.handles.is_cubic() { second.handle_end() } else { second.handle_start() };
+		let position = position.unwrap_or(second.end());
+
 		let in_handle = GraphOperationMessage::Vector {
 			layer: self.layer,
 			modification: VectorDataModification::SetManipulatorPosition { point, position },
@@ -213,8 +234,18 @@ impl ClosestSegment {
 
 		let layer = self.layer;
 		let anchor = first.end();
-		let in_handle = first.handle_end();
+
+		// `first.handle_end()` is incorrect in quadratic case
+		let in_handle = if first.handles.is_cubic() { first.handle_end() } else { first.handle_start() };
 		let out_handle = second.handle_start();
+		let (in_handle, out_handle) = match (self.have_start_handle, self.have_end_handle) {
+			(false, false) => (None, None),
+			// If second handle is cubic then just ignore it would be incorrect:
+			(false, true) => (in_handle, if second.handles.is_cubic() { out_handle } else { None }),
+			// If first handle is cubic then just ignore it would be incorrect:
+			(true, false) => (if first.handles.is_cubic() { in_handle } else { None }, out_handle),
+			(true, true) => (in_handle, out_handle),
+		};
 
 		let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
 		let modification = VectorDataModification::AddManipulatorGroup {
@@ -1136,7 +1167,7 @@ impl ShapeState {
 			let subpath = &subpaths[subpath_index];
 			let start = subpath.manipulator_groups()[manipulator_index];
 			let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
-			ClosestSegment::new(info, layer, document_network, start.id, end.id)
+			ClosestSegment::new(info, layer, document_network, start, end)
 		})
 	}
 
