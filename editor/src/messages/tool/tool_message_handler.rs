@@ -177,6 +177,15 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 			}
+			ToolMessage::PreUndo => {
+				let tool_data = &mut self.tool_state.tool_data;
+				match tool_data.active_tool_type {
+					ToolType::Pen => {}
+					_ => {
+						responses.add(BroadcastEvent::ToolAbort);
+					}
+				}
+			}
 			ToolMessage::Redo => {
 				let tool_data = &mut self.tool_state.tool_data;
 				match tool_data.active_tool_type {
@@ -236,9 +245,7 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 					ToolType::Pen => {
 						responses.add(PenToolMessage::Undo);
 					}
-					_ => {
-						responses.add(BroadcastEvent::ToolAbort);
-					}
+					_ => {}
 				}
 			}
 
