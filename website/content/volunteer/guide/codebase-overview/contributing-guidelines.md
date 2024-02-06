@@ -2,7 +2,7 @@
 title = "Contributing guidelines"
 
 [extra]
-order = 2 # Page number after chapter intro
+order = 3 # Page number after chapter intro
 +++
 
 ## Code style

@@ -2,7 +2,7 @@
 title = "Debugging"
 
 [extra]
-order = 1 # Page number after chapter intro
+order = 2 # Page number after chapter intro
 +++
 
 ## Deployed builds
@@ -23,7 +23,7 @@ To show `trace!()` logs, activate *Help* > *Debug: Print Trace Logs*.
 
 ## Message system logs
 
-To also view logs of the messages dispatched by the message bus system, activate *Help* > *Debug: Print Messages* > *Only Names*. Or use *Full Contents* for more verbose insight with the actual data being passed. This is an invaluable window into the activity of the message flow and works well together with `debug!()` printouts for tracking down message-related issues.
+To also view logs of the messages dispatched by the message system, activate *Help* > *Debug: Print Messages* > *Only Names*. Or use *Full Contents* for more verbose insight with the actual data being passed. This is an invaluable window into the activity of the message flow and works well together with `debug!()` printouts for tracking down message-related issues.
 
 ## Node/layer and document IDs
 

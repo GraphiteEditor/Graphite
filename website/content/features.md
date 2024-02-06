@@ -10,7 +10,7 @@ css = ["features.css"]
 
 # Graphite features
 
-The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and non-destructive editing workflow which is a unique feature among vector editing software.
+The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and nondestructive editing workflow which is a unique feature among vector editing software.
 
 </div>
 </section>

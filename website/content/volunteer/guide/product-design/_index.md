@@ -4,7 +4,7 @@ template = "book.html"
 page_template = "book.html"
 
 [extra]
-order = 3 # Chapter number
+order = 4 # Chapter number
 +++
 
 **NOTE: Developers probably don't need to read this chapter.**

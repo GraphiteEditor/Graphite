@@ -50,4 +50,4 @@ cargo install cargo-about
 npm run build
 ```
 
-It produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.
+This produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.

@@ -46,7 +46,8 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <h1 class="balance-text">Redefining state&#8209;of&#8209;the&#8209;art graphics editing</h1>
 
-<p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully nondestructive editing experience.</p>
+<p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, bringing a procedural approach to your design workflow.</p>
+<!-- <p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully nondestructive editing experience.</p> -->
 
 </section>
 <!-- ▙ TAGLINE ▟ -->
@@ -66,18 +67,21 @@ js = ["image-interaction.js", "video-embed.js"]
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #4" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #4" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #5" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn left">
+		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 	</div>
 	<div class="carousel-slide torn right">
+		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
 		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
@@ -95,6 +99,7 @@ js = ["image-interaction.js", "video-embed.js"]
 			<button class="dot" data-carousel-dot></button>
 			<button class="dot" data-carousel-dot></button>
 			<button class="dot" data-carousel-dot></button>
+			<button class="dot" data-carousel-dot></button>
 			<button class="direction next" data-carousel-next>
 				<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
 					<path d="M20,0C8.95,0,0,8.95,0,20c0,11.05,8.95,20,20,20c11.05,0,20-8.95,20-20C40,8.95,31.05,0,20,0z M20,38c-9.93,0-18-8.07-18-18S10.07,2,20,2s18,8.07,18,18S29.93,38,20,38z" />
@@ -104,10 +109,13 @@ js = ["image-interaction.js", "video-embed.js"]
 		</div>
 		<div class="screenshot-description">
 			<p class="active" data-carousel-description>
-				<em>Valley of Spires</em> — Vector art made with the Pen and Gradient tools. <a href="https://editor.graphite.rs/#demo/valley-of-spires">Open this artwork</a> to explore it yourself.
+				<a href="https://editor.graphite.rs/#demo/red-dress"><em>Red Dress</em></a> — Illustration made with the help of procedurally generating hundreds of circles in the node graph.
 			</p>
 			<p data-carousel-description>
-				<em>Procedural String Lights</em> — Partly made in the node graph (pictured) to auto-place light bulbs along the wire. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Open this artwork</a> to explore it yourself.
+				<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — Vector art made with the Pen and Gradient tools without needing to touch the node graph.
+			</p>
+			<p data-carousel-description>
+				<a href="https://editor.graphite.rs/#demo/procedural-string-lights"><em>Procedural String Lights</em></a> — Drawing of a tree adorned by reusable, auto-placed light bulbs along the wire path made using this node graph.
 			</p>
 			<p data-carousel-description>
 				Design mockup for the work-in-progress raster editing pipeline. Some of these raster-specific nodes are not implemented yet, but will be soon!
@@ -161,11 +169,11 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 <div class="informational-group features">
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 4" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Looks and feels like traditional <span style="text-decoration: underline dotted; text-decoration-color: #16323f77;" title="&quot;what you see is what you get&quot;">WYSIWYG</span> design apps</span>
+		<span>All-in-one creative tools for animation, art, and design</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Clean, intuitive interface built by designers, for designers</span>
+		<span>Clean, familiar interface built by designers, for designers</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
@@ -299,19 +307,19 @@ You'll receive your first newsletter email with the next major Graphite news.
 <!-- ▙ COMMUNITY ▟ -->
 <!--                  -->
 <!-- ▛ JUMP RIGHT IN ▜ -->
-<section id="jump-right-in">
-<div class="section">
+<!-- <section id="jump-right-in">
+<div class="section"> -->
 
-# Jump right in
+<!-- # Jump right in -->
 
-**Get started with Graphite by following along to a hands-on quickstart tutorial.**
+<!-- **Get started with Graphite by following along to a hands-on quickstart tutorial.** -->
 
-<div class="video-embed aspect-16x9">
+<!-- <div class="video-embed aspect-16x9">
 	<img data-video-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
-</div>
+</div> -->
 
-</div>
-</section>
+<!-- </div>
+</section> -->
 <!-- ▙ JUMP RIGHT IN ▟ -->
 <!--                    -->
 <!-- ▛ PROCEDURALISM ▜ -->
@@ -358,7 +366,7 @@ Proceduralism lets you create sophisticated design elements that are easy to edi
 <section id="proceduralism-features">
 <div class="section">
 
-Graphite's procedural, data-driven approach to graphic design affords unique capabilities (while in alpha, these remain a work in progress):
+Graphite's procedural, data-driven approach to graphic design affords unique capabilities *(while in alpha, these remain a work in progress)*:
 
 <div class="informational-group features four-wide">
 	<div class="informational">
@@ -372,7 +380,7 @@ Graphite's procedural, data-driven approach to graphic design affords unique cap
 	<div class="informational">
 		<!-- <img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
 		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span class="balance-text">Integrated generative AI models and graphics algorithms</span>
+		<span class="balance-text">Versatile modularity of node-based generative AI models</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
@@ -431,7 +439,7 @@ Graphite is built by a small, dedicated crew of volunteers in need of resources 
 <section id="vector-art">
 <div class="section">
 
-# Art takes shape
+# Taking shape
 
 **All you've come to expect from a professional vector graphics editor. Now readily accessible in your browser.**
 
