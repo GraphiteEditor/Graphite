@@ -66,12 +66,10 @@
 	}
 
 	function widgetValueCommitAndUpdate(index: number, value: unknown) {
-		console.log("widget value commit and udpdate");
 		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	function widgetValueRevert() {
-		console.log("widget value revert");
 		editor.instance.widgetValueRevert();
 	}
 
