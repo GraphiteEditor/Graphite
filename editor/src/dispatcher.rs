@@ -469,13 +469,15 @@ mod test {
 		init_logger();
 		let mut editor = Editor::create();
 
-		let test_files = [
-			("Just a Potted Cactus", include_str!("../../demo-artwork/just-a-potted-cactus.graphite")),
-			("Valley of Spires", include_str!("../../demo-artwork/procedural-string-lights.graphite")),
-			("Valley of Spires", include_str!("../../demo-artwork/valley-of-spires.graphite")),
-		];
+		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
+			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
 
-		for (document_name, document_serialized_content) in test_files {
+			assert_eq!(
+				document_serialized_content.lines().count(),
+				1,
+				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
+			);
+
 			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),
 				document_serialized_content: document_serialized_content.into(),

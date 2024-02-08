@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 pub struct DemoArtworkDialog;
 
 /// `(name, thumbnail, filename)`
-const ARTWORK: [(&str, &str, &str); 4] = [
+pub const ARTWORK: [(&str, &str, &str); 4] = [
 	("Valley of Spires", "ThumbnailValleyOfSpires", "valley-of-spires.graphite"),
 	("Red Dress", "ThumbnailRedDress", "red-dress.graphite"),
 	("Just a Potted Cactus", "ThumbnailJustAPottedCactus", "just-a-potted-cactus.graphite"),

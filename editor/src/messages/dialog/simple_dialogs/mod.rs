@@ -13,3 +13,5 @@ pub use coming_soon_dialog::ComingSoonDialog;
 pub use demo_artwork_dialog::DemoArtworkDialog;
 pub use error_dialog::ErrorDialog;
 pub use licenses_dialog::LicensesDialog;
+
+pub use demo_artwork_dialog::ARTWORK;
