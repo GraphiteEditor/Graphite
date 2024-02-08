@@ -31,7 +31,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ color: Color; start: undefined }>();
+	const dispatch = createEventDispatcher<{ color: Color; startHistoryTransaction: undefined }>();
 
 	export let color: Color;
 	export let allowNone = false;
@@ -150,7 +150,7 @@
 		document.addEventListener("pointermove", onPointerMove);
 		document.addEventListener("pointerup", onPointerUp);
 
-		dispatch("start");
+		dispatch("startHistoryTransaction");
 	}
 
 	function removeEvents() {
