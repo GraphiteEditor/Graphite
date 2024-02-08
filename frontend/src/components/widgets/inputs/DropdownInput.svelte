@@ -10,7 +10,7 @@
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; menuHoverIn: number; menuHoverOut: undefined }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: undefined }>();
 
 	let menuList: MenuList | undefined;
 	let self: LayoutRow | undefined;
@@ -21,6 +21,7 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
+	export let previewable = false;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
@@ -46,11 +47,15 @@
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		dispatch("menuHoverIn", entries.flat().indexOf(hoveredEntry));
+		if (previewable) {
+			dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
+		}
 	}
 
 	function dispatchHoverOutEntry() {
-		dispatch("menuHoverOut");
+		if (previewable) {
+			dispatch("hoverOutEntry");
+		}
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -89,8 +94,8 @@
 		on:naturalWidth={({ detail }) => (minWidth = detail)}
 		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
-		on:menuHoverIn={({ detail }) => dispatchHoverInEntry(detail)}
-		on:menuHoverOut={() => dispatchHoverOutEntry()}
+		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
+		on:hoverOutEntry={() => dispatchHoverOutEntry()}
 		{open}
 		on:open={({ detail }) => (open = detail)}
 		{entries}

@@ -20,7 +20,6 @@
 	// Called only when `value` is changed from the <textarea> element via user input and committed, either
 	// via the `change` event or when the <input> element is unfocused (with the `blur` event binding)
 	function onTextChanged() {
-		console.log(222222222);
 		// The `unFocus()` call in `onTextChangeCanceled()` causes itself to be run again, so this if statement skips a second run
 		if (!editing) return;
 

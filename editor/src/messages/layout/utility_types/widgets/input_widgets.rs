@@ -67,6 +67,8 @@ pub struct DropdownInput {
 
 	pub tooltip: String,
 
+	pub previewable: bool,
+
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 	//

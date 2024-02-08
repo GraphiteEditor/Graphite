@@ -19,7 +19,7 @@
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; menuHoverIn: MenuListEntry; menuHoverOut: undefined; naturalWidth: number }>();
+	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; hoverInEntry: MenuListEntry; hoverOutEntry: undefined; naturalWidth: number }>();
 
 	export let entries: MenuListEntry[][];
 	export let activeEntry: MenuListEntry | undefined = undefined;
@@ -164,7 +164,7 @@
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
-		dispatch("menuHoverIn", menuListEntry);
+		dispatch("hoverInEntry", menuListEntry);
 		if (!menuListEntry.children?.length) return;
 
 		let childReference = getChildReference(menuListEntry);
@@ -175,7 +175,7 @@
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
-		dispatch("menuHoverOut");
+		dispatch("hoverOutEntry");
 		if (!menuListEntry.children?.length) return;
 
 		let childReference = getChildReference(menuListEntry);

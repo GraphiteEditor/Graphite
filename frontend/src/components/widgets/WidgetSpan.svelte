@@ -102,8 +102,8 @@
 		{#if dropdownInput}
 			<DropdownInput
 				{...exclude(dropdownInput)}
-				on:menuHoverIn={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
-				on:menuHoverOut={() => widgetValueRevert()}
+				on:hoverInEntry={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
+				on:hoverOutEntry={() => widgetValueRevert()}
 				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
 			/>
 		{/if}

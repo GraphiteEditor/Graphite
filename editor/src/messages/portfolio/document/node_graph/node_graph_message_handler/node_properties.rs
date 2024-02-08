@@ -560,6 +560,7 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			DropdownInput::new(entries)
 				.selected_index(blend_mode.index_in_list_svg_subset().map(|index| index as u32))
+				.previewable(true)
 				.widget_holder(),
 		]);
 	}
