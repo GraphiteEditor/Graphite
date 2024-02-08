@@ -21,7 +21,7 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let previewable = false;
+	export let previewOnHover = false;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
@@ -47,13 +47,13 @@
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		if (previewable) {
+		if (previewOnHover) {
 			dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
 		}
 	}
 
 	function dispatchHoverOutEntry() {
-		if (previewable) {
+		if (previewOnHover) {
 			dispatch("hoverOutEntry");
 		}
 	}
