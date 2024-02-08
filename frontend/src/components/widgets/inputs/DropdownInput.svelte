@@ -10,7 +10,7 @@
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; menuHoverIn: number; menuHoverOut: undefined }>();
 
 	let menuList: MenuList | undefined;
 	let self: LayoutRow | undefined;
@@ -43,6 +43,14 @@
 		} else if (activeEntry !== DASH_ENTRY) {
 			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
+	}
+
+	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
+		dispatch("menuHoverIn", entries.flat().indexOf(hoveredEntry));
+	}
+
+	function dispatchHoverOutEntry() {
+		dispatch("menuHoverOut");
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -81,6 +89,8 @@
 		on:naturalWidth={({ detail }) => (minWidth = detail)}
 		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		on:menuHoverIn={({ detail }) => dispatchHoverInEntry(detail)}
+		on:menuHoverOut={() => dispatchHoverOutEntry()}
 		{open}
 		on:open={({ detail }) => (open = detail)}
 		{entries}

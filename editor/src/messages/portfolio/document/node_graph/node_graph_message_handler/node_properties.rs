@@ -908,7 +908,7 @@ pub fn black_and_white_properties(document_node: &DocumentNode, node_id: NodeId,
 pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let backdrop = color_widget(document_node, node_id, 1, "Backdrop", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
+	let opacity = number_widget(document_node, node_id, 3, "Opac", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }
@@ -2289,7 +2289,7 @@ pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _con
 pub fn color_overlay_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let color = color_widget(document_node, node_id, 1, "Color", ColorButton::default(), true);
 	let blend_mode = blend_mode(document_node, node_id, 2, "Blend Mode", true);
-	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().percentage(), true);
+	let opacity = number_widget(document_node, node_id, 3, "Opaci", NumberInput::default().percentage(), true);
 
 	vec![color, blend_mode, LayoutGroup::Row { widgets: opacity }]
 }

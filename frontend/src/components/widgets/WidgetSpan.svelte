@@ -66,7 +66,13 @@
 	}
 
 	function widgetValueCommitAndUpdate(index: number, value: unknown) {
+		console.log("widget value commit and udpdate");
 		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
+	}
+
+	function widgetValueRevert() {
+		console.log("widget value revert");
+		editor.instance.widgetValueRevert();
 	}
 
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
@@ -96,7 +102,12 @@
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<DropdownInput
+				{...exclude(dropdownInput)}
+				on:menuHoverIn={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
+				on:menuHoverOut={() => widgetValueRevert()}
+				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
+			/>
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}
