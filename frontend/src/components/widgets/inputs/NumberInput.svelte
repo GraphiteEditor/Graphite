@@ -194,6 +194,13 @@
 
 		let newValue = evaluateMathExpression(textWithLeadingZeroes);
 		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
+
+		if (newValue !== undefined) {
+			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
+			if (newValue !== oldValue) {
+				dispatch("startHistoryTransaction");
+			}
+		}
 		updateValue(newValue);
 
 		editing = false;

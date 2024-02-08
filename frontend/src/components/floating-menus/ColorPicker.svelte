@@ -314,7 +314,10 @@
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
-						on:commitText={({ detail }) => setColorCode(detail)}
+						on:commitText={({ detail }) => {
+							dispatch("startHistoryTransaction");
+							setColorCode(detail);
+						}}
 						centered={true}
 						tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}
 						bind:this={hexCodeInputWidget}
@@ -334,6 +337,9 @@
 							on:value={({ detail }) => {
 								strength = detail;
 								setColorRGB(channel, detail);
+							}}
+							on:startHistoryTransaction={() => {
+								dispatch("startHistoryTransaction");
 							}}
 							min={0}
 							max={255}
@@ -359,6 +365,9 @@
 								strength = detail;
 								setColorHSV(channel, detail);
 							}}
+							on:startHistoryTransaction={() => {
+								dispatch("startHistoryTransaction");
+							}}
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
@@ -378,6 +387,9 @@
 				on:value={({ detail }) => {
 					if (detail !== undefined) alpha = detail / 100;
 					setColorAlphaPercent(detail);
+				}}
+				on:startHistoryTransaction={() => {
+					dispatch("startHistoryTransaction");
 				}}
 				min={0}
 				max={100}
