@@ -20,7 +20,7 @@
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
 	const ADD_NODE_MENU_HEIGHT = 200;
-	const NODE_SHAKE_THRESHOLD_TOTAL = 50;
+	const NODE_SHAKE_THRESHOLD = 50;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -472,7 +472,7 @@
 
 		lastShakeX = currentX;
 
-		if (!isShakeOccured && deltaXShakeTotal > NODE_SHAKE_THRESHOLD_TOTAL) {
+		if (!isShakeOccured && deltaXShakeTotal > NODE_SHAKE_THRESHOLD) {
 			alert("Shake detected!");
 			isShakeOccured = true;
 		}
