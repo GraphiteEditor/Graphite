@@ -219,6 +219,7 @@
 	}
 
 	function setColorPreset(preset: PresetColors) {
+		dispatch("startHistoryTransaction");
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor(new Color("none"));
@@ -259,6 +260,7 @@
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const result = await new (window as any).EyeDropper().open();
+			dispatch("startHistoryTransaction");
 			setColorCode(result.sRGBHex);
 		} catch {
 			// Do nothing
