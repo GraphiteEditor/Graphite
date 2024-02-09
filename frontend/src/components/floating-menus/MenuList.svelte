@@ -164,8 +164,10 @@
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
-		dispatch("hoverInEntry", menuListEntry);
-		if (!menuListEntry.children?.length) return;
+		if (!menuListEntry.children?.length) {
+			dispatch("hoverInEntry", menuListEntry);
+			return;
+		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
@@ -175,8 +177,10 @@
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
-		dispatch("hoverOutEntry");
-		if (!menuListEntry.children?.length) return;
+		if (!menuListEntry.children?.length) {
+			dispatch("hoverOutEntry");
+			return;
+		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {

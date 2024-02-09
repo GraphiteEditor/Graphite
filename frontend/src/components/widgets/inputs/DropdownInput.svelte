@@ -41,7 +41,8 @@
 	function watchActiveEntry(activeEntry: MenuListEntry) {
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
-		} else if (activeEntry !== DASH_ENTRY) {
+		} else if (activeEntry !== DASH_ENTRY && !previewOnHover) {
+			// when previewOnHover is enabled, do not dispatch selectedIndex, because hoverInEntry is dispatched yet.
 			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
 	}

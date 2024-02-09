@@ -1237,8 +1237,8 @@ impl DocumentMessageHandler {
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
 					.selected_index(Some(self.document_mode as u32))
-					.draw_icon( true)
-					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.draw_icon(true)
+					.interactive(false) // TODO: set to true when dialogs are not spawned
 					.widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 			],
@@ -1483,6 +1483,7 @@ impl DocumentMessageHandler {
 					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 					.disabled(disabled)
 					.draw_icon(false)
+					.preview_on_hover(true)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(opacity)
