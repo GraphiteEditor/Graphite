@@ -20,6 +20,7 @@
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
 	const ADD_NODE_MENU_HEIGHT = 200;
+	const NODE_SHAKE_THRESHOLD_TOTAL = 50;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -48,6 +49,10 @@
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
+
+	let startShakeX = 0;
+	let lastShakeX = 0;
+	let isShakeOccured = false;
 
 	$: watchNodes($nodeGraph.nodes);
 
@@ -405,6 +410,10 @@
 
 		// Clicked on a node, so we select it
 		if (lmb && nodeId !== undefined) {
+			startShakeX = e.x;
+			lastShakeX = startShakeX;
+			isShakeOccured = false;
+
 			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
 
@@ -457,6 +466,18 @@
 		// }
 	}
 
+	function checkNodeShake(e: PointerEvent) {
+		let currentX = e.x;
+		let deltaXShakeTotal = Math.abs(currentX - lastShakeX);
+
+		lastShakeX = currentX;
+
+		if (!isShakeOccured && deltaXShakeTotal > NODE_SHAKE_THRESHOLD_TOTAL) {
+			alert("Shake detected!");
+			isShakeOccured = true;
+		}
+	}
+
 	function pointerMove(e: PointerEvent) {
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
@@ -472,6 +493,7 @@
 		} else if (draggingNodes) {
 			const deltaX = Math.round((e.x - draggingNodes.startX) / transform.scale / GRID_SIZE);
 			const deltaY = Math.round((e.y - draggingNodes.startY) / transform.scale / GRID_SIZE);
+
 			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
 				draggingNodes.roundX = deltaX;
 				draggingNodes.roundY = deltaY;
@@ -491,6 +513,8 @@
 					DRAG_SMOOTHING_TIME * 1000 + 10,
 				);
 			}
+
+			checkNodeShake(e);
 		}
 	}
 
