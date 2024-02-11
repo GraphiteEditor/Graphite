@@ -547,18 +547,18 @@
 			return 0;
 		}
 
-		const leftShakesIntervals = chunk(
+		const leftShakeDeltas = chunk(
 			shakeIntervals.filter((_, i) => i % 2 === 0),
 			2,
 		).map(getMovementDelta);
 
-		const rightShakesIntervals = chunk(
+		const rightShakeDeltas = chunk(
 			shakeIntervals.filter((_, i) => i % 2 !== 0),
 			2,
 		).map(getMovementDelta);
 
-		const totalShakeChangesLeft = leftShakesIntervals.reduce((acc, curr) => acc + curr, 0) / leftShakesIntervals.length;
-		const totalShakeChangesRight = rightShakesIntervals.reduce((acc, curr) => acc + curr, 0) / rightShakesIntervals.length;
+		const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
+		const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
 
 		return Math.abs(totalShakeChangesLeft + totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
 	}
