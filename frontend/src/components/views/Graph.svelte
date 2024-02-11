@@ -50,15 +50,11 @@
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
 
-	let startShakeX = 0;
-	let lastShakeX = 0;
-
 	let currentShakeX = 0;
+	let shakeIntervalTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	let shakeIntervals: { dir: "left" | "right"; value: number }[] = [];
 	// let currentShakeInterval: { dir: "left" | "right"; value: number } = { dir: "left", value: 0 };
 	let isFirstDrag = true;
-
-	let isShakeOccured = false;
 
 	$: watchNodes($nodeGraph.nodes);
 
@@ -470,18 +466,6 @@
 		// }
 	}
 
-	function checkNodeShake(e: PointerEvent) {
-		let currentX = e.x;
-		let deltaXShakeTotal = Math.abs(currentX - lastShakeX);
-
-		lastShakeX = currentX;
-
-		if (!isShakeOccured && deltaXShakeTotal > NODE_SHAKE_THRESHOLD) {
-			alert("Shake detected!");
-			isShakeOccured = true;
-		}
-	}
-
 	function pointerMove(e: PointerEvent) {
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
@@ -518,6 +502,13 @@
 				);
 			}
 
+			if (!shakeIntervalTimer) {
+				shakeIntervalTimer = setTimeout(() => {
+					shakeIntervalTimer = undefined;
+					shakeIntervals = [];
+				}, 300);
+			}
+
 			// Receive shake intervals
 			if (currentShakeX >= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "left" || isFirstDrag)) {
 				shakeIntervals = [...shakeIntervals, { dir: "left", value: currentShakeX }];
@@ -529,22 +520,54 @@
 
 			// calculate whether a shake actual occured
 
+			// console.log(shakeIntervals);
+
 			currentShakeX = e.x;
 
-			isNodeShaked();
+			if (isNodeShaked()) {
+				console.log("Node shaked!");
+			}
 		}
+	}
+
+	function chunk<T>(arr: T[], chunkSize: number): T[][] {
+		if (chunkSize === 0) return [arr];
+
+		let chunks = [];
+
+		for (let i = 0; i < arr.length; i += chunkSize) {
+			chunks.push(arr.slice(i, i + chunkSize));
+		}
+
+		return chunks;
 	}
 
 	function isNodeShaked() {
 		if (shakeIntervals.length < 4) return;
 
-		const leftShakesIntervals = shakeIntervals.filter((_, i) => i % 2 === 0);
-		const rightShakesIntervals = shakeIntervals.filter((_, i) => i % 2 !== 0);
+		function getMovementDelta(chunk: { dir: "left" | "right"; value: number }[]) {
+			let [earlier, later] = chunk;
+			if (earlier && later) return earlier.value - later.value;
+			if (earlier) return earlier.value;
+			return 0;
+		}
 
-		const totalShakeChangesLeft = leftShakesIntervals.reduce((acc, curr) => acc + curr.value, 0) / leftShakesIntervals.length;
-		const totalShakeChangesRight = rightShakesIntervals.reduce((acc, curr) => acc + curr.value, 0) / rightShakesIntervals.length;
+		const leftShakesIntervals = chunk(
+			shakeIntervals.filter((_, i) => i % 2 === 0),
+			2,
+		).map(getMovementDelta);
 
-		console.log({ totalShakeChangesLeft, totalShakeChangesRight });
+		const rightShakesIntervals = chunk(
+			shakeIntervals.filter((_, i) => i % 2 !== 0),
+			2,
+		).map(getMovementDelta);
+
+		const totalShakeChangesLeft = leftShakesIntervals.reduce((acc, curr) => acc + curr, 0) / leftShakesIntervals.length;
+		const totalShakeChangesRight = rightShakesIntervals.reduce((acc, curr) => acc + curr, 0) / rightShakesIntervals.length;
+
+		//	console.log({ totalShakeChangesLeft, totalShakeChangesRight });
+
+		return Math.abs(totalShakeChangesLeft + totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
 	}
 
 	function toggleLayerVisibility(id: bigint) {
