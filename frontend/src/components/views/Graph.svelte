@@ -53,8 +53,7 @@
 	let currentShakeX = 0;
 	let shakeIntervalTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	let shakeIntervals: { dir: "left" | "right"; value: number }[] = [];
-	// let currentShakeInterval: { dir: "left" | "right"; value: number } = { dir: "left", value: 0 };
-	let isFirstDrag = true;
+	let isFirstShakeDrag = true;
 
 	$: watchNodes($nodeGraph.nodes);
 
@@ -412,7 +411,7 @@
 
 		// Clicked on a node, so we select it
 		if (lmb && nodeId !== undefined) {
-			isFirstDrag = true;
+			isFirstShakeDrag = true;
 
 			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
@@ -502,30 +501,8 @@
 				);
 			}
 
-			if (!shakeIntervalTimer) {
-				shakeIntervalTimer = setTimeout(() => {
-					shakeIntervalTimer = undefined;
-					shakeIntervals = [];
-				}, 300);
-			}
-
-			// Receive shake intervals
-			if (currentShakeX >= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "left" || isFirstDrag)) {
-				shakeIntervals = [...shakeIntervals, { dir: "left", value: currentShakeX }];
-				isFirstDrag = false;
-			} else if (currentShakeX <= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "right" || isFirstDrag)) {
-				shakeIntervals = [...shakeIntervals, { dir: "right", value: currentShakeX }];
-				isFirstDrag = false;
-			}
-
-			// calculate whether a shake actual occured
-
-			// console.log(shakeIntervals);
-
-			currentShakeX = e.x;
-
-			if (isNodeShaked()) {
-				console.log("Node shaked!");
+			if (isNodeShaked(e)) {
+				alert("Node shaked!");
 			}
 		}
 	}
@@ -542,8 +519,30 @@
 		return chunks;
 	}
 
-	function isNodeShaked() {
-		if (shakeIntervals.length < 4) return;
+	function isNodeShaked(e: PointerEvent) {
+		if (!shakeIntervalTimer) {
+			shakeIntervalTimer = setTimeout(() => {
+				shakeIntervalTimer = undefined;
+				shakeIntervals = [];
+			}, 300);
+		}
+
+		// Receive shake intervals
+		if (currentShakeX >= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "left" || isFirstShakeDrag)) {
+			shakeIntervals = [...shakeIntervals, { dir: "left", value: currentShakeX }];
+			isFirstShakeDrag = false;
+		} else if (currentShakeX <= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "right" || isFirstShakeDrag)) {
+			shakeIntervals = [...shakeIntervals, { dir: "right", value: currentShakeX }];
+			isFirstShakeDrag = false;
+		}
+
+		// calculate whether a shake actual occured
+
+		// console.log(shakeIntervals);
+
+		currentShakeX = e.x;
+
+		if (shakeIntervals.length < 4) return false;
 
 		function getMovementDelta(chunk: { dir: "left" | "right"; value: number }[]) {
 			let [earlier, later] = chunk;
