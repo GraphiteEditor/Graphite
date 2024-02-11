@@ -52,6 +52,12 @@
 
 	let startShakeX = 0;
 	let lastShakeX = 0;
+
+	let currentShakeX = 0;
+	let shakeIntervals: { dir: "left" | "right"; value: number }[] = [];
+	// let currentShakeInterval: { dir: "left" | "right"; value: number } = { dir: "left", value: 0 };
+	let isFirstDrag = true;
+
 	let isShakeOccured = false;
 
 	$: watchNodes($nodeGraph.nodes);
@@ -410,9 +416,7 @@
 
 		// Clicked on a node, so we select it
 		if (lmb && nodeId !== undefined) {
-			startShakeX = e.x;
-			lastShakeX = startShakeX;
-			isShakeOccured = false;
+			isFirstDrag = true;
 
 			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
@@ -514,8 +518,33 @@
 				);
 			}
 
-			checkNodeShake(e);
+			// Receive shake intervals
+			if (currentShakeX >= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "left" || isFirstDrag)) {
+				shakeIntervals = [...shakeIntervals, { dir: "left", value: currentShakeX }];
+				isFirstDrag = false;
+			} else if (currentShakeX <= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "right" || isFirstDrag)) {
+				shakeIntervals = [...shakeIntervals, { dir: "right", value: currentShakeX }];
+				isFirstDrag = false;
+			}
+
+			// calculate whether a shake actual occured
+
+			currentShakeX = e.x;
+
+			isNodeShaked();
 		}
+	}
+
+	function isNodeShaked() {
+		if (shakeIntervals.length < 4) return;
+
+		const leftShakesIntervals = shakeIntervals.filter((_, i) => i % 2 === 0);
+		const rightShakesIntervals = shakeIntervals.filter((_, i) => i % 2 !== 0);
+
+		const totalShakeChangesLeft = leftShakesIntervals.reduce((acc, curr) => acc + curr.value, 0) / leftShakesIntervals.length;
+		const totalShakeChangesRight = rightShakesIntervals.reduce((acc, curr) => acc + curr.value, 0) / rightShakesIntervals.length;
+
+		console.log({ totalShakeChangesLeft, totalShakeChangesRight });
 	}
 
 	function toggleLayerVisibility(id: bigint) {
