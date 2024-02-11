@@ -536,10 +536,6 @@
 			isFirstShakeDrag = false;
 		}
 
-		// calculate whether a shake actual occured
-
-		// console.log(shakeIntervals);
-
 		currentShakeX = e.x;
 
 		if (shakeIntervals.length < 4) return false;
@@ -563,8 +559,6 @@
 
 		const totalShakeChangesLeft = leftShakesIntervals.reduce((acc, curr) => acc + curr, 0) / leftShakesIntervals.length;
 		const totalShakeChangesRight = rightShakesIntervals.reduce((acc, curr) => acc + curr, 0) / rightShakesIntervals.length;
-
-		//	console.log({ totalShakeChangesLeft, totalShakeChangesRight });
 
 		return Math.abs(totalShakeChangesLeft + totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
 	}
