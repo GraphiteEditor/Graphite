@@ -18,9 +18,13 @@ Launch the latest alpha release of the [Graphite editor](https://editor.graphite
 
 ⭐ Please remember to star this project here on GitHub! ⭐
 
-[![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires__3.png)](https://editor.graphite.rs/#demo/valley-of-spires)
+[![Vector artwork: "Red Dress"](https://static.graphite.rs/content/index/gui-demo-red-dress.png)](https://editor.graphite.rs/#demo/red-dress)
 
-*[Click here](https://editor.graphite.rs/#demo/valley-of-spires) to open this artwork and explore it yourself.*
+*[Red Dress](https://editor.graphite.rs/#demo/red-dress) (click to open this artwork and explore it yourself)*
+
+[![Vector artwork: "Valley of Spires"](https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.png)](https://editor.graphite.rs/#demo/valley-of-spires)
+
+*[Valley of Spires](https://editor.graphite.rs/#demo/valley-of-spires) (click to open this artwork and explore it yourself)*
 
 ## Discord community
 

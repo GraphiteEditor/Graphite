@@ -116,7 +116,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <div class="triptych">
 
-<div class="section">
+<div class="section" id="keavon">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
@@ -131,7 +131,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 Keavon is a creative generalist with a love for the fusion of arts and technology. Photographer, UX and graphic designer, technical artist, game developer, and everything in-between— he is equal parts designer and engineer. His multidisciplinary background in the digital arts is aptly suited for concocting the unique vision needed to bring Graphite to fruition.
 
 </div>
-<div class="section">
+<div class="section" id="dennis">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
@@ -146,7 +146,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 Dennis is a mix between a mathematician and a mad scientist. While still enjoying the art of photography and image editing (which drew him to the project early on), he thrives when challenged with designing complex systems and pushing boundaries. His method of building generalized solutions wrapped in elegant layers of abstraction led to his creation of the Graphene engine.
 
 </div>
-<div class="section">
+<div class="section" id="hypercube">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
