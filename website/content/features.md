@@ -213,7 +213,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Internationalization and accessability</span>
+			<span>Internationalization and accessibility</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 23" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
