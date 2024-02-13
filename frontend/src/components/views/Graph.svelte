@@ -20,7 +20,8 @@
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
 	const ADD_NODE_MENU_HEIGHT = 200;
-	const NODE_SHAKE_THRESHOLD = 50;
+	const NODE_SHAKE_THRESHOLD = 100;
+	const MIN_SHAKES_REQUIRED = 3;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -524,7 +525,7 @@
 			shakeIntervalTimer = setTimeout(() => {
 				shakeIntervalTimer = undefined;
 				shakeIntervals = [];
-			}, 300);
+			}, 1000);
 		}
 
 		// Receive shake intervals
@@ -538,7 +539,12 @@
 
 		currentShakeX = e.x;
 
-		if (shakeIntervals.length < 4) return false;
+		const totalLeftShakes = shakeIntervals.filter((interval) => interval.dir === "left");
+		const totalRightShakes = shakeIntervals.filter((interval) => interval.dir === "right");
+
+		// console.log(`Left: ${totalLeftShakes.length} | Right: ${totalRightShakes.length}`);
+
+		if (totalLeftShakes.length <= MIN_SHAKES_REQUIRED || totalRightShakes.length <= MIN_SHAKES_REQUIRED) return false;
 
 		function getMovementDelta(chunk: { dir: "left" | "right"; value: number }[]) {
 			let [earlier, later] = chunk;
@@ -547,20 +553,13 @@
 			return 0;
 		}
 
-		const leftShakeDeltas = chunk(
-			shakeIntervals.filter((_, i) => i % 2 === 0),
-			2,
-		).map(getMovementDelta);
-
-		const rightShakeDeltas = chunk(
-			shakeIntervals.filter((_, i) => i % 2 !== 0),
-			2,
-		).map(getMovementDelta);
+		const leftShakeDeltas = chunk(totalLeftShakes, 2).map(getMovementDelta);
+		const rightShakeDeltas = chunk(totalRightShakes, 2).map(getMovementDelta);
 
 		const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
 		const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
 
-		return Math.abs(totalShakeChangesLeft + totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
+		return Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
 	}
 
 	function toggleLayerVisibility(id: bigint) {
