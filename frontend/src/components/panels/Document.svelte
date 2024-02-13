@@ -545,25 +545,33 @@
 		.shelf-and-table {
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
-			// Be sure to recalculate this if the items below the tools (working colors and graph overlay buttons) change height in the future.
-			--height-of-elements-below-tools: 64px;
+
+			// Update this if the tool icons change width in the future.
+			--tool-width: 32;
+			// Update this if the items below the tools (i.e. the working colors) change height in the future.
+			--height-of-elements-below-tools: 72px;
+			// Update this if the height changes as set in `Separator.svelte`.
+			--height-of-separator: calc(12px + 1px + 12px);
+
 			// Target height for the tools within the container above the lower elements.
 			--available-height: calc(100cqh - var(--height-of-elements-below-tools));
-			// Be sure to update this if the height changes as set in `Separator.svelte`.
-			--separator-height: calc(12px + 1px + 12px);
-			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest number of columns to be used.
-			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * 32px + var(--total-separators) * var(--separator-height));
-			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * 32px + var(--total-separators) * var(--separator-height));
-			// Evaluates to 0px (if false) or 1px (if true). We multiply by 1000000 to force the result to be an integer 0 or 1 and not interpolate values in-between.
+			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest needed columns to be used.
+			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
+			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
+
+			// These evaluate to 0px (if false) or 1px (if true). (We multiply by 1000000 to force the result to be a discrete integer 0 or 1 and not interpolate values in-between.)
+			--needs-at-least-1-column: 1px; // Always true
 			--needs-at-least-2-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--1-col-required-height))) * 1000000), 1px));
 			--needs-at-least-3-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--2-col-required-height))) * 1000000), 1px));
-			--columns: calc(1px + var(--needs-at-least-2-columns) + var(--needs-at-least-3-columns));
+			--columns: calc(var(--needs-at-least-1-column) + var(--needs-at-least-2-columns) + var(--needs-at-least-3-columns));
+			--columns-width: calc(var(--columns) * var(--tool-width));
+			--columns-width-max: calc(3px * var(--tool-width));
 
 			.shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
 				// A precaution in case the variables above somehow fail
-				max-width: calc(32px * 3);
+				max-width: var(--columns-width-max);
 
 				.tools {
 					flex: 0 1 auto;
@@ -574,7 +582,7 @@
 					// Remove this when the Firefox bug is fixed.
 					@-moz-document url-prefix() {
 						--available-height-plus-1: calc(var(--available-height) + 1px);
-						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * 32px + var(--total-separators) * var(--separator-height));
+						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--separator-height));
 						--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
 						--firefox-scrollbar-width-space-occupied: 8; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
 						padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
@@ -582,7 +590,7 @@
 
 					.widget-span {
 						flex-wrap: wrap;
-						width: calc(var(--columns) * 32);
+						width: var(--columns-width);
 
 						.icon-button {
 							margin: 0;
