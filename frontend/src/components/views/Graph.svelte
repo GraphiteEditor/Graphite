@@ -20,8 +20,9 @@
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
 	const ADD_NODE_MENU_HEIGHT = 200;
-	const NODE_SHAKE_THRESHOLD = 100;
-	const MIN_SHAKES_REQUIRED = 3;
+	const NODE_SHAKE_THRESHOLD_X = 2.5;
+	const NODE_SHAKE_THRESHOLD_Y = 1.5;
+	const MIN_SHAKES_REQUIRED_PER_SIDE = 3;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -51,9 +52,11 @@
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
 
-	let currentShakeX = 0;
+	let prevShakeX = 0;
+	let prevShakeY = 0;
 	let shakeIntervalTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-	let shakeIntervals: { dir: "left" | "right"; value: number }[] = [];
+	let shakeIntervalsX: { dir: "left" | "right" | "top" | "bottom"; value: number }[] = [];
+	let shakeIntervalsY: { dir: "left" | "right" | "top" | "bottom"; value: number }[] = [];
 	let isFirstShakeDrag = true;
 
 	$: watchNodes($nodeGraph.nodes);
@@ -502,7 +505,7 @@
 				);
 			}
 
-			if (isNodeShaked(e)) {
+			if (isNodeShaked(draggingNodes.roundX, draggingNodes.roundY)) {
 				alert("Node shaked!");
 			}
 		}
@@ -520,46 +523,77 @@
 		return chunks;
 	}
 
-	function isNodeShaked(e: PointerEvent) {
+	function isNodeShaked(roundX: number, roundY: number) {
 		if (!shakeIntervalTimer) {
 			shakeIntervalTimer = setTimeout(() => {
 				shakeIntervalTimer = undefined;
-				shakeIntervals = [];
+				shakeIntervalsX = [];
+				shakeIntervalsY = [];
 			}, 1000);
 		}
 
-		// Receive shake intervals
-		if (currentShakeX >= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "left" || isFirstShakeDrag)) {
-			shakeIntervals = [...shakeIntervals, { dir: "left", value: currentShakeX }];
-			isFirstShakeDrag = false;
-		} else if (currentShakeX <= e.x && (shakeIntervals.length === 0 || shakeIntervals[shakeIntervals.length - 1].dir !== "right" || isFirstShakeDrag)) {
-			shakeIntervals = [...shakeIntervals, { dir: "right", value: currentShakeX }];
-			isFirstShakeDrag = false;
+		// Receive shake intervals for X-axis
+		if (prevShakeX !== 0 && prevShakeX !== roundX) {
+			if (prevShakeX >= roundX && (shakeIntervalsX.length === 0 || shakeIntervalsX[shakeIntervalsX.length - 1].dir !== "left" || isFirstShakeDrag)) {
+				shakeIntervalsX.push({ dir: "left", value: Math.abs(roundX) });
+				isFirstShakeDrag = false;
+			} else if (prevShakeX <= roundX && (shakeIntervalsX.length === 0 || shakeIntervalsX[shakeIntervalsX.length - 1].dir !== "right" || isFirstShakeDrag)) {
+				shakeIntervalsX.push({ dir: "right", value: Math.abs(roundX) });
+				isFirstShakeDrag = false;
+			}
 		}
 
-		currentShakeX = e.x;
+		// Receive shake intervals for Y-axis
+		if (prevShakeY !== 0 && prevShakeY !== roundY) {
+			if (prevShakeY >= roundY && (shakeIntervalsY.length === 0 || shakeIntervalsY[shakeIntervalsY.length - 1].dir !== "top" || isFirstShakeDrag)) {
+				shakeIntervalsY.push({ dir: "top", value: Math.abs(roundY) });
+				isFirstShakeDrag = false;
+			} else if (prevShakeY <= roundY && (shakeIntervalsY.length === 0 || shakeIntervalsY[shakeIntervalsY.length - 1].dir !== "bottom" || isFirstShakeDrag)) {
+				shakeIntervalsY.push({ dir: "bottom", value: Math.abs(roundY) });
+				isFirstShakeDrag = false;
+			}
+		}
 
-		const totalLeftShakes = shakeIntervals.filter((interval) => interval.dir === "left");
-		const totalRightShakes = shakeIntervals.filter((interval) => interval.dir === "right");
+		prevShakeX = roundX;
+		prevShakeY = roundY;
 
-		// console.log(`Left: ${totalLeftShakes.length} | Right: ${totalRightShakes.length}`);
+		//	console.log({ shakeIntervalsX, shakeIntervalsY });
 
-		if (totalLeftShakes.length <= MIN_SHAKES_REQUIRED || totalRightShakes.length <= MIN_SHAKES_REQUIRED) return false;
+		const totalLeftShakes = shakeIntervalsX.filter((interval) => interval.dir === "left");
+		const totalRightShakes = shakeIntervalsX.filter((interval) => interval.dir === "right");
+		const totalTopShakes = shakeIntervalsY.filter((interval) => interval.dir === "top");
+		const totalBotomShakes = shakeIntervalsY.filter((interval) => interval.dir === "bottom");
 
-		function getMovementDelta(chunk: { dir: "left" | "right"; value: number }[]) {
+		function getMovementDelta(chunk: { dir: "left" | "right" | "top" | "bottom"; value: number }[]) {
 			let [earlier, later] = chunk;
 			if (earlier && later) return earlier.value - later.value;
 			if (earlier) return earlier.value;
 			return 0;
 		}
 
-		const leftShakeDeltas = chunk(totalLeftShakes, 2).map(getMovementDelta);
-		const rightShakeDeltas = chunk(totalRightShakes, 2).map(getMovementDelta);
+		if (totalLeftShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE && totalRightShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE) {
+			const leftShakeDeltas = chunk(totalLeftShakes, 2).map(getMovementDelta);
+			const rightShakeDeltas = chunk(totalRightShakes, 2).map(getMovementDelta);
 
-		const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
-		const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
+			const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
+			const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
 
-		return Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight) > NODE_SHAKE_THRESHOLD;
+			console.log(`x axis: ${Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight)}`);
+
+			return Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight) >= NODE_SHAKE_THRESHOLD_X;
+		} else if (totalTopShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE && totalBotomShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE) {
+			const topShakeDeltas = chunk(totalTopShakes, 2).map(getMovementDelta);
+			const bottomShakeDeltas = chunk(totalBotomShakes, 2).map(getMovementDelta);
+
+			const totalShakeChangesTop = topShakeDeltas.reduce((acc, curr) => acc + curr, 0) / topShakeDeltas.length;
+			const totalShakeChangesBottom = bottomShakeDeltas.reduce((acc, curr) => acc + curr, 0) / bottomShakeDeltas.length;
+
+			console.log(`y axis: ${Math.abs(totalShakeChangesTop) + Math.abs(totalShakeChangesBottom)}`);
+
+			return Math.abs(totalShakeChangesTop) + Math.abs(totalShakeChangesBottom) >= NODE_SHAKE_THRESHOLD_Y;
+		}
+
+		return false;
 	}
 
 	function toggleLayerVisibility(id: bigint) {
