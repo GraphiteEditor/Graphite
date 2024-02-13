@@ -33,8 +33,8 @@
  * https://www.mozilla.org/MPL/1.1/
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY
- * OF ANY KIND, either express or implied. See the LGPL or the MPL for
- * the specific language governing rights and limitations.
+ * OF ANY KIND, either express or implied. See the MPL for the specific
+ * language governing rights and limitations.
  */
 
 use crate::{Bezier, BezierHandles};
