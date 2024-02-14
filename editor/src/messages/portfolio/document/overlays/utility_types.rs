@@ -30,15 +30,18 @@ impl core::hash::Hash for OverlayContext {
 impl OverlayContext {
 	pub fn quad(&mut self, quad: Quad) {
 		self.render_context.begin_path();
-		self.render_context.move_to(quad.0[3].x.round(), quad.0[3].y.round());
+		self.render_context.move_to(quad.0[3].x.round() - 0.5, quad.0[3].y.round() - 0.5);
 		for i in 0..4 {
-			self.render_context.line_to(quad.0[i].x.round(), quad.0[i].y.round());
+			self.render_context.line_to(quad.0[i].x.round() - 0.5, quad.0[i].y.round() - 0.5);
 		}
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
 		self.render_context.stroke();
 	}
 
 	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
+		let start = start.round() - DVec2::splat(0.5);
+		let end = end.round() - DVec2::splat(0.5);
+
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
@@ -46,42 +49,52 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn handle(&mut self, position: DVec2, selected: bool) {
+	pub fn manipulator_handle(&mut self, position: DVec2, selected: bool) {
+		let position = position.round() - DVec2::splat(0.5);
+
 		self.render_context.begin_path();
-		let position = position.round();
-		self.render_context
-			.arc(position.x + 0.5, position.y + 0.5, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.)
-			.expect("draw circle");
+		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.).expect("draw circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
-		self.render_context.fill();
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.fill();
 		self.render_context.stroke();
 	}
 
-	pub fn square(&mut self, position: DVec2, selected: bool, color_selected: Option<&str>) {
-		let color_selected = color_selected.unwrap_or(COLOR_OVERLAY_BLUE);
+	pub fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		let color_stroke = color.unwrap_or(COLOR_OVERLAY_BLUE);
+		let color_fill = if selected { color_stroke } else { COLOR_OVERLAY_WHITE };
+		self.square(position, None, Some(color_fill), Some(color_stroke));
+	}
+
+	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		let size = size.unwrap_or(MANIPULATOR_GROUP_MARKER_SIZE);
+		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+
+		let position = position.round() - DVec2::splat(0.5);
+		let corner = position - DVec2::splat(size) / 2.;
 
 		self.render_context.begin_path();
-		let corner = position - DVec2::splat(MANIPULATOR_GROUP_MARKER_SIZE) / 2.;
-		self.render_context
-			.rect(corner.x.round(), corner.y.round(), MANIPULATOR_GROUP_MARKER_SIZE, MANIPULATOR_GROUP_MARKER_SIZE);
-		let fill = if selected { color_selected } else { COLOR_OVERLAY_WHITE };
-		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
+		self.render_context.rect(corner.x, corner.y, size, size);
+		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
 		self.render_context.fill();
-		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_selected));
 		self.render_context.stroke();
 	}
 
-	pub fn pivot(&mut self, pivot: DVec2) {
-		let x = pivot.x.round();
-		let y = pivot.y.round();
+	pub fn pivot(&mut self, position: DVec2) {
+		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+
+		// Circle
 
 		self.render_context.begin_path();
 		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., PI * 2.).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
 		self.render_context.fill();
+
+		// Crosshair
 
 		// Round line caps add half the stroke width to the length on each end, so we subtract that here before halving to get the radius
 		let crosshair_radius = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
@@ -101,31 +114,44 @@ impl OverlayContext {
 	}
 
 	pub fn outline<'a>(&mut self, subpaths: impl Iterator<Item = &'a Subpath<ManipulatorGroupId>>, transform: DAffine2) {
-		let transform = |point| transform.transform_point2(point);
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let mut curves = subpath.iter().peekable();
+
 			let Some(first) = curves.peek() else {
 				continue;
 			};
-			self.render_context.move_to(transform(first.start()).x, transform(first.start()).y);
+
+			self.render_context.move_to(transform.transform_point2(first.start()).x, transform.transform_point2(first.start()).y);
 			for curve in curves {
 				match curve.handles {
-					bezier_rs::BezierHandles::Linear => self.render_context.line_to(transform(curve.end()).x, transform(curve.end()).y),
-					bezier_rs::BezierHandles::Quadratic { handle } => {
-						self.render_context
-							.quadratic_curve_to(transform(handle).x, transform(handle).y, transform(curve.end()).x, transform(curve.end()).y)
+					bezier_rs::BezierHandles::Linear => {
+						let a = transform.transform_point2(curve.end());
+						let a = a.round() - DVec2::splat(0.5);
+
+						self.render_context.line_to(a.x, a.y)
 					}
-					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(
-						transform(handle_start).x,
-						transform(handle_start).y,
-						transform(handle_end).x,
-						transform(handle_end).y,
-						transform(curve.end()).x,
-						transform(curve.end()).y,
-					),
+					bezier_rs::BezierHandles::Quadratic { handle } => {
+						let a = transform.transform_point2(handle);
+						let b = transform.transform_point2(curve.end());
+						let a = a.round() - DVec2::splat(0.5);
+						let b = b.round() - DVec2::splat(0.5);
+
+						self.render_context.quadratic_curve_to(a.x, a.y, b.x, b.y)
+					}
+					bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
+						let a = transform.transform_point2(handle_start);
+						let b = transform.transform_point2(handle_end);
+						let c = transform.transform_point2(curve.end());
+						let a = a.round() - DVec2::splat(0.5);
+						let b = b.round() - DVec2::splat(0.5);
+						let c = c.round() - DVec2::splat(0.5);
+
+						self.render_context.bezier_curve_to(a.x, a.y, b.x, b.y, c.x, c.y)
+					}
 				}
 			}
+
 			if subpath.closed() {
 				self.render_context.close_path();
 			}
