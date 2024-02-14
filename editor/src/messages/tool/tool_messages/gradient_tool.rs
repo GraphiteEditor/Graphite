@@ -259,15 +259,15 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
 
 					overlay_context.line(start, end, None);
-					overlay_context.handle(start, dragging == Some(GradientDragTarget::Start));
-					overlay_context.handle(end, dragging == Some(GradientDragTarget::End));
+					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start));
+					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End));
 
 					for (index, (position, _)) in positions.into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
 
-						overlay_context.handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)));
+						overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)));
 					}
 				}
 

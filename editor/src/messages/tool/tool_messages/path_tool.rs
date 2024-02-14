@@ -427,7 +427,7 @@ impl Fsm for PathToolFsmState {
 						let state = tool_data.update_insertion(shape_editor, document, responses, input.mouse.position);
 
 						if let Some(closest_segment) = &tool_data.segment {
-							overlay_context.square(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
+							overlay_context.manipulator_anchor(closest_segment.closest_point_to_viewport(), false, Some(COLOR_OVERLAY_YELLOW));
 						}
 
 						responses.add(PathToolMessage::SelectedPointUpdated);
