@@ -41,11 +41,6 @@
 	let showTextInput: boolean;
 	let textInputMatrix: number[];
 
-	// CSS properties
-	let canvasSvgWidth: number | undefined = undefined;
-	let canvasSvgHeight: number | undefined = undefined;
-	let canvasCursor = "default";
-
 	// Scrollbars
 	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
 	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
@@ -64,6 +59,9 @@
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
 	let rasterizedContext: CanvasRenderingContext2D | undefined = undefined;
 
+	// Cursor icon to display while hovering over the canvas
+	let canvasCursor = "default";
+
 	// Cursor position for cursor floating menus like the Eyedropper tool zoom
 	let cursorLeft = 0;
 	let cursorTop = 0;
@@ -73,8 +71,19 @@
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
 
-	$: canvasWidthCSS = canvasDimensionCSS(canvasSvgWidth);
-	$: canvasHeightCSS = canvasDimensionCSS(canvasSvgHeight);
+	// Canvas dimensions
+	let canvasSvgWidth: number | undefined = undefined;
+	let canvasSvgHeight: number | undefined = undefined;
+
+	// Used to set the canvas rendering dimensions.
+	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
+	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
+	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
+	// Used to set the canvas element size on the page.
+	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
+	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
+	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
+
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
@@ -345,15 +354,6 @@
 		rulerVertical?.resize();
 	}
 
-	function canvasDimensionCSS(dimension: number | undefined): string {
-		// Temporary placeholder until the first actual value is populated
-		// This at least gets close to the correct value but an actual number is required to prevent CSS from causing non-integer sizing making the SVG render with anti-aliasing
-		if (dimension === undefined) return "100%";
-
-		// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-		return `${dimension % 2 === 1 ? dimension + 1 : dimension}px`;
-	}
-
 	onMount(() => {
 		// Update rendered SVGs
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentArtwork, async (data) => {
@@ -491,7 +491,8 @@
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" />
 							{/if}
 						</div>
-						<canvas class="overlays" style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas></canvas>
+						<canvas class="overlays" width={canvasWidthRoundedToEven} height={canvasHeightRoundedToEven} style:width={canvasWidthCSS} style:height={canvasHeightCSS} data-overlays-canvas>
+						</canvas>
 					</div>
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork="80%" data-graph>
 						<Graph />
@@ -545,25 +546,33 @@
 		.shelf-and-table {
 			// Enables usage of the `100cqh` unit to reference the height of this container element.
 			container-type: size;
-			// Be sure to recalculate this if the items below the tools (working colors and graph overlay buttons) change height in the future.
-			--height-of-elements-below-tools: 64px;
+
+			// Update this if the tool icons change width in the future.
+			--tool-width: 32;
+			// Update this if the items below the tools (i.e. the working colors) change height in the future.
+			--height-of-elements-below-tools: 72px;
+			// Update this if the height changes as set in `Separator.svelte`.
+			--height-of-separator: calc(12px + 1px + 12px);
+
 			// Target height for the tools within the container above the lower elements.
 			--available-height: calc(100cqh - var(--height-of-elements-below-tools));
-			// Be sure to update this if the height changes as set in `Separator.svelte`.
-			--separator-height: calc(12px + 1px + 12px);
-			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest number of columns to be used.
-			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * 32px + var(--total-separators) * var(--separator-height));
-			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * 32px + var(--total-separators) * var(--separator-height));
-			// Evaluates to 0px (if false) or 1px (if true). We multiply by 1000000 to force the result to be an integer 0 or 1 and not interpolate values in-between.
+			// The least height required to fit all the tools in 1 column and 2 columns, which the available space must exceed in order for the fewest needed columns to be used.
+			--1-col-required-height: calc(var(--total-tool-rows-for-1-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
+			--2-col-required-height: calc(var(--total-tool-rows-for-2-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--height-of-separator));
+
+			// These evaluate to 0px (if false) or 1px (if true). (We multiply by 1000000 to force the result to be a discrete integer 0 or 1 and not interpolate values in-between.)
+			--needs-at-least-1-column: 1px; // Always true
 			--needs-at-least-2-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--1-col-required-height))) * 1000000), 1px));
 			--needs-at-least-3-columns: calc(1px - clamp(0px, calc((var(--available-height) - Min(var(--available-height), var(--2-col-required-height))) * 1000000), 1px));
-			--columns: calc(1px + var(--needs-at-least-2-columns) + var(--needs-at-least-3-columns));
+			--columns: calc(var(--needs-at-least-1-column) + var(--needs-at-least-2-columns) + var(--needs-at-least-3-columns));
+			--columns-width: calc(var(--columns) * var(--tool-width));
+			--columns-width-max: calc(3px * var(--tool-width));
 
 			.shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
 				// A precaution in case the variables above somehow fail
-				max-width: calc(32px * 3);
+				max-width: var(--columns-width-max);
 
 				.tools {
 					flex: 0 1 auto;
@@ -574,7 +583,7 @@
 					// Remove this when the Firefox bug is fixed.
 					@-moz-document url-prefix() {
 						--available-height-plus-1: calc(var(--available-height) + 1px);
-						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * 32px + var(--total-separators) * var(--separator-height));
+						--3-col-required-height: calc(var(--total-tool-rows-for-3-columns) * calc(var(--tool-width) * 1px) + var(--total-separators) * var(--separator-height));
 						--overflows-with-3-columns: calc(1px - clamp(0px, calc((var(--available-height-plus-1) - Min(var(--available-height-plus-1), var(--3-col-required-height))) * 1000000), 1px));
 						--firefox-scrollbar-width-space-occupied: 8; // Might change someday, or on different platforms, but this is the value in FF 120 on Windows
 						padding-right: calc(var(--firefox-scrollbar-width-space-occupied) * var(--overflows-with-3-columns));
@@ -582,7 +591,7 @@
 
 					.widget-span {
 						flex-wrap: wrap;
-						width: calc(var(--columns) * 32);
+						width: var(--columns-width);
 
 						.icon-button {
 							margin: 0;
