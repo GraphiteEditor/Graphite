@@ -557,8 +557,6 @@
 		prevShakeX = roundX;
 		prevShakeY = roundY;
 
-		//	console.log({ shakeIntervalsX, shakeIntervalsY });
-
 		const totalLeftShakes = shakeIntervalsX.filter((interval) => interval.dir === "left");
 		const totalRightShakes = shakeIntervalsX.filter((interval) => interval.dir === "right");
 		const totalTopShakes = shakeIntervalsY.filter((interval) => interval.dir === "top");
@@ -578,8 +576,6 @@
 			const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
 			const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
 
-			console.log(`x axis: ${Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight)}`);
-
 			return Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight) >= NODE_SHAKE_THRESHOLD_X;
 		} else if (totalTopShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE && totalBotomShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE) {
 			const topShakeDeltas = chunk(totalTopShakes, 2).map(getMovementDelta);
@@ -587,8 +583,6 @@
 
 			const totalShakeChangesTop = topShakeDeltas.reduce((acc, curr) => acc + curr, 0) / topShakeDeltas.length;
 			const totalShakeChangesBottom = bottomShakeDeltas.reduce((acc, curr) => acc + curr, 0) / bottomShakeDeltas.length;
-
-			console.log(`y axis: ${Math.abs(totalShakeChangesTop) + Math.abs(totalShakeChangesBottom)}`);
 
 			return Math.abs(totalShakeChangesTop) + Math.abs(totalShakeChangesBottom) >= NODE_SHAKE_THRESHOLD_Y;
 		}
