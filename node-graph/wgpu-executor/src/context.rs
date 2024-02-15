@@ -21,7 +21,7 @@ impl Context {
 		// `request_adapter` instantiates the general connection to the GPU
 		let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions::default()).await?;
 
-		let limits = adapter.limits();
+		let required_limits = adapter.limits();
 		// `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
 		//  `features` being the available features.
 		let (device, queue) = adapter
@@ -29,10 +29,10 @@ impl Context {
 				&wgpu::DeviceDescriptor {
 					label: None,
 					#[cfg(not(feature = "passthrough"))]
-					features: wgpu::Features::empty(),
+					required_features: wgpu::Features::empty(),
 					#[cfg(feature = "passthrough")]
-					features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
-					limits,
+					required_features: wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
+					required_limits,
 				},
 				None,
 			)

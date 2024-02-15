@@ -10,7 +10,6 @@ use bezier_rs::Subpath;
 
 use base64::Engine;
 use glam::{DAffine2, DVec2};
-use usvg::TreeParsing;
 
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
@@ -216,18 +215,21 @@ pub trait GraphicElementRendered {
 		let opt = usvg::Options::default();
 
 		let tree = usvg::Tree::from_str(&svg, &opt).expect("Failed to parse SVG");
-		tree.root.clone()
+		usvg::Node::Group(Box::new(tree.root.clone()))
 	}
 
 	fn to_usvg_tree(&self, resolution: glam::UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
-		let root_node = self.to_usvg_node();
+		let root = match self.to_usvg_node() {
+			usvg::Node::Group(root_node) => *root_node,
+			_ => usvg::Group::default(),
+		};
 		usvg::Tree {
 			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
 			view_box: usvg::ViewBox {
 				rect: usvg::NonZeroRect::from_ltrb(viewbox[0].x as f32, viewbox[0].y as f32, viewbox[1].x as f32, viewbox[1].y as f32).unwrap(),
 				aspect: usvg::AspectRatio::default(),
 			},
-			root: root_node.clone(),
+			root,
 		}
 	}
 
@@ -275,11 +277,11 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
-		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+		let mut root_node = usvg::Group::default();
 		for element in self.iter() {
-			root_node.append(element.to_usvg_node());
+			root_node.children.push(element.to_usvg_node());
 		}
-		root_node
+		usvg::Node::Group(Box::new(root_node))
 	}
 
 	fn contains_artboard(&self) -> bool {
@@ -358,11 +360,11 @@ impl GraphicElementRendered for VectorData {
 		}
 		let path = builder.finish().unwrap();
 		let mut path = usvg::Path::new(path.into());
-		path.transform = transform;
+		path.abs_transform = transform;
 		// TODO: use proper style
 		path.fill = None;
 		path.stroke = Some(usvg::Stroke::default());
-		usvg::Node::new(usvg::NodeKind::Path(path))
+		usvg::Node::Path(Box::new(path))
 	}
 }
 
@@ -499,12 +501,12 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	fn to_usvg_node(&self) -> usvg::Node {
 		let image_frame = self;
 		if image_frame.image.width * image_frame.image.height == 0 {
-			return usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+			return usvg::Node::Group(Box::new(usvg::Group::default()));
 		}
 		let png = image_frame.image.to_png();
-		usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
+		usvg::Node::Image(Box::new(usvg::Image {
 			id: String::new(),
-			transform: to_transform(image_frame.transform),
+			abs_transform: to_transform(image_frame.transform),
 			visibility: usvg::Visibility::Visible,
 			view_box: usvg::ViewBox {
 				rect: usvg::NonZeroRect::from_xywh(0., 0., 1., 1.).unwrap(),
@@ -512,6 +514,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 			},
 			rendering_mode: usvg::ImageRendering::OptimizeSpeed,
 			kind: usvg::ImageKind::PNG(png.into()),
+			bounding_box: None,
 		}))
 	}
 }
@@ -594,12 +597,10 @@ impl<T: Primitive> GraphicElementRendered for T {
 
 	fn to_usvg_node(&self) -> usvg::Node {
 		let text = self;
-		usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
+		usvg::Node::Text(Box::new(usvg::Text {
 			id: String::new(),
-			transform: usvg::Transform::identity(),
+			abs_transform: usvg::Transform::identity(),
 			rendering_mode: usvg::TextRendering::OptimizeSpeed,
-			positions: Vec::new(),
-			rotate: Vec::new(),
 			writing_mode: usvg::WritingMode::LeftToRight,
 			chunks: vec![usvg::TextChunk {
 				text: text.to_string(),
@@ -609,6 +610,14 @@ impl<T: Primitive> GraphicElementRendered for T {
 				spans: vec![],
 				text_flow: usvg::TextFlow::Linear,
 			}],
+			dx: Vec::new(),
+			dy: Vec::new(),
+			rotate: Vec::new(),
+			bounding_box: None,
+			abs_bounding_box: None,
+			stroke_bounding_box: None,
+			abs_stroke_bounding_box: None,
+			flattened: None,
 		}))
 	}
 }

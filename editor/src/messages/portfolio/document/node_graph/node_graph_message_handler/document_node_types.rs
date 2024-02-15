@@ -1490,7 +1490,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Render Texture".to_string(),
 						inputs: vec![
 							NodeInput::Network(concrete!(ShaderInputFrame<WgpuExecutor>)),
-							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>)),
+							NodeInput::Network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>)),
 							NodeInput::node(NodeId(0), 0),
 						],
 						implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),

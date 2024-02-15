@@ -457,8 +457,9 @@ impl WidgetHolder {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, specta::Type)]
 pub struct WidgetCallback<T> {
+	#[specta(skip)]
 	pub callback: Arc<dyn Fn(&T) -> Message + 'static + Send + Sync>,
 }
 

@@ -40,6 +40,7 @@ struct InternalImaginateControl {
 	status: Mutex<ImaginateStatus>,
 	trigger_regenerate: AtomicBool,
 	#[serde(skip)]
+	#[specta(skip)]
 	termination_sender: Mutex<Option<Box<dyn ImaginateTerminationHandle>>>,
 }
 

@@ -16,7 +16,6 @@ use graphene_core::{Artboard, Color};
 use transform_utils::LayerBounds;
 
 use glam::{DAffine2, DVec2, IVec2};
-use usvg::NodeExt;
 
 pub mod transform_utils;
 
@@ -761,7 +760,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				use usvg::TreeParsing;
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
 					Err(e) => {
@@ -774,7 +772,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				};
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
-				import_usvg_node(&mut modify_inputs, &tree.root, transform, id, parent, insert_index);
+				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 		}
@@ -803,14 +801,14 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		return;
 	};
 	modify_inputs.layer_node = Some(layer);
-	match &*node.borrow() {
-		usvg::NodeKind::Group(_group) => {
-			for child in node.children() {
+	match node {
+		usvg::Node::Group(group) => {
+			for child in &group.children {
 				import_usvg_node(modify_inputs, &child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
 			}
 			modify_inputs.layer_node = Some(layer);
 		}
-		usvg::NodeKind::Path(path) => {
+		usvg::Node::Path(path) => {
 			let subpaths = convert_usvg_path(path);
 			let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box()).reduce(Quad::combine_bounds).unwrap_or_default();
 			let transformed_bounds = subpaths
@@ -836,10 +834,10 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			);
 			apply_usvg_stroke(&path.stroke, modify_inputs);
 		}
-		usvg::NodeKind::Image(_image) => {
+		usvg::Node::Image(_image) => {
 			warn!("Skip image")
 		}
-		usvg::NodeKind::Text(text) => {
+		usvg::Node::Text(text) => {
 			let font = Font::new(crate::consts::DEFAULT_FONT_FAMILY.to_string(), crate::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), font, 24., layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
