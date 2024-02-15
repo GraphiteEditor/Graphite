@@ -143,7 +143,7 @@ impl ApplicationIo for WasmApplicationIo {
 		#[cfg(feature = "wayland")]
 		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
 		#[cfg(not(feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoop::new();
+		let event_loop = winit::event_loop::EventLoop::new().unwrap();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))

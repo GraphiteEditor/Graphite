@@ -31,7 +31,7 @@ exclude = ["node-graph/gpu-compiler"]
 # - Their current release doesn't allow doc comments and produces a compile error.
 # See: https://github.com/GraphiteEditor/Graphite/pull/1346/files/a2206401b5b4cf669e71df57f6c95c67336802c8#r1280201659
 specta = { git = "https://github.com/0HyperCube/specta.git", rev = "47f28445aa9c7a74d3d40791cc3f28625e01e7ba", features = [
-	"glam",
+	"glam", "typescript"
 ] }
 rustc-hash = "1.1.0"
 # wasm-bindgen upgrades may break various things so we pin the version
