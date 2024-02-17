@@ -125,7 +125,7 @@ impl ClosestSegment {
 	}
 
 	fn t_min_max(bezier: &Bezier, layer_scale: DVec2) -> (f64, f64) {
-		let length = bezier.apply_transformation(|point| point * layer_scale).length(Some(100));
+		let length = bezier.apply_transformation(|point| point * layer_scale).length(None);
 		let too_close_t = (INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE / length).min(0.5);
 
 		let t_min_euclidean = too_close_t;
@@ -148,7 +148,7 @@ impl ClosestSegment {
 		// Linear approximation of parametric t-value ranges:
 		let t_min = self.t_min / self.scale;
 		let t_max = 1. - ((1. - self.t_max) / self.scale);
-		let t = self.bezier.project(layer_m_pos, None).max(t_min).min(t_max);
+		let t = self.bezier.project(layer_m_pos).max(t_min).min(t_max);
 		self.t = t;
 
 		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));
@@ -1099,8 +1099,6 @@ impl ShapeState {
 
 		let scale = document_metadata.document_to_viewport.decompose_scale().x;
 		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
-		let lut_size = ((5. + scale) as usize).min(20); // need more precision at large scale
-		let projection_options = bezier_rs::ProjectionOptions { lut_size, ..Default::default() };
 
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
@@ -1109,7 +1107,7 @@ impl ShapeState {
 
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			for (manipulator_index, bezier) in subpath.iter().enumerate() {
-				let t = bezier.project(layer_pos, Some(projection_options));
+				let t = bezier.project(layer_pos);
 				let layerspace = bezier.evaluate(TValue::Parametric(t));
 
 				let screenspace = transform.transform_point2(layerspace);

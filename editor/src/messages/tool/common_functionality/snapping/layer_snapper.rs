@@ -94,7 +94,7 @@ impl LayerSnapper {
 			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance * 2. {
 				continue;
 			}
-			let time = path.document_curve.project(point.document_point, None);
+			let time = path.document_curve.project(point.document_point);
 			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
 
 			let distance = snapped_point_document.distance(point.document_point);

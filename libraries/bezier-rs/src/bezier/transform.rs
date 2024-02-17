@@ -105,19 +105,10 @@ impl Bezier {
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
 	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Bezier {
-		let transformed_start = transformation_function(self.start);
-		let transformed_end = transformation_function(self.end);
-		match self.handles {
-			BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
-			BezierHandles::Quadratic { handle } => {
-				let transformed_handle = transformation_function(handle);
-				Bezier::from_quadratic_dvec2(transformed_start, transformed_handle, transformed_end)
-			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				let transformed_handle_start = transformation_function(handle_start);
-				let transformed_handle_end = transformation_function(handle_end);
-				Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
-			}
+		Self {
+			start: transformation_function(self.start),
+			end: transformation_function(self.end),
+			handles: self.handles.apply_transformation(transformation_function),
 		}
 	}
 
@@ -315,12 +306,12 @@ impl Bezier {
 				BezierHandles::Linear => Bezier::from_linear_dvec2(transformed_start, transformed_end),
 				BezierHandles::Quadratic { handle: _ } => unreachable!(),
 				BezierHandles::Cubic { handle_start, handle_end } => {
-					let handle_start_closest_t = intermediate.project(handle_start, None);
+					let handle_start_closest_t = intermediate.project(handle_start);
 					let handle_start_scale_distance = (1. - handle_start_closest_t) * start_distance + handle_start_closest_t * end_distance;
 					let transformed_handle_start =
 						utils::scale_point_from_direction_vector(handle_start, intermediate.normal(TValue::Parametric(handle_start_closest_t)), false, handle_start_scale_distance);
 
-					let handle_end_closest_t = intermediate.project(handle_start, None);
+					let handle_end_closest_t = intermediate.project(handle_start);
 					let handle_end_scale_distance = (1. - handle_end_closest_t) * start_distance + handle_end_closest_t * end_distance;
 					let transformed_handle_end = utils::scale_point_from_direction_vector(handle_end, intermediate.normal(TValue::Parametric(handle_end_closest_t)), false, handle_end_scale_distance);
 					Bezier::from_cubic_dvec2(transformed_start, transformed_handle_start, transformed_handle_end, transformed_end)
@@ -810,7 +801,7 @@ mod tests {
 					.iter()
 					.map(|t| {
 						let offset_point = offset_segment.evaluate(TValue::Parametric(*t));
-						let closest_point_t = bezier.project(offset_point, None);
+						let closest_point_t = bezier.project(offset_point);
 						let closest_point = bezier.evaluate(TValue::Parametric(closest_point_t));
 						let actual_distance = offset_point.distance(closest_point);
 

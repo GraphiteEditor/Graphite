@@ -1,11 +1,11 @@
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
-use super::VectorData;
+use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, SubpathTValue, TValue};
+use bezier_rs::{Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -85,23 +85,17 @@ pub struct RepeatNode<Direction, Count> {
 }
 
 #[node_macro::node_fn(RepeatNode)]
-fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
+fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
 	// repeat the vector data
-	let VectorData { subpaths, transform, .. } = &vector_data;
-
-	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(subpaths.len() * count as usize);
-	let inverse = transform.inverse();
+	let mut result = VectorData::empty();
+	let inverse = vector_data.transform.inverse();
 	let direction = inverse.transform_vector2(direction);
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
-		for mut subpath in subpaths.clone() {
-			subpath.apply_transform(transform);
-			new_subpaths.push(subpath);
-		}
+		result.concat(&vector_data, transform);
 	}
 
-	vector_data.subpaths = new_subpaths;
-	vector_data
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -112,8 +106,8 @@ pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
 }
 
 #[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f64, radius: f64, count: u32) -> VectorData {
-	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(vector_data.subpaths.len() * count as usize);
+fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radius: f64, count: u32) -> VectorData {
+	let mut result = VectorData::empty();
 
 	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
@@ -124,14 +118,10 @@ fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f64, r
 		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
-		for mut subpath in vector_data.subpaths.clone() {
-			subpath.apply_transform(transform);
-			new_subpaths.push(subpath);
-		}
+		result.concat(&vector_data, transform);
 	}
 
-	vector_data.subpaths = new_subpaths;
-	vector_data
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -140,27 +130,14 @@ pub struct BoundingBoxNode;
 #[node_macro::node_fn(BoundingBoxNode)]
 fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 	let bounding_box = vector_data.bounding_box().unwrap();
-	VectorData::from_subpaths(vec![Subpath::new_rect(
+	VectorData::from_subpath(Subpath::new_rect(
 		vector_data.transform.transform_point2(bounding_box[0]),
 		vector_data.transform.transform_point2(bounding_box[1]),
-	)])
+	))
 }
 
 pub trait ConcatElement {
 	fn concat(&mut self, other: &Self, transform: DAffine2);
-}
-
-impl ConcatElement for VectorData {
-	fn concat(&mut self, other: &Self, transform: DAffine2) {
-		for mut subpath in other.subpaths.iter().cloned() {
-			subpath.apply_transform(transform * other.transform);
-			self.subpaths.push(subpath);
-		}
-		// TODO: properly deal with fills such as gradients
-		self.style = other.style.clone();
-		self.mirror_angle.extend(other.mirror_angle.iter().copied());
-		self.alpha_blending = other.alpha_blending;
-	}
 }
 
 impl ConcatElement for GraphicGroup {
@@ -198,7 +175,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let instance = self.instance.eval(footprint).await;
 	let random_scale_difference = random_scale_max - random_scale_min;
 
-	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
+	let points_list = points.point_domain.positions();
 
 	let instance_bounding_box = instance.bounding_box(DAffine2::IDENTITY).unwrap_or_default();
 	let instance_center = -0.5 * (instance_bounding_box[0] + instance_bounding_box[1]);
@@ -210,7 +187,7 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	let do_rotation = random_rotation.abs() > 1e-6;
 
 	let mut result = I::default();
-	for point in points_list {
+	for &point in points_list {
 		let center_transform = DAffine2::from_translation(instance_center);
 
 		let translation = points.transform.transform_point2(point);
@@ -253,7 +230,7 @@ pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSp
 }
 
 #[node_macro::node_fn(SamplePoints)]
-async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<Vec<f64>>>>(
+async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<f64>>>(
 	footprint: Footprint,
 	mut vector_data: impl Node<Footprint, Output = FV>,
 	spacing: f64,
@@ -262,18 +239,19 @@ async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<
 	adaptive_spacing: bool,
 	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = FL>,
 ) -> VectorData {
-	let mut vector_data = self.vector_data.eval(footprint).await;
+	let vector_data = self.vector_data.eval(footprint).await;
 	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
 
-	for (index, subpath) in &mut vector_data.subpaths.iter_mut().enumerate() {
-		if subpath.is_empty() || !spacing.is_finite() || spacing <= 0. {
-			continue;
+	let mut bézier = vector_data.segment_bézier_iter().enumerate().peekable();
+	let mut result = VectorData::empty();
+	result.transform = vector_data.transform;
+	while let Some((index, (segment, _, _, mut last_end))) = bézier.next() {
+		let mut lengths = vec![(segment, lengths_of_segments_of_subpaths.get(index).copied().unwrap_or_default())];
+		while let Some((index, (segment, _, _, end))) = bézier.peek().is_some_and(|(_, (_, _, start, _))| *start == last_end).then(|| bézier.next()).flatten() {
+			last_end = end;
+			lengths.push((segment, lengths_of_segments_of_subpaths.get(index).copied().unwrap_or_default()));
 		}
-
-		subpath.apply_transform(vector_data.transform);
-
-		let segment_lengths = &lengths_of_segments_of_subpaths[index];
-		let total_length: f64 = segment_lengths.iter().sum();
+		let total_length: f64 = lengths.iter().map(|(_, len)| *len).sum();
 
 		let mut used_length = total_length - start_offset - stop_offset;
 		if used_length <= 0. {
@@ -282,35 +260,43 @@ async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<
 
 		let count;
 		if adaptive_spacing {
+			// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
 			count = (used_length / spacing).round();
 		} else {
+			// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
 			count = (used_length / spacing + f64::EPSILON).floor();
 			used_length = used_length - used_length % spacing;
 		}
 
-		if count >= 1. {
-			let new_anchors = (0..=count as usize).map(|c| {
-				let ratio = c as f64 / count;
-
-				// With adaptive spacing, we widen or narrow the points (that's the `round()` above) as necessary to ensure the last point is always at the end of the path.
-				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short (that's the `floor()` above) before the end of the path.
-
-				let t = (ratio * used_length + start_offset) / total_length;
-
-				let (segment_index, segment_t_euclidean) = subpath.global_euclidean_to_local_euclidean(t, segment_lengths.as_slice(), total_length);
-				let segment_t_parametric = subpath
-					.get_segment(segment_index)
-					.unwrap()
-					.euclidean_to_parametric_with_total_length(segment_t_euclidean, 0.001, segment_lengths[segment_index]);
-				subpath.get_segment(segment_index).unwrap().evaluate(TValue::Parametric(segment_t_parametric))
-			});
-
-			*subpath = Subpath::from_anchors(new_anchors, subpath.closed() && count as usize > 1);
+		if count < 1. {
+			continue;
 		}
+		for c in 0..=count as usize {
+			let fraction = c as f64 / count;
+			let total_distance = fraction * used_length + start_offset;
 
-		subpath.apply_transform(vector_data.transform.inverse());
+			let (mut segment, mut length) = lengths[0];
+			let mut total_length_before = 0.;
+			for &(next_segment, next_length) in lengths.iter().skip(1) {
+				if total_length_before + length > total_distance {
+					break;
+				}
+
+				total_length_before += length;
+				segment = next_segment;
+				length = next_length;
+			}
+
+			let Some(segment) = vector_data.segment_from_id(segment) else { continue };
+			let segment = segment.apply_transformation(|point| vector_data.transform.transform_point2(point));
+
+			let parametric_t = segment.euclidean_to_parametric_with_total_length((total_distance - total_length_before) / length, 0.001, length);
+			let point = segment.evaluate(TValue::Parametric(parametric_t));
+			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+		}
 	}
-	vector_data
+
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -319,36 +305,32 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 }
 
 #[node_macro::node_fn(PoissonDiskPoints)]
-fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
+fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
-	for subpath in &mut vector_data.subpaths.iter_mut() {
+	let mut result = VectorData::empty();
+	for (_, mut subpath) in vector_data.region_bézier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
 
 		subpath.apply_transform(vector_data.transform);
 
-		let points = subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()).into_iter().map(|point| point.into());
-		*subpath = Subpath::from_anchors(points, false);
-
-		subpath.apply_transform(vector_data.transform.inverse());
+		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
+			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+		}
 	}
 
-	vector_data
+	result
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct LengthsOfSegmentsOfSubpaths;
 
 #[node_macro::node_fn(LengthsOfSegmentsOfSubpaths)]
-fn lengths_of_segments_of_subpaths(mut vector_data: VectorData) -> Vec<Vec<f64>> {
+fn lengths_of_segments_of_subpaths(vector_data: VectorData) -> Vec<f64> {
 	vector_data
-		.subpaths
-		.iter_mut()
-		.map(|subpath| {
-			subpath.apply_transform(vector_data.transform);
-			subpath.iter().map(|bezier| bezier.length(None)).collect()
-		})
+		.segment_bézier_iter()
+		.map(|(_id, bézier, _, _)| bézier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
 		.collect()
 }
 
@@ -357,15 +339,16 @@ pub struct SplinesFromPointsNode;
 
 #[node_macro::node_fn(SplinesFromPointsNode)]
 fn splines_from_points(mut vector_data: VectorData) -> VectorData {
-	for subpath in &mut vector_data.subpaths {
-		let mut spline = Subpath::new_cubic_spline(subpath.anchors());
-
-		// Preserve the manipulator group ids
-		for (spline_manipulator_group, original_manipulator_group) in spline.manipulator_groups_mut().iter_mut().zip(subpath.manipulator_groups()) {
-			spline_manipulator_group.id = original_manipulator_group.id;
-		}
-
-		*subpath = spline;
+	let points = &vector_data.point_domain;
+	vector_data.segment_domain.clear();
+	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
+	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
+		let handle_start = first_handles[start_index];
+		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
+		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+		vector_data
+			.segment_domain
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
 	}
 
 	vector_data
@@ -386,7 +369,8 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	start_index: u32,
 	time: f64,
 ) -> VectorData {
-	let mut source = self.source.eval(footprint).await;
+	todo!("Fix with new vector data type.");
+	/* let mut source = self.source.eval(footprint).await;
 	let mut target = self.target.eval(footprint).await;
 
 	// Lerp styles
@@ -463,5 +447,5 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	current.subpaths = subpaths;
 	current.transform = DAffine2::IDENTITY;
 
-	current
+	current*/
 }

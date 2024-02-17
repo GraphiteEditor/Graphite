@@ -164,7 +164,7 @@ impl WasmBezier {
 			"Euclidean" => TValueType::Euclidean,
 			_ => panic!("Unexpected TValue string: '{t_variant}'"),
 		};
-		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type));
+		let table_values: Vec<DVec2> = self.0.compute_lookup_table(Some(steps), Some(tvalue_type)).collect();
 		let circles: String = table_values
 			.iter()
 			.map(|point| draw_circle(*point, 3., RED, 1.5, WHITE))
@@ -293,7 +293,7 @@ impl WasmBezier {
 	}
 
 	pub fn project(&self, x: f64, y: f64) -> String {
-		let projected_t_value = self.0.project(DVec2::new(x, y), None);
+		let projected_t_value = self.0.project(DVec2::new(x, y));
 		let projected_point = self.0.evaluate(TValue::Parametric(projected_t_value));
 
 		let bezier = self.get_bezier_path();

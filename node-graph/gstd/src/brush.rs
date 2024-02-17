@@ -60,7 +60,7 @@ pub struct VectorPointsNode;
 
 #[node_fn(VectorPointsNode)]
 fn vector_points(vector: VectorData) -> Vec<DVec2> {
-	vector.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups().iter().map(|group| group.anchor)).collect()
+	vector.point_domain.positions().to_vec()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

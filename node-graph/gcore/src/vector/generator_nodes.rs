@@ -6,6 +6,8 @@ use bezier_rs::Subpath;
 
 use glam::DVec2;
 
+use super::PointId;
+
 #[derive(Debug, Clone, Copy)]
 pub struct CircleGenerator<Radius> {
 	radius: Radius,
@@ -43,7 +45,7 @@ fn square_generator(_input: (), size_x: f64, size_y: f64) -> VectorData {
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
 
-	super::VectorData::from_subpaths(vec![Subpath::new_rect(corner1, corner2)])
+	super::VectorData::from_subpath(Subpath::new_rect(corner1, corner2))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -83,7 +85,7 @@ pub struct LineGenerator<Pos1, Pos2> {
 
 #[node_macro::node_fn(LineGenerator)]
 fn line_generator(_input: (), pos_1: DVec2, pos_2: DVec2) -> VectorData {
-	super::VectorData::from_subpaths(vec![Subpath::new_line(pos_1, pos_2)])
+	super::VectorData::from_subpath(Subpath::new_line(pos_1, pos_2))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -93,7 +95,7 @@ pub struct SplineGenerator<Positions> {
 
 #[node_macro::node_fn(SplineGenerator)]
 fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
-	super::VectorData::from_subpaths(vec![Subpath::new_cubic_spline(positions)])
+	super::VectorData::from_subpath(Subpath::new_cubic_spline(positions))
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node

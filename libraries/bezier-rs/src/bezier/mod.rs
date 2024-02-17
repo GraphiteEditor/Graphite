@@ -14,7 +14,7 @@ use glam::DVec2;
 use std::fmt::{Debug, Formatter, Result};
 
 /// Representation of the handle point(s) in a bezier segment.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BezierHandles {
 	Linear,
@@ -34,6 +34,36 @@ pub enum BezierHandles {
 impl BezierHandles {
 	pub fn is_cubic(&self) -> bool {
 		matches!(self, Self::Cubic { .. })
+	}
+	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
+	pub fn start(&self) -> Option<DVec2> {
+		match *self {
+			BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } => Some(handle_start),
+			_ => None,
+		}
+	}
+
+	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
+	pub fn end(&self) -> Option<DVec2> {
+		match *self {
+			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
+			_ => None,
+		}
+	}
+	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
+	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
+		match *self {
+			BezierHandles::Linear => Self::Linear,
+			BezierHandles::Quadratic { handle } => {
+				let handle = transformation_function(handle);
+				Self::Quadratic { handle }
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let handle_start = transformation_function(handle_start);
+				let handle_end = transformation_function(handle_end);
+				Self::Cubic { handle_start, handle_end }
+			}
+		}
 	}
 }
 

@@ -89,4 +89,8 @@ impl ManipulatorGroupId {
 		self.0 += 1;
 		Self(old)
 	}
+
+	pub(crate) fn inner(self) -> u64 {
+		self.0
+	}
 }
