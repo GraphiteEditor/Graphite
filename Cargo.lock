@@ -6790,7 +6790,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vello"
 version = "0.0.1"
-source = "git+https://github.com/crowlKats/vello.git?branch=update-wgpu#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
+source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
@@ -6805,7 +6805,7 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.1.0"
-source = "git+https://github.com/crowlKats/vello.git?branch=update-wgpu#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
+source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
 dependencies = [
  "bytemuck",
  "guillotiere",
@@ -6816,7 +6816,7 @@ dependencies = [
 [[package]]
 name = "vello_svg"
 version = "0.0.1"
-source = "git+https://github.com/crowlKats/vello.git?branch=update-wgpu#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
+source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
 dependencies = [
  "usvg 0.33.0",
  "vello",

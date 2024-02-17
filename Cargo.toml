@@ -34,7 +34,7 @@ wasm-bindgen = "=0.2.91"
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
-# Required for latest glam until there is a new release
+# Remove the `rev` commit hash field once this merges: https://github.com/EmbarkStudios/rust-gpu/pull/1115 (and consider switching to a release version upon the next release)
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git", rev = "08e7559012ab6645cf36f6cce84426f9e34b88d9" }
 bytemuck = { version = "1.13", features = ["derive"] }
 async-trait = { version = "0.1" }
@@ -62,8 +62,9 @@ wasm-bindgen-futures = { version = "0.4.36" }
 winit = "0.29"
 url = "2.4.0"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = { git = "https://github.com/crowlKats/vello.git", branch = "update-wgpu", version = "0.0.1" }
-vello_svg = { git = "https://github.com/crowlKats/vello.git", branch = "update-wgpu", version = "0.0.1" }
+# Remove the `rev` commit hash field once this merges: https://github.com/linebender/vello/pull/427
+vello = { git = "https://github.com/linebender/vello.git", rev = "f075f58fc50c569daf5ca720fe81b5fee946ce7f", version = "0.0.1" }
+vello_svg = { git = "https://github.com/linebender/vello.git", rev = "f075f58fc50c569daf5ca720fe81b5fee946ce7f", version = "0.0.1" }
 resvg = { version = "0.39" }
 rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1" }
