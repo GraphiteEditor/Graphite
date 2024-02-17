@@ -20,26 +20,22 @@ members = [
 	"libraries/bezier-rs",
 	"website/other/bezier-rs-demos/wasm",
 ]
-
 resolver = "2"
-
 exclude = ["node-graph/gpu-compiler"]
 
 [workspace.dependencies]
-# We are using this fork because:
-# - They specify glam=0.22 whereas we use glam=0.24 so the encoding doesn't work.
-# - Their current release doesn't allow doc comments and produces a compile error.
-# See: https://github.com/GraphiteEditor/Graphite/pull/1346/files/a2206401b5b4cf669e71df57f6c95c67336802c8#r1280201659
-specta = { git = "https://github.com/0HyperCube/specta.git", rev = "c47a22b4c0863d27bc47529f300de3969480c66d", features = [
+specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
 	"glam",
+	"typescript",
 ] }
 rustc-hash = "1.1.0"
 # wasm-bindgen upgrades may break various things so we pin the version
-wasm-bindgen = "=0.2.87"
+wasm-bindgen = "=0.2.91"
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
-spirv-std = { version = "0.9" }
+# Remove the `rev` commit hash field once this merges: https://github.com/EmbarkStudios/rust-gpu/pull/1115 (and consider switching to a release version upon the next release)
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git", rev = "08e7559012ab6645cf36f6cce84426f9e34b88d9" }
 bytemuck = { version = "1.13", features = ["derive"] }
 async-trait = { version = "0.1" }
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -61,33 +57,34 @@ chrono = "^0.4.23"
 ron = "0.8"
 fastnoise-lite = "1.1.0"
 wgpu-types = "0.17"
-wgpu = "0.17"
+wgpu = "0.19"
 wasm-bindgen-futures = { version = "0.4.36" }
-winit = "0.28.6"
+winit = "0.29"
 url = "2.4.0"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
-vello = { git = "https://github.com/linebender/vello", version = "0.0.1" }
-vello_svg = { git = "https://github.com/linebender/vello", version = "0.0.1" }
-resvg = { version = "0.36.0" }
+# Remove the `rev` commit hash field once this merges: https://github.com/linebender/vello/pull/427
+vello = { git = "https://github.com/linebender/vello.git", rev = "f075f58fc50c569daf5ca720fe81b5fee946ce7f", version = "0.0.1" }
+vello_svg = { git = "https://github.com/linebender/vello.git", rev = "f075f58fc50c569daf5ca720fe81b5fee946ce7f", version = "0.0.1" }
+resvg = { version = "0.39" }
 rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1" }
 bezier-rs = { path = "libraries/bezier-rs", features = ["dyn-any"] }
 kurbo = { git = "https://github.com/linebender/kurbo.git", features = [
 	"serde",
 ] }
-glam = { version = "0.24", default-features = false, features = ["serde"] }
+glam = { version = "0.25", default-features = false, features = ["serde"] }
 node-macro = { path = "node-graph/node-macro" }
 base64 = { version = "0.21" }
 image = { version = "0.24", default-features = false, features = ["png"] }
-rustybuzz = { version = "0.8.0" }
+rustybuzz = { version = "0.10.0" }
 num-derive = { version = "0.4" }
 num-traits = { version = "0.2.15", default-features = false, features = [
 	"i128",
 ] }
-js-sys = { version = "0.3.55" }
-web-sys = { version = "0.3.55" }
-usvg = "0.36.0"
-spirv = "0.2.0"
+js-sys = { version = "=0.3.67" }
+web-sys = { version = "=0.3.67" }
+usvg = "0.39"
+spirv = "0.3"
 fern = { version = "0.6", features = ["colored"] }
 
 [profile.dev.package.graphite-editor]

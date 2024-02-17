@@ -233,7 +233,7 @@ impl GraphicGroup {
 	};
 
 	pub fn to_usvg_tree(&self, resolution: UVec2, viewbox: [DVec2; 2]) -> usvg::Tree {
-		let root_node = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+		let mut root_node = usvg::Group::default();
 		let tree = usvg::Tree {
 			size: usvg::Size::from_wh(resolution.x as f32, resolution.y as f32).unwrap(),
 			view_box: usvg::ViewBox {
@@ -244,7 +244,7 @@ impl GraphicGroup {
 		};
 
 		for element in self.iter() {
-			root_node.append(element.to_usvg_node());
+			root_node.children.push(element.to_usvg_node());
 		}
 		tree
 	}
@@ -283,20 +283,20 @@ impl GraphicElement {
 				}
 				let path = builder.finish().unwrap();
 				let mut path = usvg::Path::new(path.into());
-				path.transform = transform;
+				path.abs_transform = transform;
 				// TODO: use proper style
 				path.fill = None;
 				path.stroke = Some(usvg::Stroke::default());
-				usvg::Node::new(usvg::NodeKind::Path(path))
+				usvg::Node::Path(Box::new(path))
 			}
 			GraphicElement::ImageFrame(image_frame) => {
 				if image_frame.image.width * image_frame.image.height == 0 {
-					return usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+					return usvg::Node::Group(Box::new(usvg::Group::default()));
 				}
 				let png = image_frame.image.to_png();
-				usvg::Node::new(usvg::NodeKind::Image(usvg::Image {
+				usvg::Node::Image(Box::new(usvg::Image {
 					id: String::new(),
-					transform: to_transform(image_frame.transform),
+					abs_transform: to_transform(image_frame.transform),
 					visibility: usvg::Visibility::Visible,
 					view_box: usvg::ViewBox {
 						rect: usvg::NonZeroRect::from_xywh(0., 0., 1., 1.).unwrap(),
@@ -304,14 +304,13 @@ impl GraphicElement {
 					},
 					rendering_mode: usvg::ImageRendering::OptimizeSpeed,
 					kind: usvg::ImageKind::PNG(png.into()),
+					bounding_box: None,
 				}))
 			}
-			GraphicElement::Text(text) => usvg::Node::new(usvg::NodeKind::Text(usvg::Text {
+			GraphicElement::Text(text) => usvg::Node::Text(Box::new(usvg::Text {
 				id: String::new(),
-				transform: usvg::Transform::identity(),
+				abs_transform: usvg::Transform::identity(),
 				rendering_mode: usvg::TextRendering::OptimizeSpeed,
-				positions: Vec::new(),
-				rotate: Vec::new(),
 				writing_mode: usvg::WritingMode::LeftToRight,
 				chunks: vec![usvg::TextChunk {
 					text: text.clone(),
@@ -321,17 +320,25 @@ impl GraphicElement {
 					spans: vec![],
 					text_flow: usvg::TextFlow::Linear,
 				}],
+				dx: Vec::new(),
+				dy: Vec::new(),
+				rotate: Vec::new(),
+				bounding_box: None,
+				abs_bounding_box: None,
+				stroke_bounding_box: None,
+				abs_stroke_bounding_box: None,
+				flattened: None,
 			})),
 			GraphicElement::GraphicGroup(group) => {
-				let group_element = usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default()));
+				let mut group_element = usvg::Group::default();
 
 				for element in group.iter() {
-					group_element.append(element.to_usvg_node());
+					group_element.children.push(element.to_usvg_node());
 				}
-				group_element
+				usvg::Node::Group(Box::new(group_element))
 			}
 			// TODO
-			GraphicElement::Artboard(_board) => usvg::Node::new(usvg::NodeKind::Group(usvg::Group::default())),
+			GraphicElement::Artboard(_board) => usvg::Node::Group(Box::new(usvg::Group::default())),
 		}
 	}
 }

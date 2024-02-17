@@ -124,7 +124,7 @@ async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<
 	// It is to WebGPU what a command buffer is to Vulkan.
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 	{
-		let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+		let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
 		cpass.set_pipeline(&compute_pipeline);
 		cpass.set_bind_group(0, &bind_group, &[]);
 		cpass.insert_debug_marker("compute node network evaluation");

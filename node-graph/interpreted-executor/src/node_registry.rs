@@ -369,9 +369,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::ReadOutputBufferNode<_, _>, input: Arc<ShaderInput<WgpuExecutor>>, output: Vec<u8>, params: [&WgpuExecutor, ()]),
 		#[cfg(feature = "gpu")]
-		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, params: []),
-		#[cfg(feature = "gpu")]
-		async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, &WgpuExecutor]),
+		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, params: []),
+		// todo!(gpu) get this to compie without saying that one type is more general than the other
+		// #[cfg(feature = "gpu")]
+		// async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, &WgpuExecutor]),
 		#[cfg(feature = "gpu")]
 		async_node!(
 			gpu_executor::UploadTextureNode<_>,

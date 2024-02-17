@@ -44,7 +44,7 @@ pub trait GpuExecutor {
 	type BufferHandle: Send + Sync;
 	type TextureHandle: Send + Sync;
 	type TextureView: Send + Sync;
-	type Surface: Send + Sync;
+	type Surface<'window>: Send + Sync;
 	type Window;
 	type CommandBuffer;
 
@@ -55,10 +55,10 @@ pub trait GpuExecutor {
 	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>>;
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<ShaderInput<Self>>;
 	fn create_compute_pass(&self, layout: &PipelineLayout<Self>, read_back: Option<Arc<ShaderInput<Self>>>, instances: ComputePassDimensions) -> Result<Self::CommandBuffer>;
-	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<Self::Surface>>) -> Result<()>;
+	fn create_render_pass(&self, texture: Arc<ShaderInput<Self>>, canvas: Arc<SurfaceHandle<Self::Surface<'_>>>) -> Result<()>;
 	fn execute_compute_pipeline(&self, encoder: Self::CommandBuffer) -> Result<()>;
 	fn read_output_buffer(&self, buffer: Arc<ShaderInput<Self>>) -> ReadBackFuture;
-	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface>>;
+	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface<'_>>>;
 }
 
 pub trait SpirVCompiler {
@@ -110,7 +110,7 @@ impl GpuExecutor for DummyExecutor {
 	type BufferHandle = ();
 	type TextureHandle = ();
 	type TextureView = ();
-	type Surface = ();
+	type Surface<'window> = ();
 	type Window = ();
 	type CommandBuffer = ();
 
@@ -142,7 +142,7 @@ impl GpuExecutor for DummyExecutor {
 		todo!()
 	}
 
-	fn create_render_pass(&self, _texture: Arc<ShaderInput<Self>>, _canvas: Arc<SurfaceHandle<Self::Surface>>) -> Result<()> {
+	fn create_render_pass(&self, _texture: Arc<ShaderInput<Self>>, _canvas: Arc<SurfaceHandle<Self::Surface<'_>>>) -> Result<()> {
 		todo!()
 	}
 
@@ -154,7 +154,7 @@ impl GpuExecutor for DummyExecutor {
 		todo!()
 	}
 
-	fn create_surface(&self, _window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface>> {
+	fn create_surface(&self, _window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface<'_>>> {
 		todo!()
 	}
 }
@@ -496,7 +496,7 @@ async fn read_output_buffer_node<'a: 'input, E: 'a + GpuExecutor>(buffer: Arc<Sh
 pub struct CreateGpuSurfaceNode {}
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<E::Surface>> {
+async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<E::Surface<'a>>> {
 	let canvas = editor_api.application_io.create_surface();
 	let executor = editor_api.application_io.gpu_executor().unwrap();
 	Arc::new(executor.create_surface(canvas).unwrap())
@@ -529,7 +529,7 @@ where
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input, E: 'a + GpuExecutor>(image: ShaderInputFrame<E>, surface: Arc<SurfaceHandle<E::Surface>>, executor: &'a E) -> SurfaceFrame {
+async fn render_texture_node<'a: 'input, E: 'a + GpuExecutor>(image: ShaderInputFrame<E>, surface: Arc<SurfaceHandle<E::Surface<'input>>>, executor: &'a E) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
 	log::trace!("rendering to surface {surface_id:?}");
 

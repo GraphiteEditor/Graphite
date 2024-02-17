@@ -141,9 +141,9 @@ impl ApplicationIo for WasmApplicationIo {
 		use winit::platform::wayland::EventLoopBuilderExtWayland;
 
 		#[cfg(feature = "wayland")]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build();
+		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
 		#[cfg(not(feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoop::new();
+		let event_loop = winit::event_loop::EventLoop::new().unwrap();
 		let window = winit::window::WindowBuilder::new()
 			.with_title("Graphite")
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
@@ -336,11 +336,9 @@ fn render_canvas(
 	if let Some(exec) = editor.application_io.gpu_executor() {
 		todo!()
 	} else {
-		let rtree = resvg::Tree::from_usvg(&usvg_tree);
-
-		let pixmap_size = rtree.size.to_int_size();
+		let pixmap_size = usvg_tree.size.to_int_size();
 		let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
-		rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+		resvg::render(&usvg_tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
 		let array: Clamped<&[u8]> = Clamped(pixmap.data());
 		let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(array, pixmap_size.width(), pixmap_size.height()).expect("Failed to construct ImageData");

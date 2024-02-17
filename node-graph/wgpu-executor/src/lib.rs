@@ -43,7 +43,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &
 	}
 }
 
-pub type WgpuSurface = Arc<SurfaceHandle<wgpu::Surface>>;
+pub type WgpuSurface<'window> = Arc<SurfaceHandle<wgpu::Surface<'window>>>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -111,7 +111,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	type TextureHandle = Texture;
 	type TextureView = TextureView;
 	type CommandBuffer = CommandBufferWrapper;
-	type Surface = wgpu::Surface;
+	type Surface<'window> = wgpu::Surface<'window>;
 	#[cfg(target_arch = "wasm32")]
 	type Window = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
@@ -196,6 +196,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 				usage,
 				view_formats: &[format],
 			},
+			wgpu::util::TextureDataOrder::LayerMajor,
 			bytes.as_ref(),
 		);
 		match options {
@@ -256,7 +257,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute encoder") });
 		{
 			let dimensions = instances.get();
-			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+			let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None, timestamp_writes: None });
 			cpass.set_pipeline(&compute_pipeline);
 			cpass.set_bind_group(0, &bind_group, &[]);
 			cpass.insert_debug_marker("compute node network evaluation");
@@ -349,10 +350,12 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 					resolve_target: None,
 					ops: wgpu::Operations {
 						load: wgpu::LoadOp::Load,
-						store: true,
+						store: wgpu::StoreOp::Store,
 					},
 				})],
 				depth_stencil_attachment: None,
+				timestamp_writes: None,
+				occlusion_query_set: None,
 			});
 
 			render_pass.set_pipeline(&self.render_configuration.render_pipeline);
@@ -430,7 +433,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 
 	#[cfg(target_arch = "wasm32")]
 	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<wgpu::Surface>> {
-		let surface = self.context.instance.create_surface_from_canvas(canvas.surface)?;
+		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
@@ -442,6 +445,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
 			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
+			desired_maximum_frame_latency: 2,
 		};
 		surface.configure(&self.context.device, &config);
 		Ok(SurfaceHandle {
@@ -451,9 +455,9 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	}
 	#[cfg(not(target_arch = "wasm32"))]
 	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
-		let surface = unsafe { self.context.instance.create_surface(window.surface.as_ref()) }?;
-
 		let size = window.surface.inner_size();
+		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
+
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		println!("{surface_caps:?}");
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
@@ -465,6 +469,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
+			desired_maximum_frame_latency: 2,
 		};
 		surface.configure(&self.context.device, &config);
 		self.surface_config.set(Some(config));
