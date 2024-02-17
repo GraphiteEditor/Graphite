@@ -37,6 +37,7 @@
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	type Box = { startX: number; startY: number; endX: number; endY: number };
 	let boxSelection: Box | undefined = undefined;
+	let previousSelection: bigint[] = [];
 	let selectIfNotDragged: undefined | bigint = undefined;
 	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
 	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
@@ -446,6 +447,7 @@
 
 		// Clicked on the graph background so we box select
 		if (lmb) {
+			previousSelection = $nodeGraph.selected;
 			// Clear current selection
 			if (!e.shiftKey) editor.instance.selectNodes(new BigUint64Array(0));
 
@@ -506,6 +508,9 @@
 			// The mouse button was released but we missed the pointer up event
 			if ((e.buttons & 1) === 0) {
 				completeBoxSelection();
+				boxSelection = undefined;
+			} else if ((e.buttons & 2) !== 0) {
+				editor.instance.selectNodes(new BigUint64Array(previousSelection));
 				boxSelection = undefined;
 			} else {
 				const graphBounds = graph?.getBoundingClientRect();
