@@ -20,6 +20,9 @@
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
 	const ADD_NODE_MENU_HEIGHT = 200;
+	const NODE_SHAKE_THRESHOLD_X = 1.5;
+	const NODE_SHAKE_THRESHOLD_Y = 1.5;
+	const MIN_SHAKES_REQUIRED_PER_SIDE = 3;
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
@@ -48,6 +51,13 @@
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
+
+	let prevShakeX = 0;
+	let prevShakeY = 0;
+	let shakeIntervalTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+	let shakeIntervalsX: { dir: "left" | "right" | "top" | "bottom"; value: number }[] = [];
+	let shakeIntervalsY: { dir: "left" | "right" | "top" | "bottom"; value: number }[] = [];
+	let isFirstShakeDrag = true;
 
 	$: watchNodes($nodeGraph.nodes);
 
@@ -405,6 +415,8 @@
 
 		// Clicked on a node, so we select it
 		if (lmb && nodeId !== undefined) {
+			isFirstShakeDrag = true;
+
 			let updatedSelected = [...$nodeGraph.selected];
 			let modifiedSelected = false;
 
@@ -472,6 +484,7 @@
 		} else if (draggingNodes) {
 			const deltaX = Math.round((e.x - draggingNodes.startX) / transform.scale / GRID_SIZE);
 			const deltaY = Math.round((e.y - draggingNodes.startY) / transform.scale / GRID_SIZE);
+
 			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
 				draggingNodes.roundX = deltaX;
 				draggingNodes.roundY = deltaY;
@@ -491,7 +504,90 @@
 					DRAG_SMOOTHING_TIME * 1000 + 10,
 				);
 			}
+
+			if (isNodeShaked(draggingNodes.roundX, draggingNodes.roundY)) {
+				alert("Node shaked!");
+			}
 		}
+	}
+
+	function chunk<T>(arr: T[], chunkSize: number): T[][] {
+		if (chunkSize === 0) return [arr];
+
+		let chunks = [];
+
+		for (let i = 0; i < arr.length; i += chunkSize) {
+			chunks.push(arr.slice(i, i + chunkSize));
+		}
+
+		return chunks;
+	}
+
+	function isNodeShaked(roundX: number, roundY: number) {
+		if (!shakeIntervalTimer) {
+			shakeIntervalTimer = setTimeout(() => {
+				shakeIntervalTimer = undefined;
+				shakeIntervalsX = [];
+				shakeIntervalsY = [];
+			}, 1000);
+		}
+
+		// Receive shake intervals for X-axis
+		if (prevShakeX !== 0 && prevShakeX !== roundX) {
+			if (prevShakeX >= roundX && (shakeIntervalsX.length === 0 || shakeIntervalsX[shakeIntervalsX.length - 1].dir !== "left" || isFirstShakeDrag)) {
+				shakeIntervalsX.push({ dir: "left", value: Math.abs(roundX) });
+				isFirstShakeDrag = false;
+			} else if (prevShakeX <= roundX && (shakeIntervalsX.length === 0 || shakeIntervalsX[shakeIntervalsX.length - 1].dir !== "right" || isFirstShakeDrag)) {
+				shakeIntervalsX.push({ dir: "right", value: Math.abs(roundX) });
+				isFirstShakeDrag = false;
+			}
+		}
+
+		// Receive shake intervals for Y-axis
+		if (prevShakeY !== 0 && prevShakeY !== roundY) {
+			if (prevShakeY >= roundY && (shakeIntervalsY.length === 0 || shakeIntervalsY[shakeIntervalsY.length - 1].dir !== "top" || isFirstShakeDrag)) {
+				shakeIntervalsY.push({ dir: "top", value: Math.abs(roundY) });
+				isFirstShakeDrag = false;
+			} else if (prevShakeY <= roundY && (shakeIntervalsY.length === 0 || shakeIntervalsY[shakeIntervalsY.length - 1].dir !== "bottom" || isFirstShakeDrag)) {
+				shakeIntervalsY.push({ dir: "bottom", value: Math.abs(roundY) });
+				isFirstShakeDrag = false;
+			}
+		}
+
+		prevShakeX = roundX;
+		prevShakeY = roundY;
+
+		const totalLeftShakes = shakeIntervalsX.filter((interval) => interval.dir === "left");
+		const totalRightShakes = shakeIntervalsX.filter((interval) => interval.dir === "right");
+		const totalTopShakes = shakeIntervalsY.filter((interval) => interval.dir === "top");
+		const totalBotomShakes = shakeIntervalsY.filter((interval) => interval.dir === "bottom");
+
+		function getMovementDelta(chunk: { dir: "left" | "right" | "top" | "bottom"; value: number }[]) {
+			let [earlier, later] = chunk;
+			if (earlier && later) return earlier.value - later.value;
+			if (earlier) return earlier.value;
+			return 0;
+		}
+
+		if (totalLeftShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE && totalRightShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE) {
+			const leftShakeDeltas = chunk(totalLeftShakes, 2).map(getMovementDelta);
+			const rightShakeDeltas = chunk(totalRightShakes, 2).map(getMovementDelta);
+
+			const totalShakeChangesLeft = leftShakeDeltas.reduce((acc, curr) => acc + curr, 0) / leftShakeDeltas.length;
+			const totalShakeChangesRight = rightShakeDeltas.reduce((acc, curr) => acc + curr, 0) / rightShakeDeltas.length;
+
+			return Math.abs(totalShakeChangesLeft) + Math.abs(totalShakeChangesRight) >= NODE_SHAKE_THRESHOLD_X;
+		} else if (totalTopShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE && totalBotomShakes.length >= MIN_SHAKES_REQUIRED_PER_SIDE) {
+			const topShakeDeltas = chunk(totalTopShakes, 2).map(getMovementDelta);
+			const bottomShakeDeltas = chunk(totalBotomShakes, 2).map(getMovementDelta);
+
+			const totalShakeChangesTop = topShakeDeltas.reduce((acc, curr) => acc + curr, 0) / topShakeDeltas.length;
+			const totalShakeChangesBottom = bottomShakeDeltas.reduce((acc, curr) => acc + curr, 0) / bottomShakeDeltas.length;
+
+			return Math.abs(totalShakeChangesTop) + Math.abs(totalShakeChangesBottom) >= NODE_SHAKE_THRESHOLD_Y;
+		}
+
+		return false;
 	}
 
 	function toggleLayerVisibility(id: bigint) {
