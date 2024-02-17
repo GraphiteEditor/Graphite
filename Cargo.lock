@@ -5584,7 +5584,7 @@ dependencies = [
 [[package]]
 name = "specta"
 version = "2.0.0-rc.7"
-source = "git+https://github.com/0HyperCube/specta.git?rev=47f28445aa9c7a74d3d40791cc3f28625e01e7ba#47f28445aa9c7a74d3d40791cc3f28625e01e7ba"
+source = "git+https://github.com/oscartbeaumont/specta.git#2d94b0ffb51d2d4c2a59ff3e9cf352890f06ac7c"
 dependencies = [
  "glam",
  "once_cell",
@@ -5597,7 +5597,7 @@ dependencies = [
 [[package]]
 name = "specta-macros"
 version = "2.0.0-rc.7"
-source = "git+https://github.com/0HyperCube/specta.git?rev=47f28445aa9c7a74d3d40791cc3f28625e01e7ba#47f28445aa9c7a74d3d40791cc3f28625e01e7ba"
+source = "git+https://github.com/oscartbeaumont/specta.git#2d94b0ffb51d2d4c2a59ff3e9cf352890f06ac7c"
 dependencies = [
  "Inflector",
  "proc-macro2",
