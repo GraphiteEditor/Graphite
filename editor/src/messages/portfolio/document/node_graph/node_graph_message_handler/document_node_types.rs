@@ -1930,7 +1930,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Subtract",
 			category: "Math",
-			implementation: NodeImplementation::proto("graphene_core::ops::AddNode<_>"),
+			implementation: NodeImplementation::proto("graphene_core::ops::SubtractNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Primary", TaggedValue::F32(0.), true),
 				DocumentInputType::value("Subtrahend", TaggedValue::F32(0.), false),
