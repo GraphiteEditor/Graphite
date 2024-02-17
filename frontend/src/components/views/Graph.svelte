@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, tick } from "svelte";
+	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
 	import { FADE_TRANSITION } from "@graphite/consts";
@@ -35,6 +35,9 @@
 	let transform = { scale: 1, x: 1200, y: 0 };
 	let panning = false;
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
+	type Box = { startX: number; startY: number; endX: number; endY: number };
+	let boxSelection: Box | undefined = undefined;
+	let previousSelection: bigint[] = [];
 	let selectIfNotDragged: undefined | bigint = undefined;
 	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
 	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
@@ -48,6 +51,7 @@
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
+	let nodeElements: HTMLDivElement[] = [];
 
 	$: watchNodes($nodeGraph.nodes);
 
@@ -170,6 +174,8 @@
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
 	}
+
+	onMount(refreshLinks);
 
 	function nodeIcon(nodeName: string): IconName {
 		const iconMap: Record<string, IconName> = {
@@ -439,9 +445,16 @@
 			return;
 		}
 
-		// Clicked on the graph background with something selected, so we deselect everything
-		if (lmb && $nodeGraph.selected.length !== 0) {
-			editor.instance.selectNodes(new BigUint64Array([]));
+		// Clicked on the graph background so we box select
+		if (lmb) {
+			previousSelection = $nodeGraph.selected;
+			// Clear current selection
+			if (!e.shiftKey) editor.instance.selectNodes(new BigUint64Array(0));
+
+			const graphBounds = graph?.getBoundingClientRect();
+			boxSelection = { startX: e.x - (graphBounds?.x || 0), startY: e.y - (graphBounds?.y || 0), endX: e.x - (graphBounds?.x || 0), endY: e.y - (graphBounds?.y || 0) };
+
+			return;
 		}
 
 		// LMB clicked on the graph background or MMB clicked anywhere
@@ -491,7 +504,41 @@
 					DRAG_SMOOTHING_TIME * 1000 + 10,
 				);
 			}
+		} else if (boxSelection) {
+			// The mouse button was released but we missed the pointer up event
+			if ((e.buttons & 1) === 0) {
+				completeBoxSelection();
+				boxSelection = undefined;
+			} else if ((e.buttons & 2) !== 0) {
+				editor.instance.selectNodes(new BigUint64Array(previousSelection));
+				boxSelection = undefined;
+			} else {
+				const graphBounds = graph?.getBoundingClientRect();
+				boxSelection.endX = e.x - (graphBounds?.x || 0);
+				boxSelection.endY = e.y - (graphBounds?.y || 0);
+			}
 		}
+	}
+
+	function intersetNodeAABB(boxSelection: Box | undefined, nodeIndex: number): boolean {
+		const bounds = nodeElements[nodeIndex]?.getBoundingClientRect();
+		const graphBounds = graph?.getBoundingClientRect();
+		return (
+			boxSelection !== undefined &&
+			bounds &&
+			Math.min(boxSelection.startX, boxSelection.endX) < bounds.right - (graphBounds?.x || 0) &&
+			Math.max(boxSelection.startX, boxSelection.endX) > bounds.left - (graphBounds?.x || 0) &&
+			Math.min(boxSelection.startY, boxSelection.endY) < bounds.bottom - (graphBounds?.y || 0) &&
+			Math.max(boxSelection.startY, boxSelection.endY) > bounds.top - (graphBounds?.y || 0)
+		);
+	}
+
+	function completeBoxSelection() {
+		editor.instance.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
+	}
+
+	function showSelected(selected: bigint[], boxSelect: Box | undefined, node: bigint, nodeIndex: number): boolean {
+		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
 	function toggleLayerVisibility(id: bigint) {
@@ -611,6 +658,9 @@
 
 			draggingNodes = undefined;
 			selectIfNotDragged = undefined;
+		} else if (boxSelection) {
+			completeBoxSelection();
+			boxSelection = undefined;
 		}
 
 		linkInProgressFromConnector = undefined;
@@ -743,7 +793,7 @@
 			{@const labelWidthGridCells = Math.ceil(((layerNameLabelWidths?.[String(node.id)] || 0) - extraWidthToReachGridMultiple) / 24)}
 			<div
 				class="layer"
-				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
@@ -753,6 +803,7 @@
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				style:--label-width={labelWidthGridCells}
 				data-node={node.id}
+				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
@@ -860,7 +911,7 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
-				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
 				class:previewed={node.previewed}
 				class:disabled={node.disabled}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
@@ -869,6 +920,7 @@
 				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				data-node={node.id}
+				bind:this={nodeElements[nodeIndex]}
 			>
 				{#if node.errors}
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
@@ -988,6 +1040,17 @@
 		{/each}
 	</div>
 </div>
+
+<!-- Box select widget -->
+{#if boxSelection}
+	<div
+		class="box-selection"
+		style:left={`${Math.min(boxSelection.startX, boxSelection.endX)}px`}
+		style:top={`${Math.min(boxSelection.startY, boxSelection.endY)}px`}
+		style:width={`${Math.abs(boxSelection.startX - boxSelection.endX)}px`}
+		style:height={`${Math.abs(boxSelection.startY - boxSelection.endY)}px`}
+	></div>
+{/if}
 
 <style lang="scss" global>
 	.graph {
@@ -1412,5 +1475,13 @@
 				}
 			}
 		}
+	}
+
+	.box-selection {
+		position: absolute;
+		z-index: 2;
+		background-color: rgba(77, 168, 221, 0.2);
+		border: 1px solid rgba(77, 168, 221);
+		pointer-events: none;
 	}
 </style>
