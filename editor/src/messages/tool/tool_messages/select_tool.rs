@@ -10,7 +10,6 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
-use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
@@ -195,12 +194,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 		}
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
-
-		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
-			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
-			self.send_layout(responses, LayoutTarget::ToolOptions);
-			self.tool_data.selected_layers_changed = false;
-		}
 	}
 
 	fn actions(&self) -> ActionList {
@@ -260,7 +253,6 @@ struct SelectToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
-	pivot: Pivot,
 	nested_selection_behavior: NestedSelectionBehavior,
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
@@ -430,9 +422,6 @@ impl Fsm for SelectToolFsmState {
 					tool_data.bounding_box_manager.take();
 				}
 
-				// Update pivot
-				tool_data.pivot.update_pivot(document, &mut overlay_context);
-
 				// Update dragging box
 				if matches!(self, Self::DrawingBox { .. }) {
 					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
@@ -459,8 +448,12 @@ impl Fsm for SelectToolFsmState {
 					let edges = bounding_box.check_selected_edges(input.mouse.position);
 
 					bounding_box.selected_edges = edges.map(|(top, bottom, left, right)| {
+						log::debug!("bounding_box: {:?}", bounding_box);
 						let selected_edges = SelectedEdges::new(top, bottom, left, right, bounding_box.bounds);
-						bounding_box.opposite_pivot = selected_edges.calculate_pivot();
+						let opposite_pivot = selected_edges.calculate_pivot();
+						let opposite_pivot = bounding_box.transform.transform_point2(opposite_pivot);
+						bounding_box.opposite_pivot = opposite_pivot;
+						log::debug!("pivot: {:?}", bounding_box.opposite_pivot);
 						selected_edges
 					});
 
@@ -481,19 +474,7 @@ impl Fsm for SelectToolFsmState {
 				// If the user clicks on a layer that is in their current selection, go into the dragging mode.
 				// If the user clicks on new shape, make that layer their new selection.
 				// Otherwise enter the box select mode
-
-				let state =
-				// Dragging the pivot
-				if tool_data.pivot.is_over(input.mouse.position) {
-					responses.add(DocumentMessage::StartTransaction);
-
-					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
-
-					SelectToolFsmState::DraggingPivot
-				}
-				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
-				else if let Some(_selected_edges) = dragging_bounds {
+				let state = if let Some(_selected_edges) = dragging_bounds {
 					responses.add(DocumentMessage::StartTransaction);
 
 					tool_data.layers_dragging = selected;
@@ -513,8 +494,6 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
-						log::debug!("setting pivot");
-						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 					tool_data.get_snap_candidates(document, input);
 
@@ -538,8 +517,6 @@ impl Fsm for SelectToolFsmState {
 						);
 
 						bounds.center_of_transformation = selected.mean_average_of_pivots();
-						log::debug!("setting pivot");
-						tool_data.pivot.set_viewport_position(bounds.center_of_transformation, document, responses);
 					}
 
 					log::debug!("start rotating");
@@ -683,6 +660,10 @@ impl Fsm for SelectToolFsmState {
 						});
 						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 						let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
+						log::debug!("bounds: {:?}", bounds);
+						log::debug!("vanilla pivot: {:?}", pivot);
+						pivot = bounds.transform.transform_point2(pivot);
+						log::debug!("pivot_for_resize: {:?}", pivot);
 
 						let transformation = delta;
 
@@ -750,7 +731,6 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
-				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
 				// AutoPanning
 				let messages = [
@@ -779,9 +759,6 @@ impl Fsm for SelectToolFsmState {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 				// Dragging the pivot overrules the other operations
-				if tool_data.pivot.is_over(input.mouse.position) {
-					cursor = MouseCursorIcon::Move;
-				}
 
 				// Generate the hover outline
 				responses.add(OverlaysMessage::Draw);

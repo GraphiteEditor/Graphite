@@ -366,15 +366,24 @@ impl<'a> Selected<'a> {
 		(min + max) / 2.
 	}
 
-	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+	fn transform_layer(
+		pivot: DVec2,
+		document_metadata: &DocumentMetadata,
+		layer: LayerNodeIdentifier,
+		original_transform: Option<&DAffine2>,
+		transformation: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
 		let Some(&original_transform) = original_transform else { return };
 		let to = document_metadata.downstream_transform_to_viewport(layer);
+		log::warn!("pivot: {:?}", pivot);
 		log::debug!("to: {to:?} transformation: {transformation:?}, original_transform: {original_transform:?}");
-		let new = to.inverse() * transformation * to * original_transform;
-		responses.add(GraphOperationMessage::TransformSet {
+		let pivot = DAffine2::from_translation(pivot);
+		let new = pivot * transformation * pivot.inverse();
+		responses.add(GraphOperationMessage::TransformChange {
 			layer,
 			transform: new,
-			transform_in: TransformIn::Local,
+			transform_in: TransformIn::Viewport,
 			skip_rerender: false,
 		});
 	}
@@ -416,8 +425,8 @@ impl<'a> Selected<'a> {
 				log::debug!("layer_arcestors: {layer_ancestors:?}");
 
 				match &self.original_transforms {
-					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
-					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(*self.pivot, self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Path(path_transforms) => Self::transform_path(&self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
 				}
 			}
 		}
