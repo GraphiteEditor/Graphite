@@ -905,7 +905,7 @@ pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![LayoutGroup::Row { widgets }]
 }
 
-pub fn dvec2_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn vector2_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let x = number_widget(document_node, node_id, 0, "X", NumberInput::default(), true);
 	let y = number_widget(document_node, node_id, 1, "Y", NumberInput::default(), true);
 

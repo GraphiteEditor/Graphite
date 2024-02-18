@@ -192,12 +192,11 @@ where
 	first % second
 }
 
-// Construct DVec2
-pub struct ConstructDVec2<Y> {
+pub struct ConstructVector2<Y> {
 	y: Y,
 }
-#[node_macro::node_fn(ConstructDVec2)]
-fn construct_dvec2(x: f64, y: f64) -> glam::DVec2 {
+#[node_macro::node_fn(ConstructVector2)]
+fn construct_vector2(x: f64, y: f64) -> glam::DVec2 {
 	glam::DVec2::new(x, y)
 }
 

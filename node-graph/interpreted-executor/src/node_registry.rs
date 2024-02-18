@@ -268,7 +268,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [&f64]),
-		register_node!(graphene_core::ops::ConstructDVec2<_>, input: f64, params: [f64]),
+		register_node!(graphene_core::ops::ConstructVector2<_>, input: f64, params: [f64]),
 		register_node!(graphene_core::ops::SomeNode, input: WasmEditorApi, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: bool, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
@@ -792,5 +792,5 @@ pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes,
 
 #[cfg(test)]
 mod protograph_testing {
-	// TODO: adde tests testing the node registry
+	// TODO: add tests testing the node registry
 }

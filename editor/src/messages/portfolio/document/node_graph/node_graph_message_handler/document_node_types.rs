@@ -174,12 +174,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "DVec2",
+			name: "Vector2",
 			category: "Inputs",
-			implementation: NodeImplementation::proto("graphene_core::ops::ConstructDVec2<_>"),
+			implementation: NodeImplementation::proto("graphene_core::ops::ConstructVector2<_>"),
 			inputs: vec![DocumentInputType::value("X", TaggedValue::F64(0.), false), DocumentInputType::value("Y", TaggedValue::F64(0.), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
-			properties: node_properties::dvec2_properties,
+			properties: node_properties::vector2_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
