@@ -59,21 +59,21 @@ pub struct SetStrokeNode<Color, Weight, DashLengths, DashOffset, LineCap, LineJo
 fn set_vector_data_stroke(
 	mut vector_data: VectorData,
 	color: Option<Color>,
-	weight: f32,
-	dash_lengths: Vec<f32>,
-	dash_offset: f32,
+	weight: f64,
+	dash_lengths: Vec<f64>,
+	dash_offset: f64,
 	line_cap: super::style::LineCap,
 	line_join: super::style::LineJoin,
-	miter_limit: f32,
+	miter_limit: f64,
 ) -> VectorData {
 	vector_data.style.set_stroke(Stroke {
 		color,
-		weight: weight as f64,
+		weight,
 		dash_lengths,
-		dash_offset: dash_offset as f64,
+		dash_offset,
 		line_cap,
 		line_join,
-		line_join_miter_limit: miter_limit as f64,
+		line_join_miter_limit: miter_limit,
 	});
 	vector_data
 }
@@ -112,16 +112,16 @@ pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
 }
 
 #[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f32, radius: f32, count: u32) -> VectorData {
+fn circular_repeat_vector_data(mut vector_data: VectorData, angle_offset: f64, radius: f64, count: u32) -> VectorData {
 	let mut new_subpaths: Vec<Subpath<_>> = Vec::with_capacity(vector_data.subpaths.len() * count as usize);
 
 	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
-	let base_transform = DVec2::new(0., radius as f64) - center;
+	let base_transform = DVec2::new(0., radius) - center;
 
 	for i in 0..count {
-		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians() as f64;
+		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 		for mut subpath in vector_data.subpaths.clone() {
@@ -189,18 +189,14 @@ async fn copy_to_points<I: GraphicElementRendered + Default + ConcatElement + Tr
 	footprint: Footprint,
 	points: impl Node<Footprint, Output = FP>,
 	instance: impl Node<Footprint, Output = FI>,
-	random_scale_min: f32,
-	random_scale_max: f32,
-	random_scale_bias: f32,
-	random_rotation: f32,
+	random_scale_min: f64,
+	random_scale_max: f64,
+	random_scale_bias: f64,
+	random_rotation: f64,
 ) -> I {
 	let points = self.points.eval(footprint).await;
 	let instance = self.instance.eval(footprint).await;
-	let random_scale_min = random_scale_min as f64;
-	let random_scale_max = random_scale_max as f64;
 	let random_scale_difference = random_scale_max - random_scale_min;
-	let random_scale_bias = random_scale_bias as f64;
-	let random_rotation = random_rotation as f64;
 
 	let points_list = points.subpaths.iter().flat_map(|s| s.anchors());
 
@@ -260,17 +256,14 @@ pub struct SamplePoints<VectorData, Spacing, StartOffset, StopOffset, AdaptiveSp
 async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<Vec<f64>>>>(
 	footprint: Footprint,
 	mut vector_data: impl Node<Footprint, Output = FV>,
-	spacing: f32,
-	start_offset: f32,
-	stop_offset: f32,
+	spacing: f64,
+	start_offset: f64,
+	stop_offset: f64,
 	adaptive_spacing: bool,
 	lengths_of_segments_of_subpaths: impl Node<Footprint, Output = FL>,
 ) -> VectorData {
 	let mut vector_data = self.vector_data.eval(footprint).await;
 	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
-	let spacing = spacing as f64;
-	let start_offset = start_offset as f64;
-	let stop_offset = stop_offset as f64;
 
 	for (index, subpath) in &mut vector_data.subpaths.iter_mut().enumerate() {
 		if subpath.is_empty() || !spacing.is_finite() || spacing <= 0. {
@@ -326,7 +319,7 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 }
 
 #[node_macro::node_fn(PoissonDiskPoints)]
-fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f32) -> VectorData {
+fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 	for subpath in &mut vector_data.subpaths.iter_mut() {
 		if subpath.manipulator_groups().len() < 3 {
@@ -335,7 +328,7 @@ fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f3
 
 		subpath.apply_transform(vector_data.transform);
 
-		let points = subpath.poisson_disk_points(separation_disk_diameter as f64, || rng.gen::<f64>()).into_iter().map(|point| point.into());
+		let points = subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()).into_iter().map(|point| point.into());
 		*subpath = Subpath::from_anchors(points, false);
 
 		subpath.apply_transform(vector_data.transform.inverse());
@@ -391,10 +384,8 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	source: impl Node<Footprint, Output = SourceFuture>,
 	target: impl Node<Footprint, Output = TargetFuture>,
 	start_index: u32,
-	time: f32,
+	time: f64,
 ) -> VectorData {
-	let time = time as f64;
-
 	let mut source = self.source.eval(footprint).await;
 	let mut target = self.target.eval(footprint).await;
 

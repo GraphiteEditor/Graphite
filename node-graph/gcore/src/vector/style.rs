@@ -307,7 +307,7 @@ pub struct Stroke {
 	pub color: Option<Color>,
 	/// Line thickness
 	pub weight: f64,
-	pub dash_lengths: Vec<f32>,
+	pub dash_lengths: Vec<f64>,
 	pub dash_offset: f64,
 	pub line_cap: LineCap,
 	pub line_join: LineJoin,
@@ -344,7 +344,7 @@ impl Stroke {
 		Self {
 			color: self.color.map(|color| color.lerp(&other.color.unwrap_or(color), time as f32)),
 			weight: self.weight + (other.weight - self.weight) * time,
-			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time as f32).collect(),
+			dash_lengths: self.dash_lengths.iter().zip(other.dash_lengths.iter()).map(|(a, b)| a + (b - a) * time).collect(),
 			dash_offset: self.dash_offset + (other.dash_offset - self.dash_offset) * time,
 			line_cap: if time < 0.5 { self.line_cap } else { other.line_cap },
 			line_join: if time < 0.5 { self.line_join } else { other.line_join },
@@ -420,7 +420,7 @@ impl Stroke {
 		dash_lengths
 			.split(&[',', ' '])
 			.filter(|x| !x.is_empty())
-			.map(str::parse::<f32>)
+			.map(str::parse::<f64>)
 			.collect::<Result<Vec<_>, _>>()
 			.ok()
 			.map(|lengths| {

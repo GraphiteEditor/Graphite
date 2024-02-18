@@ -236,7 +236,7 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 	mut footprint: Footprint,
 	transform_target: impl Node<Footprint, Output = Fut>,
 	translate: DVec2,
-	rotate: f32,
+	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
 	pivot: DVec2,
@@ -245,7 +245,7 @@ where
 	Fut::Output: TransformMut,
 {
 	// TODO: This is hack and might break for Vector data because the pivot may be incorrect
-	let transform = DAffine2::from_scale_angle_translation(scale, rotate as f64, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let transform = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
 		let pivot_transform = DAffine2::from_translation(pivot);
 		let modification = pivot_transform * transform * pivot_transform.inverse();

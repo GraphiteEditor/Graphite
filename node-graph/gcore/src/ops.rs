@@ -85,28 +85,28 @@ where
 // Floor
 pub struct FloorNode;
 #[node_macro::node_fn(FloorNode)]
-fn floor(input: f32) -> f32 {
+fn floor(input: f64) -> f64 {
 	input.floor()
 }
 
 // Ceil
 pub struct CeilingNode;
 #[node_macro::node_fn(CeilingNode)]
-fn ceil(input: f32) -> f32 {
+fn ceil(input: f64) -> f64 {
 	input.ceil()
 }
 
 // Round
 pub struct RoundNode;
 #[node_macro::node_fn(RoundNode)]
-fn round(input: f32) -> f32 {
+fn round(input: f64) -> f64 {
 	input.round()
 }
 
 // Absolute Value
 pub struct AbsoluteValue;
 #[node_macro::node_fn(AbsoluteValue)]
-fn abs(input: f32) -> f32 {
+fn abs(input: f64) -> f64 {
 	input.abs()
 }
 
@@ -122,28 +122,28 @@ fn ln<U: num_traits::float::Float>(first: U, second: U) -> U {
 // Natural Log
 pub struct NaturalLogarithmNode;
 #[node_macro::node_fn(NaturalLogarithmNode)]
-fn ln(input: f32) -> f32 {
+fn ln(input: f64) -> f64 {
 	input.ln()
 }
 
 // Sine
 pub struct SineNode;
 #[node_macro::node_fn(SineNode)]
-fn ln(input: f32) -> f32 {
+fn ln(input: f64) -> f64 {
 	input.sin()
 }
 
 // Cosine
 pub struct CosineNode;
 #[node_macro::node_fn(CosineNode)]
-fn ln(input: f32) -> f32 {
+fn ln(input: f64) -> f64 {
 	input.cos()
 }
 
 // Tangent
 pub struct TangentNode;
 #[node_macro::node_fn(TangentNode)]
-fn ln(input: f32) -> f32 {
+fn ln(input: f64) -> f64 {
 	input.tan()
 }
 
@@ -190,6 +190,15 @@ where
 	U: Rem<T>,
 {
 	first % second
+}
+
+pub struct ConstructVector2<X, Y> {
+	x: X,
+	y: Y,
+}
+#[node_macro::node_fn(ConstructVector2)]
+fn construct_vector2(_primary: (), x: f64, y: f64) -> glam::DVec2 {
+	glam::DVec2::new(x, y)
 }
 
 // Size Of

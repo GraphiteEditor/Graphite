@@ -226,21 +226,21 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 	LayoutGroup::Row { widgets }
 }
 
-fn vec_f32_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
+fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
 
 	let from_string = |string: &str| {
 		string
 			.split(&[',', ' '])
 			.filter(|x| !x.is_empty())
-			.map(str::parse::<f32>)
+			.map(str::parse::<f64>)
 			.collect::<Result<Vec<_>, _>>()
 			.ok()
-			.map(TaggedValue::VecF32)
+			.map(TaggedValue::VecF64)
 	};
 
 	if let NodeInput::Value {
-		tagged_value: TaggedValue::VecF32(x),
+		tagged_value: TaggedValue::VecF64(x),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
@@ -905,6 +905,13 @@ pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context
 	vec![LayoutGroup::Row { widgets }]
 }
 
+pub fn vector2_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let x = number_widget(document_node, node_id, 1, "X", NumberInput::default(), true);
+	let y = number_widget(document_node, node_id, 2, "Y", NumberInput::default(), true);
+
+	vec![LayoutGroup::Row { widgets: x }, LayoutGroup::Row { widgets: y }]
+}
+
 pub fn boolean_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let widgets = bool_widget(document_node, node_id, 0, "Bool", true);
 
@@ -1541,7 +1548,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		let mut widgets = start_widgets(document_node, node_id, index, "Rotation", FrontendGraphDataType::Number, true);
 
 		if let NodeInput::Value {
-			tagged_value: TaggedValue::F32(val),
+			tagged_value: TaggedValue::F64(val),
 			exposed: false,
 		} = document_node.inputs[index]
 		{
@@ -1553,7 +1560,7 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					.range_min(Some(-180.))
 					.range_max(Some(180.))
 					.on_update(update_value(
-						|number_input: &NumberInput| TaggedValue::F32((number_input.value.unwrap() as f32).to_radians()),
+						|number_input: &NumberInput| TaggedValue::F64((number_input.value.unwrap() as f64).to_radians()),
 						node_id,
 						index,
 					))
@@ -2100,7 +2107,7 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 
 	let color = color_widget(document_node, node_id, color_index, "Color", ColorButton::default(), true);
 	let weight = number_widget(document_node, node_id, weight_index, "Weight", NumberInput::default().unit("px").min(0.), true);
-	let dash_lengths = vec_f32_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
+	let dash_lengths = vec_f64_input(document_node, node_id, dash_lengths_index, "Dash Lengths", TextInput::default().centered(true), true);
 	let dash_offset = number_widget(document_node, node_id, dash_offset_index, "Dash Offset", NumberInput::default().unit("px").min(0.), true);
 	let line_cap = line_cap_widget(document_node, node_id, line_cap_index, "Line Cap", true);
 	let line_join = line_join_widget(document_node, node_id, line_join_index, "Line Join", true);

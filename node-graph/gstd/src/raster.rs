@@ -529,13 +529,13 @@ generate_imaginate_node! {
 	res: Res: Option<DVec2>,
 	samples: Samples: u32,
 	sampling_method: SamplingMethod: ImaginateSamplingMethod,
-	prompt_guidance: PromptGuidance: f32,
+	prompt_guidance: PromptGuidance: f64,
 	prompt: Prompt: String,
 	negative_prompt: NegativePrompt: String,
 	adapt_input_image: AdaptInputImage: bool,
-	image_creativity: ImageCreativity: f32,
+	image_creativity: ImageCreativity: f64,
 	inpaint: Inpaint: bool,
-	mask_blur: MaskBlur: f32,
+	mask_blur: MaskBlur: f64,
 	mask_starting_fill: MaskStartingFill: ImaginateMaskStartingFill,
 	improve_faces: ImproveFaces: bool,
 	tiling: Tiling: bool,
@@ -596,25 +596,25 @@ fn noise_pattern(
 	_no_primary_input: (),
 	dimensions: UVec2,
 	seed: u32,
-	scale: f32,
+	scale: f64,
 	noise_type: NoiseType,
 	domain_warp_type: DomainWarpType,
-	domain_warp_amplitude: f32,
+	domain_warp_amplitude: f64,
 	fractal_type: FractalType,
 	fractal_octaves: u32,
-	fractal_lacunarity: f32,
-	fractal_gain: f32,
-	fractal_weighted_strength: f32,
-	fractal_ping_pong_strength: f32,
+	fractal_lacunarity: f64,
+	fractal_gain: f64,
+	fractal_weighted_strength: f64,
+	fractal_ping_pong_strength: f64,
 	cellular_distance_function: CellularDistanceFunction,
 	cellular_return_type: CellularReturnType,
-	cellular_jitter: f32,
+	cellular_jitter: f64,
 ) -> graphene_core::raster::ImageFrame<Color> {
 	// All
 	let [width, height] = dimensions.to_array();
 	let mut image = Image::new(width, height, Color::from_luminance(0.5));
 	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
-	noise.set_frequency(Some(scale / 1000.));
+	noise.set_frequency(Some(scale as f32 / 1000.));
 
 	// Domain Warp
 	let domain_warp_type = match domain_warp_type {
@@ -625,7 +625,7 @@ fn noise_pattern(
 	};
 	let domain_warp_active = domain_warp_type.is_some();
 	noise.set_domain_warp_type(domain_warp_type);
-	noise.set_domain_warp_amp(Some(domain_warp_amplitude));
+	noise.set_domain_warp_amp(Some(domain_warp_amplitude as f32));
 
 	// Fractal
 	let noise_type = match noise_type {
@@ -664,10 +664,10 @@ fn noise_pattern(
 	};
 	noise.set_fractal_type(Some(fractal_type));
 	noise.set_fractal_octaves(Some(fractal_octaves as i32));
-	noise.set_fractal_lacunarity(Some(fractal_lacunarity));
-	noise.set_fractal_gain(Some(fractal_gain));
-	noise.set_fractal_weighted_strength(Some(fractal_weighted_strength));
-	noise.set_fractal_ping_pong_strength(Some(fractal_ping_pong_strength));
+	noise.set_fractal_lacunarity(Some(fractal_lacunarity as f32));
+	noise.set_fractal_gain(Some(fractal_gain as f32));
+	noise.set_fractal_weighted_strength(Some(fractal_weighted_strength as f32));
+	noise.set_fractal_ping_pong_strength(Some(fractal_ping_pong_strength as f32));
 
 	// Cellular
 	let cellular_distance_function = match cellular_distance_function {
@@ -687,7 +687,7 @@ fn noise_pattern(
 	};
 	noise.set_cellular_distance_function(Some(cellular_distance_function));
 	noise.set_cellular_return_type(Some(cellular_return_type));
-	noise.set_cellular_jitter(Some(cellular_jitter));
+	noise.set_cellular_jitter(Some(cellular_jitter as f32));
 
 	// Calculate the noise for every pixel
 	for y in 0..height {
