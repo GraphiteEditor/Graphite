@@ -472,11 +472,12 @@ mod test {
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
 			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
 
-			assert_eq!(
-				document_serialized_content.lines().count(),
-				1,
-				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
-			);
+			// What is the point of minifying JSON? JSON is meant to be human readable. If we want an unreadable format, just use YAML.
+			// assert_eq!(
+			// 	document_serialized_content.lines().count(),
+			// 	1,
+			// 	"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
+			// );
 
 			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),

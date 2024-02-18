@@ -764,7 +764,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			}
 			SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
-				let opacity = opacity.clamp(0., 1.) as f32;
+				let opacity = opacity.clamp(0., 1.);
 
 				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
@@ -1365,7 +1365,7 @@ impl DocumentMessageHandler {
 				let mut blend_mode_identical = true;
 
 				for (opacity, blend_mode) in result_opacity_and_blend_mode {
-					if (opacity - first_opacity).abs() > (f32::EPSILON * 100.) {
+					if (opacity - first_opacity).abs() > (f64::EPSILON * 100.) {
 						opacity_identical = false;
 					}
 					if blend_mode != first_blend_mode {

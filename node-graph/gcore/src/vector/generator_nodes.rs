@@ -12,7 +12,7 @@ pub struct CircleGenerator<Radius> {
 }
 
 #[node_macro::node_fn(CircleGenerator)]
-fn circle_generator(_input: (), radius: f32) -> VectorData {
+fn circle_generator(_input: (), radius: f64) -> VectorData {
 	let radius: f64 = radius.into();
 	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }
@@ -24,7 +24,7 @@ pub struct EllipseGenerator<RadiusX, RadiusY> {
 }
 
 #[node_macro::node_fn(EllipseGenerator)]
-fn ellipse_generator(_input: (), radius_x: f32, radius_y: f32) -> VectorData {
+fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 	let radius = DVec2::new(radius_x as f64, radius_y as f64);
 	let corner1 = -radius;
 	let corner2 = radius;
@@ -38,7 +38,7 @@ pub struct RectangleGenerator<SizeX, SizeY> {
 }
 
 #[node_macro::node_fn(RectangleGenerator)]
-fn square_generator(_input: (), size_x: f32, size_y: f32) -> VectorData {
+fn square_generator(_input: (), size_x: f64, size_y: f64) -> VectorData {
 	let size = DVec2::new(size_x as f64, size_y as f64);
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
@@ -53,7 +53,7 @@ pub struct RegularPolygonGenerator<Points, Radius> {
 }
 
 #[node_macro::node_fn(RegularPolygonGenerator)]
-fn regular_polygon_generator(_input: (), points: u32, radius: f32) -> VectorData {
+fn regular_polygon_generator(_input: (), points: u32, radius: f64) -> VectorData {
 	let points = points.into();
 	let radius: f64 = (radius * 2.).into();
 	super::VectorData::from_subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))
@@ -67,7 +67,7 @@ pub struct StarGenerator<Points, Radius, InnerRadius> {
 }
 
 #[node_macro::node_fn(StarGenerator)]
-fn star_generator(_input: (), points: u32, radius: f32, inner_radius: f32) -> VectorData {
+fn star_generator(_input: (), points: u32, radius: f64, inner_radius: f64) -> VectorData {
 	let points = points.into();
 	let diameter: f64 = (radius * 2.).into();
 	let inner_diameter = (inner_radius * 2.).into();

@@ -24,7 +24,7 @@ pub enum GraphOperationMessage {
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
-		opacity: f32,
+		opacity: f64,
 	},
 	BlendModeSet {
 		layer: LayerNodeIdentifier,
@@ -92,7 +92,7 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		text: String,
 		font: Font,
-		size: f32,
+		size: f64,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},

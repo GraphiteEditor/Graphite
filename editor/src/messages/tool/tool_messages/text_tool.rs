@@ -209,7 +209,7 @@ enum TextToolFsmState {
 pub struct EditingText {
 	text: String,
 	font: Font,
-	font_size: f32,
+	font_size: f64,
 	color: Option<Color>,
 	transform: DAffine2,
 }
@@ -406,7 +406,7 @@ impl Fsm for TextToolFsmState {
 				tool_data.editing_text = Some(EditingText {
 					text: String::new(),
 					transform: DAffine2::from_translation(input.mouse.position),
-					font_size: tool_options.font_size as f32,
+					font_size: tool_options.font_size as f64,
 					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				});

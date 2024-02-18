@@ -206,13 +206,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	fn insert_text(&mut self, text: String, font: Font, size: f32, layer: NodeId) {
+	fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
 				NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F32(size), false),
+				NodeInput::value(TaggedValue::F64(size), false),
 			],
 			Default::default(),
 		);
@@ -367,9 +367,9 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn opacity_set(&mut self, opacity: f32) {
+	fn opacity_set(&mut self, opacity: f64) {
 		self.modify_inputs("Opacity", false, |inputs, _node_id, _metadata| {
-			inputs[1] = NodeInput::value(TaggedValue::F32(opacity * 100.), false);
+			inputs[1] = NodeInput::value(TaggedValue::F64(opacity * 100.), false);
 		});
 	}
 
@@ -382,12 +382,12 @@ impl<'a> ModifyInputsContext<'a> {
 	fn stroke_set(&mut self, stroke: Stroke) {
 		self.modify_inputs("Stroke", false, |inputs, _node_id, _metadata| {
 			inputs[1] = NodeInput::value(TaggedValue::OptionalColor(stroke.color), false);
-			inputs[2] = NodeInput::value(TaggedValue::F32(stroke.weight as f32), false);
-			inputs[3] = NodeInput::value(TaggedValue::VecF32(stroke.dash_lengths), false);
-			inputs[4] = NodeInput::value(TaggedValue::F32(stroke.dash_offset as f32), false);
+			inputs[2] = NodeInput::value(TaggedValue::F64(stroke.weight), false);
+			inputs[3] = NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false);
+			inputs[4] = NodeInput::value(TaggedValue::F64(stroke.dash_offset), false);
 			inputs[5] = NodeInput::value(TaggedValue::LineCap(stroke.line_cap), false);
 			inputs[6] = NodeInput::value(TaggedValue::LineJoin(stroke.line_join), false);
-			inputs[7] = NodeInput::value(TaggedValue::F32(stroke.line_join_miter_limit as f32), false);
+			inputs[7] = NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false);
 		});
 	}
 
@@ -851,7 +851,7 @@ fn apply_usvg_stroke(stroke: &Option<usvg::Stroke>, modify_inputs: &mut ModifyIn
 			modify_inputs.stroke_set(Stroke {
 				color: Some(usvg_color(*color, stroke.opacity.get())),
 				weight: stroke.width.get() as f64,
-				dash_lengths: stroke.dasharray.clone().unwrap_or_default(),
+				dash_lengths: stroke.dasharray.as_ref().map(|lengths| lengths.iter().map(|&length| length as f64).collect()).unwrap_or_default(),
 				dash_offset: stroke.dashoffset as f64,
 				line_cap: match stroke.linecap {
 					usvg::LineCap::Butt => LineCap::Butt,
