@@ -646,7 +646,7 @@
 
 			return;
 		} else if (draggingNodes) {
-			if (draggingNodes.startX === e.x || draggingNodes.startY === e.y) {
+			if (draggingNodes.startX === e.x && draggingNodes.startY === e.y) {
 				if (selectIfNotDragged !== undefined && ($nodeGraph.selected.length !== 1 || $nodeGraph.selected[0] !== selectIfNotDragged)) {
 					editor.instance.selectNodes(new BigUint64Array([selectIfNotDragged]));
 				}
