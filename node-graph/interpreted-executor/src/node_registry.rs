@@ -268,7 +268,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: f64, params: [&f64]),
 		register_node!(graphene_core::ops::ModuloNode<_>, input: &f64, params: [&f64]),
-		register_node!(graphene_core::ops::ConstructVector2<_>, input: f64, params: [f64]),
+		register_node!(graphene_core::ops::ConstructVector2<_, _>, input: (), params: [f64, f64]),
 		register_node!(graphene_core::ops::SomeNode, input: WasmEditorApi, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: bool, params: []),
 		register_node!(graphene_core::logic::LogToConsoleNode, input: f64, params: []),
