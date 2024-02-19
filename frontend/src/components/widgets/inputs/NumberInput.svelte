@@ -26,9 +26,7 @@
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
-	export let defaultValue: number | undefined = undefined; // max !== undefined ? max : min !== undefined ? min : 0;
-	let isCancelValueUsed: boolean = false;
-	let cancelableValue: number | undefined = undefined;
+	export let defaultValue: number | undefined = undefined;
 
 	// Number presentation
 	export let displayDecimalPlaces = 2;
@@ -82,9 +80,10 @@
 	let cumulativeDragDelta = 0;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
-
 	let arrowLastDirection: "Decrease" | "Increase" | undefined = undefined;
 	let arrowButtonTimeoutId: number | undefined = undefined;
+	let isCancelValueUsed: boolean = false;
+	let cancelableValue: number | undefined = undefined;
 
 	$: watchValue(value);
 
@@ -115,11 +114,11 @@
 	// CANCEL VALUE FNS
 	// ===========================
 
-	/** say that we not use cancel value anymore */
+	// say that we not use cancel value anymore
 	function resetCancelValue() {
 		isCancelValueUsed = false;
 	}
-	/** save value for cancelation if needed */
+	// save value for cancelation if needed
 	function setCancelValue() {
 		if (!isCancelValueUsed) {
 			cancelableValue = value;
@@ -129,7 +128,7 @@
 	function getCancelValue(): number | undefined {
 		return isCancelValueUsed ? cancelableValue : undefined;
 	}
-	/** update value with old value (as it was before actions that should be canceled) */
+	// update value with old value (as it was before actions that should be canceled)
 	function cancelValue() {
 		let oldValue = getCancelValue();
 		updateValue(oldValue);
@@ -189,10 +188,8 @@
 	// HELPER FUNCTIONS
 	// ================
 
-	/**
-	 * return best valid input value (checks min/max/rounding/etc)
-	 * @param newValue value that needs to be coverted to valid
-	 */
+	// return best valid input value (checks min/max/rounding/etc)
+	// Returns the value that needs to be coverted to valid
 	function toValidValue(newValue: number): number {
 		let validValue = newValue;
 		if (typeof min === "number" && !Number.isNaN(min)) validValue = Math.max(validValue, min);
@@ -251,9 +248,7 @@
 		textUnFocus();
 	}
 
-	/**
-	 * return calculated value of input (if it's valid)
-	 */
+	// Returns calculated value of input (if it's valid)
 	function calcTextField(): number | undefined {
 		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
 		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
@@ -322,21 +317,21 @@
 		actions[incrementBehavior]();
 	}
 
-	/** Left/Right Button Arrows down */
+	// Left/Right Button Arrows down
 	function onButtonArrowsDown(e: MouseEvent, direction: "Decrease" | "Increase") {
 		// button must be exact left
 		if (e.buttons == BUTTONS_LEFT) {
 			onIncrement(direction);
 		}
 	}
-	/** Left/Right Button Arrows up */
+	// Left/Right Button Arrows up
 	function onButtonArrowsUp(e: MouseEvent) {
 		// button must not contain left
 		if (!(e.buttons & BUTTONS_LEFT)) {
 			stopIncrement();
 		}
 	}
-	/** needed to Left/Right Button Arrows stop incrementing when we alt+tab browser window */
+	// needed to Left/Right Button Arrows stop incrementing when we alt+tab browser window
 	function onButtonArrowsFocusOff(direction: "Decrease" | "Increase") {
 		if (arrowLastDirection == direction) {
 			stopIncrement();
@@ -367,7 +362,7 @@
 		arrowButtonTimeoutId = window.setTimeout(repAction, INC_DELTAS_MS[incIndex]);
 		// setInterval(rep_action, INC_DELTAS_MS[inc_index])
 	}
-	/** cancel value changes for Left/Right Button Arrows on `Esc` down (when LR buttons still pressed) */
+	// cancel value changes for Left/Right Button Arrows on `Esc` down (when LR buttons still pressed)
 	function onButtonArrowsEsc(e: KeyboardEvent) {
 		if (e.key == "Escape") {
 			stopIncrement();
@@ -737,7 +732,7 @@
 			setCancelValue();
 		}
 
-		// TODO: whellPointerLock & MAYBE: better `Esc`/`Enter`
+		// TODO: wheelPointerLock & MAYBE: better `Esc`/`Enter`
 		//     | highly possible that some discussion about it will be attached to this commit
 
 		let delta = -e.deltaY;
@@ -747,9 +742,9 @@
 		else if (delta < 0) increment("Decrease");
 	}
 
-	// ===========================
+	// ========================
 	// ALL MODES: POINTER ENTER
-	// ===========================
+	// ========================
 
 	function onPointerEnter(e: PointerEvent) {
 		var element = e.target;
@@ -798,9 +793,9 @@
 			}
 		};
 
-		let options = { capture: true };
+		const options = { capture: true };
 
-		let onPointerLeave = () => {
+		const onPointerLeave = () => {
 			removeEventListener("keydown", onKeyDown, options);
 			removeEventListener("paste", onPaste, options);
 			elem.removeEventListener("pointerleave", onPointerLeave);

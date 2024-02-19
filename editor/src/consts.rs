@@ -41,7 +41,7 @@ pub const PIVOT_DIAMETER: f64 = 5.;
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
 pub const BOUNDS_ROTATE_THRESHOLD: f64 = 20.;
 
-// Pen/Line/Brush/... tools
+// Vector-related tools
 pub const DEFAULT_LINE_WEIGHT: f64 = 5.;
 
 // Path tool
