@@ -35,24 +35,24 @@ Messages are enum variants that are dispatched to perform some intended activity
 ```rs
 pub enum DocumentMessage {
 	...
-	// A message that carries a layer path and a string as data
-	DocumentMessage::DeleteLayer {
+	// A message that carries one named data field
+	DeleteLayer {
 		id: NodeId,
 	}
 	// A message that carries no data
-	DocumentMessage::DeleteSelectedLayers,
+	DeleteSelectedLayers,
 	...
 }
 ```
 
-As shown above, data can be included with each message. But as a special case denoted by the `#[child]` attribute, that data can also be a sub-message, which enables us to nest message handler systems hierarchically. The `DocumentMessage` enum of the previous example is defined as a child of `PortfolioMessage` which wraps it like this:
+As shown above, additional data fields can be included with each message. But as a special case denoted by the `#[child]` attribute, that data can also be a sub-message, which enables us to nest message handler systems hierarchically. By convention, regular data must be written as struct-style named fields (shown above), while a sub-message must be written as an unnamed tuple/newtype-style field (shown below). The `DocumentMessage` enum of the previous example is defined as a child of `PortfolioMessage` which wraps it like this:
 
 ```rs
 pub enum PortfolioMessage {
 	...
 	// A message that carries the `DocumentMessage` child enum as data
 	#[child]
-	PortfolioMessage::Document(DocumentMessage),
+	Document(DocumentMessage),
 	...
 }
 ```
