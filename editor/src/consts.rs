@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 // Viewport
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
 pub const VIEWPORT_ZOOM_MOUSE_RATE: f64 = 1. / 400.;
@@ -78,4 +76,4 @@ pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
-pub const AUTO_SAVE_TIMEOUT: Duration = Duration::from_secs(15);
+pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;

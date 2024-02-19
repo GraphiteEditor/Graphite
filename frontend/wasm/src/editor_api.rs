@@ -48,8 +48,27 @@ pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to self.
-// Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
+/// Helper function for calling JS's `requestAnimationFrame` with the given closure
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+	web_sys::window()
+		.expect("No global `window` exists")
+		.request_animation_frame(f.as_ref().unchecked_ref())
+		.expect("Failed to call `requestAnimationFrame`");
+}
+
+/// Helper function for calling JS's `setTimeout` with the given closure and delay
+fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
+	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
+	web_sys::window()
+		.expect("No global `window` exists")
+		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
+		.expect("Failed to call `setTimeout`");
+}
+
+// ============================================================================
+
+/// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non-mutable reference to self.
+/// Not doing this creates an issue when Rust calls into JS which calls back to Rust in the same call stack.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct JsEditorHandle {
@@ -57,26 +76,8 @@ pub struct JsEditorHandle {
 	frontend_message_handler_callback: js_sys::Function,
 }
 
-fn window() -> web_sys::Window {
-	web_sys::window().expect("no global `window` exists")
-}
-
-fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
-}
-
-fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
-	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
-	window()
-		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
-		.expect("should register `setTimeout` OK");
-}
-
-fn with_editor(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
-	}
-
+/// Provides access to the `Editor` instance and its `JsEditorHandle` by calling the given closure with them as arguments.
+fn call_closure_with_editor_and_handle(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
 	EDITOR_INSTANCES.with(|instances| {
 		JS_EDITOR_HANDLES.with(|handles| {
 			instances
@@ -87,10 +88,13 @@ fn with_editor(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
 							log::error!("Failed to borrow editor handles");
 							continue;
 						};
-						match handles.get_mut(&id) {
-							Some(js_editor) => f(editor, js_editor),
-							None => log::error!("Editor id ({id}) has no corresponding JsEditorHandle id"),
-						}
+						let Some(js_editor) = handles.get_mut(&id) else {
+							log::error!("Editor ID ({id}) has no corresponding JsEditorHandle ID");
+							continue;
+						};
+
+						// Call the closure with the editor and its handle
+						f(editor, js_editor)
 					}
 				})
 				.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
@@ -98,34 +102,41 @@ fn with_editor(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
 	});
 }
 
-fn auto_save_all_documents() {
-	with_editor(|editor, handle| {
-		for msg in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
-			handle.send_frontend_message_to_js(msg);
-		}
-	});
-}
-
-// Sends a message to the dispatcher in the Editor Backend
 async fn poll_node_graph_evaluation() {
+	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
 
 	editor::node_graph_executor::run_node_graph().await;
 
-	with_editor(|editor, handle| {
+	call_closure_with_editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();
 		editor.poll_node_graph_evaluation(&mut messages);
 
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|msg| editor.handle_message(msg)) {
+		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
 			handle.send_frontend_message_to_js(response);
 		}
 
 		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
 	})
 }
+
+fn auto_save_all_documents() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	call_closure_with_editor_and_handle(|editor, handle| {
+		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
+			handle.send_frontend_message_to_js(message);
+		}
+	});
+}
+
+// ============================================================================
 
 #[wasm_bindgen]
 impl JsEditorHandle {
@@ -210,16 +221,17 @@ impl JsEditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		// Send initialization messages
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
 			"Mac" => Platform::Mac,
 			"Linux" => Platform::Linux,
 			_ => Platform::Unknown,
 		};
-
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
 
+		// Poll node graph evaluation on `requestAnimationFrame`
 		{
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
@@ -227,23 +239,26 @@ impl JsEditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move || {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				// Schedule ourself for another requestAnimationFrame callback.
+				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());
 			}));
 
 			request_animation_frame(g.borrow().as_ref().unwrap());
 		}
 
+		// Auto save all documents on `setTimeout`
 		{
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move || {
 				auto_save_all_documents();
-				set_timeout(f.borrow().as_ref().unwrap(), editor::consts::AUTO_SAVE_TIMEOUT);
+
+				// Schedule ourself for another setTimeout callback
+				set_timeout(f.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 			}));
 
-			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(0));
+			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
 	}
 
