@@ -76,8 +76,16 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.active_document_mut() {
 						document.set_auto_save_state(true);
+						responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 					}
-					responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+				}
+			}
+			PortfolioMessage::AutoSaveAllDocuments => {
+				for (document_id, document) in self.documents.iter_mut() {
+					if !document.is_auto_saved() {
+						document.set_auto_save_state(true);
+						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
+					}
 				}
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
