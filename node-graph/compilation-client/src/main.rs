@@ -61,7 +61,7 @@ fn add_network() -> NodeNetwork {
 				),
 				concrete![Color],
 			))],
-			implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 			..Default::default()
 		}]
 		.into_iter()
