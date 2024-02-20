@@ -444,7 +444,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			// Basically builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
+			// This essentially builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
 			name: "Begin Scope",
 			category: "Ignore",
 			implementation: NodeImplementation::DocumentNode(NodeNetwork {
@@ -2941,35 +2941,11 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 impl DocumentNodeDefinition {
 	/// Generate a [`DocumentNodeImplementation`] from this node type, using a nested network.
 	pub fn generate_implementation(&self) -> DocumentNodeImplementation {
-		// let num_inputs = self.inputs.len();
-
-		let inner_network = match &self.implementation {
-			NodeImplementation::DocumentNode(network) => network.clone(),
-
-			NodeImplementation::ProtoNode(ident) => return DocumentNodeImplementation::Unresolved(ident.clone()),
-			/*
-				NodeNetwork {
-					inputs: (0..num_inputs).map(|_| 0).collect(),
-					outputs: vec![NodeOutput::new(NodeId(0), 0)],
-					nodes: [(
-						NodeId(0),
-						DocumentNode {
-							name: format!("{}_impl", self.name),
-							// TODO: Allow inserting nodes that contain other nodes.
-							implementation: DocumentNodeImplementation::Unresolved(ident.clone()),
-							inputs: self.inputs.iter().map(|i| NodeInput::Network(i.default.ty())).collect(),
-							..Default::default()
-						},
-					)]
-					.into_iter()
-					.collect(),
-					..Default::default()
-				}
-			*/
-			NodeImplementation::Extract => return DocumentNodeImplementation::Extract,
-		};
-
-		DocumentNodeImplementation::Network(inner_network)
+		match &self.implementation {
+			NodeImplementation::ProtoNode(proto_node_identifier) => DocumentNodeImplementation::Unresolved(proto_node_identifier.clone()),
+			NodeImplementation::DocumentNode(node_network) => DocumentNodeImplementation::Network(node_network.clone()),
+			NodeImplementation::Extract => DocumentNodeImplementation::Extract,
+		}
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata

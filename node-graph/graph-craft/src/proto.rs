@@ -232,14 +232,16 @@ impl Default for ProtoNode {
 pub enum ProtoNodeInput {
 	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
 	None,
-	/// A ManualComposition input represents an input that opts out of being resolved through the default `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated result to this node
-	/// Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
+	/// A ManualComposition input represents an input that opts out of being resolved through the default `ComposeNode`, which first runs the previous (upstream) node, then passes that evaluated
+	/// result to this node. Instead, ManualComposition lets this node actually consume the provided input instead of passing it to its predecessor.
 	///
 	/// Say we have the network `a -> b -> c` where `c` is the output node and `a` is the input node.
 	/// We would expect `a` to get input from the network, `b` to get input from `a`, and `c` to get input from `b`.
 	/// This could be represented as `f(x) = c(b(a(x)))`. `a` is run with input `x` from the network. `b` is run with input from `a`. `c` is run with input from `b`.
 	///
-	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not automatically executed as it would be using the default ComposeNode flow.
+	/// However if `b`'s input is using manual composition, this means it would instead be `f(x) = c(b(x))`. This means that `b` actually gets input from the network, and `a` is not automatically
+	/// executed as it would be using the default ComposeNode flow. Now `b` can use its own logic to decide when or if it wants to run `a` and how to use its output. For example, the CacheNode can
+	/// look up `x` in its cache and return the result, or otherwise call `a`, cache the result, and return it.
 	ManualComposition(Type),
 	/// The previous node where automatic composition does occur when compiled unless the lambda boolean is true.
 	/// The bool indicates whether to treat the connected node singularly as a lambda node while ignoring all nodes which feed into it from upstream.

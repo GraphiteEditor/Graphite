@@ -438,16 +438,35 @@ impl NodeInput {
 
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or extract.
+/// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum DocumentNodeImplementation {
+	/// This describes a (document) node built out of a subgraph of other (document) nodes.
+	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
+	/// This describes a (document) node implemented as a protonode.
+	///
 	/// A protonode identifier which can be found in `node_registry.rs`.
 	Unresolved(ProtoNodeIdentifier),
-	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Used for GPU execution. Currently this is only used by the ExtractNode.
-	/// Just like we often deal with lambdas to represent a whole group of operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the SPIR-V compiler the source code for a lambda, not the executable logic of a lambda. This is much like how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
-	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`.
-	/// The referenced node (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
+	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
+	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
+	/// (but only that one document node, not upstream nodes).
+	///
+	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
+	///
+	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
+	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
+	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
+	///
+	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
+	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
+	/// not the executable logic of a lambda.
+	///
+	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
+	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
+	///
+	/// `DocumentNode`s with a `DocumentNodeImplementation::Extract` are converted into a `ClonedNode` that returns the `DocumentNode` specified by the single `NodeInput::Node`. The referenced node
+	/// (specified by the single `NodeInput::Node`) is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.
 	Extract,
 }
 
