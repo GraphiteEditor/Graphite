@@ -273,7 +273,8 @@ impl DocumentNode {
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
 					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode. {:#?}", self.name);
-					(ProtoNodeInput::Node(node_id, lambda), ConstructionArgs::Nodes(vec![]))
+					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
+					(node, ConstructionArgs::Nodes(vec![]))
 				}
 				NodeInput::Network(ty) => (ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
@@ -1418,7 +1419,7 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "graphene_core::ops::AddPairNode".into(),
-						input: ProtoNodeInput::Node(NodeId(10), false),
+						input: ProtoNodeInput::Node(NodeId(10)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),

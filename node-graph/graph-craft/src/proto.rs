@@ -109,7 +109,8 @@ impl core::fmt::Display for ProtoNetwork {
 			match &node.input {
 				ProtoNodeInput::None => f.write_str("None")?,
 				ProtoNodeInput::ManualComposition(ty) => f.write_fmt(format_args!("Manual Composition (type = {ty:?})"))?,
-				ProtoNodeInput::Node(_, _) => f.write_str("Node")?,
+				ProtoNodeInput::Node(_) => f.write_str("Node")?,
+				ProtoNodeInput::NodeLambda(_) => f.write_str("Lambda Node")?,
 			}
 			f.write_str("\n")?;
 
@@ -243,23 +244,20 @@ pub enum ProtoNodeInput {
 	/// executed as it would be using the default ComposeNode flow. Now `b` can use its own logic to decide when or if it wants to run `a` and how to use its output. For example, the CacheNode can
 	/// look up `x` in its cache and return the result, or otherwise call `a`, cache the result, and return it.
 	ManualComposition(Type),
-	/// The previous node where automatic composition does occur when compiled unless the lambda boolean is true.
-	/// The bool indicates whether to treat the connected node singularly as a lambda node while ignoring all nodes which feed into it from upstream.
-	/// When treating it as a lambda, only the node that is connected itself is fed as input.
-	/// When treating it as a lambda, we use the grayscale node itself as input to apply it to our own image.
-	/// Otherwise, the entire network of which the node is the output is fed as input.
-	/// Otherwise if we are not interested in the grayscale function but rather the image
-	/// with the grayscale filter applied, we would set the lambda boolean to false.
-	Node(NodeId, bool),
-}
-
-impl ProtoNodeInput {
-	pub fn unwrap_node(self) -> NodeId {
-		match self {
-			ProtoNodeInput::Node(id, _) => id,
-			_ => panic!("tried to unwrap id from non node input \n node: {self:#?}"),
-		}
-	}
+	/// The previous node where automatic (not manual) composition occurs when compiled. The entire network, of which the node is the output, is fed as input.
+	///
+	/// Grayscale example:
+	///
+	/// We're interested in receiving an input of the desaturated image data which has been fed through a grayscale filter.
+	/// (If we were interested in the grayscale filter itself, we would use the `NodeLambda` variant.)
+	Node(NodeId),
+	/// Unlike the `Node` variant, with `NodeLambda` we treat the connected node singularly as a lambda node while ignoring all nodes which feed into it from upstream.
+	///
+	/// Grayscale example:
+	///
+	/// We're interested in receiving an input of a particular image filter, such as a grayscale filter in the form of a grayscale node lambda.
+	/// (If we were interested in some image data that had been fed through a grayscale filter, we would use the `Node` variant.)
+	NodeLambda(NodeId),
 }
 
 impl ProtoNode {
@@ -281,7 +279,8 @@ impl ProtoNode {
 			ProtoNodeInput::ManualComposition(ref ty) => {
 				ty.hash(&mut hasher);
 			}
-			ProtoNodeInput::Node(id, lambda) => (id, lambda).hash(&mut hasher),
+			ProtoNodeInput::Node(id) => (id, false).hash(&mut hasher),
+			ProtoNodeInput::NodeLambda(id) => (id, true).hash(&mut hasher),
 		};
 		Some(NodeId(hasher.finish()))
 	}
@@ -309,11 +308,16 @@ impl ProtoNode {
 	/// Converts all references to other node IDs into new IDs by running the specified function on them.
 	/// This can be used when changing the IDs of the nodes, for example in the case of generating stable IDs.
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId, skip_lambdas: bool) {
-		if let ProtoNodeInput::Node(id, lambda) = self.input {
-			if !(skip_lambdas && lambda) {
-				self.input = ProtoNodeInput::Node(f(id), lambda)
+		match self.input {
+			ProtoNodeInput::Node(id) => self.input = ProtoNodeInput::Node(f(id)),
+			ProtoNodeInput::NodeLambda(id) => {
+				if !skip_lambdas {
+					self.input = ProtoNodeInput::NodeLambda(f(id))
+				}
 			}
+			_ => (),
 		}
+
 		if let ConstructionArgs::Nodes(ids) = &mut self.construction_args {
 			ids.iter_mut().filter(|(_, lambda)| !(skip_lambdas && *lambda)).for_each(|(id, _)| *id = f(*id));
 		}
@@ -339,10 +343,14 @@ impl ProtoNetwork {
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			if let ProtoNodeInput::Node(ref_id, _) = &node.input {
-				self.check_ref(ref_id, id);
-				edges.entry(*ref_id).or_default().push(*id)
+			match &node.input {
+				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
+					self.check_ref(ref_id, id);
+					edges.entry(*ref_id).or_default().push(*id)
+				}
+				_ => (),
 			}
+
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for (ref_id, _) in ref_nodes {
 					self.check_ref(ref_id, id);
@@ -372,10 +380,14 @@ impl ProtoNetwork {
 	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
 		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (id, node) in &self.nodes {
-			if let ProtoNodeInput::Node(ref_id, _) = &node.input {
-				self.check_ref(ref_id, id);
-				edges.entry(*id).or_default().push(*ref_id)
+			match &node.input {
+				ProtoNodeInput::Node(ref_id) | ProtoNodeInput::NodeLambda(ref_id) => {
+					self.check_ref(ref_id, id);
+					edges.entry(*id).or_default().push(*ref_id)
+				}
+				_ => (),
 			}
+
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for (ref_id, _) in ref_nodes {
 					self.check_ref(ref_id, id);
@@ -402,7 +414,7 @@ impl ProtoNetwork {
 
 			let (_, node) = &mut self.nodes[node_id.0 as usize];
 
-			if let ProtoNodeInput::Node(input_node_id, false) = node.input {
+			if let ProtoNodeInput::Node(input_node_id) = node.input {
 				// Create a new node that composes the current node and its input node
 				let compose_node_id = NodeId(self.nodes.len() as u64);
 
@@ -707,11 +719,11 @@ impl TypingContext {
 			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
-		// Get the node input type from the proto node declaration
+		// Get the node input type from the protonode declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),
-			ProtoNodeInput::Node(id, _) => {
+			ProtoNodeInput::Node(id) | ProtoNodeInput::NodeLambda(id) => {
 				let input = self.inferred.get(&id).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::InputNodeNotFound(id))])?;
 				input.output.clone()
 			}
@@ -925,7 +937,7 @@ mod test {
 					NodeId(7),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(NodeId(11), false),
+						input: ProtoNodeInput::Node(NodeId(11)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
@@ -934,7 +946,7 @@ mod test {
 					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(NodeId(11), false),
+						input: ProtoNodeInput::Node(NodeId(11)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
@@ -952,7 +964,7 @@ mod test {
 					NodeId(11),
 					ProtoNode {
 						identifier: "add".into(),
-						input: ProtoNodeInput::Node(NodeId(10), false),
+						input: ProtoNodeInput::Node(NodeId(10)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
@@ -981,7 +993,7 @@ mod test {
 					NodeId(1),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(NodeId(2), false),
+						input: ProtoNodeInput::Node(NodeId(2)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
@@ -990,7 +1002,7 @@ mod test {
 					NodeId(2),
 					ProtoNode {
 						identifier: "id".into(),
-						input: ProtoNodeInput::Node(NodeId(1), false),
+						input: ProtoNodeInput::Node(NodeId(1)),
 						construction_args: ConstructionArgs::Nodes(vec![]),
 						..Default::default()
 					},
