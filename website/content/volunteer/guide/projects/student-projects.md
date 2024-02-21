@@ -15,19 +15,21 @@ Reach out through [Discord](https://discord.graphite.rs) (preferred) or [by emai
 
 ## Google Summer of Code
 
-GSoC is a program offering students a stipend for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/). Graphite intends to participate as a mentoring organization in GSoC 2024, pending acceptance.
+GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
+
+Graphite is [participating](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) in GSoC 2024 this summer and the proposal formulation period is open now until the April 2 deadline (see the full [timeline](https://developers.google.com/open-source/gsoc/timeline)).
 
 ### GSoC Proposals
 
 Writing a good proposal is an important first step that demonstrates your understanding of the project and your ability to plan and execute it. A well-defined proposal will set you up for success throughout the rest of the program.
 
-You are encouraged to reference the project idea list below to find several potential projects suited to your experience, interest, and choice of scope. Then, we highly recommend reaching out to a [core team member](/about#core-team) through Discord to discuss your plan in detail before writing a proposal. This will help you understand the project's scope and requirements. It will also help us understand your background and capabilities to offer you feedback and suggestions for the best outcome.
+You are encouraged to reference the project idea list below to find several potential projects suited to your experience, interest, and choice of scope. Then, you must reach out to a [core team member](/about#core-team) through Discord to discuss your plan in detail before writing a proposal. This will help you understand the project's scope and requirements. It will also help us understand your background and capabilities to offer you feedback and suggestions for the best outcome in the competitive applicant selection process.
 
 When it comes to writing the proposal, which you will submit to the GSoC application website, we offer some guidelines below:
 
 - **Proposal structure:** Please consult the [Blender GSoC application template](https://developer.blender.org/docs/programs/gsoc/application_template/) as reference for our desired format.
-- **Your background:** We're especially interested in your background and experience, so attaching a résumé or CV is optional but suggested and will help us understand your capabilities. If able, please also include links to evidence of past open source contributions or personal projects in the bio section of your proposal. Our goal is to help you learn and grow as an open source software engineer, not in helping you learn to program from scratch, so any such evidence will help us understand your potential as a self-motivated contributor to the open source community.
-- **Prior PRs:** If you have made any contributions to Graphite or other open source projects, please include links to your pull requests in your proposal. We put extra weight towards applicants who have already made contributions to Graphite because this demonstrates your ability to work in a professional capacity with our team and demonstrates your interest in Graphite in particular (as opposed to a shotgun approach to GSoC applications). You can also state that you'll submit your first PRs (we encourage at least two) after the application deadline on [April 2](https://developers.google.com/open-source/gsoc/timeline#april_2_-_1800_utc), but before we make our final selections a couple days prior to [April 24](https://developers.google.com/open-source/gsoc/timeline#april_24_-_1800_utc).
+- **Your background:** We're especially interested in your background and experience, so attaching a résumé or CV is optional but highly recommended and will help us understand your capabilities. If able, please also include links to evidence of past open source contributions or personal projects in the bio section of your proposal. Our goal is to help you learn and grow as a productive open source software engineer, not to help you learn to program from scratch, so any such evidence will help us understand your potential as a self-motivated contributor to the open source community.
+- **Prior PRs:** If you have made any contributions to Graphite and/or similar open source projects, please include links to your pull requests in your proposal. We put significant extra weight towards applicants who have already made successful contributions to Graphite because this shows your ability to work in a professional capacity with our team and demonstrates your interest in Graphite in particular (as opposed to a shotgun approach to GSoC applications). You can also state that you'll submit your first PRs (we encourage at least two) after the application deadline on [April 2](https://developers.google.com/open-source/gsoc/timeline#april_2_-_1800_utc), but before we make our final selections a couple days prior to [April 24](https://developers.google.com/open-source/gsoc/timeline#april_24_-_1800_utc). We are very likely to reject applicants who have not made meaningful contributions to Graphite by that time.
 
 <!-- TODO: Explain how we want a proposal structured -->
 
@@ -95,6 +97,30 @@ A central part of the workflow in raster image editors is the selection of porti
 
 This is a key feature in Graphite's evolution to a fully-featured raster editor.
 
+### Machine learning architecture
+
+*Generative AI and vision ML models will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
+
+- **Needed Skills:** Machine learning (and potentially: Rust, Python, ONNX, Candle, Burn)
+- **Project Size:** Large *(GSoC: 350 hours)*
+- **Difficulty:** Hard
+- **Possible Mentors:** [Keavon](/about#keavon), [Oliver](https://github.com/otdavies)
+- **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one GenAI or vision model into Graphite's node graph which can run locally and deploy to a server.
+
+AI is filling a rapidly growing role as a tool in the creative process. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of machine learning nodes.
+
+[Segment Anything](https://segment-anything.com/) (object segmentation), [Depth Anything](https://depth-anything.github.io/) (depth estimation), and [Stable Diffusion](https://github.com/CompVis/stable-diffusion) (image generation, generative fill, style transfer, etc.) are currently the three models we are most interested in integrating. The challenge is settling on an architecture and tech stack which is well suited for Graphite's requirements.
+
+The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and Tauri build processes. For Stable Diffusion, we need the flexability to track the latest research and extensions to the ecosystem like new base models, checkpoint training, DreamBooth, LoRA, ControlNet, IP-Adapter, etc. and expose these functionalities through modular nodes.
+
+To meet most of these criteria, our current thinking is to distribute and run our models using the [ONNX](https://onnx.ai/) format. This would integrate ONNX runtimes for WebGPU, native (DirectML, CUDA), and GPU cloud providers. The issue with this approach is that these models (particularly Stable Diffusion) aren't available in an ONNX format.
+
+A potential direction for students proposing this project is to reimplement parts of these ML models for ONNX (potentially in [Candle](https://github.com/huggingface/candle) or [Burn](https://burn.dev/) to leverage the Rust ecosystem, if possible).
+
+Another potential direction is to find a portable, modular, lightweight approach for bundling existing Python-based models. It would need to work across simple and complex models with different architectures. License compliance, if GPL code is involved, would be a consideration.
+
+Based on the experience and insight brought to the table by the student, the nature of the project should be defined through preliminary discussions with the mentors and codified in the proposal. Machine learning and MLOps are fields that Graphite's team lack deep expertise in, so we are looking for a knowledgable student who can bring forth a well-researched and well-architected proposal and then execute on it.
+
 ### Complex widget layout system
 
 *Graphite's UI needs an upgraded layout system to support more complex and dynamic widget arrangements defined from the backend.*
@@ -111,7 +137,7 @@ The present system is very row-centric, which makes it challenging to create mul
 
 Students should have a good level of familiarity with Rust design patterns to envision, prototype, propose, and robustly implement a new system that can handle the complexity of Graphite's use cases. The size of this project can vary depending on the proposal's scope and extent of refactoring to these and adjacent systems.
 
-### Node data table editor
+<!-- ### Node data table editor
 
 *The node graph data model for procedural content generation can be thought of as a spreadsheet, which needs a dedicated viewer/editor panel.*
 
@@ -125,7 +151,7 @@ The node graph is a powerful tool for procedural content generation, but it can 
 
 This project involves implementing the frontend as a cleanly-written Svelte component that can display the data in a tabular format, where virtual scrolling lets it efficiently process only the visible portion of the full data table. Help will be provided in building the frontend component and especially its CSS styling, but the student should be familiar with efficient TypeScript and Rust programming to handle both frontend and backend challenges while maintaining a focus on performance. The backend portion will need to integrate with the node engine and surrounding tooling to query the data coming from the selected node.
 
-A larger-scoped version of the project can expand this to focus also on displaying thumbnail previews of data coming from each node's output.
+A larger-scoped version of the project can expand this to focus also on displaying thumbnail previews of data coming from each node's output. -->
 
 ### Animation system
 
