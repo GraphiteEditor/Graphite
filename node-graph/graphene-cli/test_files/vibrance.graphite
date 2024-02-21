@@ -52,7 +52,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_std::executor::MapGpuSingleImageNode<_>"
                                                     }
                                                 },
@@ -76,7 +76,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::ops::IdentityNode"
                                                     }
                                                 },
@@ -159,7 +159,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "gpu_executor::RenderTextureNode<_, _>"
                                                                     }
                                                                 },
@@ -185,7 +185,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "graphene_core::ops::IntoNode<_, &WgpuExecutor>"
                                                                     }
                                                                 },
@@ -298,7 +298,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"
                                                     }
                                                 },
@@ -361,7 +361,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::raster::HueSaturationNode<_, _, _>"
                                                     }
                                                 },
@@ -412,7 +412,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "gpu_executor::CreateGpuSurfaceNode"
                                                                     }
                                                                 },
@@ -445,7 +445,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "graphene_core::memo::MemoNode<_, _>"
                                                                     }
                                                                 },
@@ -481,7 +481,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::ops::IdentityNode"
                                                     }
                                                 },
@@ -528,7 +528,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::raster::VibranceNode<_>"
                                                     }
                                                 },
@@ -587,7 +587,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::raster::InvertRGBNode"
                                                     }
                                                 },
@@ -656,7 +656,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "graphene_std::wasm_application_io::LoadResourceNode<_>"
                                                                     }
                                                                 },
@@ -680,7 +680,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "graphene_std::wasm_application_io::DecodeImageNode"
                                                                     }
                                                                 },
@@ -723,7 +723,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::memo::MemoNode<_, _>"
                                                     }
                                                 },
@@ -802,7 +802,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::raster::LevelsNode<_, _, _, _, _>"
                                                     }
                                                 },
@@ -878,7 +878,7 @@
                                                     }
                                                 ],
                                                 "implementation": {
-                                                    "Unresolved": {
+                                                    "ProtoNode": {
                                                         "name": "graphene_core::transform::TransformNode<_, _, _, _, _>"
                                                     }
                                                 },
@@ -944,7 +944,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "gpu_executor::UploadTextureNode<_>"
                                                                     }
                                                                 },
@@ -970,7 +970,7 @@
                                                                     }
                                                                 ],
                                                                 "implementation": {
-                                                                    "Unresolved": {
+                                                                    "ProtoNode": {
                                                                         "name": "graphene_core::ops::IntoNode<_, &WgpuExecutor>"
                                                                     }
                                                                 },
@@ -1066,7 +1066,7 @@
                         }
                     ],
                     "implementation": {
-                        "Unresolved": {
+                        "ProtoNode": {
                             "name": "graphene_core::ops::IdentityNode"
                         }
                     },
@@ -1297,7 +1297,7 @@
                             }
                         ],
                         "implementation": {
-                            "Unresolved": {
+                            "ProtoNode": {
                                 "name": "graphene_core::ops::IdentityNode"
                             }
                         },

@@ -157,20 +157,20 @@ fn begin_scope() -> DocumentNode {
 				DocumentNode {
 					name: "SetNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
-					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::ops::SomeNode")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::SomeNode")),
 					..Default::default()
 				},
 				DocumentNode {
 					name: "LetNode".to_string(),
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
 					..Default::default()
 				},
 				DocumentNode {
 					name: "RefNode".to_string(),
 					manual_composition: Some(concrete!(WasmEditorApi)),
 					inputs: vec![NodeInput::lambda(NodeId(1), 0)],
-					implementation: DocumentNodeImplementation::Unresolved(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 					..Default::default()
 				},
 			]

@@ -178,33 +178,33 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			DocumentNode {
 				name: "Slice".into(),
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1[(_global_index.y * i0 + _global_index.x) as usize]".into(), concrete![Color]))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
 				name: "Quantization".into(),
 				inputs: vec![NodeInput::Network(concrete!(quantization::Quantization))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
 				name: "Width".into(),
 				inputs: vec![NodeInput::Network(concrete!(u32))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::ops::IdentityNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
 			/*DocumentNode {
 				name: "Index".into(),
 				//inputs: vec![NodeInput::Network(concrete!(UVec3))],
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},*/
 				/*
 			DocumentNode {
 				name: "GetNode".into(),
 				inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 0)],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::storage::GetNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::storage::GetNode".into()),
 				..Default::default()
 			},*/
 			#[cfg(feature = "quantization")]
@@ -241,7 +241,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
 					)),
 				],
-				implementation: DocumentNodeImplementation::Unresolved("graphene_core::generic::FnMutNode".into()),
+				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::generic::FnMutNode".into()),
 				..Default::default()
 			},
 			*/
@@ -397,7 +397,7 @@ fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 			DocumentNode {
 				name: "Image Filter".into(),
 				inputs: vec![NodeInput::Network(concrete!(Color))],
-				implementation: DocumentNodeImplementation::Unresolved(identifier),
+				implementation: DocumentNodeImplementation::ProtoNode(identifier),
 				metadata: DocumentNodeMetadata::default(),
 				..Default::default()
 			},
@@ -461,7 +461,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 				),
 				concrete![Color],
 			))],
-			implementation: DocumentNodeImplementation::Unresolved("graphene_core::value::CopiedNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 			..Default::default()
 		}]
 		.into_iter()
