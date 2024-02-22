@@ -11,7 +11,7 @@ Student projects require adherence to a set schedule with regular check-ins, mil
 
 To date, three student project experiences have been completed successfully. [See below](#successful-past-projects) for summaries to get a feel for what has worked before.
 
-Reach out through [Discord](https://discord.graphite.rs) (preferred) or [by email](/contact) to discuss and propose a project.
+Use this [contributor guide](../..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
 ## Google Summer of Code
 
@@ -157,7 +157,7 @@ A larger-scoped version of the project can expand this to focus also on displayi
 
 *Adding a timeline-based animation system to Graphite would begin realizing the vision as a versatile content creation suite supporting motion graphics.*
 
-- **Needed Skills:** Rust, frontend (Svelte, CSS, SVG, TypeScript)
+- **Needed Skills:** Rust, web (Svelte, CSS, SVG, TypeScript)
 - **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Easy-to-medium
 - **Possible Mentors:** [Keavon](/about#keavon)
