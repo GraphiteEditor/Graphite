@@ -216,17 +216,13 @@ impl Fsm for FreehandToolFsmState {
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let parent = document.new_layer_parent();
-				let transform = document.metadata().transform_to_viewport(parent);
-				let pos = transform.inverse().transform_point2(input.mouse.position);
-
 				tool_data.dragged = false;
 				tool_data.extend_from_start = false;
-				tool_data.last_point = pos;
-
 				tool_data.weight = tool_options.line_weight;
 
 				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+					let transform = document.metadata().transform_to_viewport(layer);
+					let pos = transform.inverse().transform_point2(input.mouse.position);
 					let manipulator_group = ManipulatorGroup::new_anchor(pos);
 					let modification = if from_start {
 						tool_data.extend_from_start = true;
@@ -234,15 +230,23 @@ impl Fsm for FreehandToolFsmState {
 					} else {
 						VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group }
 					};
-					responses.add(GraphOperationMessage::Vector { layer, modification });
+
 					tool_data.dragged = true;
 					tool_data.last_point = pos;
 					tool_data.layer = Some(layer);
+
+					responses.add(GraphOperationMessage::Vector { layer, modification });
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
+
+					let parent = document.new_layer_parent();
+					let transform = document.metadata().transform_to_viewport(parent);
+					let pos = transform.inverse().transform_point2(input.mouse.position);
 					let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
 					let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
+
+					tool_data.last_point = pos;
 					tool_data.layer = Some(layer);
 
 					responses.add(GraphOperationMessage::FillSet {
