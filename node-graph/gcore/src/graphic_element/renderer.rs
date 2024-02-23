@@ -3,6 +3,7 @@ mod quad;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::{generate_uuid, ManipulatorGroupId};
+use crate::vector::PointId;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
 
@@ -14,7 +15,7 @@ use glam::{DAffine2, DVec2};
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
 pub struct ClickTarget {
-	pub subpath: bezier_rs::Subpath<ManipulatorGroupId>,
+	pub subpath: bezier_rs::Subpath<PointId>,
 	pub stroke_width: f64,
 }
 
@@ -266,7 +267,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for element in self.elements.iter().cloned() {
+		for element in self.elements.iter() {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {
@@ -329,11 +330,8 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		let update_closed = |mut subpath: bezier_rs::Subpath<ManipulatorGroupId>| {
-			subpath.set_closed(self.style.fill().is_some());
-			subpath
-		};
-		click_targets.extend(self.subpaths.iter().cloned().map(update_closed).map(|subpath| ClickTarget { stroke_width, subpath }))
+		click_targets.extend(self.region_bézier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.stroke_bézier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {

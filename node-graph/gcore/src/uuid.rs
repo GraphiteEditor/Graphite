@@ -94,3 +94,9 @@ impl ManipulatorGroupId {
 		self.0
 	}
 }
+
+impl From<crate::vector::PointId> for ManipulatorGroupId {
+	fn from(value: crate::vector::PointId) -> Self {
+		Self(value.inner())
+	}
+}

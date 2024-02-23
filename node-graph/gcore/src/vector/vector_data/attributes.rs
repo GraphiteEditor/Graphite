@@ -16,6 +16,9 @@ macro_rules! create_ids {
 				pub fn generate() -> Self{
 					Self(crate::uuid::generate_uuid())
 				}
+				pub fn inner(self) -> u64{
+					self.0
+				}
 			}
 		)*
 	};
@@ -290,7 +293,7 @@ impl<'a> Iterator for StrokePathIter<'a> {
 
 impl bezier_rs::Identifier for PointId {
 	fn new() -> Self {
-		Self::new()
+		Self::generate()
 	}
 }
 impl From<crate::uuid::ManipulatorGroupId> for PointId {
