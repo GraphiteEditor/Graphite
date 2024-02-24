@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -644,10 +644,15 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
+				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_current += shift;
+					tool_data.drag_start += shift;
+				}
+
 				SelectToolFsmState::Dragging
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
 
@@ -677,6 +682,11 @@ impl Fsm for SelectToolFsmState {
 						);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
+
+						if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+							bounds.center_of_transformation += shift;
+							bounds.original_bound_transform.translation += shift;
+						}
 					}
 				}
 				SelectToolFsmState::ResizingBounds
@@ -721,11 +731,17 @@ impl Fsm for SelectToolFsmState {
 				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
+				let _ = shift_viewport_if_mouse_beyond_edge(mouse_position, input.viewport_bounds.size(), responses);
+
 				SelectToolFsmState::DraggingPivot
 			}
 			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
+
+				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_start += shift;
+				}
 
 				SelectToolFsmState::DrawingBox
 			}
@@ -1010,4 +1026,34 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 	} else if is_layer_fed_by_node_of_name(layer, document_network, "Shape") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
+}
+
+/// Shifts the viewport when the mouse reaches the edge of the viewport.
+///
+/// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
+/// The shift is proportional to the distance between edge and mouse. It is also guaranteed to be integral.
+fn shift_viewport_if_mouse_beyond_edge(mouse_position: DVec2, viewport_size: DVec2, responses: &mut VecDeque<Message>) -> Option<DVec2> {
+	let mouse_position_percent = mouse_position / viewport_size;
+	let mut shift_percent = DVec2::new(0.0, 0.0);
+
+	if mouse_position_percent.x < 0.0 {
+		shift_percent.x = -mouse_position_percent.x;
+	} else if mouse_position_percent.x > 1.0 {
+		shift_percent.x = 1.0 - mouse_position_percent.x;
+	}
+
+	if mouse_position_percent.y < 0.0 {
+		shift_percent.y = -mouse_position_percent.y;
+	} else if mouse_position_percent.y > 1.0 {
+		shift_percent.y = 1.0 - mouse_position_percent.y;
+	}
+
+	if shift_percent.x == 0.0 && shift_percent.y == 0.0 {
+		return None;
+	};
+
+	let shift = (shift_percent * VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE * viewport_size).round();
+
+	responses.add(NavigationMessage::TranslateCanvas { delta: shift });
+	Some(shift)
 }

@@ -36,6 +36,7 @@ pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
+pub const VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE: f64 = 1.0;
 
 // Transformation cage
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
