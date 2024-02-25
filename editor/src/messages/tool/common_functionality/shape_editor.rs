@@ -452,7 +452,7 @@ impl ShapeState {
 		layer: LayerNodeIdentifier,
 	) -> Option<()> {
 		let subpaths = get_subpaths(layer, document_network)?;
-		let transform = document_metadata.transform_to_viewport(layer).inverse();
+		let transform = document_metadata.transform_to_document(layer).inverse();
 		let position = transform.transform_point2(new_position);
 		let group = graph_modification_utils::get_manipulator_from_id(subpaths, point.group)?;
 		let delta = position - point.manipulator_type.get_position(group)?;
