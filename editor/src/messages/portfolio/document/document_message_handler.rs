@@ -474,6 +474,24 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
+				let mut calculated_insert_index : isize = -1;
+				'outer: for (index, direct_child) in (parent.children(&self.metadata())).enumerate() {
+					for selected in self.selected_nodes.selected_layers(&self.metadata()) {
+						if selected == direct_child{
+							calculated_insert_index = index as isize;
+							break 'outer
+						}
+					}
+					for child in direct_child.decendants(&self.metadata()){
+						for selected in self.selected_nodes.selected_layers(&self.metadata()) {
+							if selected == child{
+								calculated_insert_index = index as isize;
+								break 'outer
+							}
+						}
+					}
+		
+				}
 				let folder_id = NodeId(generate_uuid());
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -483,14 +501,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: -1,
+					insert_index: calculated_insert_index,
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-
+				let folder_id = NodeId(generate_uuid());
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
@@ -522,7 +540,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					return;
 				}
 
-				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
+				let insert_index = self.updatecalculated_insert_index(&selected_layers, parent, insert_index);
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
@@ -1101,7 +1119,7 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
+	fn updatecalculated_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
 		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
 		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
 		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize

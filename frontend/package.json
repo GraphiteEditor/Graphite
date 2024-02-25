@@ -56,7 +56,7 @@
 		"vite-multiple-assets": "1.2.6"
 	},
 	"optionalDependencies": {
-		"wasm-pack": "0.12.1"
+		"wasm-pack": "^0.0.0"
 	},
 	"homepage": "https://graphite.rs",
 	"license": "Apache-2.0",
