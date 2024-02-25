@@ -468,7 +468,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(OverlaysMessage::Draw);
 			}
 			GroupSelectedLayers => {
-				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
