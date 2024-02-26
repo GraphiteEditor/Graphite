@@ -7,12 +7,10 @@ pub struct EyedropperTool {
 	data: EyedropperToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Eyedropper)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum EyedropperToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages

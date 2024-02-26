@@ -7,20 +7,16 @@ use graphene_core::text::Font;
 
 use serde::{Deserialize, Serialize};
 
-#[remain::sorted]
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum PortfolioMessage {
 	// Sub-messages
-	#[remain::unsorted]
 	#[child]
 	MenuBar(MenuBarMessage),
-	#[remain::unsorted]
 	#[child]
 	Document(DocumentMessage),
 
 	// Messages
-	#[remain::unsorted]
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,

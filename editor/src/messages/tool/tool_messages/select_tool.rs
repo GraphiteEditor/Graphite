@@ -30,7 +30,6 @@ pub struct SelectOptions {
 	nested_selection_behavior: NestedSelectionBehavior,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
@@ -52,14 +51,11 @@ impl fmt::Display for NestedSelectionBehavior {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SelectToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages

@@ -6,12 +6,10 @@ pub struct NavigateTool {
 	tool_data: NavigateToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum NavigateToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages

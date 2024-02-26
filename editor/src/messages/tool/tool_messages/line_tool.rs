@@ -32,16 +32,12 @@ impl Default for LineOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Line)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -55,7 +51,6 @@ pub enum LineToolMessage {
 	UpdateOptions(LineOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
