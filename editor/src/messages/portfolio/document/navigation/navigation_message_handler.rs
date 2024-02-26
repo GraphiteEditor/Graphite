@@ -49,7 +49,6 @@ impl Default for NavigationMessageHandler {
 }
 
 impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &InputPreprocessorMessageHandler, Option<[DVec2; 2]>, &mut PTZ)> for NavigationMessageHandler {
-	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: NavigationMessage,
@@ -60,7 +59,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 
 		let old_zoom = ptz.zoom;
 
-		#[remain::sorted]
 		match message {
 			DecreaseCanvasZoom { center_on_mouse } => {
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom).unwrap_or(&ptz.zoom);

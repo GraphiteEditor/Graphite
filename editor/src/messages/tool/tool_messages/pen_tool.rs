@@ -39,18 +39,13 @@ impl Default for PenOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Pen)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	SelectionChanged,
-	#[remain::unsorted]
 	WorkingColorChanged,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -75,7 +70,6 @@ enum PenToolFsmState {
 	PlacingAnchor,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),

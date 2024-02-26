@@ -33,7 +33,6 @@ impl Default for EllipseToolOptions {
 	}
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum EllipseOptionsUpdate {
 	FillColor(Option<Color>),
@@ -44,16 +43,12 @@ pub enum EllipseOptionsUpdate {
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Ellipse)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum EllipseToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages

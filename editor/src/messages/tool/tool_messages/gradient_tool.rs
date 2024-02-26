@@ -19,14 +19,11 @@ pub struct GradientOptions {
 	gradient_type: GradientType,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Gradient)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
@@ -40,7 +37,6 @@ pub enum GradientToolMessage {
 	UpdateOptions(GradientOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),

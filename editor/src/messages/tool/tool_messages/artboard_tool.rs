@@ -15,14 +15,11 @@ pub struct ArtboardTool {
 	data: ArtboardToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Artboard)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum ArtboardToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages

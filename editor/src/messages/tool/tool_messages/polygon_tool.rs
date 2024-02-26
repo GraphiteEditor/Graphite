@@ -37,16 +37,12 @@ impl Default for PolygonOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Polygon)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PolygonToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -65,7 +61,6 @@ pub enum PrimitiveShapeType {
 	Star = 1,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PolygonOptionsUpdate {
 	FillColor(Option<Color>),

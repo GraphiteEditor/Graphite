@@ -6,11 +6,9 @@ pub struct WorkspaceMessageHandler {
 }
 
 impl MessageHandler<WorkspaceMessage, ()> for WorkspaceMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: WorkspaceMessage, _responses: &mut VecDeque<Message>, _data: ()) {
 		use WorkspaceMessage::*;
 
-		#[remain::sorted]
 		match message {
 			// Messages
 			NodeGraphToggleVisibility => {

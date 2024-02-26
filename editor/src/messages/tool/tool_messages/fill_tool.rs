@@ -7,7 +7,6 @@ pub struct FillTool {
 	fsm_state: FillToolFsmState,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {

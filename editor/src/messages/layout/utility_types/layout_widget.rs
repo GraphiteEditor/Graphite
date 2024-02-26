@@ -20,7 +20,6 @@ impl core::fmt::Display for WidgetId {
 	}
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
@@ -53,7 +52,6 @@ pub enum LayoutTarget {
 
 	// KEEP THIS ENUM LAST
 	// This is a marker that is used to define an array that is used to hold widgets
-	#[remain::unsorted]
 	LayoutTargetLength,
 }
 
@@ -292,7 +290,6 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 
 pub type SubLayout = Vec<LayoutGroup>;
 
-#[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
@@ -475,7 +472,6 @@ impl<T> Default for WidgetCallback<T> {
 	}
 }
 
-#[remain::sorted]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),

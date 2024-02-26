@@ -33,7 +33,6 @@ impl Default for RectangleToolOptions {
 	}
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum RectangleOptionsUpdate {
 	FillColor(Option<Color>),
@@ -44,16 +43,12 @@ pub enum RectangleOptionsUpdate {
 	WorkingColors(Option<Color>, Option<Color>),
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Rectangle)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum RectangleToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages

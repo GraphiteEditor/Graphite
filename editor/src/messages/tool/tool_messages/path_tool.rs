@@ -19,16 +19,12 @@ pub struct PathTool {
 	tool_data: PathToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	SelectionChanged,
 
 	// Tool-specific messages

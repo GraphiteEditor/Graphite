@@ -34,16 +34,12 @@ impl Default for SplineOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Spline)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	CanvasTransformed,
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -62,7 +58,6 @@ enum SplineToolFsmState {
 	Drawing,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SplineOptionsUpdate {
 	FillColor(Option<Color>),
