@@ -239,6 +239,12 @@ impl JsEditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move || {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
+				call_closure_with_editor_and_handle(|editor, handle| {
+					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						handle.send_frontend_message_to_js(message);
+					}
+				});
+
 				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());
 			}));
