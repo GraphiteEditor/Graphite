@@ -539,7 +539,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					return;
 				}
 
-				let insert_index = self.updatecalculated_insert_index(&selected_layers, parent, insert_index);
+				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
@@ -1118,7 +1118,7 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn updatecalculated_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
+	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> isize {
 		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
 		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
 		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize
