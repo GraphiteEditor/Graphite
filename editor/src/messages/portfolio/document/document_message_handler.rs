@@ -473,23 +473,22 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let mut calculated_insert_index : isize = -1;
+				let mut calculated_insert_index: isize = -1;
 				'outer: for (index, direct_child) in (parent.children(&self.metadata())).enumerate() {
 					for selected in self.selected_nodes.selected_layers(&self.metadata()) {
-						if selected == direct_child{
+						if selected == direct_child {
 							calculated_insert_index = index as isize;
-							break 'outer
+							break 'outer;
 						}
 					}
-					for child in direct_child.decendants(&self.metadata()){
+					for child in direct_child.decendants(&self.metadata()) {
 						for selected in self.selected_nodes.selected_layers(&self.metadata()) {
-							if selected == child{
+							if selected == child {
 								calculated_insert_index = index as isize;
-								break 'outer
+								break 'outer;
 							}
 						}
 					}
-		
 				}
 				let folder_id = NodeId(generate_uuid());
 
