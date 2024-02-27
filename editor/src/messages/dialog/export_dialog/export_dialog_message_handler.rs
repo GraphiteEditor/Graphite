@@ -94,7 +94,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		let index = export_area_options.iter().position(|(val, _, _)| val == &self.bounds).unwrap();
 		let entries = vec![export_area_options
 			.into_iter()
-			.map(|(val, name, disabled)| MenuListEntry::new(name).on_update(move |_| ExportDialogMessage::ExportBounds(val).into()).disabled(disabled))
+			.map(|(val, name, disabled)| MenuListEntry::new(name.clone()).value(name).on_update(move |_| ExportDialogMessage::ExportBounds(val).into()).disabled(disabled))
 			.collect()];
 
 		let export_area = vec![

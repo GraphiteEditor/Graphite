@@ -1163,11 +1163,15 @@ impl DocumentMessageHandler {
 			widgets: vec![
 				DropdownInput::new(
 					vec![vec![
-						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
+						MenuListEntry::new(DocumentMode::DesignMode.to_string())
+							.value(DocumentMode::DesignMode.to_string())
+							.icon(DocumentMode::DesignMode.icon_name()),
 						MenuListEntry::new(DocumentMode::SelectMode.to_string())
+							.value(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						MenuListEntry::new(DocumentMode::GuideMode.to_string())
+							.value(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
