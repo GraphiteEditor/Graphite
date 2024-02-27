@@ -477,12 +477,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let mut selected_layers_names = Vec::new();
 				let  selected_layers = self.selected_nodes.selected_layers(&self.metadata());
 				for selected in selected_layers {
-					let node_id = LayerNodeIdentifier::to_node(selected);
-					let document_network: &mut graph_craft::document::NodeNetwork =  &mut DocumentMessageHandler::network(&self);
-					if let Some(network) = document_network.nested_network_mut(&[node_id]) {
-						if let Some(node) = network.nodes.get_mut(&node_id) {
-							selected_layers_names.push(node.alias.to_string());
-							
+					let _node_id = LayerNodeIdentifier::to_node(selected);
+					let _document_network =  &mut DocumentMessageHandler::network(&self);
+					if let Some(_network) = &_document_network.nested_network(&[_node_id]) {
+						if let Some(_node) = _network.nodes.get(&_node_id) {
+							selected_layers_names.push(_node.name.to_string());
+							error!("{:?}", _node);
 						}
 					}
 				}
