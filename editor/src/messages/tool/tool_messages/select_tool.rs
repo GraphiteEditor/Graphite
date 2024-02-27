@@ -86,6 +86,7 @@ pub enum SelectToolMessage {
 	SetPivot {
 		position: PivotPosition,
 	},
+	ShiftViewport,
 }
 
 impl ToolMetadata for SelectTool {
@@ -770,9 +771,14 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::Dragging
 			}
-			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::DraggingPivot | SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
 				responses.add(SelectToolMessage::PointerMove(modifier_keys));
 
+				responses.add(SelectToolMessage::ShiftViewport);
+
+				self
+			}
+			(SelectToolFsmState::ResizingBounds, SelectToolMessage::ShiftViewport) => {
 				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
 					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
@@ -780,23 +786,19 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				SelectToolFsmState::ResizingBounds
+				self
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				responses.add(SelectToolMessage::PointerMove(modifier_keys));
-
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::ShiftViewport) => {
 				let _ = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses);
 
-				SelectToolFsmState::DraggingPivot
+				self
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				responses.add(SelectToolMessage::PointerMove(modifier_keys));
-
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::ShiftViewport) => {
 				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
 					tool_data.drag_start += shift;
 				}
 
-				SelectToolFsmState::DrawingBox
+				self
 			}
 			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
 				unsubscribe_to_animation_frame(tool_data, modifier_keys, responses);
