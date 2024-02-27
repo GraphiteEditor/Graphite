@@ -474,6 +474,19 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
+				let mut selected_layers_names = Vec::new();
+				let  selected_layers = self.selected_nodes.selected_layers(&self.metadata());
+				for selected in selected_layers {
+					let node_id = LayerNodeIdentifier::to_node(selected);
+					let document_network: &mut graph_craft::document::NodeNetwork =  &mut DocumentMessageHandler::network(&self);
+					if let Some(network) = document_network.nested_network_mut(&[node_id]) {
+						if let Some(node) = network.nodes.get_mut(&node_id) {
+							selected_layers_names.push(node.alias.to_string());
+							
+						}
+					}
+				}
+
 				let folder_id = NodeId(generate_uuid());
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -490,6 +503,15 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
+
+				// for (index, selected) in self.selected_nodes.selected_layers(self.metadata()).enumerate() {
+				// 	let node_id = LayerNodeIdentifier::to_node(selected);
+				// 	responses.add(NodeGraphMessage::SetName{
+				// 		node_id,
+				// 		name: selected_layers_names[index].to_string(),
+				// 	});
+				// }
+				
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
