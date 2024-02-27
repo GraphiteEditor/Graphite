@@ -18,6 +18,8 @@ pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
+pub const VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE: f64 = 0.5;
+
 // Snapping point
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
 
@@ -36,7 +38,6 @@ pub const SELECTION_DRAG_ANGLE: f64 = 90.;
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
 pub const PIVOT_CROSSHAIR_LENGTH: f64 = 9.;
 pub const PIVOT_DIAMETER: f64 = 5.;
-pub const VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE: f64 = 1.0;
 
 // Transformation cage
 pub const BOUNDS_SELECT_THRESHOLD: f64 = 10.;
