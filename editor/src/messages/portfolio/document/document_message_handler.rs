@@ -468,11 +468,24 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(OverlaysMessage::Draw);
 			}
 			GroupSelectedLayers => {
-				// TODO: Add code that changes the insert index of the new folder based on the selected layer
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
+
+				let calculated_insert_index = parent.children(&self.metadata()).enumerate().find_map(|(index, direct_child)| {
+					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
+						return Some(index as isize);
+					}
+
+					for descendant in direct_child.decendants(&self.metadata()) {
+						if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
+							return Some(index as isize);
+						}
+					}
+
+					None
+				});
 
 				let folder_id = NodeId(generate_uuid());
 
@@ -483,14 +496,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: -1,
+					insert_index: calculated_insert_index.unwrap_or(-1),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
