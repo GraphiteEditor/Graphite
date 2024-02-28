@@ -2278,3 +2278,10 @@ pub fn image_color_palette(document_node: &DocumentNode, node_id: NodeId, _conte
 
 	vec![LayoutGroup::Row { widgets: size }]
 }
+
+pub fn mirror_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let mirror_x = bool_widget(document_node, node_id, 1, "Mirror X", true);
+	let mirror_y = bool_widget(document_node, node_id, 2, "Mirror Y", true);
+
+	vec![LayoutGroup::Row { widgets: mirror_x }, LayoutGroup::Row { widgets: mirror_y }]
+}

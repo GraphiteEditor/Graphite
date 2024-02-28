@@ -2813,6 +2813,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			properties: node_properties::image_color_palette,
 			..Default::default()
 		},
+		DocumentNodeDefinition {
+			name: "Mirror",
+			category: "Vector",
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Mirror X", TaggedValue::Bool(true), false),
+				DocumentInputType::value("Mirror Y", TaggedValue::Bool(false), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::mirror_properties,
+			..Default::default()
+		},
 	]
 }
 
