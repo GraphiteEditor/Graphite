@@ -503,7 +503,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-				let folder_id = NodeId(generate_uuid()); // TODO: Either this is a bug, or its reasoning should be explained in a comment
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
