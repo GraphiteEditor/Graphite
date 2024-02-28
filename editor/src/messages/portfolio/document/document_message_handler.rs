@@ -475,15 +475,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let mut selected_layers_names = Vec::new();
-				let  selected_layers = self.selected_nodes.selected_layers(&self.metadata());
+				let selected_layers = self.selected_nodes.selected_layers(&self.metadata());
 				for selected in selected_layers {
 					let _node_id = LayerNodeIdentifier::to_node(selected);
-					let _document_network =  &mut DocumentMessageHandler::network(&self);
-					if let Some(_network) = &_document_network.nested_network(&[_node_id]) {
-						if let Some(_node) = _network.nodes.get(&_node_id) {
-							selected_layers_names.push(_node.name.to_string());
-							error!("{:?}", _node);
-						}
+					let _document_network = &mut self.network();
+					if let Some(_node) = _document_network.nodes.get(&_node_id) {
+						selected_layers_names.push(_node.alias.to_string());
 					}
 				}
 
@@ -503,18 +500,28 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-
 				// for (index, selected) in self.selected_nodes.selected_layers(self.metadata()).enumerate() {
 				// 	let node_id = LayerNodeIdentifier::to_node(selected);
-				// 	responses.add(NodeGraphMessage::SetName{
-				// 		node_id,
-				// 		name: selected_layers_names[index].to_string(),
-				// 	});
+				// 	let _document_network = &mut self.network();
+				// 	if let Some(_node) = _document_network.nodes.get(&node_id) {
+				// 		error!("{:?}", _node.alias);
+				// 	}
 				// }
-				
-
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				for (index, selected) in self.selected_nodes.selected_layers(self.metadata()).enumerate() {
+					let node_id = LayerNodeIdentifier::to_node(selected);
+					let _document_network = &mut self.network();
+					if let Some(_node) = _document_network.nodes.get(&node_id) {
+						responses.add(NodeGraphMessage::SetName {
+							node_id,
+							name: _node.alias.to_string(),
+						});
+						error!("name : {:?}, alias : {:?}", _node.name.to_string(), _node.alias.to_string());
+						//_node.name = _node.alias;
+					}
+				}
 			}
+
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
