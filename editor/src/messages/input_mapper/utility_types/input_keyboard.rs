@@ -39,6 +39,8 @@ bitflags! {
 		const ALT             = 0b_0000_0010;
 		const CONTROL         = 0b_0000_0100;
 		const META_OR_COMMAND = 0b_0000_1000;
+		const BROWSER_BACK    = 0b_0001_0000;
+		const BROWSER_FORWARD = 0b_0010_0000;
 	}
 }
 
