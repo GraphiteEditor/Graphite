@@ -465,3 +465,19 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 
 	current
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct MirrorNode<MirrorX, MirrorY> {
+	mirror_x: MirrorX,
+	mirror_y: MirrorY,
+}
+
+#[node_macro::node_fn(MirrorNode)]
+fn mirror_node(mut vector_data: VectorData, mirror_x: bool, mirror_y: bool) -> VectorData {
+	log::debug!("{:#?}", &vector_data);
+	let pivot_absolute = vector_data.local_pivot(DVec2::splat(0.5));
+	let pivot_relative = vector_data.layerspace_pivot(DVec2::splat(0.5));
+	log::debug!("{:#?}", pivot_absolute);
+	log::debug!("{:#?}", pivot_relative);
+	vector_data
+}

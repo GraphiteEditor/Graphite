@@ -2816,6 +2816,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Mirror",
 			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::MirrorNode<_, _>"),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Mirror X", TaggedValue::Bool(true), false),
