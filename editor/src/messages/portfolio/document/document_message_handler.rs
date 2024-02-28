@@ -473,23 +473,20 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let mut calculated_insert_index: isize = -1;
-				'outer: for (index, direct_child) in (parent.children(&self.metadata())).enumerate() {
-					for selected in self.selected_nodes.selected_layers(&self.metadata()) {
-						if selected == direct_child {
-							calculated_insert_index = index as isize;
-							break 'outer;
+				let calculated_insert_index = parent.children(&self.metadata()).enumerate().find_map(|(index, direct_child)| {
+					for selected in self.selected_nodes.selected_layers(&self.metadata()).filter(|&selected| selected == direct_child) {
+						return Some(index as isize);
+					}
+
+					for descendant in direct_child.decendants(&self.metadata()) {
+						for selected in self.selected_nodes.selected_layers(&self.metadata()).filter(|&selected| selected == descendant) {
+							return Some(index as isize);
 						}
 					}
-					for child in direct_child.decendants(&self.metadata()) {
-						for selected in self.selected_nodes.selected_layers(&self.metadata()) {
-							if selected == child {
-								calculated_insert_index = index as isize;
-								break 'outer;
-							}
-						}
-					}
-				}
+
+					None
+				});
+
 				let folder_id = NodeId(generate_uuid());
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -499,14 +496,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: calculated_insert_index,
+					insert_index: calculated_insert_index.unwrap_or(-1),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-				let folder_id = NodeId(generate_uuid());
+				let folder_id = NodeId(generate_uuid()); // TODO: Either this is a bug, or its reasoning should be explained in a comment
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
