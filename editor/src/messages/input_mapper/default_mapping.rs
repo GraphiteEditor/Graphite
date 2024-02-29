@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
+use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 
 use glam::DVec2;
 
@@ -71,7 +72,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt })),
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
