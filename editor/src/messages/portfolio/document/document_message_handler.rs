@@ -101,7 +101,7 @@ impl Default for DocumentMessageHandler {
 			node_graph_handler: Default::default(),
 			navigation_handler: NavigationMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
-			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			properties_panel_message_handler: PropertiesPanelMessageHandler,
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -473,12 +473,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let calculated_insert_index = parent.children(&self.metadata()).enumerate().find_map(|(index, direct_child)| {
+				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, direct_child)| {
 					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
 						return Some(index as isize);
 					}
 
-					for descendant in direct_child.decendants(&self.metadata()) {
+					for descendant in direct_child.decendants(self.metadata()) {
 						if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
 							return Some(index as isize);
 						}
@@ -707,7 +707,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				let metadata = self.metadata();
 				let all_layers_except_artboards = metadata.all_layers().filter(move |&layer| !metadata.is_artboard(layer));
 				let nodes = all_layers_except_artboards.map(|layer| layer.to_node()).collect();
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: nodes });
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			SelectedLayersLower => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 });
@@ -886,7 +886,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.root()
 			.decendants(&self.metadata)
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network(), &self.metadata()))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -899,7 +899,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.root()
 			.decendants(&self.metadata)
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network(), &self.metadata()))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -913,7 +913,7 @@ impl DocumentMessageHandler {
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_layers(&self.network(), &self.metadata())
+			.selected_visible_layers(self.network(), self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -952,7 +952,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Returns the bounding boxes for all visible layers.
-	pub fn bounding_boxes<'a>(&'a self) -> impl Iterator<Item = [DVec2; 2]> + 'a {
+	pub fn bounding_boxes(&self) -> impl Iterator<Item = [DVec2; 2]> + '_ {
 		// TODO: Remove this function entirely?
 		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
 		std::iter::empty()
@@ -1385,7 +1385,7 @@ impl DocumentMessageHandler {
 					}
 				}
 
-				(opacity_identical.then(|| first_opacity), blend_mode_identical.then(|| first_blend_mode))
+				(opacity_identical.then_some(first_opacity), blend_mode_identical.then_some(first_blend_mode))
 			})
 			.unwrap_or((None, None));
 
@@ -1406,12 +1406,12 @@ impl DocumentMessageHandler {
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
-					.selected_index(blend_mode.map(|blend_mode| blend_mode.index_in_list_svg_subset()).flatten().map(|index| index as u32))
+					.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 					.disabled(disabled)
 					.draw_icon(false)
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(opacity.map(|opacity| opacity as f64))
+				NumberInput::new(opacity)
 					.label("Opacity")
 					.unit("%")
 					.display_decimal_places(2)

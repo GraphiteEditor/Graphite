@@ -176,7 +176,7 @@ impl NodeRuntime {
 		}
 	}
 
-	async fn execute_network<'a>(&'a mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	async fn execute_network(&mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		if self.wasm_application_io.is_none() {
 			self.wasm_application_io = Some(WasmApplicationIo::new().await);
 		}

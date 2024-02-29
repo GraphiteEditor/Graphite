@@ -91,7 +91,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				}
 
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
@@ -188,7 +188,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				ptz.tilt = 0.;
 				ptz.zoom = 1.;
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			RotateCanvasBegin { was_dispatched_from_menu } => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
@@ -218,14 +218,14 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 			}
 			SetCanvasTilt { angle_radians } => {
 				ptz.tilt = angle_radians;
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			SetCanvasZoom { zoom_factor } => {
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			TransformCanvasEnd { abort_transform } => {
 				if abort_transform {
@@ -236,12 +236,12 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
 							ptz.pan = pre_commit_pan;
-							self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+							self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 						}
 						TransformOperation::Zoom { pre_commit_zoom, .. } => {
 							ptz.zoom = pre_commit_zoom;
 							responses.add(PortfolioMessage::UpdateDocumentWidgets);
-							self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+							self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 						}
 					}
 				}
@@ -263,7 +263,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			TranslateCanvasBegin => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
@@ -279,7 +279,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
 
 				ptz.pan += transformed_delta;
-				self.create_document_transform(ipp.viewport_bounds.center(), &ptz, responses);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			WheelCanvasTranslate { use_y_as_x } => {
 				let delta = match use_y_as_x {

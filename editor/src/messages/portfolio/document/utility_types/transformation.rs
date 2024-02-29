@@ -418,7 +418,7 @@ impl<'a> Selected<'a> {
 
 				match &self.original_transforms {
 					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
-					OriginalTransforms::Path(path_transforms) => Self::transform_path(&self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
 				}
 			}
 		}

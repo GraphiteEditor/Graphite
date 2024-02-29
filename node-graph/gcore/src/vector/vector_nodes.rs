@@ -328,7 +328,7 @@ fn poisson_disk_points(mut vector_data: VectorData, separation_disk_diameter: f6
 
 		subpath.apply_transform(vector_data.transform);
 
-		let points = subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()).into_iter().map(|point| point.into());
+		let points = subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()).into_iter();
 		*subpath = Subpath::from_anchors(points, false);
 
 		subpath.apply_transform(vector_data.transform.inverse());

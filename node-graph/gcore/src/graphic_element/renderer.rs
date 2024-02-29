@@ -266,7 +266,7 @@ impl GraphicElementRendered for GraphicGroup {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		for element in self.elements.iter().cloned() {
+		for element in self.elements.iter() {
 			let mut new_click_targets = Vec::new();
 			element.add_click_targets(&mut new_click_targets);
 			for click_target in new_click_targets.iter_mut() {
@@ -501,7 +501,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	fn to_usvg_node(&self) -> usvg::Node {
 		let image_frame = self;
 		if image_frame.image.width * image_frame.image.height == 0 {
-			return usvg::Node::Group(Box::new(usvg::Group::default()));
+			return usvg::Node::Group(Box::default());
 		}
 		let png = image_frame.image.to_png();
 		usvg::Node::Image(Box::new(usvg::Image {

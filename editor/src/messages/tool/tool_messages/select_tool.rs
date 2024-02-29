@@ -625,9 +625,9 @@ impl Fsm for SelectToolFsmState {
 							origin: point.document_point,
 							direction: total_mouse_delta_document.normalize(),
 						};
-						tool_data.snap_manager.constrained_snap(&snap_data, &point, constraint, None)
+						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
 					} else {
-						tool_data.snap_manager.free_snap(&snap_data, &point, None, false)
+						tool_data.snap_manager.free_snap(&snap_data, point, None, false)
 					};
 					if best_snap.other_snap_better(&snapped) {
 						offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
@@ -1009,7 +1009,7 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
-fn not_artboard<'a>(document: &'a DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + 'a {
+fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + '_ {
 	|&layer| !document.metadata.is_artboard(layer)
 }
 

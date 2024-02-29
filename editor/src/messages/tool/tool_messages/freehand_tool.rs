@@ -259,7 +259,7 @@ impl Fsm for FreehandToolFsmState {
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer.clone() {
+				if let Some(layer) = tool_data.layer {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 

@@ -299,7 +299,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 			}
 			WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
-				responses.add(ResendActiveWidget { layout_target, widget_id: widget_id });
+				responses.add(ResendActiveWidget { layout_target, widget_id });
 			}
 		}
 	}

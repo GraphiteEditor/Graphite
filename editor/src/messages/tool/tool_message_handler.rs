@@ -179,20 +179,14 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 			}
 			ToolMessage::PreUndo => {
 				let tool_data = &mut self.tool_state.tool_data;
-				match tool_data.active_tool_type {
-					ToolType::Pen => {}
-					_ => {
-						responses.add(BroadcastEvent::ToolAbort);
-					}
+				if tool_data.active_tool_type != ToolType::Pen {
+					responses.add(BroadcastEvent::ToolAbort);
 				}
 			}
 			ToolMessage::Redo => {
 				let tool_data = &mut self.tool_state.tool_data;
-				match tool_data.active_tool_type {
-					ToolType::Pen => {
-						responses.add(PenToolMessage::Redo);
-					}
-					_ => {}
+				if tool_data.active_tool_type == ToolType::Pen {
+					responses.add(PenToolMessage::Redo);
 				}
 			}
 			ToolMessage::RefreshToolOptions => {
@@ -241,11 +235,8 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 			}
 			ToolMessage::Undo => {
 				let tool_data = &mut self.tool_state.tool_data;
-				match tool_data.active_tool_type {
-					ToolType::Pen => {
-						responses.add(PenToolMessage::Undo);
-					}
-					_ => {}
+				if tool_data.active_tool_type == ToolType::Pen {
+					responses.add(PenToolMessage::Undo);
 				}
 			}
 

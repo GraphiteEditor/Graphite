@@ -480,7 +480,7 @@ mod test {
 
 			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),
-				document_serialized_content: document_serialized_content.into(),
+				document_serialized_content,
 			});
 
 			for response in responses {
