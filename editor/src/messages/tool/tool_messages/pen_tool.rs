@@ -195,20 +195,11 @@ impl ToolTransition for PenTool {
 		}
 	}
 }
+#[derive(Default)]
 struct ModifierState {
 	snap_angle: bool,
 	lock_angle: bool,
 	break_handle: bool,
-}
-
-impl Default for ModifierState {
-	fn default() -> Self {
-		ModifierState {
-			snap_angle: false,
-			lock_angle: false,
-			break_handle: false,
-		}
-	}
 }
 
 #[derive(Clone, Debug, Default)]

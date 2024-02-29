@@ -26,6 +26,7 @@ pub enum PortfolioMessage {
 		message: DocumentMessage,
 	},
 	AutoSaveActiveDocument,
+	AutoSaveAllDocuments,
 	AutoSaveDocument {
 		document_id: DocumentId,
 	},

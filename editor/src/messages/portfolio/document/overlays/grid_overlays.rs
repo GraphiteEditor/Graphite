@@ -92,7 +92,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		let grid = grid.clone();
 		move |input: &I| {
 			let mut grid = grid.clone();
-			update(&mut grid, &input);
+			update(&mut grid, input);
 			DocumentMessage::GridOptions(grid).into()
 		}
 	}
@@ -113,14 +113,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				.label("X")
 				.unit(" px")
 				.min_width(98)
-				.on_update(update_origin(&grid, |grid| Some(&mut grid.origin.x)))
+				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.x)))
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(grid.origin.y))
 				.label("Y")
 				.unit(" px")
 				.min_width(98)
-				.on_update(update_origin(&grid, |grid| Some(&mut grid.origin.y)))
+				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.y)))
 				.widget_holder(),
 		],
 	});
@@ -148,7 +148,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.unit(" px")
 					.min(0.)
 					.min_width(98)
-					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.x)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.x)))
 					.widget_holder(),
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(spacing.y))
@@ -156,7 +156,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.unit(" px")
 					.min(0.)
 					.min_width(98)
-					.on_update(update_origin(&grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.y)))
+					.on_update(update_origin(grid, |grid| grid.grid_type.rect_spacing().map(|spacing| &mut spacing.y)))
 					.widget_holder(),
 			],
 		}),
@@ -169,7 +169,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						.unit(" px")
 						.min(0.)
 						.min_width(200)
-						.on_update(update_origin(&grid, |grid| grid.grid_type.isometric_y_spacing()))
+						.on_update(update_origin(grid, |grid| grid.grid_type.isometric_y_spacing()))
 						.widget_holder(),
 				],
 			});
@@ -180,13 +180,13 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					NumberInput::new(Some(angle_a))
 						.unit("°")
 						.min_width(98)
-						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_a()))
+						.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
 						.widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(angle_b))
 						.unit("°")
 						.min_width(98)
-						.on_update(update_origin(&grid, |grid| grid.grid_type.angle_b()))
+						.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
 						.widget_holder(),
 				],
 			});

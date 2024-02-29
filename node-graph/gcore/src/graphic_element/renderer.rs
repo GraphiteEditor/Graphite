@@ -502,7 +502,7 @@ impl GraphicElementRendered for ImageFrame<Color> {
 	fn to_usvg_node(&self) -> usvg::Node {
 		let image_frame = self;
 		if image_frame.image.width * image_frame.image.height == 0 {
-			return usvg::Node::Group(Box::new(usvg::Group::default()));
+			return usvg::Node::Group(Box::default());
 		}
 		let png = image_frame.image.to_png();
 		usvg::Node::Image(Box::new(usvg::Image {

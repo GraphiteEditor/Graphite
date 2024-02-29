@@ -1554,16 +1554,12 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 		{
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(val.to_degrees().into()))
+				NumberInput::new(Some(val.to_degrees()))
 					.unit("°")
 					.mode(NumberInputMode::Range)
 					.range_min(Some(-180.))
 					.range_max(Some(180.))
-					.on_update(update_value(
-						|number_input: &NumberInput| TaggedValue::F64((number_input.value.unwrap() as f64).to_radians()),
-						node_id,
-						index,
-					))
+					.on_update(update_value(|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()), node_id, index))
 					.on_commit(commit_value)
 					.widget_holder(),
 			]);

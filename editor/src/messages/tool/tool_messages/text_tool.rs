@@ -232,7 +232,7 @@ impl TextToolData {
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
 				line_width: None,
-				font_size: editing_text.font_size as f64,
+				font_size: editing_text.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
 				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
@@ -323,7 +323,7 @@ impl TextToolData {
 	fn get_bounds(&self, text: &str, font_cache: &FontCache) -> Option<[DVec2; 2]> {
 		let editing_text = self.editing_text.as_ref()?;
 		let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-		let subpaths = graphene_core::text::to_path(text, buzz_face, editing_text.font_size as f64, None);
+		let subpaths = graphene_core::text::to_path(text, buzz_face, editing_text.font_size, None);
 		let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box());
 		let combined_bounds = bounds.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]).unwrap_or_default();
 		Some(combined_bounds)
@@ -378,7 +378,7 @@ impl Fsm for TextToolFsmState {
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_ref() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.font_size as f64, None);
+					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.font_size, None);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
@@ -394,7 +394,7 @@ impl Fsm for TextToolFsmState {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
-					let far = graphene_core::text::bounding_box(text, buzz_face, font_size as f64, None);
+					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
 					let quad = Quad::from_box([DVec2::ZERO, far]);
 					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
 					overlay_context.quad(multiplied);

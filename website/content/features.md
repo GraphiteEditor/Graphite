@@ -129,7 +129,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-		<span>Adaptive resolution raster rendering</span>
+			<span>Adaptive resolution raster rendering</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />

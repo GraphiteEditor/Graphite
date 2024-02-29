@@ -18,6 +18,9 @@ pub const VIEWPORT_ROTATE_SNAP_INTERVAL: f64 = 15.;
 
 pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
+pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
+pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 0.5;
+
 // Snapping point
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
 
@@ -76,3 +79,4 @@ pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
+pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;

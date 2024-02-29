@@ -1,5 +1,4 @@
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::non_snake_case)]
+#![allow(clippy::too_many_arguments)]
 //
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
@@ -24,6 +23,7 @@ use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 /// Set the random seed used by the editor by calling this from JS upon initialization.
@@ -47,8 +47,27 @@ pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non mutable reference to self.
-// Not doing this creates an issue when rust calls into JS which calls back to rust in the same call stack.
+/// Helper function for calling JS's `requestAnimationFrame` with the given closure
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+	web_sys::window()
+		.expect("No global `window` exists")
+		.request_animation_frame(f.as_ref().unchecked_ref())
+		.expect("Failed to call `requestAnimationFrame`");
+}
+
+/// Helper function for calling JS's `setTimeout` with the given closure and delay
+fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
+	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
+	web_sys::window()
+		.expect("No global `window` exists")
+		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
+		.expect("Failed to call `setTimeout`");
+}
+
+// ============================================================================
+
+/// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non-mutable reference to self.
+/// Not doing this creates an issue when Rust calls into JS which calls back to Rust in the same call stack.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct JsEditorHandle {
@@ -56,52 +75,67 @@ pub struct JsEditorHandle {
 	frontend_message_handler_callback: js_sys::Function,
 }
 
-fn window() -> web_sys::Window {
-	web_sys::window().expect("no global `window` exists")
+/// Provides access to the `Editor` instance and its `JsEditorHandle` by calling the given closure with them as arguments.
+fn call_closure_with_editor_and_handle(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
+	EDITOR_INSTANCES.with(|instances| {
+		JS_EDITOR_HANDLES.with(|handles| {
+			instances
+				.try_borrow_mut()
+				.map(|mut editors| {
+					for (id, editor) in editors.iter_mut() {
+						let Ok(mut handles) = handles.try_borrow_mut() else {
+							log::error!("Failed to borrow editor handles");
+							continue;
+						};
+						let Some(js_editor) = handles.get_mut(id) else {
+							log::error!("Editor ID ({id}) has no corresponding JsEditorHandle ID");
+							continue;
+						};
+
+						// Call the closure with the editor and its handle
+						f(editor, js_editor)
+					}
+				})
+				.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
+		})
+	});
 }
 
-fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-	//window().request_idle_callback(f.as_ref().unchecked_ref()).unwrap();
-	window().request_animation_frame(f.as_ref().unchecked_ref()).expect("should register `requestAnimationFrame` OK");
-}
-
-// Sends a message to the dispatcher in the Editor Backend
 async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
+
 	editor::node_graph_executor::run_node_graph().await;
 
-	// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
-	EDITOR_INSTANCES
-		.with(|instances| {
-			JS_EDITOR_HANDLES.with(|handles| {
-				// Mutably borrow the editors, and if successful, we can access them in the closure
-				instances.try_borrow_mut().map(|mut editors| {
-					// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-					for (id, editor) in editors.iter_mut() {
-						let handles = handles.borrow_mut();
-						let handle = handles.get(id).unwrap();
-						let mut messages = VecDeque::new();
-						editor.poll_node_graph_evaluation(&mut messages);
-						// Send each `FrontendMessage` to the JavaScript frontend
+	call_closure_with_editor_and_handle(|editor, handle| {
+		let mut messages = VecDeque::new();
+		editor.poll_node_graph_evaluation(&mut messages);
 
-						let mut responses = Vec::new();
-						for message in messages.into_iter() {
-							responses.extend(editor.handle_message(message));
-						}
+		// Send each `FrontendMessage` to the JavaScript frontend
+		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+			handle.send_frontend_message_to_js(response);
+		}
 
-						for response in responses.into_iter() {
-							handle.send_frontend_message_to_js(response);
-						}
-						// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-					}
-				})
-			})
-		})
-		.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
+		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+	})
 }
+
+fn auto_save_all_documents() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	call_closure_with_editor_and_handle(|editor, handle| {
+		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
+			handle.send_frontend_message_to_js(message);
+		}
+	});
+}
+
+// ============================================================================
 
 #[wasm_bindgen]
 impl JsEditorHandle {
@@ -186,27 +220,51 @@ impl JsEditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		// Send initialization messages
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
 			"Mac" => Platform::Mac,
 			"Linux" => Platform::Linux,
 			_ => Platform::Unknown,
 		};
-
 		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(Message::Init);
 
-		let f = std::rc::Rc::new(RefCell::new(None));
-		let g = f.clone();
+		// Poll node graph evaluation on `requestAnimationFrame`
+		{
+			let f = std::rc::Rc::new(RefCell::new(None));
+			let g = f.clone();
 
-		*g.borrow_mut() = Some(Closure::new(move || {
-			wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+			*g.borrow_mut() = Some(Closure::new(move || {
+				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-			// Schedule ourself for another requestAnimationFrame callback.
-			request_animation_frame(f.borrow().as_ref().unwrap());
-		}));
+				call_closure_with_editor_and_handle(|editor, handle| {
+					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						handle.send_frontend_message_to_js(message);
+					}
+				});
 
-		request_animation_frame(g.borrow().as_ref().unwrap());
+				// Schedule ourself for another requestAnimationFrame callback
+				request_animation_frame(f.borrow().as_ref().unwrap());
+			}));
+
+			request_animation_frame(g.borrow().as_ref().unwrap());
+		}
+
+		// Auto save all documents on `setTimeout`
+		{
+			let f = std::rc::Rc::new(RefCell::new(None));
+			let g = f.clone();
+
+			*g.borrow_mut() = Some(Closure::new(move || {
+				auto_save_all_documents();
+
+				// Schedule ourself for another setTimeout callback
+				set_timeout(f.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
+			}));
+
+			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
+		}
 	}
 
 	#[wasm_bindgen(js_name = tauriResponse)]
@@ -549,9 +607,9 @@ impl JsEditorHandle {
 	/// If the insert index is `None`, it is inserted at the end of the folder (equivalent to index infinity).
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
-		let insert_parent_id = insert_parent_id.map(|id| NodeId(id));
+		let insert_parent_id = insert_parent_id.map(NodeId);
 
-		let parent = insert_parent_id.map(|id| LayerNodeIdentifier::new_unchecked(id)).unwrap_or(LayerNodeIdentifier::default());
+		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
@@ -635,7 +693,7 @@ impl JsEditorHandle {
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Vec<u64>) {
-		let nodes = nodes.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
+		let nodes = nodes.into_iter().map(NodeId).collect::<Vec<_>>();
 		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
 	}
@@ -708,7 +766,7 @@ impl JsEditorHandle {
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
 	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
-		let node_path = node_path.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
+		let node_path = node_path.into_iter().map(NodeId).collect::<Vec<_>>();
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
 			// Mutably borrow the editors, and if successful, we can access them in the closure
 			instances.try_borrow_mut().map(|mut editors| {
@@ -764,7 +822,7 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	// Insert asterisks where implicit multiplication is used in the expression string
 	let expression = implicit_multiplication_preprocess(expression);
 
-	meval::eval_str_with_context(&expression, &context).ok()
+	meval::eval_str_with_context(expression, &context).ok()
 }
 
 // Modified from this public domain snippet: <https://gist.github.com/Titaniumtown/c181be5d06505e003d8c4d1e372684ff>
@@ -818,7 +876,7 @@ pub fn implicit_multiplication_preprocess(expression: &str) -> String {
 	}
 
 	// We have to convert the Greek symbols back to ASCII because meval doesn't support unicode symbols as context constants
-	output_string.replace("logtwo(", "log2(").replace("π", "pi").replace("τ", "tau")
+	output_string.replace("logtwo(", "log2(").replace('π', "pi").replace('τ', "tau")
 }
 
 #[test]

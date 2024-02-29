@@ -41,6 +41,7 @@ features = [
 	"CanvasRenderingContext2d",
 	"Document",
 	"HtmlCanvasElement",
+	"IdleRequestOptions"
 ]
 
 [package.metadata.wasm-pack.profile.dev]

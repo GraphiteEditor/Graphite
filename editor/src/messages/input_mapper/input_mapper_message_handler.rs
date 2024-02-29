@@ -1,6 +1,7 @@
 use super::utility_types::input_keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
+use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use std::fmt::Write;
@@ -59,10 +60,17 @@ impl InputMapperMessageHandler {
 		// Filter for the desired message
 		let found_actions = all_mapping_entries.filter(|entry| entry.action.to_discriminant() == *action_to_find);
 
+		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+		let platform_accel_key = match keyboard_layout() {
+			KeyboardPlatformLayout::Standard => Key::Control,
+			KeyboardPlatformLayout::Mac => Key::Command,
+		};
+
 		// Find the key combinations for all keymaps matching the desired action
 		assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<Key>());
 		found_actions
 			.map(|entry| {
+				// Get the modifier keys for the entry (and convert them to Key)
 				let mut keys = entry
 					.modifiers
 					.iter()
@@ -76,6 +84,7 @@ impl InputMapperMessageHandler {
 					})
 					.collect::<Vec<_>>();
 
+				// Append the key button for the entry
 				match entry.input {
 					InputMapperMessage::KeyDown(key) => keys.push(key),
 					InputMapperMessage::KeyUp(key) => keys.push(key),
@@ -84,16 +93,20 @@ impl InputMapperMessageHandler {
 					_ => (),
 				}
 
-				keys.sort_by(|a, b| {
+				keys.sort_by(|&a, &b| {
 					// Order according to platform guidelines mentioned at https://ux.stackexchange.com/questions/58185/normative-ordering-for-modifier-key-combinations
 					const ORDER: [Key; 4] = [Key::Control, Key::Alt, Key::Shift, Key::Command];
 
-					match (ORDER.contains(a), ORDER.contains(b)) {
-						(true, true) => ORDER.iter().position(|key| key == a).unwrap().cmp(&ORDER.iter().position(|key| key == b).unwrap()),
-						(true, false) => std::cmp::Ordering::Less,
-						(false, true) => std::cmp::Ordering::Greater,
-						(false, false) => std::cmp::Ordering::Equal,
-					}
+					// Treat the `Accel` virtual key as the platform's accel key for sorting comparison purposes
+					let a = if a == Key::Accel { platform_accel_key } else { a };
+					let b = if b == Key::Accel { platform_accel_key } else { b };
+
+					// Find where the keys are in the order, or put them at the end if they're not found
+					let a = ORDER.iter().position(|&key| key == a).unwrap_or(ORDER.len());
+					let b = ORDER.iter().position(|&key| key == b).unwrap_or(ORDER.len());
+
+					// Compare the positions of both keys
+					a.cmp(&b)
 				});
 
 				KeysGroup(keys)

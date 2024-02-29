@@ -153,10 +153,10 @@ impl SelectedEdges {
 				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
 
 				let mut scale_factor = (snapped_bounds - pivot) / (updated - pivot);
-				if !(self.left || self.right) && !constrain {
+				if !(self.left || self.right || constrain) {
 					scale_factor.x = 1.
 				}
-				if !(self.top || self.bottom) && !constrain {
+				if !(self.top || self.bottom || constrain) {
 					scale_factor.y = 1.
 				}
 
