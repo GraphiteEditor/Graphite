@@ -21,11 +21,11 @@ impl Platform {
 	pub fn as_keyboard_platform_layout(&self) -> KeyboardPlatformLayout {
 		match self {
 			Platform::Mac => KeyboardPlatformLayout::Mac,
+			Platform::Windows | Platform::Linux => KeyboardPlatformLayout::Standard,
 			Platform::Unknown => {
 				warn!("The platform has not been set, remember to send `GlobalsMessage::SetPlatform` during editor initialization.");
 				KeyboardPlatformLayout::Standard
 			}
-			_ => KeyboardPlatformLayout::Standard,
 		}
 	}
 }
