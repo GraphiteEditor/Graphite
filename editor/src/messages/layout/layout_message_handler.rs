@@ -291,7 +291,9 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
 			}
-			SendLayout { layout, layout_target } => self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping),
+			SendLayout { layout, layout_target } => {
+				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping);
+			}
 			WidgetValueCommit { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
 			}
@@ -345,7 +347,7 @@ impl LayoutMessageHandler {
 	/// Send a diff to the frontend based on the layout target.
 	#[remain::check]
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
-		diff.iter_mut().for_each(|diff| diff.new_value.apply_shortcut(action_input_mapping));
+		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		trace!("{layout_target:?} diff {diff:#?}");
 

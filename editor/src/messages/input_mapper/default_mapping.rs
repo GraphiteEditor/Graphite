@@ -68,10 +68,10 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
 		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
 		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
+		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, snap_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Shift, Alt], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { axis_align: Shift, snap_angle: Control, center: Alt, duplicate: Alt }),
 		entry!(KeyDown(Lmb); action_dispatch=SelectToolMessage::DragStart { add_to_selection: Shift, select_deepest: Accel }),
 		entry!(KeyUp(Lmb); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Shift }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -174,7 +174,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=LineToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=LineToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=LineToolMessage::Abort),
-		entry!(PointerMove; refresh_keys=[Alt, Control, Shift], action_dispatch=LineToolMessage::PointerMove { center: Alt, lock_angle: Control, snap_angle: Shift }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=LineToolMessage::PointerMove { center: Alt, lock_angle: Control, snap_angle: Shift }),
 		//
 		// PathToolMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=PathToolMessage::DeleteAndBreakPath),
@@ -222,7 +222,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowDown); modifiers=[Shift, ArrowRight], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: BIG_NUDGE_AMOUNT }),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
+		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control}),
 		entry!(KeyDown(Lmb); action_dispatch=PenToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(Rmb); action_dispatch=PenToolMessage::Confirm),
@@ -268,7 +268,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyE); action_dispatch=ToolMessage::ActivateToolEllipse),
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolPolygon),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
-		entry!(KeyDown(KeyX); modifiers=[Shift, Accel], action_dispatch=ToolMessage::ResetColors),
+		entry!(KeyDown(KeyX); modifiers=[Accel, Shift], action_dispatch=ToolMessage::ResetColors),
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomPrimaryColor),
 		//
@@ -325,6 +325,16 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=TransformLayerMessage::BeginGrab),
 		entry!(KeyDown(KeyR); action_dispatch=TransformLayerMessage::BeginRotate),
 		entry!(KeyDown(KeyS); action_dispatch=TransformLayerMessage::BeginScale),
+		entry!(KeyDown(Digit0); action_dispatch=TransformLayerMessage::TypeDigit { digit: 0 }),
+		entry!(KeyDown(Digit1); action_dispatch=TransformLayerMessage::TypeDigit { digit: 1 }),
+		entry!(KeyDown(Digit2); action_dispatch=TransformLayerMessage::TypeDigit { digit: 2 }),
+		entry!(KeyDown(Digit3); action_dispatch=TransformLayerMessage::TypeDigit { digit: 3 }),
+		entry!(KeyDown(Digit4); action_dispatch=TransformLayerMessage::TypeDigit { digit: 4 }),
+		entry!(KeyDown(Digit5); action_dispatch=TransformLayerMessage::TypeDigit { digit: 5 }),
+		entry!(KeyDown(Digit6); action_dispatch=TransformLayerMessage::TypeDigit { digit: 6 }),
+		entry!(KeyDown(Digit7); action_dispatch=TransformLayerMessage::TypeDigit { digit: 7 }),
+		entry!(KeyDown(Digit8); action_dispatch=TransformLayerMessage::TypeDigit { digit: 8 }),
+		entry!(KeyDown(Digit9); action_dispatch=TransformLayerMessage::TypeDigit { digit: 9 }),
 		//
 		// NavigationMessage
 		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
@@ -374,19 +384,6 @@ pub fn default_mapping() -> Mapping {
 	];
 	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move) = mappings;
 
-	// TODO: Hardcode these 10 lines into 10 lines of declarations, or make this use a macro to do all 10 in one line
-	const NUMBER_KEYS: [Key; 10] = [Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9];
-	for (i, key) in NUMBER_KEYS.iter().enumerate() {
-		key_down[*key as usize].0.insert(
-			0,
-			MappingEntry {
-				action: TransformLayerMessage::TypeDigit { digit: i as u8 }.into(),
-				input: InputMapperMessage::KeyDown(*key),
-				modifiers: modifiers!(),
-			},
-		);
-	}
-
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by(|u, v| v.modifiers.ones().cmp(&u.modifiers.ones()));
 	for list in [&mut key_up, &mut key_down, &mut key_up_no_repeat, &mut key_down_no_repeat] {
 		for sublist in list {
@@ -410,9 +407,8 @@ pub fn default_mapping() -> Mapping {
 	}
 }
 
-/// Defaults except that scrolling without modifiers is bound to zooming instead of vertical panning
+/// Default mappings except that scrolling without modifier keys held down is bound to zooming instead of vertical panning
 pub fn zoom_with_scroll() -> Mapping {
-	// TODO(multisn8): for other keymaps this patterns might be useful
 	use InputMapperMessage::*;
 
 	let mut mapping = default_mapping();
