@@ -136,6 +136,14 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 	))
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FillFromStrokeNode;
+
+#[node_macro::node_fn(FillFromStrokeNode)]
+fn generate_fill_from_stroke(vector_data: VectorData) -> VectorData {
+	VectorData::default()
+}
+
 pub trait ConcatElement {
 	fn concat(&mut self, other: &Self, transform: DAffine2);
 }
