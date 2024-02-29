@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE, VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE};
+use crate::consts::{DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS, DRAG_BEYOND_VIEWPORT_SPEED_FACTOR, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -801,7 +801,7 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				unsubscribe_to_animation_frame(tool_data, modifier_keys, responses);
+				unsubscribe_animation_frame(tool_data, modifier_keys, responses);
 
 				state
 			}
@@ -1075,57 +1075,62 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 /// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
 /// The shift is proportional to the distance between edge and mouse. It is also guaranteed to be integral.
 fn shift_viewport_if_mouse_beyond_edge(mouse_position: DVec2, viewport_size: DVec2, responses: &mut VecDeque<Message>) -> Option<DVec2> {
-	let mouse_position_percent = mouse_position / viewport_size;
-	let mut shift_percent = DVec2::new(0.0, 0.0);
+	let mouse_position = mouse_position.clamp(
+		DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
+		viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
+	);
+	let mouse_position_percent = (mouse_position / viewport_size);
 
-	if mouse_position_percent.x < 0.0 {
+	let mut shift_percent = DVec2::ZERO;
+
+	if mouse_position_percent.x < 0. {
 		shift_percent.x = -mouse_position_percent.x;
-	} else if mouse_position_percent.x > 1.0 {
-		shift_percent.x = 1.0 - mouse_position_percent.x;
+	} else if mouse_position_percent.x > 1. {
+		shift_percent.x = 1. - mouse_position_percent.x;
 	}
 
-	if mouse_position_percent.y < 0.0 {
+	if mouse_position_percent.y < 0. {
 		shift_percent.y = -mouse_position_percent.y;
-	} else if mouse_position_percent.y > 1.0 {
-		shift_percent.y = 1.0 - mouse_position_percent.y;
+	} else if mouse_position_percent.y > 1. {
+		shift_percent.y = 1. - mouse_position_percent.y;
 	}
 
-	if shift_percent.x == 0.0 && shift_percent.y == 0.0 {
+	if shift_percent.x == 0. && shift_percent.y == 0. {
 		return None;
-	};
+	}
 
-	let shift = (shift_percent * VIEWPORT_SHIFT_RATIO_FOR_MOUSE_BEYOND_EDGE * viewport_size).round();
-
-	responses.add(NavigationMessage::TranslateCanvas { delta: shift });
-	Some(shift)
+	let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size).round();
+	responses.add(NavigationMessage::TranslateCanvas { delta });
+	Some(delta)
 }
 
 fn setup_pointer_outside_edge_event(mouse_position: DVec2, viewport_size: DVec2, tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
-	let is_pointer_outside_edge = mouse_position.x < 0.0 || mouse_position.x > viewport_size.x || mouse_position.y < 0.0 || mouse_position.y > viewport_size.y;
+	let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
-	if is_pointer_outside_edge {
-		subscribe_to_animation_frame(tool_data, modifier_keys, responses);
-	} else if !is_pointer_outside_edge {
-		unsubscribe_to_animation_frame(tool_data, modifier_keys, responses);
+	match is_pointer_outside_edge {
+		true => subscribe_animation_frame(tool_data, modifier_keys, responses),
+		false => unsubscribe_animation_frame(tool_data, modifier_keys, responses),
 	}
 }
 
-fn subscribe_to_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
+fn subscribe_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
 	if !tool_data.subscribed_to_animation_frame {
+		tool_data.subscribed_to_animation_frame = true;
+
 		responses.add(BroadcastMessage::SubscribeEvent {
 			on: BroadcastEvent::AnimationFrame,
 			send: Box::new(SelectToolMessage::PointerOutsideViewport(modifier_keys).into()),
 		});
-		tool_data.subscribed_to_animation_frame = true;
 	}
 }
 
-fn unsubscribe_to_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
+fn unsubscribe_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
 	if tool_data.subscribed_to_animation_frame {
+		tool_data.subscribed_to_animation_frame = false;
+
 		responses.add(BroadcastMessage::UnsubscribeEvent {
 			on: BroadcastEvent::AnimationFrame,
 			message: Box::new(SelectToolMessage::PointerOutsideViewport(modifier_keys).into()),
 		});
-		tool_data.subscribed_to_animation_frame = false;
 	}
 }
