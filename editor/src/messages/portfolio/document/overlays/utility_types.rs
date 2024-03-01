@@ -4,8 +4,6 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::Subpath;
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
-use graphene_std::vector::PointId;
 
 use core::f64::consts::PI;
 use glam::{DAffine2, DVec2};

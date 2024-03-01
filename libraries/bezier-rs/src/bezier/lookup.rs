@@ -262,10 +262,10 @@ mod tests {
 	#[test]
 	fn test_project() {
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
-		assert_eq!(bezier1.project(DVec2::ZERO,), 0.);
-		assert_eq!(bezier1.project(DVec2::new(100., 100.),), 1.);
+		assert_eq!(bezier1.project(DVec2::ZERO), 0.);
+		assert_eq!(bezier1.project(DVec2::new(100., 100.)), 1.);
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
-		assert_eq!(bezier2.project(DVec2::new(100., 0.),), 0.);
+		assert_eq!(bezier2.project(DVec2::new(100., 0.)), 0.);
 	}
 }

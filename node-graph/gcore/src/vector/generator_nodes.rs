@@ -6,8 +6,6 @@ use bezier_rs::Subpath;
 
 use glam::DVec2;
 
-use super::PointId;
-
 #[derive(Debug, Clone, Copy)]
 pub struct CircleGenerator<Radius> {
 	radius: Radius,

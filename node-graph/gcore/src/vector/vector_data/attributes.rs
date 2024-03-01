@@ -1,22 +1,23 @@
-use std::collections::HashMap;
-
 use dyn_any::{DynAny, StaticType};
+
 use glam::{DAffine2, DVec2};
+use std::collections::HashMap;
 
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
 			#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, DynAny)]
 			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-			/// A strongly typed id
+			/// A strongly typed ID
 			pub struct $id(u64);
 
 			impl $id {
 				/// Generate a new random id
-				pub fn generate() -> Self{
+				pub fn generate() -> Self {
 					Self(crate::uuid::generate_uuid())
 				}
-				pub fn inner(self) -> u64{
+
+				pub fn inner(self) -> u64 {
 					self.0
 				}
 			}
@@ -28,7 +29,7 @@ create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
 pub struct PointDomain {
 	id: Vec<PointId>,
 	positions: Vec<DVec2>,
@@ -41,20 +42,21 @@ impl PointDomain {
 			positions: Vec::new(),
 		}
 	}
-	fn resolve_id(&self, id: PointId) -> Option<usize> {
-		self.id.iter().position(|&check_id| check_id == id)
-	}
+
 	pub fn clear(&mut self) {
 		self.id.clear();
 		self.positions.clear();
 	}
+
 	pub fn push(&mut self, id: PointId, position: DVec2) {
 		self.id.push(id);
 		self.positions.push(position);
 	}
+
 	pub fn positions(&self) -> &[DVec2] {
 		&self.positions
 	}
+
 	pub fn ids(&self) -> &[PointId] {
 		&self.id
 	}
@@ -66,6 +68,11 @@ impl PointDomain {
 		}
 		pos
 	}
+
+	fn resolve_id(&self, id: PointId) -> Option<usize> {
+		self.id.iter().position(|&check_id| check_id == id)
+	}
+
 	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.positions.extend(other.positions.iter().map(|&pos| transform.transform_point2(pos)));
@@ -74,14 +81,16 @@ impl PointDomain {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per segment. A segment is a bézier curve between two points with a stroke. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
 	ids: Vec<SegmentId>,
 	start_point: Vec<PointId>,
 	end_point: Vec<PointId>,
+	// TODO: Also store handle points as `PointId`s rather than Bezier-rs's internal `DVec2`s
 	handles: Vec<bezier_rs::BezierHandles>,
 	stroke: Vec<StrokeId>,
 }
+
 impl SegmentDomain {
 	pub const fn new() -> Self {
 		Self {
@@ -92,9 +101,7 @@ impl SegmentDomain {
 			stroke: Vec::new(),
 		}
 	}
-	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
-		self.ids.iter().position(|&check_id| check_id == id)
-	}
+
 	pub fn clear(&mut self) {
 		self.ids.clear();
 		self.start_point.clear();
@@ -102,6 +109,7 @@ impl SegmentDomain {
 		self.handles.clear();
 		self.stroke.clear();
 	}
+
 	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
 		self.ids.push(id);
 		self.start_point.push(start);
@@ -109,6 +117,11 @@ impl SegmentDomain {
 		self.handles.push(handles);
 		self.stroke.push(stroke);
 	}
+
+	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
+		self.ids.iter().position(|&check_id| check_id == id)
+	}
+
 	fn resolve_range(&self, range: &core::ops::RangeInclusive<SegmentId>) -> Option<core::ops::RangeInclusive<usize>> {
 		match (self.resolve_id(*range.start()), self.resolve_id(*range.end())) {
 			(Some(start), Some(end)) => Some(start..=end),
@@ -118,6 +131,7 @@ impl SegmentDomain {
 			}
 		}
 	}
+
 	fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
 		self.ids.extend(other.ids.iter().map(|id| *id_map.segment_map.get(id).unwrap_or(id)));
 		self.start_point.extend(other.start_point.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
@@ -129,7 +143,7 @@ impl SegmentDomain {
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Stores data which is per segment. A region is an encolsed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
+/// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {
 	ids: Vec<RegionId>,
 	segment_range: Vec<core::ops::RangeInclusive<SegmentId>>,
@@ -144,19 +158,23 @@ impl RegionDomain {
 			fill: Vec::new(),
 		}
 	}
-	fn resolve_id(&self, id: RegionId) -> Option<usize> {
-		self.ids.iter().position(|&check_id| check_id == id)
-	}
+
 	pub fn clear(&mut self) {
 		self.ids.clear();
 		self.segment_range.clear();
 		self.fill.clear();
 	}
+
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
 		self.ids.push(id);
 		self.segment_range.push(segment_range);
 		self.fill.push(fill);
 	}
+
+	fn resolve_id(&self, id: RegionId) -> Option<usize> {
+		self.ids.iter().position(|&check_id| check_id == id)
+	}
+
 	fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
 		self.ids.extend(other.ids.iter().map(|id| *id_map.region_map.get(id).unwrap_or(id)));
 		self.segment_range.extend(
@@ -170,8 +188,8 @@ impl RegionDomain {
 }
 
 impl super::VectorData {
-	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles. Returns None if either id is invalid.
-	fn segment_to_bézier(&self, start: PointId, end: PointId, handles: bezier_rs::BezierHandles) -> Option<bezier_rs::Bezier> {
+	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles. Returns [`None`] if either ID is invalid.
+	fn segment_to_bezier(&self, start: PointId, end: PointId, handles: bezier_rs::BezierHandles) -> Option<bezier_rs::Bezier> {
 		let start = self.point_domain.pos_from_id(start)?;
 		let end = self.point_domain.pos_from_id(end)?;
 		Some(bezier_rs::Bezier { start, end, handles })
@@ -180,12 +198,12 @@ impl super::VectorData {
 	/// Tries to convert a segment with the specified id to a [`bezier_rs::Bezier`], returning None if the id is invalid.
 	pub fn segment_from_id(&self, id: SegmentId) -> Option<bezier_rs::Bezier> {
 		let index = self.segment_domain.resolve_id(id)?;
-		self.segment_to_bézier(self.segment_domain.start_point[index], self.segment_domain.end_point[index], self.segment_domain.handles[index])
+		self.segment_to_bezier(self.segment_domain.start_point[index], self.segment_domain.end_point[index], self.segment_domain.handles[index])
 	}
 
 	/// Iterator over all of the [`bezier_rs::Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.
-	pub fn segment_bézier_iter(&self) -> impl Iterator<Item = (SegmentId, bezier_rs::Bezier, PointId, PointId)> + '_ {
-		let to_bezier = |(((&handles, &id), &start), &end)| self.segment_to_bézier(start, end, handles).map(|bézier| (id, bézier, start, end));
+	pub fn segment_bezier_iter(&self) -> impl Iterator<Item = (SegmentId, bezier_rs::Bezier, PointId, PointId)> + '_ {
+		let to_bezier = |(((&handles, &id), &start), &end)| self.segment_to_bezier(start, end, handles).map(|bezier| (id, bezier, start, end));
 		self.segment_domain
 			.handles
 			.iter()
@@ -195,7 +213,7 @@ impl super::VectorData {
 			.filter_map(to_bezier)
 	}
 
-	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the semgents are not continous.
+	/// Construct a [`bezier_rs::Bezier`] curve from an iterator of segments with (handles, start point, end point). Returns None if any ids are invalid or if the semgents are not continuous.
 	fn subpath_from_segments(&self, segments: impl Iterator<Item = (bezier_rs::BezierHandles, PointId, PointId)>) -> Option<bezier_rs::Subpath<PointId>> {
 		let mut first_point = None;
 		let mut groups = Vec::new();
@@ -214,7 +232,7 @@ impl super::VectorData {
 
 		for (handle, start, end) in segments {
 			if last.is_some_and(|(previous_end, _)| previous_end != start) {
-				warn!("subpath_from_segments that were not continous");
+				warn!("subpath_from_segments that were not continuous");
 				return None;
 			}
 			first_point = Some(first_point.unwrap_or(start));
@@ -235,7 +253,7 @@ impl super::VectorData {
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve for each region, skipping invalid regions.
-	pub fn region_bézier_paths(&self) -> impl Iterator<Item = (RegionId, bezier_rs::Subpath<PointId>)> + '_ {
+	pub fn region_bezier_paths(&self) -> impl Iterator<Item = (RegionId, bezier_rs::Subpath<PointId>)> + '_ {
 		self.region_domain
 			.ids
 			.iter()
@@ -253,7 +271,7 @@ impl super::VectorData {
 	}
 
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
-	pub fn stroke_bézier_paths(&self) -> StrokePathIter<'_> {
+	pub fn stroke_bezier_paths(&self) -> StrokePathIter<'_> {
 		StrokePathIter { vector_data: self, segment_index: 0 }
 	}
 }
@@ -279,10 +297,10 @@ impl<'a> Iterator for StrokePathIter<'a> {
 			.zip(&segments.end_point[self.segment_index..])
 			.map(|((&handles, &start), &end)| (handles, start, end))
 			.take_while(|&(_, start, end)| {
-				let continous = old_end.is_none() || old_end.is_some_and(|old_end| old_end == start);
+				let continuous = old_end.is_none() || old_end.is_some_and(|old_end| old_end == start);
 				old_end = Some(end);
 				count += 1;
-				continous
+				continuous
 			});
 
 		let subpath = self.vector_data.subpath_from_segments(segments_iter);

@@ -4,7 +4,6 @@ use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
-use graphene_core::uuid::ManipulatorGroupId;
 
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::PointId;

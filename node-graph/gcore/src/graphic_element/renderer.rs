@@ -2,7 +2,7 @@ mod quad;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
-use crate::uuid::{generate_uuid, ManipulatorGroupId};
+use crate::uuid::generate_uuid;
 use crate::vector::PointId;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
@@ -297,10 +297,10 @@ impl GraphicElementRendered for VectorData {
 		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 
 		let mut path = String::new();
-		for (_, subpath) in self.region_bézier_paths() {
+		for (_, subpath) in self.region_bezier_paths() {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
-		for subpath in self.stroke_bézier_paths() {
+		for subpath in self.stroke_bezier_paths() {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
 
@@ -330,8 +330,8 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		click_targets.extend(self.region_bézier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
-		click_targets.extend(self.stroke_bézier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {

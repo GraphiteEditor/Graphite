@@ -1,14 +1,14 @@
+mod attributes;
+
 use super::style::{PathStyle, Stroke};
 use crate::Color;
 use crate::{uuid::ManipulatorGroupId, AlphaBlending};
+pub use attributes::*;
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};
 
 use glam::{DAffine2, DVec2};
-
-mod attributes;
-pub use attributes::*;
 
 /// [VectorData] is passed between nodes.
 /// It contains a list of subpaths (that may be open or closed), a transform, and some style information.
@@ -72,11 +72,13 @@ impl VectorData {
 				(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
 			};
 			let [mut first_seg, mut last_seg] = [None, None];
-			for x in subpath.manipulator_groups().windows(2) {
+			for pair in subpath.manipulator_groups().windows(2) {
 				let id = SegmentId::generate();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
-				vector_data.segment_domain.push(id, x[0].id.into(), x[1].id.into(), handles(&x[0], &x[1]), StrokeId::generate());
+				vector_data
+					.segment_domain
+					.push(id, pair[0].id.into(), pair[1].id.into(), handles(&pair[0], &pair[1]), StrokeId::generate());
 			}
 
 			if subpath.closed() {
@@ -103,8 +105,8 @@ impl VectorData {
 
 	/// Compute the bounding boxes of the subpaths with the specified transform
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.segment_bézier_iter()
-			.map(|(_, bézier, _, _)| bézier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
+		self.segment_bezier_iter()
+			.map(|(_, bezier, _, _)| bezier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
 			.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
 	}
 

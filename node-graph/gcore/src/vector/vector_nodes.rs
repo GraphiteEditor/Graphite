@@ -86,7 +86,7 @@ pub struct RepeatNode<Direction, Count> {
 
 #[node_macro::node_fn(RepeatNode)]
 fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
-	// repeat the vector data
+	// Repeat the vector data
 	let mut result = VectorData::empty();
 	let inverse = vector_data.transform.inverse();
 	let direction = inverse.transform_vector2(direction);
@@ -242,15 +242,19 @@ async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<
 	let vector_data = self.vector_data.eval(footprint).await;
 	let lengths_of_segments_of_subpaths = self.lengths_of_segments_of_subpaths.eval(footprint).await;
 
-	let mut bézier = vector_data.segment_bézier_iter().enumerate().peekable();
+	let mut bezier = vector_data.segment_bezier_iter().enumerate().peekable();
+
 	let mut result = VectorData::empty();
 	result.transform = vector_data.transform;
-	while let Some((index, (segment, _, _, mut last_end))) = bézier.next() {
+
+	while let Some((index, (segment, _, _, mut last_end))) = bezier.next() {
 		let mut lengths = vec![(segment, lengths_of_segments_of_subpaths.get(index).copied().unwrap_or_default())];
-		while let Some((index, (segment, _, _, end))) = bézier.peek().is_some_and(|(_, (_, _, start, _))| *start == last_end).then(|| bézier.next()).flatten() {
+
+		while let Some((index, (segment, _, _, end))) = bezier.peek().is_some_and(|(_, (_, _, start, _))| *start == last_end).then(|| bezier.next()).flatten() {
 			last_end = end;
 			lengths.push((segment, lengths_of_segments_of_subpaths.get(index).copied().unwrap_or_default()));
 		}
+
 		let total_length: f64 = lengths.iter().map(|(_, len)| *len).sum();
 
 		let mut used_length = total_length - start_offset - stop_offset;
@@ -308,7 +312,7 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 	let mut result = VectorData::empty();
-	for (_, mut subpath) in vector_data.region_bézier_paths() {
+	for (_, mut subpath) in vector_data.region_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
@@ -329,8 +333,8 @@ pub struct LengthsOfSegmentsOfSubpaths;
 #[node_macro::node_fn(LengthsOfSegmentsOfSubpaths)]
 fn lengths_of_segments_of_subpaths(vector_data: VectorData) -> Vec<f64> {
 	vector_data
-		.segment_bézier_iter()
-		.map(|(_id, bézier, _, _)| bézier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
+		.segment_bezier_iter()
+		.map(|(_id, bezier, _, _)| bezier.apply_transformation(|point| vector_data.transform.transform_point2(point)).length(None))
 		.collect()
 }
 
@@ -340,12 +344,16 @@ pub struct SplinesFromPointsNode;
 #[node_macro::node_fn(SplinesFromPointsNode)]
 fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 	let points = &vector_data.point_domain;
+
 	vector_data.segment_domain.clear();
+
 	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
+
 	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
 		let handle_start = first_handles[start_index];
 		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
 		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
 		vector_data
 			.segment_domain
 			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
@@ -370,7 +378,9 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	time: f64,
 ) -> VectorData {
 	todo!("Fix with new vector data type.");
-	/* let mut source = self.source.eval(footprint).await;
+
+	/*
+	let mut source = self.source.eval(footprint).await;
 	let mut target = self.target.eval(footprint).await;
 
 	// Lerp styles
@@ -447,5 +457,6 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	current.subpaths = subpaths;
 	current.transform = DAffine2::IDENTITY;
 
-	current*/
+	current
+	*/
 }

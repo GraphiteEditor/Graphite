@@ -35,6 +35,7 @@ impl BezierHandles {
 	pub fn is_cubic(&self) -> bool {
 		matches!(self, Self::Cubic { .. })
 	}
+
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn start(&self) -> Option<DVec2> {
 		match *self {
@@ -50,7 +51,8 @@ impl BezierHandles {
 			_ => None,
 		}
 	}
-	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
+
+	/// Returns a Bezier curve that results from applying the transformation function to each handle point in the Bezier.
 	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
 		match *self {
 			BezierHandles::Linear => Self::Linear,
