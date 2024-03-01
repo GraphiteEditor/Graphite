@@ -473,11 +473,34 @@ pub struct MirrorNode<MirrorX, MirrorY> {
 }
 
 #[node_macro::node_fn(MirrorNode)]
-fn mirror_node(mut vector_data: VectorData, mirror_x: bool, mirror_y: bool) -> VectorData {
-	log::debug!("{:#?}", &vector_data);
-	let pivot_absolute = vector_data.local_pivot(DVec2::splat(0.5));
-	let pivot_relative = vector_data.layerspace_pivot(DVec2::splat(0.5));
-	log::debug!("{:#?}", pivot_absolute);
-	log::debug!("{:#?}", pivot_relative);
-	vector_data
+fn mirror_node(vector_data: VectorData, mirror_x: bool, mirror_y: bool) -> VectorData {
+	if !mirror_x && !mirror_y {
+		return vector_data;
+	}
+
+	let pivot = vector_data.layerspace_pivot(vector_data.pivot.unwrap_or(DVec2::splat(0.5)));
+	let translate = DAffine2::from_translation(pivot);
+	let mut new_vector_data = vector_data.clone();
+
+	let mirror = |x: f64, y: f64| {
+		let mirror_transform = DAffine2::from_scale(DVec2::new(x, y));
+
+		let mut subpaths = vector_data.subpaths.clone();
+		subpaths.iter_mut().for_each(|subpath| {
+			subpath.apply_transform(translate * mirror_transform * translate.inverse());
+		});
+		subpaths
+	};
+
+	let mut final_subpaths = vector_data.subpaths.clone();
+	if mirror_x && mirror_y {
+		final_subpaths.extend(mirror(-1., 1.));
+		final_subpaths.extend(mirror(1., -1.));
+		final_subpaths.extend(mirror(-1., -1.));
+	} else {
+		final_subpaths.extend(mirror(if mirror_x { -1. } else { 1. }, if mirror_y { -1. } else { 1. }));
+	};
+
+	new_vector_data.subpaths = final_subpaths;
+	new_vector_data
 }
