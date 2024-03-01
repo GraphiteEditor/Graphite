@@ -26,9 +26,9 @@ I am grateful to everyone who has placed their faith in my vision for Graphite s
 
 <center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.<br /><a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> — drag the wire layer's points with the Path tool.</em></center>
 
-## The Alpha Milestone 2 release series
+## The Alpha 2 release series
 
-February marked the start of our second year developing Graphite under the alpha release banner. We took the opportunity to declare the start of a new release series, Alpha Milestone 2, for the year's focus on integrating the node graph. That goal was a success, and we anticipate the next release series, Alpha Milestone 3, will begin next month in February with a focus on procedural art workflows in line with our [roadmap](/features#roadmap).
+February marked the start of our second year developing Graphite under the alpha release banner. We took the opportunity to declare the start of a new release series, Alpha 2, for the year's focus on integrating the node graph. That goal was a success, and we anticipate the next release series, Alpha 3, will begin next month in February with a focus on procedural art workflows in line with our [roadmap](/features#roadmap).
 
 ## GDC and meetups with the Rust graphics community
 
@@ -147,7 +147,7 @@ I followed this up over my Christmas holiday by hunting down and ripping out ove
 
 ## Looking ahead to 2024
 
-The hard part is done. The unified document node graph, now that it's complete, paves the pathway towards new feature development for vector and raster editing. The Alpha Milestone 2 release series is nearly ready to become Alpha Milestone 3 with a focus towards procedural editing as the theme for the year ahead. And hopefully the road to the Beta release series, and then 1.0, is not too much further ahead.
+The hard part is done. The unified document node graph, now that it's complete, paves the pathway towards new feature development for vector and raster editing. The Alpha 2 release series is nearly ready to become Alpha 3 with a focus towards procedural editing as the theme for the year ahead. And hopefully the road to the Beta release series, and then 1.0, is not too much further ahead.
 
 First, I have some high-level goals for 2024:
 
