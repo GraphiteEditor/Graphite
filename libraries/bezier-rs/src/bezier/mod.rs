@@ -31,6 +31,18 @@ pub enum BezierHandles {
 		handle_end: DVec2,
 	},
 }
+
+impl std::hash::Hash for BezierHandles {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		std::mem::discriminant(self).hash(state);
+		match self {
+			BezierHandles::Linear => {}
+			BezierHandles::Quadratic { handle } => handle.to_array().map(|v| v.to_bits()).hash(state),
+			BezierHandles::Cubic { handle_start, handle_end } => [handle_start, handle_end].map(|handle| handle.to_array().map(|v| v.to_bits())).hash(state),
+		}
+	}
+}
+
 impl BezierHandles {
 	pub fn is_cubic(&self) -> bool {
 		matches!(self, Self::Cubic { .. })

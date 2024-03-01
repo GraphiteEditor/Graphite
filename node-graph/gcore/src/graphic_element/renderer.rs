@@ -341,7 +341,7 @@ impl GraphicElementRendered for VectorData {
 		let vector_data = self;
 
 		let transform = to_transform(vector_data.transform);
-		for subpath in vector_data.subpaths.iter() {
+		for subpath in vector_data.stroke_bezier_paths() {
 			let start = vector_data.transform.transform_point2(subpath[0].anchor);
 			builder.move_to(start.x as f32, start.y as f32);
 			for bezier in subpath.iter() {

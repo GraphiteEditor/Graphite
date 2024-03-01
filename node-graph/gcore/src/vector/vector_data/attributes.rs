@@ -35,6 +35,13 @@ pub struct PointDomain {
 	positions: Vec<DVec2>,
 }
 
+impl core::hash::Hash for PointDomain {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
+		self.positions.iter().for_each(|pos| pos.to_array().map(|v| v.to_bits()).hash(state));
+	}
+}
+
 impl PointDomain {
 	pub const fn new() -> Self {
 		Self {
@@ -79,7 +86,7 @@ impl PointDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
@@ -141,7 +148,7 @@ impl SegmentDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// Stores data which is per-region. A region is an enclosed area composed of a range of segments from the [`SegmentDomain`] that can be given a fill. In future this will be extendable at runtime with custom attributes.
 pub struct RegionDomain {

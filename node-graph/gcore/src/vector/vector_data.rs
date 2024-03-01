@@ -15,7 +15,6 @@ use glam::{DAffine2, DVec2};
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
-	pub subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>,
 	pub transform: DAffine2,
 	pub style: PathStyle,
 	pub alpha_blending: AlphaBlending,
@@ -30,7 +29,9 @@ pub struct VectorData {
 
 impl core::hash::Hash for VectorData {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.subpaths.hash(state);
+		self.point_domain.hash(state);
+		self.segment_domain.hash(state);
+		self.region_domain.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
 		self.alpha_blending.hash(state);
@@ -42,7 +43,6 @@ impl VectorData {
 	/// An empty subpath with no data, an identity transform, and a black fill.
 	pub const fn empty() -> Self {
 		Self {
-			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			alpha_blending: AlphaBlending::new(),
