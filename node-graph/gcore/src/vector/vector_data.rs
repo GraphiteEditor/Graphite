@@ -19,6 +19,7 @@ pub struct VectorData {
 	/// A list of all manipulator groups (referenced in `subpaths`) that have smooth handles (where their handles are colinear, or locked to 180° angles from one another)
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have subpath and mirror angle inputs"` to find it).
 	pub mirror_angle: Vec<ManipulatorGroupId>,
+	pub pivot: Option<DVec2>,
 }
 
 impl core::hash::Hash for VectorData {
@@ -40,6 +41,7 @@ impl VectorData {
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			alpha_blending: AlphaBlending::new(),
 			mirror_angle: Vec::new(),
+			pivot: None,
 		}
 	}
 

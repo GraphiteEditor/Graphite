@@ -25,6 +25,14 @@ pub trait Transform {
 			self.transform().transform_vector2((0., 1.).into()).length(),
 		)
 	}
+	fn pivot_mut(&mut self) -> Option<&mut Option<DVec2>> {
+		None
+	}
+	fn set_pivot(&mut self, pivot: DVec2) -> () {
+		if let Some(pivot_ref) = self.pivot_mut() {
+			*pivot_ref = Some(pivot);
+		}
+	}
 }
 
 pub trait TransformMut: Transform {
@@ -117,6 +125,9 @@ impl Transform for VectorData {
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		self.local_pivot(pivot)
+	}
+	fn pivot_mut(&mut self) -> Option<&mut Option<DVec2>> {
+		Some(&mut self.pivot)
 	}
 }
 impl TransformMut for VectorData {
@@ -258,6 +269,8 @@ where
 	let modification = pivot_transform * transform * pivot_transform.inverse();
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
+
+	data.set_pivot(pivot);
 
 	data
 }
