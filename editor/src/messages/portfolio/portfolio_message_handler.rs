@@ -180,7 +180,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						};
 
 						let node = layer.to_node();
-						let previous_alias = active_document.network().nodes.get(&node).unwrap().alias.clone();
+						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
+
 						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
 							continue;
 						};

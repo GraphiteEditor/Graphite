@@ -684,6 +684,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
+					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
+						node.alias = alias.clone();
+					}
+
 					let shift = nodes
 						.get(&NodeId(0))
 						.and_then(|node| {
@@ -694,8 +698,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
 						})
 						.unwrap_or_default();
-
-					modify_inputs.document_network.nodes.get_mut(&id).unwrap().alias = alias.clone();
 
 					for (old_id, mut document_node) in nodes {
 						// Shift copied node
