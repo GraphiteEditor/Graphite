@@ -370,6 +370,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
+					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
@@ -423,7 +424,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 					let id = NodeId(generate_uuid());
 					let insert_index = -1;
-					responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+					responses.add(GraphOperationMessage::NewCustomLayer {
+						id,
+						nodes,
+						parent,
+						insert_index,
+						alias: String::new(),
+					});
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -501,6 +508,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: calculated_insert_index.unwrap_or(-1),
+					alias: String::new(),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,

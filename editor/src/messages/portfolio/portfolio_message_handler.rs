@@ -180,6 +180,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						};
 
 						let node = layer.to_node();
+						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
+
 						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
 							continue;
 						};
@@ -197,6 +199,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							collapsed: false,
+							alias: previous_alias,
 						});
 					}
 				};
@@ -375,6 +378,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							nodes: entry.nodes.clone(),
 							parent,
 							insert_index,
+							alias: entry.alias.clone(),
 						});
 						if entry.selected {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
@@ -408,6 +412,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								nodes: entry.nodes,
 								parent,
 								insert_index: -1,
+								alias: entry.alias,
 							});
 							if entry.selected {
 								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });

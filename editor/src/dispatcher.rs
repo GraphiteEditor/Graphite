@@ -364,6 +364,7 @@ mod test {
 			nodes: HashMap::new(),
 			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
+			alias: String::new(),
 		});
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 

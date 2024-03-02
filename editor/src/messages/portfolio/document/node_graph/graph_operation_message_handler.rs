@@ -670,13 +670,23 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
-			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
+			GraphOperationMessage::NewCustomLayer {
+				id,
+				nodes,
+				parent,
+				insert_index,
+				alias,
+			} => {
 				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+
+					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
+						node.alias = alias.clone();
+					}
 
 					let shift = nodes
 						.get(&NodeId(0))
