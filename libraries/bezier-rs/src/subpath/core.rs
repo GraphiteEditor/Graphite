@@ -240,8 +240,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
+		let angle_increment = std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides).map(|i| {
-			let angle = (i as f64) * std::f64::consts::TAU / (sides as f64);
+			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
 			let center = center + DVec2::ONE * radius;
 			DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5
 		});
@@ -250,8 +251,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Constructs a star polygon (n-star). See [new_regular_polygon], but with interspersed vertices at an `inner_radius`.
 	pub fn new_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
+		let angle_increment = 0.5 * std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides * 2).map(|i| {
-			let angle = (i as f64) * 0.5 * std::f64::consts::TAU / (sides as f64);
+			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
 			let center = center + DVec2::ONE * radius;
 			let r = if i % 2 == 0 { radius } else { inner_radius };
 			DVec2::new(center.x + r * f64::cos(angle), center.y + r * f64::sin(angle)) * 0.5
