@@ -346,6 +346,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 			}
 			BackupDocument { network } => self.backup_with_document(network, responses),
+			ClearArtboards => {
+				self.backup(responses);
+				responses.add(GraphOperationMessage::ClearArtboards);
+			}
 			ClearLayersPanel => {
 				// Send an empty layer list
 				let data_buffer: RawBuffer = Self::default().serialize_root();
