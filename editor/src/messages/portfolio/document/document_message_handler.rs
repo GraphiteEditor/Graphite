@@ -498,13 +498,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					parent: LayerNodeIdentifier::new_unchecked(folder_id),
 					insert_index: -1,
 				});
-				// for (index, selected) in self.selected_nodes.selected_layers(self.metadata()).enumerate() {
-				// 	let node_id = LayerNodeIdentifier::to_node(selected);
-				// 	let _document_network = &mut self.network();
-				// 	if let Some(_node) = _document_network.nodes.get(&node_id) {
-				// 		error!("{:?}", _node.alias);
-				// 	}
-				// }
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
 
