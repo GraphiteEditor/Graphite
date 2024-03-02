@@ -384,8 +384,8 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
 			entries.push(
-				MenuListEntry::new(method.to_string())
-					.value(method.to_string())
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
 					.on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index))
 					.on_commit(commit_value),
 			);
@@ -411,8 +411,8 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 		let entries = NoiseType::list()
 			.iter()
 			.map(|noise_type| {
-				MenuListEntry::new(noise_type.to_string())
-					.value(noise_type.to_string())
+				MenuListEntry::new(format!("{noise_type:?}"))
+					.label(noise_type.to_string())
 					.on_update(update_value(move |_| TaggedValue::NoiseType(*noise_type), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -437,8 +437,8 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 		let entries = FractalType::list()
 			.iter()
 			.map(|fractal_type| {
-				MenuListEntry::new(fractal_type.to_string())
-					.value(fractal_type.to_string())
+				MenuListEntry::new(format!("{fractal_type:?}"))
+					.label(fractal_type.to_string())
 					.on_update(update_value(move |_| TaggedValue::FractalType(*fractal_type), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -463,8 +463,8 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 		let entries = CellularDistanceFunction::list()
 			.iter()
 			.map(|cellular_distance_function| {
-				MenuListEntry::new(cellular_distance_function.to_string())
-					.value(cellular_distance_function.to_string())
+				MenuListEntry::new(format!("{cellular_distance_function:?}"))
+					.label(cellular_distance_function.to_string())
 					.on_update(update_value(move |_| TaggedValue::CellularDistanceFunction(*cellular_distance_function), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -492,8 +492,8 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 		let entries = CellularReturnType::list()
 			.iter()
 			.map(|cellular_return_type| {
-				MenuListEntry::new(cellular_return_type.to_string())
-					.value(cellular_return_type.to_string())
+				MenuListEntry::new(format!("{cellular_return_type:?}"))
+					.label(cellular_return_type.to_string())
 					.on_update(update_value(move |_| TaggedValue::CellularReturnType(*cellular_return_type), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -518,8 +518,8 @@ fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		let entries = DomainWarpType::list()
 			.iter()
 			.map(|domain_warp_type| {
-				MenuListEntry::new(domain_warp_type.to_string())
-					.value(domain_warp_type.to_string())
+				MenuListEntry::new(format!("{domain_warp_type:?}"))
+					.label(domain_warp_type.to_string())
 					.on_update(update_value(move |_| TaggedValue::DomainWarpType(*domain_warp_type), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -547,8 +547,8 @@ fn blend_mode(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 				category
 					.iter()
 					.map(|blend_mode| {
-						MenuListEntry::new(blend_mode.to_string())
-							.value(blend_mode.to_string())
+						MenuListEntry::new(format!("{blend_mode:?}"))
+							.label(blend_mode.to_string())
 							.on_update(update_value(move |_| TaggedValue::BlendMode(*blend_mode), node_id, index))
 							.on_commit(commit_value)
 					})
@@ -578,8 +578,8 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 		let mut entries = Vec::with_capacity(calculation_modes.len());
 		for method in calculation_modes {
 			entries.push(
-				MenuListEntry::new(method.to_string())
-					.value(method.to_string())
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
 					.on_update(update_value(move |_| TaggedValue::LuminanceCalculation(method), node_id, index))
 					.on_commit(commit_value),
 			);
@@ -1298,8 +1298,8 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 				section
 					.iter()
 					.map(|choice| {
-						MenuListEntry::new(choice.to_string())
-							.value(choice.to_string())
+						MenuListEntry::new(format!("{choice:?}"))
+							.label(choice.to_string())
 							.on_update(update_value(move |_| TaggedValue::SelectiveColorChoice(*choice), node_id, colors_index))
 							.on_commit(commit_value)
 					})
@@ -1921,8 +1921,8 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 			let mut entries = Vec::with_capacity(sampling_methods.len());
 			for method in sampling_methods {
 				entries.push(
-					MenuListEntry::new(method.to_string())
-						.value(method.to_string())
+					MenuListEntry::new(format!("{method:?}"))
+						.label(method.to_string())
 						.on_update(update_value(move |_| TaggedValue::ImaginateSamplingMethod(method), node_id, sampling_method_index))
 						.on_commit(commit_value),
 				);
@@ -2040,7 +2040,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	// 			let mask_fill_content_modes = ImaginateMaskStartingFill::list();
 	// 			let mut entries = Vec::with_capacity(mask_fill_content_modes.len());
 	// 			for mode in mask_fill_content_modes {
-	// 				entries.push(MenuListEntry::new(mode.to_string()).value(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
+	// 				entries.push(MenuListEntry::new(format!("{mode:?}")).label(mode.to_string()).on_update(update_value(move |_| TaggedValue::ImaginateMaskStartingFill(mode), node_id, mask_fill_index)));
 	// 			}
 	// 			let entries = vec![entries];
 
