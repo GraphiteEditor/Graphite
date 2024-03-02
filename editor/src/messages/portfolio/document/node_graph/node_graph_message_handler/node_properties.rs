@@ -604,7 +604,8 @@ fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, 
 		let entries = [("Butt", LineCap::Butt), ("Round", LineCap::Round), ("Square", LineCap::Square)]
 			.into_iter()
 			.map(|(name, val)| {
-				RadioEntryData::new(name)
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
 					.on_update(update_value(move |_| TaggedValue::LineCap(val), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -628,7 +629,8 @@ fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 		let entries = [("Miter", LineJoin::Miter), ("Bevel", LineJoin::Bevel), ("Round", LineJoin::Round)]
 			.into_iter()
 			.map(|(name, val)| {
-				RadioEntryData::new(name)
+				RadioEntryData::new(format!("{val:?}"))
+					.label(name)
 					.on_update(update_value(move |_| TaggedValue::LineJoin(val), node_id, index))
 					.on_commit(commit_value)
 			})
@@ -650,10 +652,12 @@ fn fill_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	} = &document_node.inputs[index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Solid")
+			RadioEntryData::new("solid")
+				.label("Solid")
 				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index))
 				.on_commit(commit_value),
-			RadioEntryData::new("Gradient")
+			RadioEntryData::new("gradient")
+				.label("Gradient")
 				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index))
 				.on_commit(commit_value),
 		];
@@ -679,10 +683,12 @@ fn gradient_type_widget(document_node: &DocumentNode, node_id: NodeId, index: us
 	} = &document_node.inputs[index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Linear")
+			RadioEntryData::new("linear")
+				.label("Linear")
 				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index))
 				.on_commit(commit_value),
-			RadioEntryData::new("Radial")
+			RadioEntryData::new("radial")
+				.label("Radial")
 				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index))
 				.on_commit(commit_value),
 		];
@@ -1202,13 +1208,16 @@ pub fn adjust_channel_mixer_properties(document_node: &DocumentNode, node_id: No
 	} = &document_node.inputs[output_channel_index]
 	{
 		let entries = vec![
-			RadioEntryData::new(RedGreenBlue::Red.to_string())
+			RadioEntryData::new(format!("{:?}", RedGreenBlue::Red))
+				.label(RedGreenBlue::Red.to_string())
 				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Red), node_id, output_channel_index))
 				.on_commit(commit_value),
-			RadioEntryData::new(RedGreenBlue::Green.to_string())
+			RadioEntryData::new(format!("{:?}", RedGreenBlue::Green))
+				.label(RedGreenBlue::Green.to_string())
 				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Green), node_id, output_channel_index))
 				.on_commit(commit_value),
-			RadioEntryData::new(RedGreenBlue::Blue.to_string())
+			RadioEntryData::new(format!("{:?}", RedGreenBlue::Blue))
+				.label(RedGreenBlue::Blue.to_string())
 				.on_update(update_value(|_| TaggedValue::RedGreenBlue(RedGreenBlue::Blue), node_id, output_channel_index))
 				.on_commit(commit_value),
 		];
@@ -1346,10 +1355,12 @@ pub fn adjust_selective_color_properties(document_node: &DocumentNode, node_id: 
 	} = &document_node.inputs[mode_index]
 	{
 		let entries = vec![
-			RadioEntryData::new("Relative")
+			RadioEntryData::new("relative")
+				.label("Relative")
 				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), node_id, mode_index))
 				.on_commit(commit_value),
-			RadioEntryData::new("Absolute")
+			RadioEntryData::new("absolute")
+				.label("Absolute")
 				.on_update(update_value(|_| TaggedValue::RelativeAbsolute(RelativeAbsolute::Absolute), node_id, mode_index))
 				.on_commit(commit_value),
 		];
@@ -2007,7 +2018,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	// 				RadioInput::new(
 	// 					[(true, "Inpaint"), (false, "Outpaint")]
 	// 						.into_iter()
-	// 						.map(|(paint, name)| RadioEntryData::new(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
+	// 						.map(|(paint, name)| RadioEntryData::new(name).label(name).on_update(update_value(move |_| TaggedValue::Bool(paint), node_id, inpaint_index)))
 	// 						.collect(),
 	// 				)
 	// 				.selected_index(Some(1 - in_paint as u32))

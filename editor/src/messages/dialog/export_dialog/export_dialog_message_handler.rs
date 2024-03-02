@@ -63,7 +63,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
-			.map(|(val, name)| RadioEntryData::new(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
+			.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
 			.collect();
 
 		let export_type = vec![

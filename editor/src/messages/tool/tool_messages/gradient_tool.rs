@@ -88,12 +88,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear")
-				.value("linear")
+			RadioEntryData::new("linear")
+				.label("Linear")
 				.tooltip("Linear Gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
-			RadioEntryData::new("Radial")
-				.value("radial")
+			RadioEntryData::new("radial")
+				.label("Radial")
 				.tooltip("Radial Gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
 		])
