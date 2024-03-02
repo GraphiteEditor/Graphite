@@ -517,7 +517,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
-
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values

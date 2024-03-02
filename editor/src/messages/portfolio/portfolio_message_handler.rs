@@ -184,6 +184,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
 							continue;
 						};
+
 						buffer.push(CopyBufferEntry {
 							nodes: NodeGraphMessageHandler::copy_nodes(
 								active_document.network(),

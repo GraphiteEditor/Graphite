@@ -978,6 +978,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.alias = name;
+
 						self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 					}
 				}
