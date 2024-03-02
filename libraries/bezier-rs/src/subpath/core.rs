@@ -242,7 +242,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn new_regular_polygon(center: DVec2, sides: u64, radius: f64) -> Self {
 		let angle_increment = std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides).map(|i| {
-			let angle = -(std::f64::consts::PI / 2.0) + (i as f64) * angle_increment;
+			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
 			let center = center + DVec2::ONE * radius;
 			DVec2::new(center.x + radius * f64::cos(angle), center.y + radius * f64::sin(angle)) * 0.5
 		});
@@ -253,7 +253,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn new_star_polygon(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Self {
 		let angle_increment = 0.5 * std::f64::consts::TAU / (sides as f64);
 		let anchor_positions = (0..sides * 2).map(|i| {
-			let angle = -(std::f64::consts::PI / 2.0) + (i as f64) * angle_increment;
+			let angle = (i as f64) * angle_increment - std::f64::consts::FRAC_PI_2;
 			let center = center + DVec2::ONE * radius;
 			let r = if i % 2 == 0 { radius } else { inner_radius };
 			DVec2::new(center.x + r * f64::cos(angle), center.y + r * f64::sin(angle)) * 0.5
