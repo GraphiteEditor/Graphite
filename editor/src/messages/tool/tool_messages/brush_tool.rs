@@ -427,6 +427,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 		nodes: HashMap::from([(NodeId(0), brush_node)]),
 		parent: document.new_layer_parent(),
 		insert_index: -1,
+		alias: String::from(""),
 	});
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 

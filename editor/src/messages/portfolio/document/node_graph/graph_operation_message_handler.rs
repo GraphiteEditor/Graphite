@@ -670,7 +670,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
-			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
+			GraphOperationMessage::NewCustomLayer {
+				id,
+				nodes,
+				parent,
+				insert_index,
+				alias,
+			} => {
 				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
@@ -688,6 +694,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
 						})
 						.unwrap_or_default();
+
+					modify_inputs.document_network.nodes.get_mut(&id).unwrap().alias = alias.clone();
 
 					for (old_id, mut document_node) in nodes {
 						// Shift copied node

@@ -21,4 +21,5 @@ pub struct CopyBufferEntry {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	pub selected: bool,
 	pub collapsed: bool,
+	pub alias: String,
 }

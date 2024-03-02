@@ -366,6 +366,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
+					alias: String::from(""),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
@@ -419,7 +420,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 					let id = NodeId(generate_uuid());
 					let insert_index = -1;
-					responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+					responses.add(GraphOperationMessage::NewCustomLayer {
+						id,
+						nodes,
+						parent,
+						insert_index,
+						alias: String::from(""),
+					});
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -474,16 +481,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let mut selected_layers_names = Vec::new();
-				let selected_layers = self.selected_nodes.selected_layers(&self.metadata());
-				for selected in selected_layers {
-					let _node_id = LayerNodeIdentifier::to_node(selected);
-					let _document_network = &mut self.network();
-					if let Some(_node) = _document_network.nodes.get(&_node_id) {
-						selected_layers_names.push(_node.alias.to_string());
-					}
-				}
-
 				let folder_id = NodeId(generate_uuid());
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -494,6 +491,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
+					alias: String::from(""),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
@@ -508,18 +506,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// 	}
 				// }
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
-				for (index, selected) in self.selected_nodes.selected_layers(self.metadata()).enumerate() {
-					let node_id = LayerNodeIdentifier::to_node(selected);
-					let _document_network = &mut self.network();
-					if let Some(_node) = _document_network.nodes.get(&node_id) {
-						responses.add(NodeGraphMessage::SetName {
-							node_id,
-							name: _node.alias.to_string(),
-						});
-						error!("name : {:?}, alias : {:?}", _node.name.to_string(), _node.alias.to_string());
-						//_node.name = _node.alias;
-					}
-				}
 			}
 
 			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
