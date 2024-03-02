@@ -323,7 +323,7 @@ fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut
 
 	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
 
-	let Some(layer) = tool_data.layer.clone() else {
+	let Some(layer) = tool_data.layer else {
 		return;
 	};
 

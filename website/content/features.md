@@ -91,61 +91,49 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Editor systems; basic vector art tools</span>
 		</div>
-		<!-- Alpha Milestone 1 -->
+		<!-- Alpha 1 -->
 		<div class="informational complete heading" title="Began February 2022" data-year="2022">
-			<h3>— Alpha Milestone 1 —</h3>
+			<h3>— Alpha 1 —</h3>
 		</div>
 		<div class="informational complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Better tools; node graph prototyping</span>
 		</div>
-		<!-- Alpha Milestone 2 -->
-		<div class="informational ongoing heading" title="Began February 2023" data-year="2023">
-			<h3>— Alpha Milestone 2 —</h3>
-		</div>
-		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 4" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Basic brush tool</span>
-		</div>
-		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Graph-based layer stacks</span>
+		<!-- Alpha 2 -->
+		<div class="informational complete heading" title="Began February 2023" data-year="2023">
+			<h3>— Alpha 2 —</h3>
 		</div>
 		<div class="informational complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Fully graph-driven documents</span>
+			<span>Fully node graph-driven documents</span>
 		</div>
-		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>New viewport overlays system</span>
-		</div>
-		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Layer and grid snapping</span>
-		</div>
-		<div class="informational complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Imported SVG file editing</span>
+		<!-- Alpha 3 -->
+		<div class="informational ongoing heading" title="Began February 2024" data-year="2024">
+			<h3>— Alpha 3 —</h3>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Adaptive resolution raster rendering</span>
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Procedurally-defined vector data</span>
 		</div>
-		<div class="informational ongoing" title="Development Ongoing">
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Graph data attribute spreadsheet</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>WebGPU accelerated rendering</span>
 		</div>
-		<!-- Alpha Milestone 3 -->
-		<div class="informational heading" title="Expected to begin February 2024" data-year="2024">
-			<h3>— Alpha Milestone 3 —</h3>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>New vector graphics renderer (Vello)</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Adaptive resolution raster rendering</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Desktop app with built-in AI models</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Rust-based vector renderer</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 42" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -159,21 +147,9 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Custom subgraph nodes</span>
 		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Graph data attributes</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Procedurally-defined vector data</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 30" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>CAD-like constraint relationships</span>
-		</div>
-		<!-- Alpha Milestone 4 -->
+		<!-- Alpha 4 -->
 		<div class="informational heading" title="Expected to begin February 2025" data-year="2025">
-			<h3>— Alpha Milestone 4 —</h3>
+			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -188,6 +164,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Guide Mode: construction geometry</span>
 		</div>
 		<div class="informational">
+			<img class="atlas" style="--atlas-index: 30" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>CAD-like constraint relationships</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Remote compile/render server</span>
 		</div>
@@ -200,16 +180,16 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Interactive graph auto-layout</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Document history system</span>
-		</div>
-		<div class="informational">
 			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Stable document format</span>
 		</div>
 		<!-- Beta -->
 		<div class="informational heading">
 			<h3>— Beta —</h3>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Document history system</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 24" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />

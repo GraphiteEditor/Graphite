@@ -304,7 +304,7 @@ impl NodeGraphMessageHandler {
 			.collect::<Vec<_>>()
 	}
 
-	fn collect_nodes(&self, links: &Vec<FrontendNodeLink>, network: &NodeNetwork) -> Vec<FrontendNode> {
+	fn collect_nodes(&self, links: &[FrontendNodeLink], network: &NodeNetwork) -> Vec<FrontendNode> {
 		let connected_node_to_output_lookup = links.iter().map(|link| ((link.link_start, link.link_start_output_index), link.link_end)).collect::<HashMap<_, _>>();
 
 		let mut nodes = Vec::new();

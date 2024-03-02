@@ -528,8 +528,8 @@ pub enum DiffUpdate {
 }
 
 impl DiffUpdate {
-	/// Append the shortcut to the tooltip where applicable
-	pub fn apply_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
+	/// Append the keyboard shortcut to the tooltip where applicable
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);

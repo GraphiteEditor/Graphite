@@ -221,7 +221,7 @@ impl Hash for OriginalLocation {
 	}
 }
 impl OriginalLocation {
-	pub fn inputs<'a>(&'a self, index: usize) -> impl Iterator<Item = Source> + 'a {
+	pub fn inputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
 		[(index >= self.skip_inputs).then(|| Source {
 			node: self.path.clone().unwrap_or_default(),
 			index: self.inputs_exposed.iter().take(index - self.skip_inputs).filter(|&&exposed| exposed).count(),
@@ -230,7 +230,7 @@ impl OriginalLocation {
 		.flatten()
 		.chain(self.inputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
 	}
-	pub fn outputs<'a>(&'a self, index: usize) -> impl Iterator<Item = Source> + 'a {
+	pub fn outputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
 		[Source {
 			node: self.path.clone().unwrap_or_default(),
 			index,

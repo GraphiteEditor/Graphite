@@ -42,6 +42,7 @@ pub enum DocumentMessage {
 	BackupDocument {
 		network: NodeNetwork,
 	},
+	ClearArtboards,
 	ClearLayersPanel,
 	CommitTransaction,
 	CreateEmptyFolder {

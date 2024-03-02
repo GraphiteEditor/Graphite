@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
+use crate::consts::{DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS, DRAG_BEYOND_VIEWPORT_SPEED_FACTOR, ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -52,6 +52,14 @@ impl fmt::Display for NestedSelectionBehavior {
 	}
 }
 
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+pub struct SelectToolPointerKeys {
+	pub axis_align: Key,
+	pub snap_angle: Key,
+	pub center: Key,
+	pub duplicate: Key,
+}
+
 #[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
@@ -72,16 +80,13 @@ pub enum SelectToolMessage {
 	},
 	EditLayer,
 	Enter,
-	PointerMove {
-		axis_align: Key,
-		snap_angle: Key,
-		center: Key,
-		duplicate: Key,
-	},
+	PointerMove(SelectToolPointerKeys),
+	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
 	SetPivot {
 		position: PivotPosition,
 	},
+	ShiftViewport,
 }
 
 impl ToolMetadata for SelectTool {
@@ -269,6 +274,7 @@ struct SelectToolData {
 	selected_layers_count: usize,
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
+	subscribed_to_animation_frame: bool,
 }
 
 impl SelectToolData {
@@ -596,16 +602,16 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove { axis_align, duplicate, .. }) => {
+			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.has_dragged = true;
 
-				if input.keyboard.key(duplicate) && tool_data.non_duplicated_layers.is_none() {
+				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() {
 					tool_data.start_duplicates(document, responses);
-				} else if !input.keyboard.key(duplicate) && tool_data.non_duplicated_layers.is_some() {
+				} else if !input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_some() {
 					tool_data.stop_duplicates(document, responses);
 				}
 
-				let axis_align = input.keyboard.key(axis_align);
+				let axis_align = input.keyboard.key(modifier_keys.axis_align);
 				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
 				let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_start);
 
@@ -625,9 +631,9 @@ impl Fsm for SelectToolFsmState {
 							origin: point.document_point,
 							direction: total_mouse_delta_document.normalize(),
 						};
-						tool_data.snap_manager.constrained_snap(&snap_data, &point, constraint, None)
+						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
 					} else {
-						tool_data.snap_manager.free_snap(&snap_data, &point, None, false)
+						tool_data.snap_manager.free_snap(&snap_data, point, None, false)
 					};
 					if best_snap.other_snap_better(&snapped) {
 						offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
@@ -650,12 +656,14 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
+				setup_pointer_outside_edge_event(input.mouse.position, input.viewport_bounds.size(), tool_data, modifier_keys, responses);
+
 				SelectToolFsmState::Dragging
 			}
-			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { axis_align, center, .. }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
+				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					if let Some(movement) = &mut bounds.selected_edges {
-						let (center, constrain) = (input.keyboard.key(center), input.keyboard.key(axis_align));
+						let (center, constrain) = (input.keyboard.key(modifier_keys.center), input.keyboard.key(modifier_keys.axis_align));
 
 						let center = center.then_some(bounds.center_of_transformation);
 						let snap = Some(SizeSnapData {
@@ -683,11 +691,13 @@ impl Fsm for SelectToolFsmState {
 						);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
+
+						setup_pointer_outside_edge_event(input.mouse.position, input.viewport_bounds.size(), tool_data, modifier_keys, responses);
 					}
 				}
 				SelectToolFsmState::ResizingBounds
 			}
-			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { snap_angle, .. }) => {
+			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let angle = {
 						let start_offset = tool_data.drag_start - bounds.center_of_transformation;
@@ -696,7 +706,7 @@ impl Fsm for SelectToolFsmState {
 						start_offset.angle_between(end_offset)
 					};
 
-					let snapped_angle = if input.keyboard.key(snap_angle) {
+					let snapped_angle = if input.keyboard.key(modifier_keys.snap_angle) {
 						let snap_resolution = ROTATE_SNAP_ANGLE.to_radians();
 						(angle / snap_resolution).round() * snap_resolution
 					} else {
@@ -722,20 +732,24 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::RotatingBounds
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { .. }) => {
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
+				setup_pointer_outside_edge_event(mouse_position, input.viewport_bounds.size(), tool_data, modifier_keys, responses);
+
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove { .. }) => {
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
+				setup_pointer_outside_edge_event(input.mouse.position, input.viewport_bounds.size(), tool_data, modifier_keys, responses);
+
 				SelectToolFsmState::DrawingBox
 			}
-			(SelectToolFsmState::Ready, SelectToolMessage::PointerMove { .. }) => {
+			(SelectToolFsmState::Ready, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
 
 				// Dragging the pivot overrules the other operations
@@ -752,6 +766,50 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				SelectToolFsmState::Ready
+			}
+			(SelectToolFsmState::Dragging, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
+				responses.add(SelectToolMessage::PointerMove(modifier_keys));
+
+				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_current += shift;
+					tool_data.drag_start += shift;
+				}
+
+				SelectToolFsmState::Dragging
+			}
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::DraggingPivot | SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
+				responses.add(SelectToolMessage::PointerMove(modifier_keys));
+
+				responses.add(SelectToolMessage::ShiftViewport);
+
+				self
+			}
+			(SelectToolFsmState::ResizingBounds, SelectToolMessage::ShiftViewport) => {
+				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
+						bounds.center_of_transformation += shift;
+						bounds.original_bound_transform.translation += shift;
+					}
+				}
+
+				self
+			}
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::ShiftViewport) => {
+				let _ = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				self
+			}
+			(SelectToolFsmState::DrawingBox, SelectToolMessage::ShiftViewport) => {
+				if let Some(shift) = shift_viewport_if_mouse_beyond_edge(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_start += shift;
+				}
+
+				self
+			}
+			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
+				unsubscribe_animation_frame(tool_data, modifier_keys, responses);
+
+				state
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Enter) => {
 				let response = match input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON {
@@ -957,7 +1015,7 @@ impl Fsm for SelectToolFsmState {
 	}
 }
 
-fn not_artboard<'a>(document: &'a DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + 'a {
+fn not_artboard(document: &DocumentMessageHandler) -> impl Fn(&LayerNodeIdentifier) -> bool + '_ {
 	|&layer| !document.metadata.is_artboard(layer)
 }
 
@@ -1015,5 +1073,70 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 		responses.add(TextToolMessage::EditSelected);
 	} else if is_layer_fed_by_node_of_name(layer, document_network, "Shape") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
+	}
+}
+
+/// Shifts the viewport when the mouse reaches the edge of the viewport.
+///
+/// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
+/// The shift is proportional to the distance between edge and mouse. It is also guaranteed to be integral.
+fn shift_viewport_if_mouse_beyond_edge(mouse_position: DVec2, viewport_size: DVec2, responses: &mut VecDeque<Message>) -> Option<DVec2> {
+	let mouse_position = mouse_position.clamp(
+		DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
+		viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
+	);
+	let mouse_position_percent = mouse_position / viewport_size;
+
+	let mut shift_percent = DVec2::ZERO;
+
+	if mouse_position_percent.x < 0. {
+		shift_percent.x = -mouse_position_percent.x;
+	} else if mouse_position_percent.x > 1. {
+		shift_percent.x = 1. - mouse_position_percent.x;
+	}
+
+	if mouse_position_percent.y < 0. {
+		shift_percent.y = -mouse_position_percent.y;
+	} else if mouse_position_percent.y > 1. {
+		shift_percent.y = 1. - mouse_position_percent.y;
+	}
+
+	if shift_percent.x == 0. && shift_percent.y == 0. {
+		return None;
+	}
+
+	let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size).round();
+	responses.add(NavigationMessage::TranslateCanvas { delta });
+	Some(delta)
+}
+
+fn setup_pointer_outside_edge_event(mouse_position: DVec2, viewport_size: DVec2, tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
+	let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
+
+	match is_pointer_outside_edge {
+		true => subscribe_animation_frame(tool_data, modifier_keys, responses),
+		false => unsubscribe_animation_frame(tool_data, modifier_keys, responses),
+	}
+}
+
+fn subscribe_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
+	if !tool_data.subscribed_to_animation_frame {
+		tool_data.subscribed_to_animation_frame = true;
+
+		responses.add(BroadcastMessage::SubscribeEvent {
+			on: BroadcastEvent::AnimationFrame,
+			send: Box::new(SelectToolMessage::PointerOutsideViewport(modifier_keys).into()),
+		});
+	}
+}
+
+fn unsubscribe_animation_frame(tool_data: &mut SelectToolData, modifier_keys: SelectToolPointerKeys, responses: &mut VecDeque<Message>) {
+	if tool_data.subscribed_to_animation_frame {
+		tool_data.subscribed_to_animation_frame = false;
+
+		responses.add(BroadcastMessage::UnsubscribeEvent {
+			on: BroadcastEvent::AnimationFrame,
+			message: Box::new(SelectToolMessage::PointerOutsideViewport(modifier_keys).into()),
+		});
 	}
 }

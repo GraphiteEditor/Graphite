@@ -1,5 +1,4 @@
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::non_snake_case)]
+#![allow(clippy::too_many_arguments)]
 //
 // This file is where functions are defined to be called directly from JS.
 // It serves as a thin wrapper over the editor backend API that relies
@@ -88,7 +87,7 @@ fn call_closure_with_editor_and_handle(mut f: impl FnMut(&mut Editor, &mut JsEdi
 							log::error!("Failed to borrow editor handles");
 							continue;
 						};
-						let Some(js_editor) = handles.get_mut(&id) else {
+						let Some(js_editor) = handles.get_mut(id) else {
 							log::error!("Editor ID ({id}) has no corresponding JsEditorHandle ID");
 							continue;
 						};
@@ -238,6 +237,12 @@ impl JsEditorHandle {
 
 			*g.borrow_mut() = Some(Closure::new(move || {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+
+				call_closure_with_editor_and_handle(|editor, handle| {
+					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+						handle.send_frontend_message_to_js(message);
+					}
+				});
 
 				// Schedule ourself for another requestAnimationFrame callback
 				request_animation_frame(f.borrow().as_ref().unwrap());
@@ -602,9 +607,9 @@ impl JsEditorHandle {
 	/// If the insert index is `None`, it is inserted at the end of the folder (equivalent to index infinity).
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
-		let insert_parent_id = insert_parent_id.map(|id| NodeId(id));
+		let insert_parent_id = insert_parent_id.map(NodeId);
 
-		let parent = insert_parent_id.map(|id| LayerNodeIdentifier::new_unchecked(id)).unwrap_or(LayerNodeIdentifier::default());
+		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
@@ -688,7 +693,7 @@ impl JsEditorHandle {
 	/// Notifies the backend that the user selected a node in the node graph
 	#[wasm_bindgen(js_name = selectNodes)]
 	pub fn select_nodes(&self, nodes: Vec<u64>) {
-		let nodes = nodes.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
+		let nodes = nodes.into_iter().map(NodeId).collect::<Vec<_>>();
 		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
 	}
@@ -761,7 +766,7 @@ impl JsEditorHandle {
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
 	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
-		let node_path = node_path.into_iter().map(|id| NodeId(id)).collect::<Vec<_>>();
+		let node_path = node_path.into_iter().map(NodeId).collect::<Vec<_>>();
 		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
 			// Mutably borrow the editors, and if successful, we can access them in the closure
 			instances.try_borrow_mut().map(|mut editors| {
@@ -817,7 +822,7 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	// Insert asterisks where implicit multiplication is used in the expression string
 	let expression = implicit_multiplication_preprocess(expression);
 
-	meval::eval_str_with_context(&expression, &context).ok()
+	meval::eval_str_with_context(expression, &context).ok()
 }
 
 // Modified from this public domain snippet: <https://gist.github.com/Titaniumtown/c181be5d06505e003d8c4d1e372684ff>
@@ -871,7 +876,7 @@ pub fn implicit_multiplication_preprocess(expression: &str) -> String {
 	}
 
 	// We have to convert the Greek symbols back to ASCII because meval doesn't support unicode symbols as context constants
-	output_string.replace("logtwo(", "log2(").replace("π", "pi").replace("τ", "tau")
+	output_string.replace("logtwo(", "log2(").replace('π', "pi").replace('τ', "tau")
 }
 
 #[test]

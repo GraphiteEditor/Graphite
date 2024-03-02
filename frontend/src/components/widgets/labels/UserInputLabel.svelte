@@ -150,13 +150,24 @@
 <style lang="scss" global>
 	.user-input-label {
 		flex: 0 0 auto;
-		height: 100%;
 		align-items: center;
 		white-space: nowrap;
 
 		&.text-only {
-			.input-key + .input-key::before {
-				content: "+";
+			display: flex;
+
+			.input-key {
+				display: flex;
+				align-items: center;
+
+				.icon-label {
+					margin: calc(calc(18px - 12px) / 2) 0;
+				}
+
+				& + .input-key::before {
+					line-height: 18px;
+					content: "+";
+				}
 			}
 		}
 

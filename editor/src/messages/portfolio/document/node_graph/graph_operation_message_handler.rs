@@ -102,7 +102,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			*output = NodeOutput::new(*node_id, *output_index)
 		}
-		return None;
+		None
 	}
 
 	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize, skip_layer_nodes: usize) -> Option<NodeId> {
@@ -421,7 +421,7 @@ impl<'a> ModifyInputsContext<'a> {
 				.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
 				.is_some()
 			{
-				transform = transform * upstream_transform.inverse();
+				transform *= upstream_transform.inverse();
 			}
 			let final_transform = pivot.inverse() * to.inverse() * transform * pivot;
 			transform_utils::update_transform(inputs, final_transform);
@@ -812,7 +812,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	match node {
 		usvg::Node::Group(group) => {
 			for child in &group.children {
-				import_usvg_node(modify_inputs, &child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
+				import_usvg_node(modify_inputs, child, transform, NodeId(generate_uuid()), LayerNodeIdentifier::new_unchecked(layer), -1);
 			}
 			modify_inputs.layer_node = Some(layer);
 		}

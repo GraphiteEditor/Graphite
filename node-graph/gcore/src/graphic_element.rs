@@ -291,7 +291,7 @@ impl GraphicElement {
 			}
 			GraphicElement::ImageFrame(image_frame) => {
 				if image_frame.image.width * image_frame.image.height == 0 {
-					return usvg::Node::Group(Box::new(usvg::Group::default()));
+					return usvg::Node::Group(Box::default());
 				}
 				let png = image_frame.image.to_png();
 				usvg::Node::Image(Box::new(usvg::Image {
@@ -338,7 +338,7 @@ impl GraphicElement {
 				usvg::Node::Group(Box::new(group_element))
 			}
 			// TODO
-			GraphicElement::Artboard(_board) => usvg::Node::Group(Box::new(usvg::Group::default())),
+			GraphicElement::Artboard(_board) => usvg::Node::Group(Box::default()),
 		}
 	}
 }

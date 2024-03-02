@@ -109,7 +109,7 @@ impl LayerSnapper {
 						target: path.target,
 						distance,
 						tolerance,
-						curves: [path.bounds.is_none().then(|| path.document_curve), None],
+						curves: [path.bounds.is_none().then_some(path.document_curve), None],
 						source: point.source,
 						target_bounds: path.bounds,
 						..Default::default()
@@ -148,7 +148,7 @@ impl LayerSnapper {
 							target: path.target,
 							distance,
 							tolerance,
-							curves: [path.bounds.is_none().then(|| path.document_curve), Some(constraint_path)],
+							curves: [path.bounds.is_none().then_some(path.document_curve), Some(constraint_path)],
 							source: point.source,
 							target_bounds: path.bounds,
 							at_intersection: true,
@@ -187,7 +187,7 @@ impl LayerSnapper {
 			}
 		}
 		for &layer in snap_data.get_candidates() {
-			get_layer_snap_points(layer, &snap_data, &mut self.points_to_snap);
+			get_layer_snap_points(layer, snap_data, &mut self.points_to_snap);
 
 			if snap_data.ignore_bounds(layer) {
 				continue;
@@ -219,7 +219,7 @@ impl LayerSnapper {
 					distance < best.distance
 				}
 			};
-			if distance < tolerance && (best.is_none() || best.as_ref().is_some_and(|best| candidate_better(best))) {
+			if distance < tolerance && (best.is_none() || best.as_ref().is_some_and(candidate_better)) {
 				best = Some(SnappedPoint {
 					snapped_point_document: candidate.document_point,
 					source: point.source,
@@ -318,7 +318,7 @@ impl SnapCandidatePoint {
 			document_point,
 			source,
 			target,
-			quad: quad,
+			quad,
 			..Default::default()
 		}
 	}
@@ -423,8 +423,8 @@ pub fn group_smooth(group: &bezier_rs::ManipulatorGroup<ManipulatorGroupId>, to_
 	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
 	let at_end = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
-	let smooth = handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end;
-	smooth
+
+	handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end
 }
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
