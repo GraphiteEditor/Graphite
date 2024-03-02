@@ -340,7 +340,7 @@ impl SelectToolData {
 				nodes,
 				parent,
 				insert_index,
-				alias: String::from(""),
+				alias: String::new(),
 			});
 			new_dragging.push(layer);
 		}

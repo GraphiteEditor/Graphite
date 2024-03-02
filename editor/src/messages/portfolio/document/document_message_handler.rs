@@ -366,7 +366,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
-					alias: String::from(""),
+					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
@@ -425,7 +425,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						nodes,
 						parent,
 						insert_index,
-						alias: String::from(""),
+						alias: String::new(),
 					});
 				}
 			}
@@ -491,7 +491,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
-					alias: String::from(""),
+					alias: String::new(),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
