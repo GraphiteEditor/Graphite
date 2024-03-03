@@ -166,14 +166,27 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document
+					let binding = active_document
 						.metadata()
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()))
-					{
-						let Some(layer) = layer_path.last().copied() else {
-							continue;
-						};
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
+					let mut get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
+
+					let selected_to_vector = active_document
+						.selected_nodes
+						.selected_layers(active_document.metadata())
+						.filter(|_x| true)
+						.map(|x| x.clone())
+						.collect::<Vec<_>>();
+
+					// sort last elements by their appearance in selected vector
+					get_last_elements.sort_by(|a, b| {
+						let index_a = selected_to_vector.iter().position(|x| x == *a).unwrap_or(9999);
+						let index_b = selected_to_vector.iter().position(|x| x == *b).unwrap_or(9999);
+						index_a.cmp(&index_b)
+					});
+
+					for layer in get_last_elements {
 						let node = layer.to_node();
 						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
 
@@ -192,7 +205,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 									.collect(),
 							)
 							.collect(),
-							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
+							selected: active_document.selected_nodes.selected_layers_contains(*layer, active_document.metadata()),
 							collapsed: false,
 							alias: previous_alias,
 						});
