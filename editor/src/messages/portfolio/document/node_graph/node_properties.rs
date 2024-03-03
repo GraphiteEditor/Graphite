@@ -1508,7 +1508,7 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Size X", 1), operand("Size Y", 2), operand("Border Radius", 3)]
+	vec![operand("Size X", 1), operand("Size Y", 2), operand("Corner Radius", 3)]
 }
 
 pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
