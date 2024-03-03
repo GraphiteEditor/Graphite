@@ -63,7 +63,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
 			.into_iter()
-			.map(|(val, name)| RadioEntryData::new(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
+			.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| ExportDialogMessage::FileType(val).into()))
 			.collect();
 
 		let export_type = vec![
@@ -94,7 +94,12 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		let index = export_area_options.iter().position(|(val, _, _)| val == &self.bounds).unwrap();
 		let entries = vec![export_area_options
 			.into_iter()
-			.map(|(val, name, disabled)| MenuListEntry::new(name).on_update(move |_| ExportDialogMessage::ExportBounds(val).into()).disabled(disabled))
+			.map(|(val, name, disabled)| {
+				MenuListEntry::new(format!("{val:?}"))
+					.label(name)
+					.on_update(move |_| ExportDialogMessage::ExportBounds(val).into())
+					.disabled(disabled)
+			})
 			.collect()];
 
 		let export_area = vec![
