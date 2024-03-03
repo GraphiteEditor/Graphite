@@ -40,12 +40,11 @@ pub struct RectangleGenerator<SizeX, SizeY, BorderRadius> {
 
 #[node_macro::node_fn(RectangleGenerator)]
 fn square_generator(_input: (), size_x: f64, size_y: f64, border_radius: f64) -> VectorData {
-	log::debug!("{}", border_radius);
 	let size = DVec2::new(size_x, size_y);
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
 
-	super::VectorData::from_subpath(Subpath::new_rect(corner1, corner2))
+	super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, border_radius)])
 }
 
 #[derive(Debug, Clone, Copy)]
