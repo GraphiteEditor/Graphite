@@ -44,7 +44,11 @@ fn square_generator(_input: (), size_x: f64, size_y: f64, border_radius: f64) ->
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
 
-	super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, border_radius)])
+	if border_radius == 0. {
+		super::VectorData::from_subpaths(vec![Subpath::new_rect(corner1, corner2)])
+	} else {
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, border_radius)])
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
