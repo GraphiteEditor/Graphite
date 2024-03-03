@@ -57,42 +57,45 @@ impl VectorData {
 		Self::from_subpaths([subpath])
 	}
 
+	/// Push a subpath to the vector data
+	pub fn append_subpath<Id: bezier_rs::Identifier + Into<PointId> + Copy>(&mut self, subpath: bezier_rs::Subpath<Id>) {
+		for point in subpath.manipulator_groups() {
+			self.point_domain.push(point.id.into(), point.anchor);
+		}
+
+		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
+			(None, None) => bezier_rs::BezierHandles::Linear,
+			(Some(handle), None) | (None, Some(handle)) => bezier_rs::BezierHandles::Quadratic { handle },
+			(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
+		};
+		let [mut first_seg, mut last_seg] = [None, None];
+		for pair in subpath.manipulator_groups().windows(2) {
+			let id = SegmentId::generate();
+			first_seg = Some(first_seg.unwrap_or(id));
+			last_seg = Some(id);
+			self.segment_domain.push(id, pair[0].id.into(), pair[1].id.into(), handles(&pair[0], &pair[1]), StrokeId::generate());
+		}
+
+		if subpath.closed() {
+			if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
+				let id = SegmentId::generate();
+				first_seg = Some(first_seg.unwrap_or(id));
+				last_seg = Some(id);
+				self.segment_domain.push(id, last.id.into(), first.id.into(), handles(last, first), StrokeId::generate());
+			}
+
+			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
+				self.region_domain.push(RegionId::generate(), first_seg..=last_seg, FillId::generate());
+			}
+		}
+	}
+
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
 		let mut vector_data = Self::empty();
 
 		for subpath in subpaths.into_iter() {
-			for point in subpath.manipulator_groups() {
-				vector_data.point_domain.push(point.id.into(), point.anchor);
-			}
-
-			let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
-				(None, None) => bezier_rs::BezierHandles::Linear,
-				(Some(handle), None) | (None, Some(handle)) => bezier_rs::BezierHandles::Quadratic { handle },
-				(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
-			};
-			let [mut first_seg, mut last_seg] = [None, None];
-			for pair in subpath.manipulator_groups().windows(2) {
-				let id = SegmentId::generate();
-				first_seg = Some(first_seg.unwrap_or(id));
-				last_seg = Some(id);
-				vector_data
-					.segment_domain
-					.push(id, pair[0].id.into(), pair[1].id.into(), handles(&pair[0], &pair[1]), StrokeId::generate());
-			}
-
-			if subpath.closed() {
-				if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
-					let id = SegmentId::generate();
-					first_seg = Some(first_seg.unwrap_or(id));
-					last_seg = Some(id);
-					vector_data.segment_domain.push(id, last.id.into(), first.id.into(), handles(last, first), StrokeId::generate());
-				}
-
-				if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
-					vector_data.region_domain.push(RegionId::generate(), first_seg..=last_seg, FillId::generate());
-				}
-			}
+			vector_data.append_subpath(subpath);
 		}
 
 		vector_data

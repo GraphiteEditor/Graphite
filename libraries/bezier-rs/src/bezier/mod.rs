@@ -65,6 +65,7 @@ impl BezierHandles {
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each handle point in the Bezier.
+	#[must_use]
 	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
 		match *self {
 			BezierHandles::Linear => Self::Linear,

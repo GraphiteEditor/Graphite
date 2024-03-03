@@ -5,7 +5,7 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, TValue};
+use bezier_rs::{Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -377,16 +377,17 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	start_index: u32,
 	time: f64,
 ) -> VectorData {
-	todo!("Fix with new vector data type.");
-
-	/*
-	let mut source = self.source.eval(footprint).await;
-	let mut target = self.target.eval(footprint).await;
+	let source = self.source.eval(footprint).await;
+	let target = self.target.eval(footprint).await;
+	let mut result = VectorData::empty();
 
 	// Lerp styles
-	let style = source.style.lerp(&target.style, time);
+	result.alpha_blending = if time < 0.5 { source.alpha_blending } else { target.alpha_blending };
+	result.style = source.style.lerp(&target.style, time);
 
-	for (source_path, target_path) in source.subpaths.iter_mut().zip(target.subpaths.iter_mut()) {
+	let mut source_paths = source.stroke_bezier_paths();
+	let mut target_paths = target.stroke_bezier_paths();
+	for (mut source_path, mut target_path) in (&mut source_paths).zip(&mut target_paths) {
 		// Deal with mistmatched transforms
 		source_path.apply_transform(source.transform);
 		target_path.apply_transform(target.transform);
@@ -424,39 +425,198 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 				target_path.insert(SubpathTValue::Parametric { segment_index, t: 0.5 })
 			}
 		}
-	}
-	// Mismatched subpath count
-	for source_path in source.subpaths.iter_mut().skip(target.subpaths.len()) {
-		source_path.apply_transform(source.transform);
-		target.subpaths.push(Subpath::from_anchors(
-			std::iter::repeat(source_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default()).take(source_path.len()),
-			source_path.closed,
-		))
-	}
-	for target_path in target.subpaths.iter_mut().skip(source.subpaths.len()) {
-		target_path.apply_transform(target.transform);
-		source.subpaths.push(Subpath::from_anchors(
-			std::iter::repeat(target_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default()).take(target_path.len()),
-			target_path.closed,
-		))
-	}
 
-	// Lerp points
-	for (subpath, target) in source.subpaths.iter_mut().zip(target.subpaths.iter()) {
-		for (manipulator, target) in subpath.manipulator_groups_mut().iter_mut().zip(target.manipulator_groups()) {
+		// Lerp points
+		for (manipulator, target) in source_path.manipulator_groups_mut().iter_mut().zip(target_path.manipulator_groups()) {
 			manipulator.in_handle = Some(manipulator.in_handle.unwrap_or(manipulator.anchor).lerp(target.in_handle.unwrap_or(target.anchor), time));
 			manipulator.out_handle = Some(manipulator.out_handle.unwrap_or(manipulator.anchor).lerp(target.out_handle.unwrap_or(target.anchor), time));
 			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
 		}
+
+		result.append_subpath(source_path);
+	}
+	// Mismatched subpath count
+	for mut source_path in source_paths {
+		source_path.apply_transform(source.transform);
+		let end = source_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default();
+		for group in source_path.manipulator_groups_mut() {
+			group.anchor = group.anchor.lerp(end, time);
+			group.in_handle = group.in_handle.map(|handle| handle.lerp(end, time));
+			group.out_handle = group.in_handle.map(|handle| handle.lerp(end, time));
+		}
+	}
+	for mut target_path in target_paths {
+		target_path.apply_transform(target.transform);
+		let start = target_path.manipulator_groups().first().map(|group| group.anchor).unwrap_or_default();
+		for group in target_path.manipulator_groups_mut() {
+			group.anchor = start.lerp(group.anchor, time);
+			group.in_handle = group.in_handle.map(|handle| start.lerp(handle, time));
+			group.out_handle = group.in_handle.map(|handle| start.lerp(handle, time));
+		}
 	}
 
-	// Create result
-	let subpaths = std::mem::take(&mut source.subpaths);
-	let mut current = if time < 0.5 { source } else { target };
-	current.style = style;
-	current.subpaths = subpaths;
-	current.transform = DAffine2::IDENTITY;
+	result
+}
 
-	current
-	*/
+#[cfg(test)]
+mod test {
+	use bezier_rs::Bezier;
+
+	use super::*;
+	use crate::transform::CullNode;
+	use crate::value::ClonedNode;
+	use std::pin::Pin;
+	#[derive(Clone)]
+	pub struct FutureWrapperNode<Node: Clone>(Node);
+
+	impl<'i, T: 'i, N: Node<'i, T> + Clone> Node<'i, T> for FutureWrapperNode<N>
+	where
+		N: Node<'i, T>,
+	{
+		type Output = Pin<Box<dyn core::future::Future<Output = N::Output> + 'i>>;
+		fn eval(&'i self, input: T) -> Self::Output {
+			Box::pin(async move { self.0.eval(input) })
+		}
+	}
+
+	#[test]
+	fn repeat() {
+		let direction = DVec2::X * 1.5;
+		let repeated = RepeatNode {
+			direction: ClonedNode::new(direction),
+			count: ClonedNode::new(3),
+		}
+		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
+		assert_eq!(repeated.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
+		}
+	}
+	#[test]
+	fn circle_repeat() {
+		let repeated = CircularRepeatNode {
+			angle_offset: ClonedNode::new(45.),
+			radius: ClonedNode::new(4.),
+			count: ClonedNode::new(8),
+		}
+		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
+		assert_eq!(repeated.region_bezier_paths().count(), 8);
+		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+			let expected_angle = (index as f64 + 1.) * 45.;
+			let centre = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
+			let actual_angle = DVec2::Y.angle_between(centre).to_degrees();
+			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
+		}
+	}
+	#[test]
+	fn bounding_box() {
+		let bouding_box = BoundingBoxNode.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
+		assert_eq!(bouding_box.region_bezier_paths().count(), 1);
+		let subpath = bouding_box.region_bezier_paths().next().unwrap().1;
+		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
+	}
+	#[tokio::test]
+	async fn copy_to_points() {
+		let points = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.));
+		let expected_points = points.point_domain.positions().to_vec();
+		let bouding_box = CopyToPoints {
+			points: CullNode::new(FutureWrapperNode(ClonedNode(points))),
+			instance: CullNode::new(FutureWrapperNode(ClonedNode(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))))),
+			random_scale_min: FutureWrapperNode(ClonedNode(1.)),
+			random_scale_max: FutureWrapperNode(ClonedNode(1.)),
+			random_scale_bias: FutureWrapperNode(ClonedNode(0.)),
+			random_rotation: FutureWrapperNode(ClonedNode(0.)),
+		}
+		.eval(Footprint::default())
+		.await;
+		assert_eq!(bouding_box.region_bezier_paths().count(), expected_points.len());
+		for (index, (_, subpath)) in bouding_box.region_bezier_paths().enumerate() {
+			let offset = expected_points[index];
+			assert_eq!(
+				&subpath.anchors()[..4],
+				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
+			);
+		}
+	}
+	#[tokio::test]
+	async fn sample_points() {
+		let path = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
+		let sample_points = SamplePoints {
+			vector_data: CullNode::new(FutureWrapperNode(ClonedNode(path))),
+			spacing: FutureWrapperNode(ClonedNode(30.)),
+			start_offset: FutureWrapperNode(ClonedNode(0.)),
+			stop_offset: FutureWrapperNode(ClonedNode(0.)),
+			adaptive_spacing: FutureWrapperNode(ClonedNode(false)),
+			lengths_of_segments_of_subpaths: CullNode::new(FutureWrapperNode(ClonedNode(vec![100.]))),
+		}
+		.eval(Footprint::default())
+		.await;
+		assert_eq!(sample_points.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
+			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
+		}
+	}
+	#[tokio::test]
+	async fn adaptive_spacing() {
+		let path = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
+		let sample_points = SamplePoints {
+			vector_data: CullNode::new(FutureWrapperNode(ClonedNode(path))),
+			spacing: FutureWrapperNode(ClonedNode(18.)),
+			start_offset: FutureWrapperNode(ClonedNode(45.)),
+			stop_offset: FutureWrapperNode(ClonedNode(10.)),
+			adaptive_spacing: FutureWrapperNode(ClonedNode(true)),
+			lengths_of_segments_of_subpaths: CullNode::new(FutureWrapperNode(ClonedNode(vec![100.]))),
+		}
+		.eval(Footprint::default())
+		.await;
+		assert_eq!(sample_points.point_domain.positions().len(), 4);
+		for (pos, expected) in sample_points.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
+			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
+		}
+	}
+	#[test]
+	fn poisson() {
+		let sample_points = PoissonDiskPoints {
+			separation_disk_diameter: ClonedNode(10. * std::f64::consts::SQRT_2),
+		}
+		.eval(VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 50., DVec2::ONE * 50.)));
+		assert!(
+			(20..=40).contains(&sample_points.point_domain.positions().len()),
+			"actual len {}",
+			sample_points.point_domain.positions().len()
+		);
+		for point in sample_points.point_domain.positions() {
+			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
+		}
+	}
+	#[test]
+	fn lengths() {
+		let subpath = VectorData::from_subpath(Subpath::from_bezier(&Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::ZERO, DVec2::X * 100., DVec2::X * 100.)));
+		let lengths = LengthsOfSegmentsOfSubpaths.eval(subpath);
+		assert_eq!(lengths, vec![100.]);
+	}
+	#[test]
+	fn spline() {
+		let subpath = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
+		let spline = SplinesFromPointsNode.eval(subpath);
+		assert_eq!(spline.stroke_bezier_paths().count(), 1);
+		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
+	}
+	#[tokio::test]
+	async fn morph() {
+		let source = VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE * 100.));
+		let target = VectorData::from_subpath(Subpath::new_ellipse(DVec2::NEG_ONE * 100., DVec2::ZERO));
+		let sample_points = MorphNode {
+			source: CullNode::new(FutureWrapperNode(ClonedNode(source))),
+			target: CullNode::new(FutureWrapperNode(ClonedNode(target))),
+			time: FutureWrapperNode(ClonedNode(0.5)),
+			start_index: FutureWrapperNode(ClonedNode(0)),
+		}
+		.eval(Footprint::default())
+		.await;
+		assert_eq!(
+			&sample_points.point_domain.positions()[..4],
+			vec![DVec2::new(-25., -50.), DVec2::new(50., -25.), DVec2::new(25., 50.), DVec2::new(-50., 25.)]
+		);
+	}
 }

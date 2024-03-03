@@ -2375,6 +2375,7 @@ dependencies = [
  "serde",
  "specta",
  "spirv-std",
+ "tokio",
  "usvg 0.39.0",
  "wasm-bindgen",
  "web-sys",

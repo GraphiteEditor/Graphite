@@ -64,3 +64,6 @@ rand = { workspace = true, default-features = false, features = ["std_rng"] }
 workspace = true
 optional = true
 features = ["HtmlCanvasElement"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

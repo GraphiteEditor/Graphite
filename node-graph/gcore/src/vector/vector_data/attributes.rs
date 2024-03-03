@@ -84,6 +84,12 @@ impl PointDomain {
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.positions.extend(other.positions.iter().map(|&pos| transform.transform_point2(pos)));
 	}
+
+	fn transform(&mut self, transform: DAffine2) {
+		for pos in &mut self.positions {
+			*pos = transform.transform_point2(*pos);
+		}
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
@@ -145,6 +151,12 @@ impl SegmentDomain {
 		self.end_point.extend(other.end_point.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.handles.extend(other.handles.iter().map(|handles| handles.apply_transformation(|p| transform.transform_point2(p))));
 		self.stroke.extend(&other.stroke);
+	}
+
+	fn transform(&mut self, transform: DAffine2) {
+		for handles in &mut self.handles {
+			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
+		}
 	}
 }
 
@@ -280,6 +292,12 @@ impl super::VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve for stroke.
 	pub fn stroke_bezier_paths(&self) -> StrokePathIter<'_> {
 		StrokePathIter { vector_data: self, segment_index: 0 }
+	}
+
+	/// Transforms this vector data
+	pub fn transform(&mut self, transform: DAffine2) {
+		self.point_domain.transform(transform);
+		self.segment_domain.transform(transform);
 	}
 }
 
