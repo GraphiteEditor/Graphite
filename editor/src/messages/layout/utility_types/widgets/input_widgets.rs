@@ -80,9 +80,9 @@ pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_holder)]
 pub struct MenuListEntry {
+	#[widget_builder(constructor)]
 	pub value: String,
 
-	#[widget_builder(constructor)]
 	pub label: String,
 
 	pub icon: String,
@@ -294,9 +294,9 @@ pub struct RadioInput {
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_holder)]
 pub struct RadioEntryData {
+	#[widget_builder(constructor)]
 	pub value: String,
 
-	#[widget_builder(constructor)]
 	pub label: String,
 
 	pub icon: String,

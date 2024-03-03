@@ -129,8 +129,12 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			TextLabel::new("Type").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::new("Rectangular").on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGLE)),
-				RadioEntryData::new("Isometric").on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
+				RadioEntryData::new("rectangular")
+					.label("Rectangular")
+					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::RECTANGLE)),
+				RadioEntryData::new("isometric")
+					.label("Isometric")
+					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
 			])
 			.min_width(200)
 			.selected_index(Some(if matches!(grid.grid_type, GridType::Rectangle { .. }) { 0 } else { 1 }))

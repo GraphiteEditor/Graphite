@@ -1163,11 +1163,15 @@ impl DocumentMessageHandler {
 			widgets: vec![
 				DropdownInput::new(
 					vec![vec![
-						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
-						MenuListEntry::new(DocumentMode::SelectMode.to_string())
+						MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
+							.label(DocumentMode::DesignMode.to_string())
+							.icon(DocumentMode::DesignMode.icon_name()),
+						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
+							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						MenuListEntry::new(DocumentMode::GuideMode.to_string())
+						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
+							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
@@ -1257,18 +1261,15 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::default()
-					.value("normal")
+				RadioEntryData::new("normal")
 					.icon("ViewModeNormal")
 					.tooltip("View Mode: Normal")
 					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-				RadioEntryData::default()
-					.value("outline")
+				RadioEntryData::new("outline")
 					.icon("ViewModeOutline")
 					.tooltip("View Mode: Outline")
 					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-				RadioEntryData::default()
-					.value("pixels")
+				RadioEntryData::new("pixels")
 					.icon("ViewModePixels")
 					.tooltip("View Mode: Pixels")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
