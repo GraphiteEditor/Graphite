@@ -165,6 +165,9 @@
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
 
 		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
+		if (window.document.activeElement instanceof HTMLElement) {
+			window.document.activeElement.blur();
+		}
 	}
 
 	// Update rendered SVGs
