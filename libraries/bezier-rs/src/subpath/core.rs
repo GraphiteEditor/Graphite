@@ -217,13 +217,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
-	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, border_radius: f64) -> Self {
+	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radius: f64) -> Self {
 		let new_arc = |center: DVec2, corner: DVec2| -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
 			let point1 = center + DVec2::from_angle(-PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			let point2 = center + DVec2::from_angle(PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			// Based on https://pomax.github.io/bezierinfo/#circles_cubic
 			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
-			let handle_offset = border_radius * HANDLE_OFFSET_FACTOR;
+			let handle_offset = corner_radius * HANDLE_OFFSET_FACTOR;
 			vec![
 				ManipulatorGroup::new_anchor(point1),
 				ManipulatorGroup::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
@@ -233,10 +233,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		};
 		Self::new(
 			[
-				new_arc(DVec2::new(corner1.x + border_radius, corner1.y + border_radius), DVec2::new(corner1.x, corner1.y)),
-				new_arc(DVec2::new(corner2.x - border_radius, corner1.y + border_radius), DVec2::new(corner2.x, corner1.y)),
-				new_arc(DVec2::new(corner2.x - border_radius, corner2.y - border_radius), DVec2::new(corner2.x, corner2.y)),
-				new_arc(DVec2::new(corner1.x + border_radius, corner2.y - border_radius), DVec2::new(corner1.x, corner2.y)),
+				new_arc(DVec2::new(corner1.x + corner_radius, corner1.y + corner_radius), DVec2::new(corner1.x, corner1.y)),
+				new_arc(DVec2::new(corner2.x - corner_radius, corner1.y + corner_radius), DVec2::new(corner2.x, corner1.y)),
+				new_arc(DVec2::new(corner2.x - corner_radius, corner2.y - corner_radius), DVec2::new(corner2.x, corner2.y)),
+				new_arc(DVec2::new(corner1.x + corner_radius, corner2.y - corner_radius), DVec2::new(corner1.x, corner2.y)),
 			]
 			.concat(),
 			true,
