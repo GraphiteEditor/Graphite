@@ -178,8 +178,28 @@
 		return section.filter((entry) => inSearch(search, entry)).slice(virtualScrollingStartIndex, virtualScrollingEndIndex);
 	}
 
-	/// Handles keyboard navigation for the menu. Returns if the entire menu stack should be dismissed
+	function openSubmenu(highlightedEntry: MenuListEntry): boolean {
+		let childReference = getChildReference(highlightedEntry);
+		// No submenu to open
+		if (!childReference || !highlightedEntry.children?.length) return false;
+
+		childReference.open = true;
+		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
+		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
+		highlighted = highlighted;
+
+		// Highlight first item
+		childReference.setHighlighted(highlightedEntry.children[0][0]);
+
+		// Submenu was opened
+		return true;
+	}
+
+	/// Handles keyboard navigation for the menu.
+	// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu: boolean): boolean {
+		console.log("Burp");
+
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive) highlighted = activeEntry;
 
@@ -187,42 +207,35 @@
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
 		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && getChildReference(entry)?.open);
 
-		const openSubmenu = (highlightedEntry: MenuListEntry): boolean => {
-			let childReference = getChildReference(highlightedEntry);
-			// No submenu to open
-			if (!childReference || !highlightedEntry.children?.length) return false;
-
-			childReference.open = true;
-			// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
-			// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `.ref.open` property.
-			highlighted = highlighted;
-
-			// Highlight first item
-			childReference.setHighlighted(highlightedEntry.children[0][0]);
-
-			// Submenu was opened
-			return true;
-		};
-
+		// Allow opening menu with space or enter
 		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
-			// Allow opening menu with space or enter
 			open = true;
 			highlighted = activeEntry;
-		} else if (menuOpen && openChild >= 0) {
+
+			// Keep the menu stack open
+			return false;
+		}
+
+		// If a submenu is open, have it handle this instead
+		if (menuOpen && openChild >= 0) {
+			const childMenuListEntry = flatEntries[openChild];
+			const childMenu = getChildReference(childMenuListEntry);
+
 			// Redirect the keyboard navigation to a submenu if one is open
-			const shouldCloseStack = getChildReference(flatEntries[openChild])?.keydown(e, true);
+			const shouldCloseStack = childMenu?.keydown(e, true);
 
 			// Highlight the menu item in the parent list that corresponds with the open submenu
-			if (e.key !== "Escape" && highlighted) setHighlighted(flatEntries[openChild]);
+			if (highlighted && e.key !== "Escape") setHighlighted(childMenuListEntry);
 
 			// Handle the child closing the entire menu stack
-			if (shouldCloseStack) {
-				open = false;
-				return true;
-			}
-		} else if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-			// Navigate to the next and previous entries with arrow keys
+			if (shouldCloseStack) open = false;
 
+			// Keep the menu stack open
+			return shouldCloseStack;
+		}
+
+		// Navigate to the next and previous entries with arrow keys
+		if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
 			let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
 			if (highlighted) {
 				const index = highlighted ? flatEntries.map((entry) => entry.label).indexOf(highlighted.label) : 0;
@@ -237,13 +250,24 @@
 			setHighlighted(newEntry);
 
 			e.preventDefault();
-		} else if (menuOpen && e.key === "Escape") {
-			// Close menu with escape key
+
+			// Keep the menu stack open
+			return false;
+		}
+
+		// Close menu with escape key
+		if (menuOpen && e.key === "Escape") {
 			open = false;
 
 			// Reset active to before open
 			setHighlighted(activeEntry);
-		} else if (menuOpen && highlighted && e.key === "Enter") {
+
+			// Keep the menu stack open
+			return false;
+		}
+
+		// Click on a highlighted entry with the enter key
+		if (menuOpen && highlighted && e.key === "Enter") {
 			// Handle clicking on an option if enter is pressed
 			if (!highlighted.children?.length) onEntryClick(highlighted);
 			else openSubmenu(highlighted);
@@ -253,24 +277,42 @@
 
 			// Enter should close the entire menu stack
 			return true;
-		} else if (menuOpen && highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
+		}
+
+		// Open a submenu with the right arrow key, space, or enter
+		if (menuOpen && highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
 			// Right arrow opens a submenu
 			const openable = openSubmenu(highlighted);
 
 			// Prevent the right arrow from moving the search text cursor if we are opening a submenu
 			if (openable) e.preventDefault();
-		} else if (menuOpen && e.key === "ArrowLeft") {
+
+			// Keep the menu stack open
+			return false;
+		}
+
+		// Close a submenu with the left arrow key
+		if (menuOpen && e.key === "ArrowLeft") {
 			// Left arrow closes a submenu
 			if (submenu) {
 				open = false;
 
 				e.preventDefault();
 			}
-		} else if (menuOpen && search === "") {
-			startSearch(e);
+
+			// Keep the menu stack open
+			return false;
 		}
 
-		// By default, keep the menu stack open
+		// Start a search with any other key
+		if (menuOpen && search === "") {
+			startSearch(e);
+
+			// Keep the menu stack open
+			return false;
+		}
+
+		// If nothing happened, keep the menu stack open
 		return false;
 	}
 
