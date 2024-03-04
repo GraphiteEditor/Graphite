@@ -52,6 +52,7 @@ impl VectorData {
 			region_domain: RegionDomain::new(),
 		}
 	}
+
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: bezier_rs::Subpath<ManipulatorGroupId>) -> Self {
 		Self::from_subpaths([subpath])

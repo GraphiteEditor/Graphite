@@ -57,13 +57,11 @@ num-derive = { workspace = true }
 num-traits = { workspace = true, default-features = false, features = ["i128"] }
 wasm-bindgen = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
+web-sys = { workspace = true, optional = true, features = [
+	"HtmlCanvasElement",
+] }
 usvg = { workspace = true }
 rand = { workspace = true, default-features = false, features = ["std_rng"] }
-
-[dependencies.web-sys]
-workspace = true
-optional = true
-features = ["HtmlCanvasElement"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
