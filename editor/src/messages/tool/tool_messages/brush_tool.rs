@@ -51,14 +51,11 @@ impl Default for BrushOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Brush)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -68,7 +65,6 @@ pub enum BrushToolMessage {
 	UpdateOptions(BrushToolMessageOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),

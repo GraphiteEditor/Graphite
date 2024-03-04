@@ -30,7 +30,6 @@ pub struct SelectOptions {
 	nested_selection_behavior: NestedSelectionBehavior,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
@@ -60,32 +59,22 @@ pub struct SelectToolPointerKeys {
 	pub duplicate: Key,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Select)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum SelectToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	DragStart {
-		add_to_selection: Key,
-		select_deepest: Key,
-	},
-	DragStop {
-		remove_from_selection: Key,
-	},
+	DragStart { add_to_selection: Key, select_deepest: Key },
+	DragStop { remove_from_selection: Key },
 	EditLayer,
 	Enter,
 	PointerMove(SelectToolPointerKeys),
 	PointerOutsideViewport(SelectToolPointerKeys),
 	SelectOptions(SelectOptionsUpdate),
-	SetPivot {
-		position: PivotPosition,
-	},
+	SetPivot { position: PivotPosition },
 	ShiftViewport,
 }
 

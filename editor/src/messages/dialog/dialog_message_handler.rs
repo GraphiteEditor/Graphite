@@ -17,15 +17,10 @@ pub struct DialogData<'a> {
 }
 
 impl MessageHandler<DialogMessage, DialogData<'_>> for DialogMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, DialogData { portfolio, preferences }: DialogData) {
-		#[remain::sorted]
 		match message {
-			#[remain::unsorted]
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, portfolio),
-			#[remain::unsorted]
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
-			#[remain::unsorted]
 			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, preferences),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {

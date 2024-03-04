@@ -11,21 +11,16 @@ pub struct ImaginateTool {
 	tool_data: ImaginateToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Imaginate)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum ImaginateToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	Resize {
-		center: Key,
-		lock_ratio: Key,
-	},
+	Resize { center: Key, lock_ratio: Key },
 }
 
 impl LayoutHolder for ImaginateTool {

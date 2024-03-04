@@ -42,7 +42,6 @@ impl TransformLayerMessageHandler {
 
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		use TransformLayerMessage::*;
 
@@ -91,7 +90,6 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			selected.original_transforms.clear();
 		};
 
-		#[remain::sorted]
 		match message {
 			ApplyTransformOperation => {
 				selected.original_transforms.clear();

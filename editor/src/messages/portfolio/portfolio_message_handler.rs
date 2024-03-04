@@ -27,12 +27,9 @@ pub struct PortfolioMessageHandler {
 }
 
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
-		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
 			PortfolioMessage::MenuBar(message) => {
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
@@ -44,7 +41,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				self.menu_bar_message_handler.process_message(message, responses, (has_active_document, rulers_visible));
 			}
-			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
@@ -60,7 +56,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 
 			// Messages
-			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentInputs {

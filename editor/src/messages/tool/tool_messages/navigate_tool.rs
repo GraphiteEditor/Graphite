@@ -6,22 +6,15 @@ pub struct NavigateTool {
 	tool_data: NavigateToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Navigate)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum NavigateToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
 
 	// Tool-specific messages
-	ClickZoom {
-		zoom_in: bool,
-	},
-	PointerMove {
-		snap_angle: Key,
-		snap_zoom: Key,
-	},
+	ClickZoom { zoom_in: bool },
+	PointerMove { snap_angle: Key, snap_zoom: Key },
 	RotateCanvasBegin,
 	TransformCanvasEnd,
 	TranslateCanvasBegin,

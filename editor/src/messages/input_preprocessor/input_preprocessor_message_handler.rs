@@ -13,9 +13,7 @@ pub struct InputPreprocessorMessageHandler {
 }
 
 impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputPreprocessorMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, keyboard_platform: KeyboardPlatformLayout) {
-		#[remain::sorted]
 		match message {
 			InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } => {
 				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
