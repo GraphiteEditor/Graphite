@@ -44,7 +44,7 @@
 	$: entries.forEach((_, index) => {
 		if (!childReferences[index]) childReferences[index] = [];
 	});
-	$: watchHighlightedWithSearch(filteredEntries);
+	$: watchHighlightedWithSearch(filteredEntries, open);
 
 	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
@@ -53,8 +53,8 @@
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
 
 	// Required to keep the highlighted item centered and to find a new highlighted item if necessary
-	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][]) {
-		if (highlighted) {
+	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][], open: boolean) {
+		if (highlighted && open) {
 			// Allows the scrollable area to expand if necessary
 			await tick();
 
