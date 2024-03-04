@@ -711,8 +711,8 @@ export type MenuListEntry = MenuEntryCommon & {
 	action?: () => void;
 	children?: MenuListEntry[][];
 
+	value: string;
 	shortcutRequiresLock?: boolean;
-	value?: string;
 	disabled?: boolean;
 	tooltip?: string;
 	font?: URL;

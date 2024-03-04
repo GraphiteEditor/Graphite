@@ -8,7 +8,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const DASH_ENTRY = { label: "-" };
+	const DASH_ENTRY = { value: "", label: "-" };
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
@@ -68,7 +68,6 @@
 		{tooltip}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
-		on:keydown={(e) => menuList?.keydown(e, false)}
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner
 	>

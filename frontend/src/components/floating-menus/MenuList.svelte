@@ -1,10 +1,11 @@
 <svelte:options accessors={true} />
 
 <script lang="ts">
-	import { createEventDispatcher, tick } from "svelte";
+	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
 
 	import type { MenuListEntry } from "@graphite/wasm-communication/messages";
 
+	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -18,7 +19,7 @@
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry }>();
+	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; naturalWidth: number }>();
 
 	export let entries: MenuListEntry[][];
 	export let activeEntry: MenuListEntry | undefined = undefined;
@@ -32,7 +33,7 @@
 	export let tooltip: string | undefined = undefined;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
-	let childReferences: (typeof self)[][] = [];
+	let childReferences: MenuList[][] = [];
 	let search = "";
 
 	let highlighted = activeEntry as MenuListEntry | undefined;
@@ -40,10 +41,8 @@
 
 	// Called only when `open` is changed from outside this component
 	$: watchOpen(open);
+	$: watchEntries(entries);
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
-	$: entries.forEach((_, index) => {
-		if (!childReferences[index]) childReferences[index] = [];
-	});
 	$: watchHighlightedWithSearch(filteredEntries, open);
 
 	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
@@ -52,6 +51,23 @@
 	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
 
+	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
+	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
+	onMount(async () => {
+		await tick();
+		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+	});
+	onDestroy(async () => {
+		await tick();
+		if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+	});
+
+	function inNestedMenuList(): boolean {
+		const div = self?.div();
+		if (!(div instanceof HTMLDivElement)) return false;
+		return Boolean(div.closest("[data-floating-menu-content]"));
+	}
+
 	// Required to keep the highlighted item centered and to find a new highlighted item if necessary
 	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][], open: boolean) {
 		if (highlighted && open) {
@@ -59,7 +75,9 @@
 			await tick();
 
 			const flattened = filteredEntries.flat();
-			setHighlighted(flattened.includes(highlighted) ? highlighted : flattened[0]);
+			const highlightedFound = highlighted?.label && flattened.map((entry) => entry.label).includes(highlighted.label);
+			const newHighlighted = highlightedFound ? highlighted : flattened[0];
+			setHighlighted(newHighlighted);
 		}
 	}
 
@@ -87,11 +105,11 @@
 		searchElement.setSelectionRange(search.length, search.length);
 
 		// Continue listening for keyboard navigation even when the search box is focused
-		searchElement.onkeydown = (e) => {
-			if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-				keydown(e, false);
-			}
-		};
+		// searchElement.onkeydown = (e) => {
+		// 	if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+		// 		keydown(e, false);
+		// 	}
+		// };
 	}
 
 	function inSearch(search: string, entry: MenuListEntry): boolean {
@@ -99,10 +117,19 @@
 	}
 
 	function watchOpen(open: boolean) {
+		if (open && !inNestedMenuList()) addEventListener("keydown", keydown);
+		else if (!inNestedMenuList()) removeEventListener("keydown", keydown);
+
 		highlighted = activeEntry;
 		dispatch("open", open);
 
 		search = "";
+	}
+
+	function watchEntries(entries: MenuListEntry[][]) {
+		entries.forEach((_, index) => {
+			if (!childReferences[index]) childReferences[index] = [];
+		});
 	}
 
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
@@ -114,8 +141,9 @@
 		virtualScrollingEntriesStart = (e.target as HTMLElement)?.scrollTop || 0;
 	}
 
-	function getChildReference(menuListEntry: MenuListEntry): typeof self | undefined {
-		return childReferences.flat().filter((x) => x)[filteredEntries.flat().indexOf(menuListEntry)];
+	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
+		const index = filteredEntries.flat().indexOf(menuListEntry);
+		return childReferences.flat().filter((x) => x)[index];
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
@@ -197,9 +225,7 @@
 
 	/// Handles keyboard navigation for the menu.
 	// Returns a boolean indicating whether the entire menu stack should be dismissed.
-	export function keydown(e: KeyboardEvent, submenu: boolean): boolean {
-		console.log("Burp");
-
+	export function keydown(e: KeyboardEvent, submenu = false): boolean {
 		// Interactive menus should keep the active entry the same as the highlighted one
 		if (interactive) highlighted = activeEntry;
 
@@ -222,7 +248,7 @@
 			const childMenu = getChildReference(childMenuListEntry);
 
 			// Redirect the keyboard navigation to a submenu if one is open
-			const shouldCloseStack = childMenu?.keydown(e, true);
+			const shouldCloseStack = childMenu?.keydown(e, true) || false;
 
 			// Highlight the menu item in the parent list that corresponds with the open submenu
 			if (highlighted && e.key !== "Escape") setHighlighted(childMenuListEntry);
@@ -318,8 +344,11 @@
 
 	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
+
 		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) dispatch("activeEntry", newHighlight);
+		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
+			dispatch("activeEntry", newHighlight);
+		}
 
 		// Scroll into view
 		let container = scroller?.div?.();
@@ -366,15 +395,7 @@
 	bind:this={self}
 >
 	{#if search.length > 0}
-		<TextInput
-			class="search"
-			value={search}
-			on:value={({ detail }) => {
-				search = detail;
-				console.log(detail);
-			}}
-			bind:this={searchTextInput}
-		></TextInput>
+		<TextInput class="search" value={search} on:value={({ detail }) => (search = detail)} bind:this={searchTextInput}></TextInput>
 	{/if}
 	<!-- If we put the scrollableY on the layoutcol for non-font dropdowns then for some reason it always creates a tiny scrollbar.
 	However when we are using the virtual scrolling then we need the layoutcol to be scrolling so we can bind the events without using `self`. -->
@@ -424,8 +445,13 @@
 					{/if}
 
 					{#if entry.children}
-						<svelte:self
-							on:naturalWidth
+						<MenuList
+							on:naturalWidth={() => {
+								// We do a manual dispatch here instead of just `on:naturalWidth` as a workaround for the <script> tag
+								// at the top of this file displaying a "'render' implicitly has return type 'any' because..." error.
+								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
+								dispatch("naturalWidth");
+							}}
 							open={getChildReference(entry)?.open || false}
 							direction="TopRight"
 							entries={entry.children}
@@ -434,7 +460,6 @@
 							{scrollableY}
 							bind:this={childReferences[sectionIndex][entryIndex + startIndex]}
 						/>
-						<!-- TODO: Solve the red underline error on the bind:this above -->
 					{/if}
 				</LayoutRow>
 			{/each}

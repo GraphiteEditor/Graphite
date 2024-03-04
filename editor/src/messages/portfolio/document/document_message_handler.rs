@@ -1180,7 +1180,7 @@ impl DocumentMessageHandler {
 							.icon(DocumentMode::SelectMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
-							.label(DocumentMode::SelectMode.to_string())
+							.label(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
