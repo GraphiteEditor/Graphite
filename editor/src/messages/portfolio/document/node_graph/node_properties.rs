@@ -1508,7 +1508,14 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 		LayoutGroup::Row { widgets }
 	};
-	vec![operand("Size X", 1), operand("Size Y", 2), operand("Corner Radius", 3)]
+	let corner_radius = number_widget(document_node, node_id, 3, "Corner Radius", NumberInput::default(), true);
+	let clamped = bool_widget(document_node, node_id, 4, "Clamped", true);
+	vec![
+		operand("Size X", 1),
+		operand("Size Y", 2),
+		LayoutGroup::Row { widgets: corner_radius },
+		LayoutGroup::Row { widgets: clamped },
+	]
 }
 
 pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

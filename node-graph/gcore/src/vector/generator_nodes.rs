@@ -32,22 +32,24 @@ fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RectangleGenerator<SizeX, SizeY, CornerRadius> {
+pub struct RectangleGenerator<SizeX, SizeY, CornerRadius, Clamped> {
 	size_x: SizeX,
 	size_y: SizeY,
 	corner_radius: CornerRadius,
+	clamped: Clamped,
 }
 
 #[node_macro::node_fn(RectangleGenerator)]
-fn square_generator(_input: (), size_x: f64, size_y: f64, corner_radius: f64) -> VectorData {
+fn square_generator(_input: (), size_x: f64, size_y: f64, corner_radius: f64, clamped: bool) -> VectorData {
+	let clamped_radius = if clamped { corner_radius.clamp(0., size_x.min(size_y) / 2.) } else { corner_radius };
 	let size = DVec2::new(size_x, size_y);
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
 
-	if corner_radius == 0. {
+	if clamped_radius == 0. {
 		super::VectorData::from_subpaths(vec![Subpath::new_rect(corner1, corner2)])
 	} else {
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, corner_radius)])
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, clamped_radius)])
 	}
 }
 
