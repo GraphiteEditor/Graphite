@@ -510,7 +510,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
+	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, is_artboard_layer: bool) {
 		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
@@ -520,7 +520,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let child_layers = layer_node.descendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
 		layer_node.delete(self.document_metadata);
 
-		let new_input = node.inputs[1].clone();
+		let new_input = if is_artboard_layer { node.inputs[0].clone() } else { node.inputs[1].clone() };
 		let deleted_position = node.metadata.position;
 
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
@@ -539,8 +539,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut delete_nodes = vec![id];
 		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
-			// Don't delete the node if other layers depend on it.
-			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
+			// Don't delete the node if other layers depend on it or if it is an artboard layer.
+			if is_artboard_layer || self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
 			}
 			if self.outwards_links.get(&id).is_some_and(|outwards| outwards.len() == 1) {
@@ -564,6 +564,34 @@ impl<'a> ModifyInputsContext<'a> {
 		selected_nodes.retain_selected_nodes(|id| !delete_nodes.contains(id));
 		self.responses.add(BroadcastEvent::SelectionChanged);
 
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn delete_artboard(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
+		let Some(node) = self.document_network.nodes.get(&id) else {
+			warn!("Deleting artboard node that does not exist");
+			return;
+		};
+
+		let new_input = node.inputs[0].clone();
+
+		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
+			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
+				continue;
+			};
+			for input in &mut node.inputs {
+				if let NodeInput::Node { node_id, .. } = input {
+					if *node_id == id {
+						*input = new_input.clone();
+					}
+				}
+			}
+		}
+
+		self.document_network.nodes.remove(&id);
+		selected_nodes.retain_selected_nodes(|&node_id| id != node_id);
+
+		self.responses.add(BroadcastEvent::SelectionChanged);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
@@ -752,15 +780,21 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.delete_layer(id, selected_nodes);
+				modify_inputs.delete_layer(id, selected_nodes, false);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
-					if modify_inputs.document_network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
-						modify_inputs.delete_layer(layer, selected_nodes);
+					let artboards = modify_inputs
+						.document_network
+						.upstream_flow_back_from_nodes(vec![layer], true)
+						.filter_map(|(node, _id)| if node.is_artboard() { Some(_id) } else { None })
+						.collect::<Vec<_>>();
+					for artboard in artboards {
+						modify_inputs.delete_artboard(artboard, selected_nodes);
+						modify_inputs.delete_layer(layer, selected_nodes, true);
 					}
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
