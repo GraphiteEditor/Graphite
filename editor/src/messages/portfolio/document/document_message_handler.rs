@@ -1408,8 +1408,8 @@ impl DocumentMessageHandler {
 				modes
 					.iter()
 					.map(|&blend_mode| {
-						MenuListEntry::new(blend_mode.to_string())
-							.value(blend_mode.to_string())
+						MenuListEntry::new(format!("{blend_mode:?}"))
+							.label(blend_mode.to_string())
 							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
 					})
 					.collect()
