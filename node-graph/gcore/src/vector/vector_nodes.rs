@@ -2,10 +2,11 @@ use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
+use crate::uuid::ManipulatorGroupId;
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, SubpathTValue, TValue};
+use bezier_rs::{Subpath, SubpathTValue, TValue, utils};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -140,8 +141,43 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 pub struct FillFromStrokeNode;
 
 #[node_macro::node_fn(FillFromStrokeNode)]
-fn generate_fill_from_stroke(vector_data: VectorData) -> VectorData {
-	VectorData::default()
+fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
+	// Grab what we need from original data.
+	let VectorData { subpaths, style, .. } = &vector_data;
+	let mut new_subpaths: Vec<Subpath<ManipulatorGroupId>> = Vec::with_capacity(subpaths.len()); // Our output
+
+	// Perform operation on all subpaths in this shape.
+	for mut subpath in subpaths.clone() {
+		let stroke = style.stroke().unwrap();
+
+		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+		let subpath_out = subpath.outline(
+			stroke.weight,
+			match stroke.line_join {
+				crate::vector::style::LineJoin::Miter => Join::Miter(None),
+				crate::vector::style::LineJoin::Bevel => Join::Bevel,
+				crate::vector::style::LineJoin::Round => Join::Round,
+			},
+			match stroke.line_cap {
+				crate::vector::style::LineCap::Butt => Cap::Butt,
+				crate::vector::style::LineCap::Round => Cap::Round,
+				crate::vector::style::LineCap::Square => Cap::Square,
+			},
+		);
+
+		// This is where we determine whether we have a closed or open path. Ex: Line vs oval
+		match subpath_out.1 {
+			Some(_) => subpath = subpath_out.1.unwrap(), // Two closed subpaths
+			None => subpath = subpath_out.0,             // One closed subpath
+		}
+
+		new_subpaths.push(subpath);
+	}
+
+	// Output our new paths and get rid of the stroke since it's been converted.
+	vector_data.subpaths = new_subpaths;
+	vector_data.style.set_stroke(Stroke::default());
+	vector_data
 }
 
 pub trait ConcatElement {
