@@ -105,6 +105,9 @@ pub enum GraphOperationMessage {
 	DeleteLayer {
 		id: NodeId,
 	},
+	DeleteArtboard {
+		id: NodeId,
+	},
 	ClearArtboards,
 	NewSvg {
 		id: NodeId,
