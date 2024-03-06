@@ -34,7 +34,6 @@ serde_json = { workspace = true }
 graphite-proc-macros = { path = "../proc-macros" }
 bezier-rs = { workspace = true }
 glam = { workspace = true, features = ["serde", "debug-glam-assert"] }
-remain = { workspace = true }
 derivative = { workspace = true }
 specta.workspace = true
 image = { workspace = true, features = ["bmp", "png"] }

@@ -271,10 +271,8 @@ impl LayoutMessageHandler {
 }
 
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
 		use LayoutMessage::*;
-		#[remain::sorted]
 		match message {
 			ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
@@ -345,13 +343,11 @@ impl LayoutMessageHandler {
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	#[remain::check]
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		trace!("{layout_target:?} diff {diff:#?}");
 
-		#[remain::sorted]
 		let message = match layout_target {
 			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
@@ -367,7 +363,6 @@ impl LayoutMessageHandler {
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },
 
-			#[remain::unsorted]
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
 		responses.add(message);

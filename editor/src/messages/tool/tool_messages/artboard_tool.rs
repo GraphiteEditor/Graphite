@@ -15,27 +15,18 @@ pub struct ArtboardTool {
 	data: ArtboardToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Artboard)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum ArtboardToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	DeleteSelected,
-	NudgeSelected {
-		delta_x: f64,
-		delta_y: f64,
-	},
+	NudgeSelected { delta_x: f64, delta_y: f64 },
 	PointerDown,
-	PointerMove {
-		constrain_axis_or_aspect: Key,
-		center: Key,
-	},
+	PointerMove { constrain_axis_or_aspect: Key, center: Key },
 	PointerUp,
 }
 

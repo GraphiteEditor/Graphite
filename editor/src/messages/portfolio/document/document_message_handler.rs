@@ -235,7 +235,6 @@ pub struct DocumentInputs<'a> {
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
 		let DocumentInputs {
 			document_id,
@@ -245,10 +244,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		} = document_inputs;
 		use DocumentMessage::*;
 
-		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
 				self.navigation_handler.process_message(
@@ -257,11 +254,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					(&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport(), &mut self.navigation),
 				);
 			}
-			#[remain::unsorted]
 			Overlays(message) => {
 				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, ipp));
 			}
-			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					node_graph_message_handler: &self.node_graph_handler,
@@ -274,7 +269,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
-			#[remain::unsorted]
 			NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
@@ -291,7 +285,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					},
 				);
 			}
-			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(
 				message,
 				responses,

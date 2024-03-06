@@ -17,7 +17,6 @@ pub struct ToolMessageHandler {
 }
 
 impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor)> for ToolMessageHandler {
-	#[remain::check]
 	fn process_message(
 		&mut self,
 		message: ToolMessage,
@@ -26,49 +25,30 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 	) {
 		let font_cache = &persistent_data.font_cache;
 
-		#[remain::sorted]
 		match message {
 			// Messages
-			#[remain::unsorted]
 			ToolMessage::TransformLayer(message) => self
 				.transform_layer_handler
 				.process_message(message, responses, (document, input, &self.tool_state.tool_data, &mut self.shape_editor)),
 
-			#[remain::unsorted]
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolNavigate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Navigate }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolEyedropper => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Eyedropper }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolText => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolFill => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Fill }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
 
-			#[remain::unsorted]
 			ToolMessage::ActivateToolPath => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolLine => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Line }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolRectangle => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Rectangle }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolEllipse => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Ellipse }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolPolygon => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Polygon }),
 
-			#[remain::unsorted]
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
-			#[remain::unsorted]
 			ToolMessage::ActivateToolImaginate => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Imaginate }),
 
 			ToolMessage::ActivateTool { tool_type } => {
@@ -241,7 +221,6 @@ impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPre
 			}
 
 			// Sub-messages
-			#[remain::unsorted]
 			tool_message => {
 				let tool_type = match &tool_message {
 					ToolMessage::UpdateCursor | ToolMessage::UpdateHints => self.tool_state.tool_data.active_tool_type,

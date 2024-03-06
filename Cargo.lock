@@ -2453,7 +2453,6 @@ dependencies = [
  "log",
  "num_enum 0.6.1",
  "once_cell",
- "remain",
  "serde",
  "serde_json",
  "specta",
@@ -4754,17 +4753,6 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
-
-[[package]]
-name = "remain"
-version = "0.2.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad9f2390298a947ee0aa6073d440e221c0726188cfbcdf9604addb6ee393eb4a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.52",
-]
 
 [[package]]
 name = "renderdoc-sys"

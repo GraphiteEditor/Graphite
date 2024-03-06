@@ -39,16 +39,12 @@ impl Default for FreehandOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Freehand)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -58,7 +54,6 @@ pub enum FreehandToolMessage {
 	UpdateOptions(FreehandOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum FreehandOptionsUpdate {
 	FillColor(Option<Color>),

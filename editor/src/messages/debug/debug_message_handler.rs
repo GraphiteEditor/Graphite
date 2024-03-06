@@ -7,7 +7,6 @@ pub struct DebugMessageHandler {
 }
 
 impl MessageHandler<DebugMessage, ()> for DebugMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: DebugMessage, responses: &mut VecDeque<Message>, _data: ()) {
 		match message {
 			DebugMessage::ToggleTraceLogs => {

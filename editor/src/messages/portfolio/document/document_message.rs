@@ -12,24 +12,18 @@ use graphene_core::Color;
 
 use serde::{Deserialize, Serialize};
 
-#[remain::sorted]
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	// Sub-messages
-	#[remain::unsorted]
 	#[child]
 	Navigation(NavigationMessage),
-	#[remain::unsorted]
 	#[child]
 	Overlays(OverlaysMessage),
-	#[remain::unsorted]
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
-	#[remain::unsorted]
 	#[child]
 	NodeGraph(NodeGraphMessage),
-	#[remain::unsorted]
 	#[child]
 	GraphOperation(GraphOperationMessage),
 
