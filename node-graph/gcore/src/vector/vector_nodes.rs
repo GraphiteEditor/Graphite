@@ -166,22 +166,24 @@ fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
 		);
 
 		// This is where we determine whether we have a closed or open path. Ex: Line vs oval
-		match subpath_out.1 {
-			Some(_) => {
-				// Two closed subpaths, closed shape.
-				new_subpaths.push(subpath_out.0);
-				new_subpaths.push(subpath_out.1.unwrap());
-			}
-
-			None => {
-				// One closed subpath, open path.
-				new_subpaths.push(subpath_out.0);
-			}
+		if subpath_out.1.is_some() {
+			// Two closed subpaths, closed shape.
+			new_subpaths.push(subpath_out.0);
+			new_subpaths.push(subpath_out.1.unwrap());
+		} else {
+			// One closed subpath, open path.
+			new_subpaths.push(subpath_out.0);
 		}
 	}
 
 	// Output our new paths and get rid of the stroke since it's been converted.
 	vector_data.subpaths = new_subpaths;
+
+	//
+	if let Some(stroke) = vector_data.style.stroke() {
+		vector_data.style.set_fill(Fill::solid_or_none(stroke.color));
+	}
+
 	vector_data.style.set_stroke(Stroke::default());
 	vector_data
 }
