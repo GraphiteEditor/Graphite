@@ -6,7 +6,7 @@ use crate::uuid::ManipulatorGroupId;
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, SubpathTValue, TValue, utils};
+use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -154,7 +154,7 @@ fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
 		let subpath_out = subpath.outline(
 			stroke.weight,
 			match stroke.line_join {
-				crate::vector::style::LineJoin::Miter => Join::Miter(None),
+				crate::vector::style::LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
 				crate::vector::style::LineJoin::Bevel => Join::Bevel,
 				crate::vector::style::LineJoin::Round => Join::Round,
 			},
