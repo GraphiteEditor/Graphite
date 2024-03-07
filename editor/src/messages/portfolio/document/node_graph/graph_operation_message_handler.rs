@@ -523,6 +523,42 @@ impl<'a> ModifyInputsContext<'a> {
 		let new_input = if is_artboard_layer { node.inputs[0].clone() } else { node.inputs[1].clone() };
 		let deleted_position = node.metadata.position;
 
+		let new_input_artboard_layer = node.inputs[1].clone();
+		if is_artboard_layer {
+			if let Some(new_input_id) = new_input.as_node() {
+				let mut final_layer_node_id = new_input_id.clone();
+				while let Some(input_id) = self
+					.document_network
+					.nodes
+					.get(&final_layer_node_id)
+					.and_then(|input_node| input_node.inputs.get(1).and_then(|x| x.as_node()))
+				{
+					final_layer_node_id = input_id;
+				}
+				{
+					if let Some(final_layer_node) = self.document_network.nodes.get_mut(&final_layer_node_id) {
+						final_layer_node.inputs[1] = new_input_artboard_layer.clone();
+					}
+				}
+				if let Some(final_layer_node) = self.document_network.nodes.get(&final_layer_node_id) {
+					if let Some(new_input_artboard_layer_id) = new_input_artboard_layer.as_node() {
+						if let Some(new_input_artboard_layer_node) = self.document_network.nodes.get(&new_input_artboard_layer_id) {
+							let shift = final_layer_node.metadata.position - new_input_artboard_layer_node.metadata.position + IVec2::new(0, 3);
+							for node_id in self
+								.document_network
+								.upstream_flow_back_from_nodes(vec![new_input_artboard_layer_id], false)
+								.map(|(_, id)| id)
+								.collect::<Vec<_>>()
+							{
+								let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
+								node.metadata.position += shift;
+							}
+						}
+					}
+				}
+			}
+		}
+
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
 			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
 				continue;
