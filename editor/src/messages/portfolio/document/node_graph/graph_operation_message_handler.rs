@@ -680,8 +680,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				alias,
 			} => {
 				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
-				debug!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
-				// debug!("The Node is {:#?}", nodes);
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
@@ -753,8 +751,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
-				debug!("Deleting layer {id}");
-				debug!("Selected nodes: {selected_nodes:?}");
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				modify_inputs.delete_layer(id, selected_nodes);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
