@@ -510,7 +510,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, is_artboard_layer: bool) {
+	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, mut is_artboard_layer: bool) {
 		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
@@ -520,7 +520,16 @@ impl<'a> ModifyInputsContext<'a> {
 		let child_layers = layer_node.descendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
 		layer_node.delete(self.document_metadata);
 
-		let new_input = if is_artboard_layer { node.inputs[0].clone() } else { node.inputs[1].clone() };
+		let new_input = if is_artboard_layer {
+			if let NodeInput::Value { .. } = &node.inputs[0] {
+				is_artboard_layer = false;
+				node.inputs[1].clone()
+			} else {
+				node.inputs[0].clone()
+			}
+		} else {
+			node.inputs[1].clone()
+		};
 		let deleted_position = node.metadata.position;
 
 		let new_input_artboard_layer = node.inputs[1].clone();
