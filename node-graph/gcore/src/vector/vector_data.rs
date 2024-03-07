@@ -1,9 +1,11 @@
 mod attributes;
+mod modification;
 
 use super::style::{PathStyle, Stroke};
 use crate::Color;
 use crate::{uuid::ManipulatorGroupId, AlphaBlending};
 pub use attributes::*;
+pub use modification::*;
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};

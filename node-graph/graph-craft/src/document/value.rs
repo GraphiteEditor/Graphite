@@ -73,6 +73,7 @@ pub enum TaggedValue {
 	Footprint(graphene_core::transform::Footprint),
 	RenderOutput(RenderOutput),
 	Palette(Vec<Color>),
+	VectorModification(graphene_core::vector::VectorModification),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -150,6 +151,7 @@ impl Hash for TaggedValue {
 			Self::Footprint(x) => x.hash(state),
 			Self::RenderOutput(x) => x.hash(state),
 			Self::Palette(x) => x.hash(state),
+			Self::VectorModification(x) => x.hash(state),
 		}
 	}
 }
@@ -214,6 +216,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(x) => Box::new(x),
 			TaggedValue::RenderOutput(x) => Box::new(x),
 			TaggedValue::Palette(x) => Box::new(x),
+			TaggedValue::VectorModification(x) => Box::new(x),
 		}
 	}
 
@@ -290,6 +293,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 			TaggedValue::Palette(_) => concrete!(Vec<Color>),
+			TaggedValue::VectorModification(_) => concrete!(graphene_core::vector::VectorModification),
 		}
 	}
 
@@ -357,6 +361,7 @@ impl<'a> TaggedValue {
 			}
 			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<Color>>() => Ok(TaggedValue::Palette(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::VectorModification>() => Ok(TaggedValue::VectorModification(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}

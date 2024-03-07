@@ -2445,6 +2445,37 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Path Modify",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				inputs: vec![NodeId(0), NodeId(1)],
+				outputs: vec![NodeOutput::new(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						inputs: vec![NodeInput::Network(concrete!(VectorData))],
+						..monitor_node()
+					},
+					DocumentNode {
+						name: "Path Modify".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(graphene_core::vector::VectorModification))],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::PathModify<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
+				DocumentInputType::value("Modification", TaggedValue::VectorModification(Default::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector Data", FrontendGraphDataType::Subpath)],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Sample",
 			category: "Structural",
 			implementation: DocumentNodeImplementation::proto("graphene_std::raster::SampleNode<_>"),
