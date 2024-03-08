@@ -531,6 +531,22 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(DocumentMessage::ImaginateGenerate);
 				}
 			}
+			ImportSvg {
+				id,
+				svg,
+				transform,
+				parent,
+				insert_index,
+			} => {
+				self.backup(responses);
+				responses.add(GraphOperationMessage::NewSvg {
+					id,
+					svg,
+					transform,
+					parent,
+					insert_index,
+				});
+			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
 
