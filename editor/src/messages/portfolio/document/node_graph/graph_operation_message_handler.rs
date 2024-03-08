@@ -517,7 +517,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		let layer_node = LayerNodeIdentifier::new(id, self.document_network);
-		let child_layers = layer_node.decendants(self.document_metadata).map(|id| id.to_node()).collect::<Vec<_>>();
+		let child_layers = layer_node.decendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
 		layer_node.delete(self.document_metadata);
 
 		let new_input = node.inputs[1].clone();
