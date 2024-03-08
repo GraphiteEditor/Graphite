@@ -430,7 +430,6 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				// This can happen in any state (which is why we return self)
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {

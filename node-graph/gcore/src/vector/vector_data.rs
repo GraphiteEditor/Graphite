@@ -1,6 +1,8 @@
 mod attributes;
 mod modification;
 
+use core::borrow::Borrow;
+
 use super::style::{PathStyle, Stroke};
 use crate::Color;
 use crate::{uuid::ManipulatorGroupId, AlphaBlending};
@@ -61,7 +63,8 @@ impl VectorData {
 	}
 
 	/// Push a subpath to the vector data
-	pub fn append_subpath<Id: bezier_rs::Identifier + Into<PointId> + Copy>(&mut self, subpath: bezier_rs::Subpath<Id>) {
+	pub fn append_subpath<Id: bezier_rs::Identifier + Into<PointId> + Copy>(&mut self, subpath: impl Borrow<bezier_rs::Subpath<Id>>) {
+		let subpath = subpath.borrow();
 		for point in subpath.manipulator_groups() {
 			self.point_domain.push(point.id.into(), point.anchor);
 		}
@@ -94,7 +97,7 @@ impl VectorData {
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
-	pub fn from_subpaths(subpaths: impl IntoIterator<Item = bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
+	pub fn from_subpaths<Id: bezier_rs::Identifier + Into<PointId> + Copy>(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<Id>>>) -> Self {
 		let mut vector_data = Self::empty();
 
 		for subpath in subpaths.into_iter() {

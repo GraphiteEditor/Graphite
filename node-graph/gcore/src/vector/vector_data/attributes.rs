@@ -56,7 +56,7 @@ impl PointDomain {
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&PointId) -> bool) {
-		let mut keep = self.id.iter().map(|id| f(id));
+		let mut keep = self.id.iter().map(&f);
 		self.positions.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(f);
 	}
@@ -137,13 +137,13 @@ impl SegmentDomain {
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool) {
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.start_point.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.end_point.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.handles.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.stroke.retain(|_| keep.next().unwrap_or_default());
 		self.ids.retain(f);
 	}
@@ -227,11 +227,11 @@ impl RegionDomain {
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.segment_range.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.ids.iter().map(|id| f(id));
+		let mut keep = self.ids.iter().map(&f);
 		self.fill.retain(|_| keep.next().unwrap_or_default());
-		self.ids.retain(f);
+		self.ids.retain(&f);
 	}
 
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
@@ -363,6 +363,7 @@ impl super::VectorData {
 	}
 }
 
+#[derive(Clone)]
 pub struct StrokePathIter<'a> {
 	vector_data: &'a super::VectorData,
 	segment_index: usize,

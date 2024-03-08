@@ -57,6 +57,8 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	/// The current click targets for layer nodes.
 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	/// Vector data in vector modify nodes
+	vector_modify: HashMap<NodeId, VectorData>,
 	/// The current upstream transforms for nodes.
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 }
@@ -89,6 +91,7 @@ pub(crate) struct ExecutionResponse {
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<Message>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	resolved_types: ResolvedDocumentNodeTypes,
 	node_graph_errors: GraphErrors,
@@ -136,6 +139,7 @@ impl NodeRuntime {
 
 			thumbnail_renders: Default::default(),
 			click_targets: HashMap::new(),
+			vector_modify: HashMap::new(),
 			upstream_transforms: HashMap::new(),
 		}
 	}
@@ -166,6 +170,7 @@ impl NodeRuntime {
 						result,
 						responses,
 						new_click_targets: self.click_targets.clone().into_iter().map(|(id, targets)| (LayerNodeIdentifier::new_unchecked(id), targets)).collect(),
+						new_vector_modify: self.vector_modify.clone(),
 						new_upstream_transforms: self.upstream_transforms.clone(),
 						resolved_types: self.resolved_types.clone(),
 						node_graph_errors: core::mem::take(&mut self.node_graph_errors),
@@ -312,6 +317,9 @@ impl NodeRuntime {
 					});
 					*old_thumbnail_svg = new_thumbnail_svg;
 				}
+			} else if let Some(record) = introspected_data.downcast_ref::<IORecord<Footprint, VectorData>>() {
+				// Insert the vector modify if we are dealing with vector data
+				self.vector_modify.insert(parent_network_node_id, record.output.clone());
 			}
 
 			// If this is `VectorData`, `ImageFrame`, or `GraphicElement` data:
@@ -543,6 +551,7 @@ impl NodeGraphExecutor {
 						result,
 						responses: existing_responses,
 						new_click_targets,
+						new_vector_modify,
 						new_upstream_transforms,
 						resolved_types,
 						node_graph_errors,
@@ -556,13 +565,13 @@ impl NodeGraphExecutor {
 
 					let Ok(node_graph_output) = result else {
 						// Clear the click targets while the graph is in an un-renderable state
-						document.metadata.update_click_targets(HashMap::new());
+						document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
 
 						return Err("Node graph evaluation failed".to_string());
 					};
 
 					document.metadata.update_transforms(new_upstream_transforms);
-					document.metadata.update_click_targets(new_click_targets);
+					document.metadata.update_from_monitor(new_click_targets, new_vector_modify);
 
 					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
 					if let Some(export_config) = execution_context.export_config {

@@ -26,13 +26,15 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	for layer in document.selected_nodes.selected_layers(document.metadata()) {
-		let Some(subpaths) = get_subpaths(layer, &document.network) else { continue };
+		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+			continue;
+		};
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
-		overlay_context.outline(subpaths.iter(), transform);
+		overlay_context.outline(vector_data.stroke_bezier_paths(), transform);
 
-		for manipulator_group in get_manipulator_groups(subpaths) {
+		let mut manipulator_overlay = |manipulator_group: &bezier_rs::ManipulatorGroup<graphene_std::vector::PointId>| {
 			let anchor = manipulator_group.anchor;
 			let anchor_position = transform.transform_point2(anchor);
 
@@ -40,15 +42,21 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 			if let Some(in_handle) = manipulator_group.in_handle.filter(not_under_anchor) {
 				let handle_position = transform.transform_point2(in_handle);
 				overlay_context.line(handle_position, anchor_position, None);
-				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle)));
+				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id.into(), SelectedType::InHandle)));
 			}
 			if let Some(out_handle) = manipulator_group.out_handle.filter(not_under_anchor) {
 				let handle_position = transform.transform_point2(out_handle);
 				overlay_context.line(handle_position, anchor_position, None);
-				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle)));
+				overlay_context.manipulator_handle(handle_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id.into(), SelectedType::OutHandle)));
 			}
 
-			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor)), None);
+			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id.into(), SelectedType::Anchor)), None);
+		};
+
+		for subpath in vector_data.stroke_bezier_paths() {
+			for manipulator in subpath.manipulator_groups() {
+				manipulator_overlay(manipulator);
+			}
 		}
 	}
 }
