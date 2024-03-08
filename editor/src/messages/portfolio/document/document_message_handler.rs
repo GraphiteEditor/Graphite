@@ -531,6 +531,36 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(DocumentMessage::ImaginateGenerate);
 				}
 			}
+			ImportSvg {
+				id,
+				svg,
+				transform,
+				parent,
+				insert_index,
+			} => {
+				match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+					Ok(_) => {
+						//Writing serdes deserializer would literally be an implementation of usvg::to_string.
+						//No point in doing that IMHO hence why we just repeat the same process, even though
+						//it technically leads to a dead match branch further down the stack
+						self.backup(responses);
+						responses.add(GraphOperationMessage::NewSvg {
+							id,
+							svg,
+							transform,
+							parent,
+							insert_index,
+						});
+					}
+					Err(e) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "SVG parsing failed".to_string(),
+							description: e.to_string(),
+						});
+						return;
+					}
+				};
+			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
 
