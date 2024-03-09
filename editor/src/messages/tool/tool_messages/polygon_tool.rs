@@ -37,25 +37,18 @@ impl Default for PolygonOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Polygon)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PolygonToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	PointerMove {
-		center: Key,
-		lock_ratio: Key,
-	},
+	PointerMove { center: Key, lock_ratio: Key },
 	UpdateOptions(PolygonOptionsUpdate),
 }
 
@@ -65,7 +58,6 @@ pub enum PrimitiveShapeType {
 	Star = 1,
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PolygonOptionsUpdate {
 	FillColor(Option<Color>),
@@ -103,8 +95,12 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 
 fn create_star_option_widget(primitive_shape_type: PrimitiveShapeType) -> WidgetHolder {
 	let entries = vec![
-		RadioEntryData::new("Polygon").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
-		RadioEntryData::new("Star").on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
+		RadioEntryData::new("polygon")
+			.label("Polygon")
+			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
+		RadioEntryData::new("star")
+			.label("Star")
+			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
 	];
 	RadioInput::new(entries).selected_index(Some(primitive_shape_type as u32)).widget_holder()
 }

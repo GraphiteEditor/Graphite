@@ -19,16 +19,12 @@ pub struct PathTool {
 	tool_data: PathToolData,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Path)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
-	#[remain::unsorted]
 	SelectionChanged,
 
 	// Tool-specific messages
@@ -125,8 +121,8 @@ impl LayoutHolder for PathTool {
 		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
 		let manipulator_angle_options = vec![
-			RadioEntryData::new("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
-			RadioEntryData::new("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
+			RadioEntryData::new("smooth").label("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
+			RadioEntryData::new("sharp").label("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
 		];
 		let manipulator_angle_index = manipulator_angle.and_then(|angle| match angle {
 			ManipulatorAngle::Smooth => Some(0),

@@ -51,14 +51,11 @@ impl Default for BrushOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Brush)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -68,7 +65,6 @@ pub enum BrushToolMessage {
 	UpdateOptions(BrushToolMessageOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),
@@ -167,8 +163,8 @@ impl LayoutHolder for BrushTool {
 				group
 					.iter()
 					.map(|blend_mode| {
-						MenuListEntry::new(format!("{blend_mode}"))
-							.value(format!("{blend_mode:?}"))
+						MenuListEntry::new(format!("{blend_mode:?}"))
+							.label(blend_mode.to_string())
 							.on_update(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
 					})
 					.collect()
@@ -427,6 +423,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 		nodes: HashMap::from([(NodeId(0), brush_node)]),
 		parent: document.new_layer_parent(),
 		insert_index: -1,
+		alias: String::new(),
 	});
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 

@@ -4,13 +4,10 @@ use graphite_proc_macros::*;
 
 use serde::{Deserialize, Serialize};
 
-#[remain::sorted]
 #[impl_message]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Message {
-	#[remain::unsorted]
 	NoOp,
-	#[remain::unsorted]
 	Init,
 
 	#[child]

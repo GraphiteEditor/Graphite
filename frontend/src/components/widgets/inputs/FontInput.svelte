@@ -104,16 +104,7 @@
 
 <!-- TODO: Combine this widget into the DropdownInput widget -->
 <LayoutRow class="font-input">
-	<LayoutRow
-		class="dropdown-box"
-		classes={{ disabled }}
-		styles={{ "min-width": `${minWidth}px` }}
-		{tooltip}
-		tabindex={disabled ? -1 : 0}
-		on:click={toggleOpen}
-		on:keydown={(e) => menuList?.keydown(e, false)}
-		data-floating-menu-spawner
-	>
+	<LayoutRow class="dropdown-box" classes={{ disabled }} styles={{ "min-width": `${minWidth}px` }} {tooltip} tabindex={disabled ? -1 : 0} on:click={toggleOpen} data-floating-menu-spawner>
 		<TextLabel class="dropdown-label">{activeEntry?.value || ""}</TextLabel>
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>

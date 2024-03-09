@@ -10,26 +10,20 @@ use graphene_core::raster::Image;
 use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
+use glam::DAffine2;
 use serde::{Deserialize, Serialize};
-
-#[remain::sorted]
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
 	// Sub-messages
-	#[remain::unsorted]
 	#[child]
 	Navigation(NavigationMessage),
-	#[remain::unsorted]
 	#[child]
 	Overlays(OverlaysMessage),
-	#[remain::unsorted]
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
-	#[remain::unsorted]
 	#[child]
 	NodeGraph(NodeGraphMessage),
-	#[remain::unsorted]
 	#[child]
 	GraphOperation(GraphOperationMessage),
 
@@ -42,6 +36,7 @@ pub enum DocumentMessage {
 	BackupDocument {
 		network: NodeNetwork,
 	},
+	ClearArtboards,
 	ClearLayersPanel,
 	CommitTransaction,
 	CreateEmptyFolder {
@@ -72,6 +67,13 @@ pub enum DocumentMessage {
 	ImaginateRandom {
 		imaginate_node: Vec<NodeId>,
 		then_generate: bool,
+	},
+	ImportSvg {
+		id: NodeId,
+		svg: String,
+		transform: DAffine2,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
 	},
 	MoveSelectedLayersTo {
 		parent: LayerNodeIdentifier,

@@ -17,6 +17,10 @@
 	export let centered = false;
 	export let minWidth = 0;
 
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+
 	let self: FieldInput | undefined;
 	let editing = false;
 
@@ -50,11 +54,15 @@
 	export function focus() {
 		self?.focus();
 	}
+
+	export function element(): HTMLInputElement | HTMLTextAreaElement | undefined {
+		return self?.element();
+	}
 </script>
 
 <FieldInput
-	class="text-input"
-	classes={{ centered }}
+	class={`text-input ${className}`.trim()}
+	classes={{ centered, ...classes }}
 	styles={{ "min-width": minWidth > 0 ? `${minWidth}px` : undefined }}
 	{value}
 	on:value
@@ -71,6 +79,8 @@
 
 <style lang="scss" global>
 	.text-input {
+		flex-shrink: 0;
+
 		input {
 			text-align: left;
 		}

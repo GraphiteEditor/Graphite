@@ -516,7 +516,9 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		LayerNodeIdentifier::new(id, self.document_network).delete(self.document_metadata);
+		let layer_node = LayerNodeIdentifier::new(id, self.document_network);
+		let child_layers = layer_node.decendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
+		layer_node.delete(self.document_metadata);
 
 		let new_input = node.inputs[1].clone();
 		let deleted_position = node.metadata.position;
@@ -536,7 +538,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut delete_nodes = vec![id];
-		for (_node, id) in self.document_network.upstream_flow_back_from_nodes(vec![id], true) {
+		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
 			// Don't delete the node if other layers depend on it.
 			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
@@ -670,13 +672,23 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 					modify_inputs.insert_image_data(image_frame, layer);
 				}
 			}
-			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
+			GraphOperationMessage::NewCustomLayer {
+				id,
+				nodes,
+				parent,
+				insert_index,
+				alias,
+			} => {
 				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+
+					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
+						node.alias = alias.clone();
+					}
 
 					let shift = nodes
 						.get(&NodeId(0))
@@ -763,6 +775,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
 					Err(e) => {
+						responses.add(DocumentMessage::DocumentHistoryBackward);
 						responses.add(DialogMessage::DisplayDialogError {
 							title: "SVG parsing failed".to_string(),
 							description: e.to_string(),

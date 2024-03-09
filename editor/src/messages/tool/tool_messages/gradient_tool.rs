@@ -19,28 +19,22 @@ pub struct GradientOptions {
 	gradient_type: GradientType,
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Gradient)]
 #[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	DeleteStop,
 	InsertStop,
 	PointerDown,
-	PointerMove {
-		constrain_axis: Key,
-	},
+	PointerMove { constrain_axis: Key },
 	PointerUp,
 	UpdateOptions(GradientOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
@@ -88,12 +82,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Gradien
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear")
-				.value("linear")
+			RadioEntryData::new("linear")
+				.label("Linear")
 				.tooltip("Linear Gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Linear)).into()),
-			RadioEntryData::new("Radial")
-				.value("radial")
+			RadioEntryData::new("radial")
+				.label("Radial")
 				.tooltip("Radial Gradient")
 				.on_update(move |_| GradientToolMessage::UpdateOptions(GradientOptionsUpdate::Type(GradientType::Radial)).into()),
 		])

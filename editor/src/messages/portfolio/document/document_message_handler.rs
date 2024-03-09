@@ -235,7 +235,6 @@ pub struct DocumentInputs<'a> {
 }
 
 impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
 		let DocumentInputs {
 			document_id,
@@ -245,10 +244,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 		} = document_inputs;
 		use DocumentMessage::*;
 
-		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
 			Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
 				self.navigation_handler.process_message(
@@ -257,11 +254,9 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					(&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport(), &mut self.navigation),
 				);
 			}
-			#[remain::unsorted]
 			Overlays(message) => {
 				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, ipp));
 			}
-			#[remain::unsorted]
 			PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					node_graph_message_handler: &self.node_graph_handler,
@@ -274,7 +269,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
-			#[remain::unsorted]
 			NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
@@ -291,7 +285,6 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					},
 				);
 			}
-			#[remain::unsorted]
 			GraphOperation(message) => GraphOperationMessageHandler.process_message(
 				message,
 				responses,
@@ -346,6 +339,10 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 			}
 			BackupDocument { network } => self.backup_with_document(network, responses),
+			ClearArtboards => {
+				self.backup(responses);
+				responses.add(GraphOperationMessage::ClearArtboards);
+			}
 			ClearLayersPanel => {
 				// Send an empty layer list
 				let data_buffer: RawBuffer = Self::default().serialize_root();
@@ -366,6 +363,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: -1,
+					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
@@ -419,7 +417,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 
 					let id = NodeId(generate_uuid());
 					let insert_index = -1;
-					responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index });
+					responses.add(GraphOperationMessage::NewCustomLayer {
+						id,
+						nodes,
+						parent,
+						insert_index,
+						alias: String::new(),
+					});
 				}
 			}
 			FlipSelectedLayers { flip_axis } => {
@@ -497,6 +501,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					nodes: HashMap::new(),
 					parent,
 					insert_index: calculated_insert_index.unwrap_or(-1),
+					alias: String::new(),
 				});
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
@@ -525,6 +530,22 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				if then_generate {
 					responses.add(DocumentMessage::ImaginateGenerate);
 				}
+			}
+			ImportSvg {
+				id,
+				svg,
+				transform,
+				parent,
+				insert_index,
+			} => {
+				self.backup(responses);
+				responses.add(GraphOperationMessage::NewSvg {
+					id,
+					svg,
+					transform,
+					parent,
+					insert_index,
+				});
 			}
 			MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
@@ -1151,11 +1172,15 @@ impl DocumentMessageHandler {
 			widgets: vec![
 				DropdownInput::new(
 					vec![vec![
-						MenuListEntry::new(DocumentMode::DesignMode.to_string()).icon(DocumentMode::DesignMode.icon_name()),
-						MenuListEntry::new(DocumentMode::SelectMode.to_string())
+						MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
+							.label(DocumentMode::DesignMode.to_string())
+							.icon(DocumentMode::DesignMode.icon_name()),
+						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
+							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-						MenuListEntry::new(DocumentMode::GuideMode.to_string())
+						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
+							.label(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
 							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
@@ -1245,18 +1270,15 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::default()
-					.value("normal")
+				RadioEntryData::new("normal")
 					.icon("ViewModeNormal")
 					.tooltip("View Mode: Normal")
 					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-				RadioEntryData::default()
-					.value("outline")
+				RadioEntryData::new("outline")
 					.icon("ViewModeOutline")
 					.tooltip("View Mode: Outline")
 					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-				RadioEntryData::default()
-					.value("pixels")
+				RadioEntryData::new("pixels")
 					.icon("ViewModePixels")
 					.tooltip("View Mode: Pixels")
 					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
@@ -1395,8 +1417,8 @@ impl DocumentMessageHandler {
 				modes
 					.iter()
 					.map(|&blend_mode| {
-						MenuListEntry::new(blend_mode.to_string())
-							.value(blend_mode.to_string())
+						MenuListEntry::new(format!("{blend_mode:?}"))
+							.label(blend_mode.to_string())
 							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
 					})
 					.collect()

@@ -27,12 +27,9 @@ pub struct PortfolioMessageHandler {
 }
 
 impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
-		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
 			PortfolioMessage::MenuBar(message) => {
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
@@ -44,7 +41,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 
 				self.menu_bar_message_handler.process_message(message, responses, (has_active_document, rulers_visible));
 			}
-			#[remain::unsorted]
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
@@ -60,7 +56,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 
 			// Messages
-			#[remain::unsorted]
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentInputs {
@@ -171,15 +166,18 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document
+					let binding = active_document
 						.metadata()
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()))
-					{
-						let Some(layer) = layer_path.last().copied() else {
-							continue;
-						};
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
+					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
+
+					let ordered_last_elements: Vec<_> = active_document.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect();
+
+					for layer in ordered_last_elements {
 						let node = layer.to_node();
+						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
+
 						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
 							continue;
 						};
@@ -197,6 +195,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							collapsed: false,
+							alias: previous_alias,
 						});
 					}
 				};
@@ -375,6 +374,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							nodes: entry.nodes.clone(),
 							parent,
 							insert_index,
+							alias: entry.alias.clone(),
 						});
 						if entry.selected {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
@@ -408,6 +408,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 								nodes: entry.nodes,
 								parent,
 								insert_index: -1,
+								alias: entry.alias,
 							});
 							if entry.selected {
 								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });

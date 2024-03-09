@@ -6,12 +6,9 @@ pub struct BroadcastMessageHandler {
 }
 
 impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: BroadcastMessage, responses: &mut VecDeque<Message>, _data: ()) {
-		#[remain::sorted]
 		match message {
 			// Sub-messages
-			#[remain::unsorted]
 			BroadcastMessage::TriggerEvent(event) => {
 				for message in self.listeners.entry(event).or_default() {
 					responses.add_front(message.clone())

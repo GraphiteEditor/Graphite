@@ -40,32 +40,23 @@ impl Default for TextOptions {
 	}
 }
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, Text)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
-	#[remain::unsorted]
 	Abort,
-	#[remain::unsorted]
 	WorkingColorChanged,
-	#[remain::unsorted]
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
 	CommitText,
 	EditSelected,
 	Interact,
-	TextChange {
-		new_text: String,
-	},
-	UpdateBounds {
-		new_text: String,
-	},
+	TextChange { new_text: String },
+	UpdateBounds { new_text: String },
 	UpdateOptions(TextOptionsUpdate),
 }
 
-#[remain::sorted]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),

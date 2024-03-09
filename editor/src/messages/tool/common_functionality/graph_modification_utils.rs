@@ -37,7 +37,7 @@ pub fn new_image_layer(image_frame: ImageFrame<Color>, id: NodeId, parent: Layer
 /// Create a new group layer from an svg
 pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = -1;
-	responses.add(GraphOperationMessage::NewSvg {
+	responses.add(DocumentMessage::ImportSvg {
 		id,
 		svg,
 		transform,

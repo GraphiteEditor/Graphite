@@ -122,11 +122,12 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Mmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
 		//
 		// EyedropperToolMessage
+		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::SamplePrimaryColorBegin),
+		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=EyedropperToolMessage::SampleSecondaryColorBegin),
+		entry!(KeyUp(Lmb); action_dispatch=EyedropperToolMessage::SamplePrimaryColorEnd),
+		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=EyedropperToolMessage::SampleSecondaryColorEnd),
 		entry!(PointerMove; action_dispatch=EyedropperToolMessage::PointerMove),
-		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerDown),
-		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::RightPointerDown),
-		entry!(KeyUp(Lmb); action_dispatch=EyedropperToolMessage::LeftPointerUp),
-		entry!(KeyUp(Rmb); action_dispatch=EyedropperToolMessage::RightPointerUp),
+		entry!(KeyDown(Rmb); action_dispatch=EyedropperToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
@@ -244,8 +245,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Enter); action_dispatch=SplineToolMessage::Confirm),
 		//
 		// FillToolMessage
-		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::LeftPointerDown),
-		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::RightPointerDown),
+		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::FillPrimaryColor),
+		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=FillToolMessage::FillSecondaryColor),
 		//
 		// BrushToolMessage
 		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),

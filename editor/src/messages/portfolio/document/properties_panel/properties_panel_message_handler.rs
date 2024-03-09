@@ -8,7 +8,6 @@ use crate::messages::prelude::*;
 pub struct PropertiesPanelMessageHandler;
 
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		use PropertiesPanelMessage::*;
 

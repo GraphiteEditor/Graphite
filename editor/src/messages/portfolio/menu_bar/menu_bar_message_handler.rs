@@ -10,14 +10,12 @@ pub struct MenuBarMessageHandler {
 }
 
 impl MessageHandler<MenuBarMessage, (bool, bool)> for MenuBarMessageHandler {
-	#[remain::check]
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, (has_active_document, rulers_visible): (bool, bool)) {
 		use MenuBarMessage::*;
 
 		self.has_active_document = has_active_document;
 		self.rulers_visible = rulers_visible;
 
-		#[remain::sorted]
 		match message {
 			SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
@@ -254,7 +252,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 				no_active_document,
 				MenuBarEntryChildren(vec![vec![MenuBarEntry {
 					label: "Clear Artboards".into(),
-					action: MenuBarEntry::create_action(|_| GraphOperationMessage::ClearArtboards.into()),
+					action: MenuBarEntry::create_action(|_| DocumentMessage::ClearArtboards.into()),
 					disabled: no_active_document,
 					..MenuBarEntry::default()
 				}]]),

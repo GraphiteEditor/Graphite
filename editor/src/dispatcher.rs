@@ -12,7 +12,6 @@ pub struct Dispatcher {
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
-#[remain::sorted]
 #[derive(Debug, Default)]
 pub struct DispatcherMessageHandlers {
 	broadcast_message_handler: BroadcastMessageHandler,
@@ -57,7 +56,6 @@ impl Dispatcher {
 		}
 	}
 
-	#[remain::check]
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
 		use Message::*;
 
@@ -86,11 +84,8 @@ impl Dispatcher {
 			let mut queue = VecDeque::new();
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
-			#[remain::sorted]
 			match message {
-				#[remain::unsorted]
 				NoOp => {}
-				#[remain::unsorted]
 				Init => {
 					// Load persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
@@ -227,7 +222,9 @@ impl Dispatcher {
 	/// Logs a message that is about to be executed,
 	/// either as a tree with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
-		if !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+		let message_name = MessageDiscriminant::from(message).local_name();
+
+		if !(message_name.ends_with("PointerMove") || message_name.ends_with("AnimationFrame")) {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
@@ -364,6 +361,7 @@ mod test {
 			nodes: HashMap::new(),
 			parent: LayerNodeIdentifier::ROOT,
 			insert_index: -1,
+			alias: String::new(),
 		});
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
 

@@ -81,6 +81,7 @@ pub enum GraphOperationMessage {
 		nodes: HashMap<NodeId, DocumentNode>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
+		alias: String,
 	},
 	NewVectorLayer {
 		id: NodeId,

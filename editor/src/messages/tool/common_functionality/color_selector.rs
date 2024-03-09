@@ -89,7 +89,7 @@ impl ToolColorOptions {
 		]
 		.into_iter()
 		.map(|(icon, tooltip, color_type)| {
-			let mut entry = RadioEntryData::new("").tooltip(tooltip).icon(icon);
+			let mut entry = RadioEntryData::new(format!("{color_type:?}")).tooltip(tooltip).icon(icon);
 			entry.on_update = radio_callback(color_type);
 			entry
 		})

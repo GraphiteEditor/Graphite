@@ -3,7 +3,6 @@ use crate::messages::prelude::*;
 
 use serde::{Deserialize, Serialize};
 
-#[remain::sorted]
 #[impl_message(Message, ToolMessage, TransformLayer)]
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub enum TransformLayerMessage {

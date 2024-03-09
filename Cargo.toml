@@ -44,7 +44,6 @@ reqwest = { version = "0.11", features = ["rustls", "rustls-tls", "json"] }
 futures = "0.3"
 log = { version = "0.4" }
 bitflags = { version = "2.4", features = ["serde"] }
-remain = "0.2.2"
 derivative = "2.2.0"
 tempfile = "3"
 thiserror = "1.0"
