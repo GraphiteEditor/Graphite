@@ -52,7 +52,7 @@
 
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
-		tabElements[newIndex]?.div()?.scrollIntoView();
+		tabElements[newIndex]?.div?.()?.scrollIntoView();
 	}
 </script>
 
