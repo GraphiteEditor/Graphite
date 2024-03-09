@@ -395,11 +395,17 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(_, ArtboardToolMessage::Abort) => {
-				tool_data.snap_manager.cleanup(responses);
+			(ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				//ArtboardTool currently doesn't implement snapping
+				//tool_data.snap_manager.cleanup(responses);
+
 				responses.add(OverlaysMessage::Draw);
+
 				ArtboardToolFsmState::Ready
 			}
+			(_, ArtboardToolMessage::Abort) => ArtboardToolFsmState::Ready,
 			_ => self,
 		}
 	}
