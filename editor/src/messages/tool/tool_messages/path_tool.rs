@@ -168,6 +168,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			Dragging => actions!(PathToolMessageDiscriminant;
+				Escape,
+				RightClick,
 				FlipSharp,
 				DragStop,
 				PointerMove,
@@ -459,7 +461,6 @@ impl Fsm for PathToolFsmState {
 				}
 				tool_data.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			}
-
 			// Mouse down
 			(_, PathToolMessage::MouseDown { ctrl, shift }) => {
 				let add_to_selection = input.keyboard.get(shift as usize);
@@ -492,7 +493,12 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-
+			(PathToolFsmState::Dragging, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				shape_editor.deselect_all();
+				tool_data.snap_manager.cleanup(responses);
+				PathToolFsmState::Ready
+			}
 			// Mouse up
 			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { shift_mirror_distance }) => {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
@@ -507,7 +513,6 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-
 			(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
 
