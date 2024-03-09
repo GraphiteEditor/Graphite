@@ -142,6 +142,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
+		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
+		entry!(KeyDown(Rmb); action_dispatch=GradientToolMessage::Abort),
 		//
 		// RectangleToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=RectangleToolMessage::DragStart),
