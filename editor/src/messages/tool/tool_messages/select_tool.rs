@@ -950,7 +950,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::Abort) => {
 				tool_data.snap_manager.cleanup(responses);
-				responses.add(DocumentMessage::Undo);
+				responses.add(DocumentMessage::AbortTransaction);
 				responses.add(OverlaysMessage::Draw);
 
 				SelectToolFsmState::Ready
