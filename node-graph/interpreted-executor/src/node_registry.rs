@@ -705,6 +705,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f64, f64, u32]),
+		register_node!(graphene_core::vector::MirrorNode<_, _>, input: VectorData, params: [bool, bool]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
 			|args| {
