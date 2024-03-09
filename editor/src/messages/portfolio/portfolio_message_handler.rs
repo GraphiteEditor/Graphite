@@ -166,14 +166,15 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				};
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
-					for layer_path in active_document
+					let binding = active_document
 						.metadata()
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()))
-					{
-						let Some(layer) = layer_path.last().copied() else {
-							continue;
-						};
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
+					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
+
+					let ordered_last_elements: Vec<_> = active_document.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect();
+
+					for layer in ordered_last_elements {
 						let node = layer.to_node();
 						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
 
