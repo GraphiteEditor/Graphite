@@ -591,6 +591,11 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				SelectToolFsmState::Ready
+			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.has_dragged = true;
 
