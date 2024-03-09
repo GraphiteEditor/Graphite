@@ -484,7 +484,7 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the pivot
 				if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
-					
+
 					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
