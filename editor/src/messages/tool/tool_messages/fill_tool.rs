@@ -11,8 +11,8 @@ pub struct FillTool {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Tool-specific messages
-	LeftPointerDown,
-	RightPointerDown,
+	FillPrimaryColor,
+	FillSecondaryColor,
 }
 
 impl ToolMetadata for FillTool {
@@ -39,8 +39,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 	}
 
 	advertise_actions!(FillToolMessageDiscriminant;
-		LeftPointerDown,
-		RightPointerDown,
+		FillPrimaryColor,
+		FillSecondaryColor,
 	);
 }
 
@@ -72,8 +72,8 @@ impl Fsm for FillToolFsmState {
 			return self;
 		};
 		let color = match event {
-			FillToolMessage::LeftPointerDown => global_tool_data.primary_color,
-			FillToolMessage::RightPointerDown => global_tool_data.secondary_color,
+			FillToolMessage::FillPrimaryColor => global_tool_data.primary_color,
+			FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color,
 		};
 		let fill = Fill::Solid(color);
 
@@ -88,7 +88,7 @@ impl Fsm for FillToolFsmState {
 		let hint_data = match self {
 			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
-				HintInfo::mouse(MouseMotion::Rmb, "Fill with Secondary"),
+				HintInfo::keys_and_mouse([Key::Shift], MouseMotion::Lmb, "Fill with Secondary"),
 			])]),
 		};
 

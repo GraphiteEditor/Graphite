@@ -14,11 +14,11 @@ pub enum EyedropperToolMessage {
 	Abort,
 
 	// Tool-specific messages
-	LeftPointerDown,
-	LeftPointerUp,
+	SamplePrimaryColorBegin,
+	SamplePrimaryColorEnd,
 	PointerMove,
-	RightPointerDown,
-	RightPointerUp,
+	SampleSecondaryColorBegin,
+	SampleSecondaryColorEnd,
 }
 
 impl ToolMetadata for EyedropperTool {
@@ -45,11 +45,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Eyedrop
 	}
 
 	advertise_actions!(EyedropperToolMessageDiscriminant;
-		LeftPointerDown,
-		LeftPointerUp,
+		SamplePrimaryColorBegin,
+		SamplePrimaryColorEnd,
+		SampleSecondaryColorBegin,
+		SampleSecondaryColorEnd,
 		PointerMove,
-		RightPointerDown,
-		RightPointerUp,
 		Abort,
 	);
 }
@@ -87,10 +87,10 @@ impl Fsm for EyedropperToolFsmState {
 		};
 		match (self, event) {
 			// Ready -> Sampling
-			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::LeftPointerDown | EyedropperToolMessage::RightPointerDown) => {
+			(EyedropperToolFsmState::Ready, mouse_down) if matches!(mouse_down, EyedropperToolMessage::SamplePrimaryColorBegin | EyedropperToolMessage::SampleSecondaryColorBegin) => {
 				update_cursor_preview(responses, input, global_tool_data, None);
 
-				if mouse_down == EyedropperToolMessage::LeftPointerDown {
+				if mouse_down == EyedropperToolMessage::SamplePrimaryColorBegin {
 					EyedropperToolFsmState::SamplingPrimary
 				} else {
 					EyedropperToolFsmState::SamplingSecondary
@@ -107,7 +107,7 @@ impl Fsm for EyedropperToolFsmState {
 				self
 			}
 			// Sampling -> Ready
-			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::LeftPointerUp) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::RightPointerUp) => {
+			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::SamplePrimaryColorEnd) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SampleSecondaryColorEnd) => {
 				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary { "Primary" } else { "Secondary" }.to_string();
 				update_cursor_preview(responses, input, global_tool_data, Some(set_color_choice));
 				disable_cursor_preview(responses);
@@ -129,9 +129,11 @@ impl Fsm for EyedropperToolFsmState {
 		let hint_data = match self {
 			EyedropperToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Sample to Primary"),
-				HintInfo::mouse(MouseMotion::Rmb, "Sample to Secondary"),
+				HintInfo::keys_and_mouse([Key::Shift], MouseMotion::Lmb, "Sample to Secondary"),
 			])]),
-			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel")])]),
+			EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary => {
+				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])])
+			}
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
