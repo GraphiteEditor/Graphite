@@ -49,14 +49,39 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
 	}
 
-	advertise_actions!(ArtboardToolMessageDiscriminant;
-		PointerDown,
-		PointerUp,
-		PointerMove,
-		DeleteSelected,
-		NudgeSelected,
-		Abort,
-	);
+	fn actions(&self) -> ActionList {
+		use ArtboardToolFsmState::*;
+
+		match self.fsm_state {
+			Ready => actions!(ArtboardToolMessageDiscriminant;
+			PointerDown,
+			PointerMove,
+			DeleteSelected,
+			NudgeSelected,
+			),
+			Drawing => actions!(ArtboardToolMessageDiscriminant;
+			PointerUp,
+			PointerMove,
+			DeleteSelected,
+			NudgeSelected,
+			Abort,
+			),
+			ResizingBounds => actions!(ArtboardToolMessageDiscriminant;
+			PointerUp,
+			PointerMove,
+			DeleteSelected,
+			NudgeSelected,
+			Abort,
+			),
+			Dragging => actions!(ArtboardToolMessageDiscriminant;
+			PointerUp,
+			PointerMove,
+			DeleteSelected,
+			NudgeSelected,
+			Abort,
+			),
+		}
+	}
 }
 
 impl LayoutHolder for ArtboardTool {
@@ -395,7 +420,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::Abort) => {
+			(_, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				//ArtboardTool currently doesn't implement snapping
@@ -405,7 +430,6 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(_, ArtboardToolMessage::Abort) => ArtboardToolFsmState::Ready,
 			_ => self,
 		}
 	}
