@@ -2618,9 +2618,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Fill From Stroke",
+			name: "Solidify Stroke",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_core::vector::FillFromStrokeNode"),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::SolidifyStrokeNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::node_no_properties,

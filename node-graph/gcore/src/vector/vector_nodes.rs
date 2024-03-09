@@ -138,21 +138,24 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct FillFromStrokeNode;
+pub struct SolidifyStrokeNode;
 
-#[node_macro::node_fn(FillFromStrokeNode)]
-fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
+#[node_macro::node_fn(SolidifyStrokeNode)]
+fn solidify_stroke(mut vector_data: VectorData) -> VectorData {
 	// Grab what we need from original data.
-	let VectorData { subpaths, style, .. } = &vector_data;
+	let VectorData { subpaths, transform, style, .. } = &vector_data;
 	let mut new_subpaths: Vec<Subpath<ManipulatorGroupId>> = Vec::with_capacity(subpaths.len()); // Our output
 
 	// Perform operation on all subpaths in this shape.
 	for mut subpath in subpaths.clone() {
 		let stroke = style.stroke().unwrap();
+		let transform = transform.clone();
+		subpath.apply_transform(transform);
+		debug!("The transform we are applying is: translate: {}, matrix2: {}", transform.translation, transform.matrix2);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
 		let subpath_out = subpath.outline(
-			stroke.weight,
+			stroke.weight / 2.0, // Diameter to radius.
 			match stroke.line_join {
 				crate::vector::style::LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
 				crate::vector::style::LineJoin::Bevel => Join::Bevel,
@@ -165,9 +168,9 @@ fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
 			},
 		);
 
-		// This is where we determine whether we have a closed or open path. Ex: Line vs oval
+		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
 		if subpath_out.1.is_some() {
-			// Two closed subpaths, closed shape.
+			// Two closed subpaths, closed shape. Add both subpaths.
 			new_subpaths.push(subpath_out.0);
 			new_subpaths.push(subpath_out.1.unwrap());
 		} else {
@@ -176,15 +179,15 @@ fn generate_fill_from_stroke(mut vector_data: VectorData) -> VectorData {
 		}
 	}
 
-	// Output our new paths and get rid of the stroke since it's been converted.
+	// Output our new paths.
 	vector_data.subpaths = new_subpaths;
 
-	//
+	// We set our fill to our stroke's color, then clear our stroke.
 	if let Some(stroke) = vector_data.style.stroke() {
 		vector_data.style.set_fill(Fill::solid_or_none(stroke.color));
+		vector_data.style.set_stroke(Stroke::default());
 	}
 
-	vector_data.style.set_stroke(Stroke::default());
 	vector_data
 }
 
