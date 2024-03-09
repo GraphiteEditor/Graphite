@@ -9,6 +9,7 @@ use bezier_rs::{Bezier, Identifier, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::uuid::ManipulatorGroupId;
+use graphene_std::vector::PointId;
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {
@@ -62,7 +63,7 @@ impl LayerSnapper {
 				for subpath in document.metadata.layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
-						let start = subpath.manipulator_groups()[start_index].id;
+						let start = subpath.manipulator_groups()[start_index].id.into();
 						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
 							continue;
 						}
@@ -94,7 +95,7 @@ impl LayerSnapper {
 			if path.document_curve.start.distance_squared(path.document_curve.end) < tolerance * tolerance * 2. {
 				continue;
 			}
-			let time = path.document_curve.project(point.document_point, None);
+			let time = path.document_curve.project(point.document_point);
 			let snapped_point_document = path.document_curve.evaluate(bezier_rs::TValue::Parametric(time));
 
 			let distance = snapped_point_document.distance(point.document_point);
@@ -372,7 +373,7 @@ pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values:
 fn handle_not_under(to_document: DAffine2) -> impl Fn(&DVec2) -> bool {
 	move |&offset: &DVec2| to_document.transform_vector2(offset).length_squared() >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE
 }
-fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<ManipulatorGroupId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
+fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<PointId>, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>, to_document: DAffine2) {
 	let document = snap_data.document;
 	// Midpoints of linear segments
 	if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::LineMidpoint)) {
@@ -418,7 +419,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Mani
 	}
 }
 
-pub fn group_smooth(group: &bezier_rs::ManipulatorGroup<ManipulatorGroupId>, to_document: DAffine2, subpath: &Subpath<ManipulatorGroupId>, index: usize) -> bool {
+pub fn group_smooth<Id: bezier_rs::Identifier>(group: &bezier_rs::ManipulatorGroup<Id>, to_document: DAffine2, subpath: &Subpath<Id>, index: usize) -> bool {
 	let anchor = group.anchor;
 	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));

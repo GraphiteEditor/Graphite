@@ -1,6 +1,9 @@
+mod attributes;
+
 use super::style::{PathStyle, Stroke};
 use crate::Color;
 use crate::{uuid::ManipulatorGroupId, AlphaBlending};
+pub use attributes::*;
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};
@@ -12,18 +15,23 @@ use glam::{DAffine2, DVec2};
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorData {
-	pub subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>,
 	pub transform: DAffine2,
 	pub style: PathStyle,
 	pub alpha_blending: AlphaBlending,
 	/// A list of all manipulator groups (referenced in `subpaths`) that have smooth handles (where their handles are colinear, or locked to 180° angles from one another)
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have subpath and mirror angle inputs"` to find it).
 	pub mirror_angle: Vec<ManipulatorGroupId>,
+
+	pub point_domain: PointDomain,
+	pub segment_domain: SegmentDomain,
+	pub region_domain: RegionDomain,
 }
 
 impl core::hash::Hash for VectorData {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.subpaths.hash(state);
+		self.point_domain.hash(state);
+		self.segment_domain.hash(state);
+		self.region_domain.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
 		self.alpha_blending.hash(state);
@@ -35,31 +43,63 @@ impl VectorData {
 	/// An empty subpath with no data, an identity transform, and a black fill.
 	pub const fn empty() -> Self {
 		Self {
-			subpaths: Vec::new(),
 			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			alpha_blending: AlphaBlending::new(),
 			mirror_angle: Vec::new(),
+			point_domain: PointDomain::new(),
+			segment_domain: SegmentDomain::new(),
+			region_domain: RegionDomain::new(),
 		}
-	}
-
-	/// Iterator over the manipulator groups of the subpaths
-	pub fn manipulator_groups(&self) -> impl Iterator<Item = &ManipulatorGroup<ManipulatorGroupId>> + DoubleEndedIterator {
-		self.subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
-	}
-
-	pub fn manipulator_from_id(&self, id: ManipulatorGroupId) -> Option<&ManipulatorGroup<ManipulatorGroupId>> {
-		self.subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 	}
 
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: bezier_rs::Subpath<ManipulatorGroupId>) -> Self {
-		Self::from_subpaths(vec![subpath])
+		Self::from_subpaths([subpath])
+	}
+
+	/// Push a subpath to the vector data
+	pub fn append_subpath<Id: bezier_rs::Identifier + Into<PointId> + Copy>(&mut self, subpath: bezier_rs::Subpath<Id>) {
+		for point in subpath.manipulator_groups() {
+			self.point_domain.push(point.id.into(), point.anchor);
+		}
+
+		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
+			(None, None) => bezier_rs::BezierHandles::Linear,
+			(Some(handle), None) | (None, Some(handle)) => bezier_rs::BezierHandles::Quadratic { handle },
+			(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
+		};
+		let [mut first_seg, mut last_seg] = [None, None];
+		for pair in subpath.manipulator_groups().windows(2) {
+			let id = SegmentId::generate();
+			first_seg = Some(first_seg.unwrap_or(id));
+			last_seg = Some(id);
+			self.segment_domain.push(id, pair[0].id.into(), pair[1].id.into(), handles(&pair[0], &pair[1]), StrokeId::generate());
+		}
+
+		if subpath.closed() {
+			if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
+				let id = SegmentId::generate();
+				first_seg = Some(first_seg.unwrap_or(id));
+				last_seg = Some(id);
+				self.segment_domain.push(id, last.id.into(), first.id.into(), handles(last, first), StrokeId::generate());
+			}
+
+			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
+				self.region_domain.push(RegionId::generate(), first_seg..=last_seg, FillId::generate());
+			}
+		}
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
-	pub fn from_subpaths(subpaths: Vec<bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
-		super::VectorData { subpaths, ..Self::empty() }
+	pub fn from_subpaths(subpaths: impl IntoIterator<Item = bezier_rs::Subpath<ManipulatorGroupId>>) -> Self {
+		let mut vector_data = Self::empty();
+
+		for subpath in subpaths.into_iter() {
+			vector_data.append_subpath(subpath);
+		}
+
+		vector_data
 	}
 
 	/// Compute the bounding boxes of the subpaths without any transform
@@ -69,9 +109,8 @@ impl VectorData {
 
 	/// Compute the bounding boxes of the subpaths with the specified transform
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.subpaths
-			.iter()
-			.filter_map(|subpath| subpath.bounding_box_with_transform(transform))
+		self.segment_bezier_iter()
+			.map(|(_, bezier, _, _)| bezier.apply_transformation(|point| transform.transform_point2(point)).bounding_box())
 			.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
 	}
 

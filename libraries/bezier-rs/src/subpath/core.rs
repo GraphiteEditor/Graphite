@@ -8,6 +8,7 @@ use std::fmt::Write;
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
+	#[track_caller]
 	pub fn new(manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>, closed: bool) -> Self {
 		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
 		Self { manipulator_groups, closed }
@@ -276,61 +277,71 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// Number of points = number of points to find handles for
 		let len_points = points.len();
 
-		// matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html)
-		// because the 'a' coefficients are all 1 they need not be stored
-		// this algorithm does a variation of the above algorithm.
-		// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
-
-		let mut b = vec![DVec2::new(4., 4.); len_points];
-		b[0] = DVec2::new(2., 2.);
-		b[len_points - 1] = DVec2::new(2., 2.);
-
-		let mut c = vec![DVec2::new(1., 1.); len_points];
-
-		// 'd' is the the second point in a cubic bezier, which is what we solve for
-		let mut d = vec![DVec2::ZERO; len_points];
-
-		d[0] = DVec2::new(2. * points[1].x + points[0].x, 2. * points[1].y + points[0].y);
-		d[len_points - 1] = DVec2::new(3. * points[len_points - 1].x, 3. * points[len_points - 1].y);
-		for idx in 1..(len_points - 1) {
-			d[idx] = DVec2::new(4. * points[idx].x + 2. * points[idx + 1].x, 4. * points[idx].y + 2. * points[idx + 1].y);
-		}
-
-		// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
-		// do row operations to eliminate `a` coefficients
-		c[0] /= -b[0];
-		d[0] /= -b[0];
-		#[allow(clippy::assign_op_pattern)]
-		for i in 1..len_points {
-			b[i] += c[i - 1];
-			// for some reason the below line makes the borrow checker mad
-			//d[i] += d[i-1]
-			d[i] = d[i] + d[i - 1];
-			c[i] /= -b[i];
-			d[i] /= -b[i];
-		}
-
-		// at this point b[i] == -a[i + 1], a[i] == 0,
-		// do row operations to eliminate 'c' coefficients and solve
-		d[len_points - 1] *= -1.;
-		#[allow(clippy::assign_op_pattern)]
-		for i in (0..len_points - 1).rev() {
-			d[i] = d[i] - (c[i] * d[i + 1]);
-			d[i] *= -1.; //d[i] /= b[i]
-		}
+		let out_handles = solve_spline_first_handle(&points);
 
 		let mut subpath = Subpath::new(Vec::new(), false);
 
 		// given the second point in the n'th cubic bezier, the third point is given by 2 * points[n+1] - b[n+1].
 		// to find 'handle1_pos' for the n'th point we need the n-1 cubic bezier
-		subpath.manipulator_groups.push(ManipulatorGroup::new(points[0], None, Some(d[0])));
+		subpath.manipulator_groups.push(ManipulatorGroup::new(points[0], None, Some(out_handles[0])));
 		for i in 1..len_points - 1 {
-			subpath.manipulator_groups.push(ManipulatorGroup::new(points[i], Some(2. * points[i] - d[i]), Some(d[i])));
+			subpath
+				.manipulator_groups
+				.push(ManipulatorGroup::new(points[i], Some(2. * points[i] - out_handles[i]), Some(out_handles[i])));
 		}
 		subpath
 			.manipulator_groups
-			.push(ManipulatorGroup::new(points[len_points - 1], Some(2. * points[len_points - 1] - d[len_points - 1]), None));
+			.push(ManipulatorGroup::new(points[len_points - 1], Some(2. * points[len_points - 1] - out_handles[len_points - 1]), None));
 
 		subpath
 	}
+}
+
+pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
+	let len_points = points.len();
+
+	// matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html)
+	// because the 'a' coefficients are all 1 they need not be stored
+	// this algorithm does a variation of the above algorithm.
+	// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
+
+	let mut b = vec![DVec2::new(4., 4.); len_points];
+	b[0] = DVec2::new(2., 2.);
+	b[len_points - 1] = DVec2::new(2., 2.);
+
+	let mut c = vec![DVec2::new(1., 1.); len_points];
+
+	// 'd' is the the second point in a cubic bezier, which is what we solve for
+	let mut d = vec![DVec2::ZERO; len_points];
+
+	d[0] = DVec2::new(2. * points[1].x + points[0].x, 2. * points[1].y + points[0].y);
+	d[len_points - 1] = DVec2::new(3. * points[len_points - 1].x, 3. * points[len_points - 1].y);
+	for idx in 1..(len_points - 1) {
+		d[idx] = DVec2::new(4. * points[idx].x + 2. * points[idx + 1].x, 4. * points[idx].y + 2. * points[idx + 1].y);
+	}
+
+	// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
+	// do row operations to eliminate `a` coefficients
+	c[0] /= -b[0];
+	d[0] /= -b[0];
+	#[allow(clippy::assign_op_pattern)]
+	for i in 1..len_points {
+		b[i] += c[i - 1];
+		// for some reason the below line makes the borrow checker mad
+		//d[i] += d[i-1]
+		d[i] = d[i] + d[i - 1];
+		c[i] /= -b[i];
+		d[i] /= -b[i];
+	}
+
+	// at this point b[i] == -a[i + 1], a[i] == 0,
+	// do row operations to eliminate 'c' coefficients and solve
+	d[len_points - 1] *= -1.;
+	#[allow(clippy::assign_op_pattern)]
+	for i in (0..len_points - 1).rev() {
+		d[i] = d[i] - (c[i] * d[i + 1]);
+		d[i] *= -1.; //d[i] /= b[i]
+	}
+
+	d
 }
