@@ -510,7 +510,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, mut is_artboard_layer: bool) {
+	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, is_artboard_layer: bool) {
 		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
@@ -520,48 +520,46 @@ impl<'a> ModifyInputsContext<'a> {
 		let child_layers = layer_node.descendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
 		layer_node.delete(self.document_metadata);
 
-		let new_input = if is_artboard_layer {
-			if let NodeInput::Value { .. } = &node.inputs[0] {
-				is_artboard_layer = false;
-				node.inputs[1].clone()
-			} else {
-				node.inputs[0].clone()
-			}
+		let is_artboard_layer = if is_artboard_layer && matches!(&node.inputs[0], NodeInput::Value { .. }) {
+			false
+		} else {
+			is_artboard_layer
+		};
+
+		let new_input = if is_artboard_layer && !matches!(&node.inputs[0], NodeInput::Value { .. }) {
+			node.inputs[0].clone()
 		} else {
 			node.inputs[1].clone()
 		};
 		let deleted_position = node.metadata.position;
 
 		let new_input_artboard_layer = node.inputs[1].clone();
-		if is_artboard_layer {
-			if let Some(new_input_id) = new_input.as_node() {
-				let mut final_layer_node_id = new_input_id.clone();
-				while let Some(input_id) = self
-					.document_network
-					.nodes
-					.get(&final_layer_node_id)
-					.and_then(|input_node| input_node.inputs.get(1).and_then(|x| x.as_node()))
-				{
-					final_layer_node_id = input_id;
-				}
-				{
-					if let Some(final_layer_node) = self.document_network.nodes.get_mut(&final_layer_node_id) {
-						final_layer_node.inputs[1] = new_input_artboard_layer.clone();
-					}
-				}
-				if let Some(final_layer_node) = self.document_network.nodes.get(&final_layer_node_id) {
-					if let Some(new_input_artboard_layer_id) = new_input_artboard_layer.as_node() {
-						if let Some(new_input_artboard_layer_node) = self.document_network.nodes.get(&new_input_artboard_layer_id) {
-							let shift = final_layer_node.metadata.position - new_input_artboard_layer_node.metadata.position + IVec2::new(0, 3);
-							for node_id in self
-								.document_network
-								.upstream_flow_back_from_nodes(vec![new_input_artboard_layer_id], false)
-								.map(|(_, id)| id)
-								.collect::<Vec<_>>()
-							{
-								let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
-								node.metadata.position += shift;
-							}
+		if let Some(new_input_id) = is_artboard_layer.then(|| new_input.as_node()).flatten() {
+			let mut final_layer_node_id = new_input_id;
+
+			let nodes = &self.document_network.nodes;
+			while let Some(input_id) = nodes.get(&final_layer_node_id).and_then(|input_node| input_node.inputs.get(1).and_then(|x| x.as_node())) {
+				final_layer_node_id = input_id;
+			}
+
+			if let Some(final_layer_node) = self.document_network.nodes.get_mut(&final_layer_node_id) {
+				final_layer_node.inputs[1] = new_input_artboard_layer.clone();
+			}
+
+			if let Some(final_layer_node) = self.document_network.nodes.get(&final_layer_node_id) {
+				if let Some(new_input_artboard_layer_id) = new_input_artboard_layer.as_node() {
+					if let Some(new_input_artboard_layer_node) = self.document_network.nodes.get(&new_input_artboard_layer_id) {
+						let shift = final_layer_node.metadata.position - new_input_artboard_layer_node.metadata.position + IVec2::new(0, 3);
+
+						let node_ids = self
+							.document_network
+							.upstream_flow_back_from_nodes(vec![new_input_artboard_layer_id], false)
+							.map(|(_, id)| id)
+							.collect::<Vec<_>>();
+
+						for node_id in node_ids {
+							let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
+							node.metadata.position += shift;
 						}
 					}
 				}
@@ -584,7 +582,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut delete_nodes = vec![id];
 		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
-			// Don't delete the node if other layers depend on it or if it is an artboard layer.
+			// Don't delete the node if it's an artboard layer or if other layers depend on it.
 			if is_artboard_layer || self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
 			}
@@ -624,6 +622,7 @@ impl<'a> ModifyInputsContext<'a> {
 			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
 				continue;
 			};
+
 			for input in &mut node.inputs {
 				if let NodeInput::Node { node_id, .. } = input {
 					if *node_id == id {
