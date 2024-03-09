@@ -155,7 +155,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 			Ready => actions!(FreehandToolMessageDiscriminant;
 				DragStart,
 				DragStop,
-				Abort,
 			),
 			Drawing => actions!(FreehandToolMessageDiscriminant;
 				DragStop,
@@ -277,13 +276,17 @@ impl Fsm for FreehandToolFsmState {
 
 				FreehandToolFsmState::Drawing
 			}
-			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop | FreehandToolMessage::Abort) => {
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop) => {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
-				} else {
-					responses.add(DocumentMessage::AbortTransaction);
 				}
 
+				tool_data.layer = None;
+
+				FreehandToolFsmState::Ready
+			}
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
 
 				FreehandToolFsmState::Ready

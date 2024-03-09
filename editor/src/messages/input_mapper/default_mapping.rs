@@ -237,6 +237,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
 		entry!(KeyDown(Lmb); action_dispatch=FreehandToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=FreehandToolMessage::DragStop),
+		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
+		entry!(KeyDown(Rmb); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
 		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
