@@ -228,7 +228,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 			Ready => actions!(BrushToolMessageDiscriminant;
 				DragStart,
 				DragStop,
-				Abort,
 				UpdateOptions,
 			),
 			Drawing => actions!(BrushToolMessageDiscriminant;
@@ -370,18 +369,20 @@ impl Fsm for BrushToolFsmState {
 				BrushToolFsmState::Drawing
 			}
 
-			(BrushToolFsmState::Drawing, BrushToolMessage::DragStop) | (BrushToolFsmState::Drawing, BrushToolMessage::Abort) => {
+			(BrushToolFsmState::Drawing, BrushToolMessage::DragStop) => {
 				if !tool_data.strokes.is_empty() {
 					responses.add(DocumentMessage::CommitTransaction);
-				} else {
-					responses.add(DocumentMessage::AbortTransaction);
 				}
-
 				tool_data.strokes.clear();
 
 				BrushToolFsmState::Ready
 			}
+			(BrushToolFsmState::Drawing, BrushToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.strokes.clear();
 
+				BrushToolFsmState::Ready
+			}
 			(_, BrushToolMessage::WorkingColorChanged) => {
 				responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::WorkingColors(
 					Some(global_tool_data.primary_color),

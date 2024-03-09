@@ -258,6 +258,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=BrushToolMessage::DragStop),
 		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
 		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
+		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
+		entry!(KeyDown(Rmb); action_dispatch=BrushToolMessage::Abort),
 		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
