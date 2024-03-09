@@ -516,7 +516,9 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		LayerNodeIdentifier::new(id, self.document_network).delete(self.document_metadata);
+		let layer_node = LayerNodeIdentifier::new(id, self.document_network);
+		let child_layers = layer_node.decendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
+		layer_node.delete(self.document_metadata);
 
 		let new_input = node.inputs[1].clone();
 		let deleted_position = node.metadata.position;
@@ -536,7 +538,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut delete_nodes = vec![id];
-		for (_node, id) in self.document_network.upstream_flow_back_from_nodes(vec![id], true) {
+		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
 			// Don't delete the node if other layers depend on it.
 			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
