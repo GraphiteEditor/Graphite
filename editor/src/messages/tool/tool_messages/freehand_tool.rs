@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::utility_funcitons::should_extend;
+use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
