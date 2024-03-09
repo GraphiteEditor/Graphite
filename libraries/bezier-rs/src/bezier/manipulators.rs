@@ -57,20 +57,12 @@ impl Bezier {
 
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn handle_start(&self) -> Option<DVec2> {
-		match self.handles {
-			BezierHandles::Linear => None,
-			BezierHandles::Quadratic { handle } => Some(handle),
-			BezierHandles::Cubic { handle_start, .. } => Some(handle_start),
-		}
+		self.handles.start()
 	}
 
 	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
 	pub fn handle_end(&self) -> Option<DVec2> {
-		match self.handles {
-			BezierHandles::Linear { .. } => None,
-			BezierHandles::Quadratic { .. } => None,
-			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
-		}
+		self.handles.end()
 	}
 
 	/// Get an iterator over the coordinates of all points in a vector.

@@ -4,6 +4,7 @@ mod manipulators;
 mod solvers;
 mod structs;
 mod transform;
+pub use core::*;
 pub use structs::*;
 
 use crate::Bezier;

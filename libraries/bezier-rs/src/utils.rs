@@ -90,11 +90,6 @@ pub fn compute_abc_for_cubic_through_points(start_point: DVec2, point_on_curve: 
 	compute_abc_through_points(start_point, point_on_curve, end_point, t_cubed, cubed_one_minus_t)
 }
 
-/// Return the index and the value of the closest point in the LUT compared to the provided point.
-pub fn get_closest_point_in_lut(lut: &[DVec2], point: DVec2) -> (usize, f64) {
-	lut.iter().enumerate().map(|(i, p)| (i, point.distance_squared(*p))).min_by(|x, y| (x.1).total_cmp(&(y.1))).unwrap()
-}
-
 /// Find the roots of the linear equation `ax + b`.
 pub fn solve_linear(a: f64, b: f64) -> [Option<f64>; 3] {
 	// There exist roots when `a` is not 0

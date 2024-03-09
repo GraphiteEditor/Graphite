@@ -259,10 +259,13 @@ impl_type!(
 );
 
 #[cfg(feature = "std")]
-use std::sync::*;
+use std::{
+	collections::{HashMap, HashSet},
+	sync::*,
+};
 
 #[cfg(feature = "std")]
-impl_type!(Once, Mutex<T>, RwLock<T>);
+impl_type!(Once, Mutex<T>, RwLock<T>, HashSet<T>, HashMap<K, V>);
 
 #[cfg(feature = "rc")]
 use std::rc::Rc;
