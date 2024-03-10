@@ -253,6 +253,9 @@ pub fn default_mapping() -> Mapping {
 		// FillToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=FillToolMessage::FillPrimaryColor),
 		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=FillToolMessage::FillSecondaryColor),
+		entry!(KeyUp(Lmb); action_dispatch=FillToolMessage::PointerUp),
+		entry!(KeyDown(Escape); action_dispatch=FillToolMessage::Abort),
+		entry!(KeyDown(Rmb); action_dispatch=FillToolMessage::Abort),
 		//
 		// BrushToolMessage
 		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),
