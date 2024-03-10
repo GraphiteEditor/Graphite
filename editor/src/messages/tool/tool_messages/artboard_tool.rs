@@ -426,15 +426,15 @@ impl Fsm for ArtboardToolFsmState {
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel Transform"), HintInfo::mouse(MouseMotion::Rmb, "Cancel Transform")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Transform").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
 			]),
 			ArtboardToolFsmState::ResizingBounds => HintData(vec![
-				HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel Resize"), HintInfo::mouse(MouseMotion::Rmb, "Cancel Resize")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Resize").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 			ArtboardToolFsmState::Drawing => HintData(vec![
-				HintGroup(vec![HintInfo::keys([Key::Escape], "Cancel Artboard"), HintInfo::mouse(MouseMotion::Rmb, "Cancel Artboard")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Artboard").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 		};
