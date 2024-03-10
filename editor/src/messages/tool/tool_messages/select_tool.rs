@@ -238,7 +238,7 @@ impl ToolTransition for SelectTool {
 enum SelectToolFsmState {
 	Ready { selection: NestedSelectionBehavior },
 	Dragging,
-	DrawingBox,
+	DrawingBox { selection: NestedSelectionBehavior },
 	ResizingBounds,
 	RotatingBounds,
 	DraggingPivot,
@@ -437,7 +437,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
 				// Update dragging box
-				if self == Self::DrawingBox {
+				if let Self::DrawingBox { selection } = self {
 					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
 				}
 
@@ -589,7 +589,7 @@ impl Fsm for SelectToolFsmState {
 							responses.add(DocumentMessage::DeselectAllLayers);
 							tool_data.layers_dragging.clear();
 						}
-						SelectToolFsmState::DrawingBox
+						SelectToolFsmState::DrawingBox { selection: tool_data.nested_selection_behavior }
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -766,7 +766,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DrawingBox { selection: _ }, SelectToolMessage::PointerMove(modifier_keys)) => {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
@@ -780,7 +780,9 @@ impl Fsm for SelectToolFsmState {
 					responses,
 				);
 
-				SelectToolFsmState::DrawingBox
+				SelectToolFsmState::DrawingBox {
+					selection: tool_data.nested_selection_behavior,
+				}
 			}
 			(SelectToolFsmState::Ready { selection: _ }, SelectToolMessage::PointerMove(_)) => {
 				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, true));
@@ -825,7 +827,7 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::DrawingBox { selection: _ }, SelectToolMessage::PointerOutsideViewport(_)) => {
 				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
 					tool_data.drag_start += shift;
 				}
@@ -939,7 +941,7 @@ impl Fsm for SelectToolFsmState {
 					selection: tool_data.nested_selection_behavior,
 				}
 			}
-			(SelectToolFsmState::DrawingBox, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
+			(SelectToolFsmState::DrawingBox { selection: _ }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
 				let new_selected: HashSet<_> = document.intersect_quad(quad, &document.network).collect();
 				let current_selected: HashSet<_> = document.selected_nodes.selected_layers(document.metadata()).collect();
@@ -1063,11 +1065,24 @@ impl Fsm for SelectToolFsmState {
 			}
 			SelectToolFsmState::Dragging => {
 				let hint_data = HintData(vec![
-					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel Transform"), HintInfo::keys([Key::Escape], "Cancel Transform")]),
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Transform").prepend_slash()]),
 					HintGroup(vec![
 						HintInfo::keys([Key::Alt], "Show Original (Release MouseButton to Duplicate)"),
 						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 					]),
+				]);
+				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+			}
+			SelectToolFsmState::DrawingBox { selection } => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Transform").prepend_slash()]),
+					HintGroup({
+						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()];
+						if *selection == NestedSelectionBehavior::Shallowest {
+							hints.extend([HintInfo::keys([Key::Accel], "Deepest").prepend_plus(), HintInfo::mouse(MouseMotion::LmbDouble, "Deepen Selection")]);
+						}
+						hints
+					}),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
