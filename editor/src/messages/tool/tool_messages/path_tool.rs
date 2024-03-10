@@ -187,6 +187,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				SelectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
+				Escape,
+				RightClick,
 			),
 			InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
@@ -499,6 +501,11 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
+			(PathToolFsmState::DrawingBox, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
+				PathToolFsmState::Ready
+			}
 			// Mouse up
 			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { shift_mirror_distance }) => {
 				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
@@ -618,14 +625,20 @@ impl Fsm for PathToolFsmState {
 
 		let hint_data = match self {
 			PathToolFsmState::Ready => general_hint_data,
-			PathToolFsmState::Dragging => HintData(vec![HintGroup(vec![
-				HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
-				HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
-			])]),
-			PathToolFsmState::DrawingBox => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
-				HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
-			])]),
+			PathToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Transform").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
+					HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+				]),
+			]),
+			PathToolFsmState::DrawingBox => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Selection").prepend_slash()]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+					HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
+				]),
+			]),
 			PathToolFsmState::InsertPoint => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Insertion").prepend_slash()]),

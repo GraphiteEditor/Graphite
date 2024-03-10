@@ -267,7 +267,10 @@ impl Fsm for RectangleToolFsmState {
 				HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			RectangleToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])]),
+			RectangleToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Rectangle").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

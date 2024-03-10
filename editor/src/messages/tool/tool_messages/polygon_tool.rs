@@ -305,7 +305,10 @@ impl Fsm for PolygonToolFsmState {
 				HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			PolygonToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
+			PolygonToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Polygon").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
