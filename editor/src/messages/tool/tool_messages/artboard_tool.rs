@@ -404,7 +404,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(_, ArtboardToolMessage::Abort) => {
+			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				// ArtboardTool currently doesn't implement snapping
