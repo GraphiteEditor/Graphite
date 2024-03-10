@@ -49,14 +49,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
 	}
 
-	advertise_actions!(ArtboardToolMessageDiscriminant;
-		PointerDown,
-		PointerUp,
-		PointerMove,
-		DeleteSelected,
-		NudgeSelected,
-		Abort,
-	);
+	fn actions(&self) -> ActionList {
+		use ArtboardToolFsmState::*;
+
+		let mut common = actions!(ArtboardToolMessageDiscriminant;
+			DeleteSelected,
+			NudgeSelected,
+			PointerMove,
+		);
+
+		let additional = match self.fsm_state {
+			Ready => actions!(ArtboardToolMessageDiscriminant; PointerDown),
+			_ => actions!(ArtboardToolMessageDiscriminant; PointerUp, Abort),
+		};
+		common.extend(additional);
+
+		common
+	}
 }
 
 impl LayoutHolder for ArtboardTool {
@@ -396,8 +405,13 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::Abort) => {
-				tool_data.snap_manager.cleanup(responses);
+				responses.add(DocumentMessage::AbortTransaction);
+
+				// ArtboardTool currently doesn't implement snapping
+				// tool_data.snap_manager.cleanup(responses);
+
 				responses.add(OverlaysMessage::Draw);
+
 				ArtboardToolFsmState::Ready
 			}
 			_ => self,

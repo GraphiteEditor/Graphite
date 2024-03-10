@@ -61,8 +61,8 @@ pub fn default_mapping() -> Mapping {
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
 		entry!(KeyDown(Lmb); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
-		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Rmb); action_dispatch=TransformLayerMessage::CancelTransformOperation),
+		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
 		entry!(KeyDown(KeyY); action_dispatch=TransformLayerMessage::ConstrainY),
 		entry!(KeyDown(Backspace); action_dispatch=TransformLayerMessage::TypeBackspace),
@@ -110,6 +110,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowDown], action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: NUDGE_AMOUNT }),
 		entry!(KeyDown(ArrowRight); action_dispatch=ArtboardToolMessage::NudgeSelected { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
+		entry!(KeyDown(Rmb); action_dispatch=ArtboardToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=ArtboardToolMessage::Abort),
 		//
 		// NavigateToolMessage
 		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
@@ -142,6 +144,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
+		entry!(KeyDown(Rmb); action_dispatch=GradientToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
 		//
 		// RectangleToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=RectangleToolMessage::DragStart),
@@ -235,6 +239,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
 		entry!(KeyDown(Lmb); action_dispatch=FreehandToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=FreehandToolMessage::DragStop),
+		entry!(KeyDown(Rmb); action_dispatch=FreehandToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
 		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
@@ -254,6 +260,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=BrushToolMessage::DragStop),
 		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
 		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
+		entry!(KeyDown(Rmb); action_dispatch=BrushToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
 		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
@@ -346,7 +354,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
 		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
 		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
-		entry!(KeyUp(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
+		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
+		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }),

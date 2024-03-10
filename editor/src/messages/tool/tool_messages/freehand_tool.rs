@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::utility_funcitons::should_extend;
+use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -155,7 +155,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 			Ready => actions!(FreehandToolMessageDiscriminant;
 				DragStart,
 				DragStop,
-				Abort,
 			),
 			Drawing => actions!(FreehandToolMessageDiscriminant;
 				DragStop,
@@ -277,13 +276,17 @@ impl Fsm for FreehandToolFsmState {
 
 				FreehandToolFsmState::Drawing
 			}
-			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop | FreehandToolMessage::Abort) => {
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop) => {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
-				} else {
-					responses.add(DocumentMessage::AbortTransaction);
 				}
 
+				tool_data.layer = None;
+
+				FreehandToolFsmState::Ready
+			}
+			(FreehandToolFsmState::Drawing, FreehandToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
 
 				FreehandToolFsmState::Ready

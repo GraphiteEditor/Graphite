@@ -441,12 +441,14 @@ impl Fsm for GradientToolFsmState {
 				GradientToolFsmState::Ready
 			}
 
-			(_, GradientToolMessage::Abort) => {
+			(GradientToolFsmState::Drawing, GradientToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 
 				GradientToolFsmState::Ready
 			}
+			(_, GradientToolMessage::Abort) => GradientToolFsmState::Ready,
 			_ => self,
 		}
 	}

@@ -230,6 +230,7 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Rotate { pre_commit_tilt, .. } => {
+							ptz.tilt = pre_commit_tilt;
 							responses.add(SetCanvasTilt { angle_radians: pre_commit_tilt });
 						}
 						TransformOperation::Pan { pre_commit_pan, .. } => {
