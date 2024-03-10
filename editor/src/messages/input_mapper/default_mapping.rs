@@ -61,8 +61,8 @@ pub fn default_mapping() -> Mapping {
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
 		entry!(KeyDown(Lmb); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
-		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(Rmb); action_dispatch=TransformLayerMessage::CancelTransformOperation),
+		entry!(KeyDown(Escape); action_dispatch=TransformLayerMessage::CancelTransformOperation),
 		entry!(KeyDown(KeyX); action_dispatch=TransformLayerMessage::ConstrainX),
 		entry!(KeyDown(KeyY); action_dispatch=TransformLayerMessage::ConstrainY),
 		entry!(KeyDown(Backspace); action_dispatch=TransformLayerMessage::TypeBackspace),
@@ -144,8 +144,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::InsertStop),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
-		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
 		entry!(KeyDown(Rmb); action_dispatch=GradientToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
 		//
 		// RectangleToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=RectangleToolMessage::DragStart),
@@ -239,8 +239,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(PointerMove; action_dispatch=FreehandToolMessage::PointerMove),
 		entry!(KeyDown(Lmb); action_dispatch=FreehandToolMessage::DragStart),
 		entry!(KeyUp(Lmb); action_dispatch=FreehandToolMessage::DragStop),
-		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		entry!(KeyDown(Rmb); action_dispatch=FreehandToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
 		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
@@ -260,8 +260,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyUp(Lmb); action_dispatch=BrushToolMessage::DragStop),
 		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
 		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
-		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
 		entry!(KeyDown(Rmb); action_dispatch=BrushToolMessage::Abort),
+		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
 		//
 		// ToolMessage
 		entry!(KeyDown(KeyV); action_dispatch=ToolMessage::ActivateToolSelect),
