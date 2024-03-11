@@ -90,7 +90,6 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> 
 	// Repeat the vector data
 	let mut result = VectorData::empty();
 	let inverse = vector_data.transform.inverse();
-	//let direction = inverse.transform_vector2(direction);
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
 		result.concat(&vector_data, transform);
