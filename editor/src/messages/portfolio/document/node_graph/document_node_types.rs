@@ -2417,8 +2417,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Path Generator".to_string(),
 						inputs: vec![
-							NodeInput::Network(concrete!(Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>)),
-							NodeInput::Network(concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>)),
+							NodeInput::Network(concrete!(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>)),
+							NodeInput::Network(concrete!(Vec<graphene_core::vector::PointId>)),
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::PathGenerator<_>")),
 						..Default::default()
@@ -2439,7 +2439,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
-				DocumentInputType::value("Colinear Manipulators", TaggedValue::ManipulatorGroupIds(vec![]), false),
+				DocumentInputType::value("Colinear Manipulators", TaggedValue::PointIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			..Default::default()
@@ -2448,8 +2448,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Path Modify",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				inputs: vec![NodeId(0), NodeId(1)],
-				outputs: vec![NodeOutput::new(NodeId(1), 0)],
+				imports: vec![NodeId(0), NodeId(1)],
+				exports: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						inputs: vec![NodeInput::Network(concrete!(VectorData))],

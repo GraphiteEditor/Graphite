@@ -3,7 +3,7 @@ use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::f64_compare;
 use crate::{SubpathTValue, TValue};
 
-impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Get whether the subpath is closed.
 	pub fn closed(&self) -> bool {
 		self.closed
@@ -14,40 +14,40 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.closed = new_closed;
 	}
 
-	/// Access a [ManipulatorGroup] from a ManipulatorGroupId.
-	pub fn manipulator_from_id(&self, id: ManipulatorGroupId) -> Option<&ManipulatorGroup<ManipulatorGroupId>> {
+	/// Access a [ManipulatorGroup] from a PointId.
+	pub fn manipulator_from_id(&self, id: PointId) -> Option<&ManipulatorGroup<PointId>> {
 		self.manipulator_groups.iter().find(|manipulator_group| manipulator_group.id == id)
 	}
 
-	/// Access a mutable [ManipulatorGroup] from a ManipulatorGroupId.
-	pub fn manipulator_mut_from_id(&mut self, id: ManipulatorGroupId) -> Option<&mut ManipulatorGroup<ManipulatorGroupId>> {
+	/// Access a mutable [ManipulatorGroup] from a PointId.
+	pub fn manipulator_mut_from_id(&mut self, id: PointId) -> Option<&mut ManipulatorGroup<PointId>> {
 		self.manipulator_groups.iter_mut().find(|manipulator_group| manipulator_group.id == id)
 	}
 
-	/// Access the index of a [ManipulatorGroup] from a ManipulatorGroupId.
-	pub fn manipulator_index_from_id(&self, id: ManipulatorGroupId) -> Option<usize> {
+	/// Access the index of a [ManipulatorGroup] from a PointId.
+	pub fn manipulator_index_from_id(&self, id: PointId) -> Option<usize> {
 		self.manipulator_groups.iter().position(|manipulator_group| manipulator_group.id == id)
 	}
 
 	/// Insert a manipulator group at an index.
-	pub fn insert_manipulator_group(&mut self, index: usize, group: ManipulatorGroup<ManipulatorGroupId>) {
+	pub fn insert_manipulator_group(&mut self, index: usize, group: ManipulatorGroup<PointId>) {
 		assert!(group.is_finite(), "Inserting non finite manipulator group");
 		self.manipulator_groups.insert(index, group)
 	}
 
 	/// Push a manipulator group to the end.
-	pub fn push_manipulator_group(&mut self, group: ManipulatorGroup<ManipulatorGroupId>) {
+	pub fn push_manipulator_group(&mut self, group: ManipulatorGroup<PointId>) {
 		assert!(group.is_finite(), "Pushing non finite manipulator group");
 		self.manipulator_groups.push(group)
 	}
 
 	/// Get a mutable reference to the last manipulator
-	pub fn last_manipulator_group_mut(&mut self) -> Option<&mut ManipulatorGroup<ManipulatorGroupId>> {
+	pub fn last_manipulator_group_mut(&mut self) -> Option<&mut ManipulatorGroup<PointId>> {
 		self.manipulator_groups.last_mut()
 	}
 
 	/// Remove a manipulator group at an index.
-	pub fn remove_manipulator_group(&mut self, index: usize) -> ManipulatorGroup<ManipulatorGroupId> {
+	pub fn remove_manipulator_group(&mut self, index: usize) -> ManipulatorGroup<PointId> {
 		self.manipulator_groups.remove(index)
 	}
 
@@ -69,7 +69,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: first.end(),
 			in_handle: first.handle_end(),
 			out_handle: second.handle_start(),
-			id: ManipulatorGroupId::new(),
+			id: PointId::new(),
 		};
 		let number_of_groups = self.manipulator_groups.len() + 1;
 		self.manipulator_groups.insert((segment_index) + 1, new_group);
@@ -89,7 +89,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				anchor: bezier.start(),
 				in_handle: None,
 				out_handle: None,
-				id: ManipulatorGroupId::new(),
+				id: PointId::new(),
 			}];
 		}
 		let mut last_index = self.manipulator_groups.len() - 1;
@@ -114,7 +114,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: bezier.end(),
 			in_handle: bezier.handle_end(),
 			out_handle: None,
-			id: ManipulatorGroupId::new(),
+			id: PointId::new(),
 		});
 	}
 }

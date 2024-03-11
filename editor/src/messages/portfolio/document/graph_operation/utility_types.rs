@@ -8,9 +8,9 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
+use graphene_core::vector::PointId;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
 
@@ -25,20 +25,20 @@ pub enum TransformIn {
 	Viewport,
 }
 
-type ManipulatorGroup = bezier_rs::ManipulatorGroup<ManipulatorGroupId>;
+type ManipulatorGroup = bezier_rs::ManipulatorGroup<PointId>;
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorDataModification {
 	AddEndManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: ManipulatorGroupId },
+	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: PointId },
 	AddStartManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	RemoveManipulatorGroup { id: ManipulatorGroupId },
+	RemoveManipulatorGroup { id: PointId },
 	RemoveManipulatorPoint { point: ManipulatorPointId },
 	SetClosed { index: usize, closed: bool },
-	SetManipulatorColinearHandlesState { id: ManipulatorGroupId, colinear: bool },
+	SetManipulatorColinearHandlesState { id: PointId, colinear: bool },
 	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ToggleManipulatorColinearHandlesState { id: ManipulatorGroupId },
-	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
+	ToggleManipulatorColinearHandlesState { id: PointId },
+	UpdateSubpaths { subpaths: Vec<Subpath<PointId>> },
 }
 
 pub struct ModifyInputsContext<'a> {
@@ -206,7 +206,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
 	}
 
-	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
+	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: NodeId) {
 		let shape = {
 			let node_type = resolve_document_node_type("Shape").expect("Shape node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
@@ -481,7 +481,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let mut empty = false;
 
-		self.modify_inputs("Shape", false, |inputs, _node_id, _metadata| {
+		self.modify_inputs("Vector Modify", false, |inputs, _node_id, _metadata| {
 			let [subpaths, colinear_manipulators] = inputs.as_mut_slice() else {
 				panic!("Shape does not have both `subpath` and `colinear_manipulators` inputs");
 			};
@@ -494,7 +494,7 @@ impl<'a> ModifyInputsContext<'a> {
 				return;
 			};
 			let NodeInput::Value {
-				tagged_value: TaggedValue::ManipulatorGroupIds(colinear_manipulators),
+				tagged_value: TaggedValue::PointIds(colinear_manipulators),
 				..
 			} = colinear_manipulators
 			else {

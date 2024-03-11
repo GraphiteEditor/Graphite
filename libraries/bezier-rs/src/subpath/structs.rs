@@ -26,15 +26,15 @@ impl Identifier for EmptyId {
 /// Structure used to represent a single anchor with up to two optional associated handles along a `Subpath`
 #[derive(Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ManipulatorGroup<ManipulatorGroupId: crate::Identifier> {
+pub struct ManipulatorGroup<PointId: crate::Identifier> {
 	pub anchor: DVec2,
 	pub in_handle: Option<DVec2>,
 	pub out_handle: Option<DVec2>,
-	pub id: ManipulatorGroupId,
+	pub id: PointId,
 }
 
 // TODO: Remove once we no longer need to hash floats in Graphite
-impl<ManipulatorGroupId: crate::Identifier> Hash for ManipulatorGroup<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Hash for ManipulatorGroup<PointId> {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.anchor.to_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.in_handle.is_some().hash(state);
@@ -50,11 +50,11 @@ impl<ManipulatorGroupId: crate::Identifier> Hash for ManipulatorGroup<Manipulato
 }
 
 #[cfg(feature = "dyn-any")]
-unsafe impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for ManipulatorGroup<ManipulatorGroupId> {
-	type Static = ManipulatorGroup<ManipulatorGroupId>;
+unsafe impl<PointId: crate::Identifier> dyn_any::StaticType for ManipulatorGroup<PointId> {
+	type Static = ManipulatorGroup<PointId>;
 }
 
-impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Debug for ManipulatorGroup<PointId> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> Result {
 		f.debug_struct("ManipulatorGroup")
 			.field("anchor", &self.anchor)
@@ -64,10 +64,10 @@ impl<ManipulatorGroupId: crate::Identifier> Debug for ManipulatorGroup<Manipulat
 	}
 }
 
-impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> ManipulatorGroup<PointId> {
 	/// Construct a new manipulator group from an anchor, in handle and out handle
 	pub fn new(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>) -> Self {
-		let id = ManipulatorGroupId::new();
+		let id = PointId::new();
 		Self { anchor, in_handle, out_handle, id }
 	}
 
@@ -77,17 +77,17 @@ impl<ManipulatorGroupId: crate::Identifier> ManipulatorGroup<ManipulatorGroupId>
 	}
 
 	/// Construct a new manipulator group from an anchor, in handle, out handle and an id
-	pub fn new_with_id(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>, id: ManipulatorGroupId) -> Self {
+	pub fn new_with_id(anchor: DVec2, in_handle: Option<DVec2>, out_handle: Option<DVec2>, id: PointId) -> Self {
 		Self { anchor, in_handle, out_handle, id }
 	}
 
 	/// Construct a new manipulator point with just an anchor position and an id
-	pub fn new_anchor_with_id(anchor: DVec2, id: ManipulatorGroupId) -> Self {
+	pub fn new_anchor_with_id(anchor: DVec2, id: PointId) -> Self {
 		Self::new_with_id(anchor, Some(anchor), Some(anchor), id)
 	}
 
 	/// Create a bezier curve that starts at the current manipulator group and finishes in the `end_group` manipulator group.
-	pub fn to_bezier(&self, end_group: &ManipulatorGroup<ManipulatorGroupId>) -> Bezier {
+	pub fn to_bezier(&self, end_group: &ManipulatorGroup<PointId>) -> Bezier {
 		let start = self.anchor;
 		let end = end_group.anchor;
 		let out_handle = self.out_handle;

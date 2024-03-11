@@ -8,8 +8,7 @@ use crate::messages::prelude::*;
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
-use graphene_std::vector::PointId;
+use graphene_core::vector::PointId;
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {
@@ -33,7 +32,7 @@ impl LayerSnapper {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
 				layer,
-				start: ManipulatorGroupId::new(),
+				start: PointId::new(),
 				target,
 				bounds: Some(bounds),
 			});
@@ -133,7 +132,7 @@ impl LayerSnapper {
 			let direction = constraint.direction().normalize_or_zero();
 			let start = constrained_point - tolerance * direction;
 			let end = constrained_point + tolerance * direction;
-			Subpath::<ManipulatorGroupId>::new_line(start, end)
+			Subpath::<PointId>::new_line(start, end)
 		};
 
 		for path in &self.paths_to_snap {
@@ -297,7 +296,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 struct SnapCandidatePath {
 	document_curve: Bezier,
 	layer: LayerNodeIdentifier,
-	start: ManipulatorGroupId,
+	start: PointId,
 	target: SnapTarget,
 	bounds: Option<Quad>,
 }
@@ -419,8 +418,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 }
 
-/// Returns true if both handles in a manipulator group are colinear, unless the anchor is an endpoint. Endpoint anchors are never considered colinear.
-pub fn are_manipulator_handles_colinear<Id: bezier_rs::Identifier>(group: &bezier_rs::ManipulatorGroup<Id>, to_document: DAffine2, subpath: &Subpath<Id>, index: usize) -> bool {
+pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
 	let anchor = group.anchor;
 	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));

@@ -68,7 +68,7 @@ impl DocumentMetadata {
 
 	/// Get vector data after the modification is appled
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<VectorData> {
-		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network)?;
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network);
 
 		if let Some(vector_data) = graph_layer.node_id("Path Modify").and_then(|node| self.vector_modify.get(&node)) {
 			let mut modified = vector_data.clone();

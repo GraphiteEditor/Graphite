@@ -4,6 +4,7 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::Subpath;
 use graphene_core::renderer::Quad;
+use graphene_std::vector::PointId;
 
 use core::borrow::Borrow;
 use core::f64::consts::PI;
@@ -114,7 +115,7 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn outline<'a, Id: bezier_rs::Identifier>(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<Id>>>, transform: DAffine2) {
+	pub fn outline<'a>(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
 			let subpath = subpath.borrow();

@@ -6,15 +6,15 @@ use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
+use graphene_core::vector::PointId;
 use graphene_core::Color;
 
 use glam::DVec2;
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
-pub fn new_vector_layer(subpaths: Vec<Subpath<ManipulatorGroupId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = -1;
 	responses.add(GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index });
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -48,7 +48,7 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 }
 
 /// Batch set all of the manipulator groups to set their colinear handle state on a specific layer
-pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, colinear: bool, responses: &mut VecDeque<Message>) {
+pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorGroup<PointId>], layer: LayerNodeIdentifier, colinear: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {
 		responses.add(GraphOperationMessage::Vector {
 			layer,
@@ -58,7 +58,7 @@ pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorG
 }
 
 /// Locate the subpaths from the shape nodes of a particular layer
-pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
+pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<PointId>>> {
 	let path_data_node_input_index = 0;
 	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document_network).find_input("Shape", path_data_node_input_index)? {
 		Some(subpaths)
@@ -84,12 +84,13 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document_network: &NodeNet
 }
 
 /// Get the manipulator groups that currently have colinear handles for a particular layer from the shape node
-pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<ManipulatorGroupId>> {
+pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> &Vec<PointId> {
 	let colinear_manipulators_node_input_index = 1;
-	if let TaggedValue::ManipulatorGroupIds(manipulator_groups) = NodeGraphLayer::new(layer, document_network).find_input("Shape", colinear_manipulators_node_input_index)? {
-		Some(manipulator_groups)
+	if let Some(TaggedValue::PointIds(manipulator_groups)) = NodeGraphLayer::new(layer, document_network).find_input("Shape", colinear_manipulators_node_input_index) {
+		manipulator_groups
 	} else {
-		None
+		static DEFAULT: &'static Vec<PointId> = &Vec::new();
+		DEFAULT
 	}
 }
 
@@ -209,12 +210,12 @@ pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network
 }
 
 /// Convert subpaths to an iterator of manipulator groups
-pub fn get_manipulator_groups(subpaths: &[Subpath<ManipulatorGroupId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<ManipulatorGroupId>> + DoubleEndedIterator {
+pub fn get_manipulator_groups(subpaths: &[Subpath<PointId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<PointId>> + DoubleEndedIterator {
 	subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
 }
 
 /// Find a manipulator group with a specific id from several subpaths
-pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: ManipulatorGroupId) -> Option<&bezier_rs::ManipulatorGroup<ManipulatorGroupId>> {
+pub fn get_manipulator_from_id(subpaths: &[Subpath<PointId>], id: PointId) -> Option<&bezier_rs::ManipulatorGroup<PointId>> {
 	subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 }
 

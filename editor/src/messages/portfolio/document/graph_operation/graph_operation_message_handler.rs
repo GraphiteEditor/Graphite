@@ -8,9 +8,9 @@ use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
+use graphene_std::vector::PointId;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -411,7 +411,7 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 	}
 }
 
-fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<ManipulatorGroupId>> {
+fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	let mut subpaths = Vec::new();
 	let mut groups = Vec::new();
 

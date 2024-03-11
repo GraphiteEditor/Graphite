@@ -344,7 +344,7 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
-			shape_editor.select_all_anchors_in_layer(&document.network, layer);
+			shape_editor.select_all_anchors_in_layer(document, layer);
 
 			PathToolFsmState::Dragging
 		}
@@ -396,10 +396,10 @@ impl PathToolData {
 
 		if shift {
 			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.network));
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 			}
 		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
-			shape_editor.reset_opposing_handle_lengths(&document.network, opposing_handle_lengths, responses);
+			shape_editor.reset_opposing_handle_lengths(document, opposing_handle_lengths, responses);
 			self.opposing_handle_lengths = None;
 		}
 
@@ -603,11 +603,11 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
-				shape_editor.break_path_at_selected_point(&document.network, responses);
+				shape_editor.break_path_at_selected_point(document, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
-				shape_editor.delete_point_and_break_path(&document.network, responses);
+				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSmoothSharp) => {
@@ -628,7 +628,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectAllAnchors) => {
-				shape_editor.select_all_anchors_in_selected_layers(&document.network);
+				shape_editor.select_all_anchors_in_selected_layers(document);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -656,7 +656,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.set_colinear_handles_state_on_selected(true, responses);
-				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, &document.network);
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}
@@ -776,9 +776,7 @@ fn get_selection_status(document_network: &NodeNetwork, document_metadata: &Docu
 		let Some(subpaths) = get_subpaths(layer, document_network) else {
 			return SelectionStatus::None;
 		};
-		let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
-			return SelectionStatus::None;
-		};
+		let colinear_manipulators = get_colinear_manipulators(layer, document_network);
 		let Some(point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};

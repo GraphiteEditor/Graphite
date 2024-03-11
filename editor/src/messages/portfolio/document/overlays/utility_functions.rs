@@ -34,7 +34,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 		overlay_context.outline(vector_data.stroke_bezier_paths(), transform);
 
-		let mut manipulator_overlay = |manipulator_group: &bezier_rs::ManipulatorGroup<graphene_std::vector::PointId>| {
+		for manipulator_group in vector_data.manipulator_groups() {
 			let anchor = manipulator_group.anchor;
 			let anchor_position = transform.transform_point2(anchor);
 
@@ -51,12 +51,6 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 			}
 
 			overlay_context.manipulator_anchor(anchor_position, is_selected(selected, ManipulatorPointId::new(manipulator_group.id.into(), SelectedType::Anchor)), None);
-		};
-
-		for subpath in vector_data.stroke_bezier_paths() {
-			for manipulator in subpath.manipulator_groups() {
-				manipulator_overlay(manipulator);
-			}
 		}
 	}
 }

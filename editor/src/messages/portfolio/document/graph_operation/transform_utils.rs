@@ -2,7 +2,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{value::TaggedValue, NodeInput};
-use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::PointId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
@@ -184,7 +184,7 @@ fn clamp_bounds(bounds_min: DVec2, mut bounds_max: DVec2) -> [DVec2; 2] {
 	[bounds_min, bounds_max]
 }
 /// Returns corners of all subpaths
-fn subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec2; 2] {
+fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
 	subpaths
 		.iter()
 		.filter_map(|subpath| subpath.bounding_box())
@@ -193,26 +193,26 @@ fn subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec2; 2] {
 }
 
 /// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
-pub fn nonzero_subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec2; 2] {
+pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
 	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
 	clamp_bounds(bounds_min, bounds_max)
 }
 
 pub struct VectorModificationState<'a> {
-	pub subpaths: &'a mut Vec<Subpath<ManipulatorGroupId>>,
-	pub colinear_manipulators: &'a mut Vec<ManipulatorGroupId>,
+	pub subpaths: &'a mut Vec<Subpath<PointId>>,
+	pub colinear_manipulators: &'a mut Vec<PointId>,
 }
 impl<'a> VectorModificationState<'a> {
-	fn insert_start(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<ManipulatorGroupId>) {
+	fn insert_start(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<PointId>) {
 		self.subpaths[subpath_index].insert_manipulator_group(0, manipulator_group)
 	}
 
-	fn insert_end(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<ManipulatorGroupId>) {
+	fn insert_end(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<PointId>) {
 		let subpath = &mut self.subpaths[subpath_index];
 		subpath.insert_manipulator_group(subpath.len(), manipulator_group)
 	}
 
-	fn insert(&mut self, manipulator_group: ManipulatorGroup<ManipulatorGroupId>, after_id: ManipulatorGroupId) {
+	fn insert(&mut self, manipulator_group: ManipulatorGroup<PointId>, after_id: PointId) {
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(index) = subpath.manipulator_index_from_id(after_id) {
 				subpath.insert_manipulator_group(index + 1, manipulator_group);
@@ -221,7 +221,7 @@ impl<'a> VectorModificationState<'a> {
 		}
 	}
 
-	fn remove_group(&mut self, id: ManipulatorGroupId) {
+	fn remove_group(&mut self, id: PointId) {
 		for subpath in self.subpaths.iter_mut() {
 			if let Some(index) = subpath.manipulator_index_from_id(id) {
 				subpath.remove_manipulator_group(index);
@@ -247,7 +247,7 @@ impl<'a> VectorModificationState<'a> {
 		}
 	}
 
-	fn set_manipulator_colinear_handles_state(&mut self, id: ManipulatorGroupId, colinear: bool) {
+	fn set_manipulator_colinear_handles_state(&mut self, id: PointId, colinear: bool) {
 		if !colinear {
 			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
 		} else if !self.colinear_manipulators.contains(&id) {
@@ -255,7 +255,7 @@ impl<'a> VectorModificationState<'a> {
 		}
 	}
 
-	fn toggle_manipulator_colinear_handles_state(&mut self, id: ManipulatorGroupId) {
+	fn toggle_manipulator_colinear_handles_state(&mut self, id: PointId) {
 		if self.colinear_manipulators.contains(&id) {
 			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
 		} else {

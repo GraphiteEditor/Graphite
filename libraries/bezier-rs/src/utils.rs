@@ -266,13 +266,7 @@ pub fn scale_point_from_origin(point: DVec2, origin: DVec2, should_flip_directio
 
 /// Computes the necessary details to form a circular join from `left` to `right`, along a circle around `center`.
 /// By default, the angle is assumed to be 180 degrees.
-pub fn compute_circular_subpath_details<ManipulatorGroupId: crate::Identifier>(
-	left: DVec2,
-	arc_point: DVec2,
-	right: DVec2,
-	center: DVec2,
-	angle: Option<f64>,
-) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+pub fn compute_circular_subpath_details<PointId: crate::Identifier>(left: DVec2, arc_point: DVec2, right: DVec2, center: DVec2, angle: Option<f64>) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
 	let center_to_arc_point = arc_point - center;
 
 	// Based on https://pomax.github.io/bezierinfo/#circles_cubic

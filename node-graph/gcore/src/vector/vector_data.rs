@@ -4,8 +4,7 @@ mod modification;
 use core::borrow::Borrow;
 
 use super::style::{PathStyle, Stroke};
-use crate::Color;
-use crate::{uuid::ManipulatorGroupId, AlphaBlending};
+use crate::{AlphaBlending, Color};
 pub use attributes::*;
 pub use modification::*;
 
@@ -24,7 +23,7 @@ pub struct VectorData {
 	pub alpha_blending: AlphaBlending,
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
-	pub colinear_manipulators: Vec<ManipulatorGroupId>,
+	pub colinear_manipulators: Vec<PointId>,
 
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
@@ -58,15 +57,15 @@ impl VectorData {
 	}
 
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
-	pub fn from_subpath(subpath: bezier_rs::Subpath<ManipulatorGroupId>) -> Self {
+	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath])
 	}
 
 	/// Push a subpath to the vector data
-	pub fn append_subpath<Id: bezier_rs::Identifier + Into<PointId> + Copy>(&mut self, subpath: impl Borrow<bezier_rs::Subpath<Id>>) {
+	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>) {
 		let subpath = subpath.borrow();
 		for point in subpath.manipulator_groups() {
-			self.point_domain.push(point.id.into(), point.anchor);
+			self.point_domain.push(point.id, point.anchor);
 		}
 
 		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
@@ -79,7 +78,7 @@ impl VectorData {
 			let id = SegmentId::generate();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
-			self.segment_domain.push(id, pair[0].id.into(), pair[1].id.into(), handles(&pair[0], &pair[1]), StrokeId::generate());
+			self.segment_domain.push(id, pair[0].id, pair[1].id, handles(&pair[0], &pair[1]), StrokeId::generate());
 		}
 
 		if subpath.closed() {
@@ -87,7 +86,7 @@ impl VectorData {
 				let id = SegmentId::generate();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
-				self.segment_domain.push(id, last.id.into(), first.id.into(), handles(last, first), StrokeId::generate());
+				self.segment_domain.push(id, last.id, first.id, handles(last, first), StrokeId::generate());
 			}
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
@@ -97,7 +96,7 @@ impl VectorData {
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
-	pub fn from_subpaths<Id: bezier_rs::Identifier + Into<PointId> + Copy>(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<Id>>>) -> Self {
+	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>) -> Self {
 		let mut vector_data = Self::empty();
 
 		for subpath in subpaths.into_iter() {
@@ -158,11 +157,11 @@ impl Default for VectorData {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManipulatorPointId {
-	pub group: ManipulatorGroupId,
+	pub group: PointId,
 	pub manipulator_type: SelectedType,
 }
 impl ManipulatorPointId {
-	pub fn new(group: ManipulatorGroupId, manipulator_type: SelectedType) -> Self {
+	pub fn new(group: PointId, manipulator_type: SelectedType) -> Self {
 		Self { group, manipulator_type }
 	}
 }
@@ -175,7 +174,7 @@ pub enum SelectedType {
 }
 impl SelectedType {
 	/// Get the location of the [SelectedType] in the [ManipulatorGroup]
-	pub fn get_position(&self, manipulator_group: &ManipulatorGroup<ManipulatorGroupId>) -> Option<DVec2> {
+	pub fn get_position(&self, manipulator_group: &ManipulatorGroup<PointId>) -> Option<DVec2> {
 		match self {
 			Self::Anchor => Some(manipulator_group.anchor),
 			Self::InHandle => manipulator_group.in_handle,
@@ -184,7 +183,7 @@ impl SelectedType {
 	}
 
 	/// Get the closest [SelectedType] in the [ManipulatorGroup].
-	pub fn closest_widget(manipulator_group: &ManipulatorGroup<ManipulatorGroupId>, transform_space: DAffine2, target: DVec2, hide_handle_distance: f64) -> (Self, f64) {
+	pub fn closest_widget(manipulator_group: &ManipulatorGroup<PointId>, transform_space: DAffine2, target: DVec2, hide_handle_distance: f64) -> (Self, f64) {
 		let anchor = transform_space.transform_point2(manipulator_group.anchor);
 		// Skip handles under the anchor
 		let not_under_anchor = |&(selected_type, position): &(SelectedType, DVec2)| selected_type == Self::Anchor || position.distance_squared(anchor) > hide_handle_distance.powi(2);
@@ -215,4 +214,30 @@ impl SelectedType {
 	pub fn is_handle(self) -> bool {
 		self != SelectedType::Anchor
 	}
+}
+
+#[test]
+fn construct_closed_subpath() {
+	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+	let vector_data = VectorData::from_subpath(&circle);
+	assert_eq!(vector_data.point_domain.ids().len(), 4);
+	let bézier_paths = vector_data.segment_bezier_iter().map(|(_, bézier, _, _)| bézier).collect::<Vec<_>>();
+	assert_eq!(bézier_paths.len(), 4);
+	assert!(bézier_paths.iter().all(|bézier| circle.iter().find(|original_bézier| original_bézier == bézier).is_some()));
+
+	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+	assert_eq!(generated, vec![circle]);
+}
+
+#[test]
+fn construct_open_subpath() {
+	let bézier = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+	let subpath = bezier_rs::Subpath::from_bezier(&bézier);
+	let vector_data = VectorData::from_subpath(&subpath);
+	assert_eq!(vector_data.point_domain.ids().len(), 2);
+	let bézier_paths = vector_data.segment_bezier_iter().map(|(_, bézier, _, _)| bézier).collect::<Vec<_>>();
+	assert_eq!(bézier_paths, vec![bézier]);
+
+	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+	assert_eq!(generated, vec![subpath]);
 }

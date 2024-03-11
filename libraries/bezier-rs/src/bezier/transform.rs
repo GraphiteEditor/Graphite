@@ -347,7 +347,7 @@ impl Bezier {
 	/// - `distance` - The offset's distance from the curve. Positive values will offset the curve in the same direction as the endpoint normals,
 	/// while negative values will offset in the opposite direction.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset<ManipulatorGroupId: crate::Identifier>(&self, distance: f64) -> Subpath<ManipulatorGroupId> {
+	pub fn offset<PointId: crate::Identifier>(&self, distance: f64) -> Subpath<PointId> {
 		if self.is_point() {
 			return Subpath::from_bezier(self);
 		}
@@ -375,7 +375,7 @@ impl Bezier {
 	/// Version of the `offset` function which scales the offset such that the start of the offset is `start_distance` from the original curve, while the end of
 	/// of the offset is `end_distance` from the original curve. The curve transitions from `start_distance` to `end_distance` gradually, proportional to the
 	/// distance along the equation (`t`-value) of the curve. Similarly to the `offset` function, the returned result is an approximation.
-	pub fn graduated_offset<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<ManipulatorGroupId> {
+	pub fn graduated_offset<PointId: crate::Identifier>(&self, start_distance: f64, end_distance: f64) -> Subpath<PointId> {
 		let reduced = self.reduce(None);
 		let mut next_start_distance = start_distance;
 		let distance_difference = end_distance - start_distance;
@@ -414,7 +414,7 @@ impl Bezier {
 	/// Outline takes the following parameter:
 	/// - `distance` - The outline's distance from the curve.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#bezier/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline<ManipulatorGroupId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+	pub fn outline<PointId: crate::Identifier>(&self, distance: f64, cap: Cap) -> Subpath<PointId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance)], false),
@@ -434,13 +434,13 @@ impl Bezier {
 	/// Version of the `outline` function which draws the outline at the specified distances away from the curve.
 	/// The outline begins `start_distance` away, and gradually move to being `end_distance` away.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#bezier/graduated-outline/solo" title="Graduated Outline Demo"></iframe>
-	pub fn graduated_outline<ManipulatorGroupId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+	pub fn graduated_outline<PointId: crate::Identifier>(&self, start_distance: f64, end_distance: f64, cap: Cap) -> Subpath<PointId> {
 		self.skewed_outline(start_distance, end_distance, end_distance, start_distance, cap)
 	}
 
 	/// Version of the `graduated_outline` function that allows for the 4 corners of the outline to be different distances away from the curve.
 	/// <iframe frameBorder="0" width="100%" height="475px" src="https://graphite.rs/libraries/bezier-rs#bezier/skewed-outline/solo" title="Skewed Outline Demo"></iframe>
-	pub fn skewed_outline<ManipulatorGroupId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<ManipulatorGroupId> {
+	pub fn skewed_outline<PointId: crate::Identifier>(&self, distance1: f64, distance2: f64, distance3: f64, distance4: f64, cap: Cap) -> Subpath<PointId> {
 		let (pos_offset, neg_offset) = if self.is_point() {
 			(
 				Subpath::new(vec![ManipulatorGroup::new_anchor(self.start() + DVec2::NEG_Y * distance1)], false),
@@ -776,7 +776,7 @@ mod tests {
 			.all(|(curve, t_pair)| curve.abs_diff_eq(&bezier.trim(TValue::Parametric(t_pair[0]), TValue::Parametric(t_pair[1])), MAX_ABSOLUTE_DIFFERENCE)))
 	}
 
-	fn assert_valid_offset<ManipulatorGroupId: crate::Identifier>(bezier: &Bezier, offset: &Subpath<ManipulatorGroupId>, expected_distance: f64) {
+	fn assert_valid_offset<PointId: crate::Identifier>(bezier: &Bezier, offset: &Subpath<PointId>, expected_distance: f64) {
 		// Verify that the offset is smooth
 		if offset.len() > 1 {
 			offset.iter().take(offset.len() - 2).zip(offset.iter().skip(1)).for_each(|beziers_pair| {

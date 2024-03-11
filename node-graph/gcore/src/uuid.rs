@@ -1,5 +1,3 @@
-use dyn_any::{DynAny, StaticType};
-
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Uuid(
 	#[serde(with = "u64_string")]
@@ -69,33 +67,3 @@ mod uuid_generation {
 }
 
 pub use uuid_generation::*;
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ManipulatorGroupId(u64);
-
-impl bezier_rs::Identifier for ManipulatorGroupId {
-	fn new() -> Self {
-		Self(generate_uuid())
-	}
-}
-
-impl ManipulatorGroupId {
-	pub const ZERO: ManipulatorGroupId = ManipulatorGroupId(0);
-
-	pub fn next_id(&mut self) -> Self {
-		let old = self.0;
-		self.0 += 1;
-		Self(old)
-	}
-
-	pub(crate) fn inner(self) -> u64 {
-		self.0
-	}
-}
-
-impl From<crate::vector::PointId> for ManipulatorGroupId {
-	fn from(value: crate::vector::PointId) -> Self {
-		Self(value.inner())
-	}
-}
