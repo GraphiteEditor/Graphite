@@ -10,7 +10,11 @@ pub struct FillTool {
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {
+	// Standard messages
+	Abort,
+
 	// Tool-specific messages
+	PointerUp,
 	FillPrimaryColor,
 	FillSecondaryColor,
 }
@@ -37,16 +41,28 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
 		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);
 	}
+	fn actions(&self) -> ActionList {
+		use FillToolFsmState::*;
 
-	advertise_actions!(FillToolMessageDiscriminant;
-		FillPrimaryColor,
-		FillSecondaryColor,
-	);
+		match self.fsm_state {
+			Ready => actions!(FillToolMessageDiscriminant;
+				FillPrimaryColor,
+				FillSecondaryColor,
+			),
+			Filling => actions!(FillToolMessageDiscriminant;
+				PointerUp,
+				Abort,
+			),
+		}
+	}
 }
 
 impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
-		EventToMessageMap::default()
+		EventToMessageMap {
+			tool_abort: Some(FillToolMessage::Abort.into()),
+			..Default::default()
+		}
 	}
 }
 
@@ -54,6 +70,8 @@ impl ToolTransition for FillTool {
 enum FillToolFsmState {
 	#[default]
 	Ready,
+	// Implemented as a fake dragging state that can be used to abort unwanted fills
+	Filling,
 }
 
 impl Fsm for FillToolFsmState {
@@ -68,20 +86,33 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else {
 			return self;
 		};
-		let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
-			return self;
-		};
-		let color = match event {
-			FillToolMessage::FillPrimaryColor => global_tool_data.primary_color,
-			FillToolMessage::FillSecondaryColor => global_tool_data.secondary_color,
-		};
-		let fill = Fill::Solid(color);
 
-		responses.add(DocumentMessage::StartTransaction);
-		responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
-		responses.add(DocumentMessage::CommitTransaction);
+		match (self, event) {
+			(FillToolFsmState::Ready, color_event) => {
+				let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
+					return self;
+				};
+				// TODO: Use a match statement here instead of if-else
+				let color = if color_event == FillToolMessage::FillPrimaryColor {
+					global_tool_data.primary_color
+				} else {
+					global_tool_data.secondary_color
+				};
+				let fill = Fill::Solid(color);
 
-		FillToolFsmState::Ready
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
+				responses.add(DocumentMessage::CommitTransaction);
+
+				FillToolFsmState::Filling
+			}
+			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
+			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				return FillToolFsmState::Ready;
+			}
+			_ => self,
+		}
 	}
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
@@ -90,6 +121,7 @@ impl Fsm for FillToolFsmState {
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
 				HintInfo::keys_and_mouse([Key::Shift], MouseMotion::Lmb, "Fill with Secondary"),
 			])]),
+			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
