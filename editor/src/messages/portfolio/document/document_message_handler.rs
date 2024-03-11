@@ -868,11 +868,11 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				for folder in folder_paths {
 					// Select all the children of the folder
 					let mut selected: Vec<NodeId> = Vec::new();
-					for child in folder.children(self.metadata()) {
-						if ungrouped_folders.contains_key(&child.to_node()) {
-							selected.append(&mut child.children(self.metadata()).map(|x| x.clone().to_node()).collect::<Vec<_>>());
-						} else {
-							selected.push(child.to_node());
+					for decendant in folder.decendants(self.metadata()) {
+						if decendant.parent(self.metadata()).expect("No Parent") == folder && !ungrouped_folders.contains_key(&decendant.to_node()) {
+							selected.push(decendant.to_node());
+						} else if ungrouped_folders.contains_key(&decendant.parent(self.metadata()).expect("No Parent").to_node()) && !ungrouped_folders.contains_key(&decendant.to_node()) {
+							selected.push(decendant.to_node());
 						}
 					}
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
