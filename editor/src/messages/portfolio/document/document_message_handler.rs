@@ -892,6 +892,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
+			Noop => (),
 		}
 	}
 
@@ -1522,6 +1523,7 @@ impl DocumentMessageHandler {
 
 	pub fn actions_with_graph_open(&self) -> ActionList {
 		let mut common = actions!(DocumentMessageDiscriminant;
+			Noop,
 			Undo,
 			Redo,
 			SelectAllLayers,

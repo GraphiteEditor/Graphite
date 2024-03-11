@@ -48,6 +48,8 @@ pub fn default_mapping() -> Mapping {
 		// NORMAL PRIORITY
 		// ===============
 		//
+		// Hack to prevent LMB + CTRL (OPTION) + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
+		entry!(KeyDown(KeyZ); modifiers=[Accel, Lmb], action_dispatch=DocumentMessage::Noop),
 		// NodeGraphMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),

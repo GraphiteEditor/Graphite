@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum DocumentMessage {
+	Noop,
 	// Sub-messages
 	#[child]
 	Navigation(NavigationMessage),
