@@ -10,8 +10,9 @@ pub struct FillTool {
 #[impl_message(Message, ToolMessage, Fill)]
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
 pub enum FillToolMessage {
-	// General messages
+	// Standard messages
 	Abort,
+
 	// Tool-specific messages
 	PointerUp,
 	FillPrimaryColor,
@@ -87,6 +88,7 @@ impl Fsm for FillToolFsmState {
 		};
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
+				// TODO: Use a match statement here instead of if-else
 				let color = if color_event == FillToolMessage::FillPrimaryColor {
 					global_tool_data.primary_color
 				} else {
@@ -117,7 +119,7 @@ impl Fsm for FillToolFsmState {
 			])]),
 			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Rmb, ""),
-				HintInfo::keys([Key::Escape], "Cancel Fill").prepend_slash(),
+				HintInfo::keys([Key::Escape], "Cancel").prepend_slash(),
 			])]),
 		};
 
