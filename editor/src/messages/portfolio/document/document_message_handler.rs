@@ -1084,7 +1084,7 @@ impl DocumentMessageHandler {
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		//If there is no history return and don't broadcast SelectionChanged
+		// If there is no history return and don't broadcast SelectionChanged
 		let Some(network) = self.document_undo_history.pop_back() else { return None };
 
 		responses.add(BroadcastEvent::SelectionChanged);
@@ -1095,7 +1095,7 @@ impl DocumentMessageHandler {
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		//If there is no history return and don't broadcast SelectionChanged
+		// If there is no history return and don't broadcast SelectionChanged
 		let Some(network) = self.document_redo_history.pop_back() else { return None };
 
 		responses.add(BroadcastEvent::SelectionChanged);
