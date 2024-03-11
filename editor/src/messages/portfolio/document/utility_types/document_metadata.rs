@@ -141,7 +141,7 @@ impl DocumentMetadata {
 		self.folders = HashSet::new();
 		self.artboards = HashSet::new();
 
-		let id = graph.outputs[0].node_id;
+		let id = graph.exports[0].node_id;
 		let Some(output_node) = graph.nodes.get(&id) else {
 			return;
 		};

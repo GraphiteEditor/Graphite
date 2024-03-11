@@ -1825,7 +1825,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		.introspect_node_in_network(
 			context.network,
 			&imaginate_node,
-			|network| network.inputs.first().copied(),
+			|network| network.imports.first().copied(),
 			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
 		)
 		.unwrap_or_default();

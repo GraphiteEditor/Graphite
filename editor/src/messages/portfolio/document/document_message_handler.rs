@@ -179,8 +179,8 @@ fn root_network() -> NodeNetwork {
 			name: "Output".into(),
 			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
 			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-				inputs: vec![NodeId(3), NodeId(0)],
-				outputs: vec![NodeOutput::new(NodeId(3), 0)],
+				imports: vec![NodeId(3), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
 						name: "EditorApi".to_string(),

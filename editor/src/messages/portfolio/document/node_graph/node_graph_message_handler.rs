@@ -179,7 +179,7 @@ impl NodeGraphMessageHandler {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selection = selected_nodes.selected_nodes().filter(|&&id| !network.inputs.contains(&id) && !network.original_outputs_contain(id));
+			let mut selection = selected_nodes.selected_nodes().filter(|&&id| !network.imports.contains(&id) && !network.original_outputs_contain(id));
 
 			// If there is at least one other selected node then show the hide or show button
 			if selection.next().is_some() {
@@ -422,7 +422,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
-		if network.inputs.contains(&deleting_node_id) {
+		if network.imports.contains(&deleting_node_id) {
 			warn!("Deleting input node!");
 			return false;
 		}
@@ -959,7 +959,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					if !hidden {
 						network.disabled.retain(|&id| node_id != id);
-					} else if !network.inputs.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
 						network.disabled.push(node_id);
 					}
 
@@ -991,10 +991,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					// Check if the node is not already being previewed
 					if !network.outputs_contain(node_id) {
-						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.outputs.clone()));
-						network.outputs[0] = NodeOutput::new(node_id, 0);
+						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.exports.clone()));
+						network.exports[0] = NodeOutput::new(node_id, 0);
 					} else if let Some(outputs) = network.previous_outputs.take() {
-						network.outputs = outputs
+						network.exports = outputs
 					} else {
 						return;
 					}

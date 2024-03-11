@@ -269,7 +269,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Inserts a new node and modifies the inputs
 	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let output_node_id = self.layer_node.unwrap_or(self.document_network.outputs[0].node_id);
+		let output_node_id = self.layer_node.unwrap_or(self.document_network.exports[0].node_id);
 		let Some(output_node) = self.document_network.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
 			return;
@@ -302,7 +302,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network
 			.upstream_flow_back_from_nodes(
 				self.layer_node
-					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 				true,
 			)
 			.find(|(node, _)| node.name == name)
@@ -327,7 +327,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network
 			.upstream_flow_back_from_nodes(
 				self.layer_node
-					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 				true,
 			)
 			.filter(|(node, _)| node.name == name)

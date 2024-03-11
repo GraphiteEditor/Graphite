@@ -211,7 +211,7 @@ impl NodeRuntime {
 				.collect::<Vec<_>>();
 
 			// We assume only one output
-			assert_eq!(scoped_network.outputs.len(), 1, "Graph with multiple outputs not yet handled");
+			assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 			let c = Compiler {};
 			let proto_network = match c.compile_single(scoped_network) {
 				Ok(network) => network,

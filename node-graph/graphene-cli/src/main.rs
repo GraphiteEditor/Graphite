@@ -114,7 +114,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		}
 	}
 	let len = network_inputs.len();
-	network.inputs = network_inputs;
+	network.imports = network_inputs;
 
 	// if the network has no inputs, it doesn't need to be wrapped in a scope
 	if len == 0 {
@@ -140,8 +140,8 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 		},
 	];
 	NodeNetwork {
-		inputs: vec![NodeId(0)],
-		outputs: vec![NodeOutput::new(NodeId(2), 0)],
+		imports: vec![NodeId(0)],
+		exports: vec![NodeOutput::new(NodeId(2), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
@@ -151,8 +151,8 @@ fn begin_scope() -> DocumentNode {
 	DocumentNode {
 		name: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			inputs: vec![NodeId(0)],
-			outputs: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
+			imports: vec![NodeId(0)],
+			exports: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
 					name: "SetNode".to_string(),
