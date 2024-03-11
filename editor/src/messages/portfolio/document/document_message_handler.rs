@@ -870,7 +870,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					let mut selected: Vec<NodeId> = Vec::new();
 					for child in folder.children(self.metadata()) {
 						if ungrouped_folders.contains_key(&child.to_node()) {
-							selected.append(&mut child.children(self.metadata()).filter(|_x| true).map(|x| x.clone().to_node()).collect::<Vec<_>>());
+							selected.append(&mut child.children(self.metadata()).map(|x| x.clone().to_node()).collect::<Vec<_>>());
 						} else {
 							selected.push(child.to_node());
 						}
