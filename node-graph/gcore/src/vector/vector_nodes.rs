@@ -105,6 +105,13 @@ fn repeat_vector_data(mut vector_data: VectorData, direction: DVec2, count: u32)
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct ConvexHullNode {}
+
+fn convex_hull(mut vector_data: VectorData) -> VectorData {
+	VectorData::empty()
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
 	angle_offset: AngleOffset,
 	radius: Radius,

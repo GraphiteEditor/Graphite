@@ -2618,6 +2618,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Convex Hull",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::ConvexHullNode"),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::node_no_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Repeat",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
