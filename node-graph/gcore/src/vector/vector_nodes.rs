@@ -89,7 +89,6 @@ pub struct RepeatNode<Direction, Count> {
 fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
 	// Repeat the vector data
 	let mut result = VectorData::empty();
-	let inverse = vector_data.transform.inverse();
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
 		result.concat(&vector_data, transform);
@@ -154,7 +153,7 @@ fn solidify_stroke(vector_data: VectorData) -> VectorData {
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
 		let subpath_out = subpath.outline(
-			stroke.weight / 2.0, // Diameter to radius.
+			stroke.weight / 2., // Diameter to radius.
 			match stroke.line_join {
 				crate::vector::style::LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
 				crate::vector::style::LineJoin::Bevel => Join::Bevel,
@@ -539,6 +538,19 @@ mod test {
 		}
 		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
 		assert_eq!(repeated.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
+		}
+	}
+	#[test]
+	fn repeat_transform_position() {
+		let direction = DVec2::new(12., 10.);
+		let repeated = RepeatNode {
+			direction: ClonedNode::new(direction),
+			count: ClonedNode::new(8),
+		}
+		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
+		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
 		}
