@@ -59,7 +59,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 
 impl ToolTransition for FillTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
-		EventToMessageMap::default()
+		EventToMessageMap {
+			tool_abort: Some(FillToolMessage::Abort.into()),
+			..Default::default()
+		}
 	}
 }
 
@@ -83,11 +86,12 @@ impl Fsm for FillToolFsmState {
 		let ToolMessage::Fill(event) = event else {
 			return self;
 		};
-		let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
-			return self;
-		};
+
 		match (self, event) {
 			(FillToolFsmState::Ready, color_event) => {
+				let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
+					return self;
+				};
 				// TODO: Use a match statement here instead of if-else
 				let color = if color_event == FillToolMessage::FillPrimaryColor {
 					global_tool_data.primary_color
