@@ -864,24 +864,44 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::StartTransaction);
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
-
+				let mut ungrouped_folders = HashMap::new();
 				for folder in folder_paths {
 					// Select all the children of the folder
-					responses.add(NodeGraphMessage::SelectedNodesSet {
-						nodes: folder.children(self.metadata()).map(LayerNodeIdentifier::to_node).collect(),
-					});
+					let mut selected: Vec<NodeId> = Vec::new();
+					for child in folder.children(self.metadata()) {
+						if ungrouped_folders.contains_key(&child.to_node()) {
+							selected.append(&mut child.children(self.metadata()).filter(|_x| true).map(|x| x.clone().to_node()).collect::<Vec<_>>());
+						} else {
+							selected.push(child.to_node());
+						}
+					}
+
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
 
 					// Copy them
 					responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 
 					// Paste them into the folder above
+					let calculated_insert_index = folder
+						.parent(self.metadata())
+						.unwrap_or(LayerNodeIdentifier::ROOT)
+						.children(self.metadata())
+						.enumerate()
+						.find_map(|(index, item)| {
+							if item == folder {
+								return Some(index as isize);
+							}
+							None
+						});
 					responses.add(PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
 						parent: folder.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT),
-						insert_index: -1,
+						insert_index: calculated_insert_index.unwrap_or(-1),
 					});
-					// Delete the parent folder
-					responses.add(GraphOperationMessage::DeleteLayer { id: folder.to_node() });
+					ungrouped_folders.insert(folder.to_node(), true);
+				}
+				for ungrouped_folder in ungrouped_folders.keys() {
+					responses.add(GraphOperationMessage::DeleteLayer { id: *ungrouped_folder });
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}
