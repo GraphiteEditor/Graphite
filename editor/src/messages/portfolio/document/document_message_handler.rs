@@ -386,8 +386,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentHistoryBackward => self.undo(responses),
-			DocumentHistoryForward => self.redo(responses),
+			DocumentHistoryBackward => self.undo_with_history(responses),
+			DocumentHistoryForward => self.redo_with_history(responses),
 			DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
@@ -1073,30 +1073,40 @@ impl DocumentMessageHandler {
 		std::mem::replace(&mut self.network, network)
 	}
 
-	pub fn undo(&mut self, responses: &mut VecDeque<Message>) {
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
+		let Some(previous_network) = self.undo(responses) else { return };
 
-		let Some(network) = self.document_undo_history.pop_back() else { return };
-
-		responses.add(BroadcastEvent::SelectionChanged);
-
-		let previous_network = std::mem::replace(&mut self.network, network);
 		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
 	}
-
-	pub fn redo(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-
-		let Some(network) = self.document_redo_history.pop_back() else { return };
+		// If there is no history return and don't broadcast SelectionChanged
+		let Some(network) = self.document_undo_history.pop_back() else { return None };
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
 		let previous_network = std::mem::replace(&mut self.network, network);
+		Some(previous_network)
+	}
+	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		// If there is no history return and don't broadcast SelectionChanged
+		let Some(network) = self.document_redo_history.pop_back() else { return None };
+
+		responses.add(BroadcastEvent::SelectionChanged);
+
+		let previous_network = std::mem::replace(&mut self.network, network);
+		Some(previous_network)
+	}
+	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		let Some(previous_network) = self.redo(responses) else { return };
+
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
