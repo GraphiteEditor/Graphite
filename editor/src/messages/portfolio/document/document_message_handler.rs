@@ -355,14 +355,18 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 			}
 			CommitTransaction => (),
-			CreateEmptyFolder { parent } => {
+			CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
+				let parent = self
+					.metadata()
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.unwrap_or(LayerNodeIdentifier::ROOT);
 
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: -1,
+					insert_index: 0,
 					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -1470,7 +1474,7 @@ impl DocumentMessageHandler {
 				IconButton::new("Folder", 24)
 					.tooltip("New Folder")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
-					.on_update(|_| DocumentMessage::CreateEmptyFolder { parent: LayerNodeIdentifier::ROOT }.into())
+					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")
