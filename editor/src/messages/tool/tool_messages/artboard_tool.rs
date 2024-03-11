@@ -404,7 +404,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(_, ArtboardToolMessage::Abort) => {
+			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				// ArtboardTool currently doesn't implement snapping
@@ -425,10 +425,14 @@ impl Fsm for ArtboardToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
-			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")])]),
-			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => {
-				HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])])
-			}
+			ArtboardToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
+			]),
+			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
