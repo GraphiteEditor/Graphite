@@ -117,10 +117,7 @@ impl Fsm for FillToolFsmState {
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
 				HintInfo::keys_and_mouse([Key::Shift], MouseMotion::Lmb, "Fill with Secondary"),
 			])]),
-			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Rmb, ""),
-				HintInfo::keys([Key::Escape], "Cancel").prepend_slash(),
-			])]),
+			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
