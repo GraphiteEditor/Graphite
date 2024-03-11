@@ -90,7 +90,7 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> 
 	// Repeat the vector data
 	let mut result = VectorData::empty();
 	let inverse = vector_data.transform.inverse();
-	let direction = inverse.transform_vector2(direction);
+	//let direction = inverse.transform_vector2(direction);
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
 		result.concat(&vector_data, transform);
@@ -141,10 +141,10 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 pub struct SolidifyStrokeNode;
 
 #[node_macro::node_fn(SolidifyStrokeNode)]
-fn solidify_stroke(mut vector_data: VectorData) -> VectorData {
+fn solidify_stroke(vector_data: VectorData) -> VectorData {
 	// Grab what we need from original data.
 	let VectorData { transform, style, .. } = &vector_data;
-	let mut subpaths = vector_data.stroke_bezier_paths();
+	let subpaths = vector_data.stroke_bezier_paths();
 	let mut result = VectorData::empty();
 
 	// Perform operation on all subpaths in this shape.
