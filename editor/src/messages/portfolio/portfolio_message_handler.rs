@@ -369,7 +369,6 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let id = NodeId(generate_uuid());
-						error!("{:?}", entry.alias.clone());
 						responses.add(GraphOperationMessage::NewCustomLayer {
 							id,
 							nodes: entry.nodes.clone(),
