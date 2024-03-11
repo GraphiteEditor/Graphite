@@ -875,7 +875,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 							selected.push(child.to_node());
 						}
 					}
-
+					selected.rev();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
 
 					// Copy them
