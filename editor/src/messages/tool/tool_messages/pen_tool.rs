@@ -721,15 +721,22 @@ impl Fsm for PenToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			PenToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Draw Path")])]),
-			PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor => HintData(vec![
+			PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
 					HintInfo::keys([Key::Escape], "").prepend_slash(),
 					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
 				]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
-				// TODO: Show this only when dragging a smooth point's handle
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
+			]),
+			PenToolFsmState::DraggingHandle => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Rmb, ""),
+					HintInfo::keys([Key::Escape], "").prepend_slash(),
+					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
+				]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::keys([Key::Alt], "Bend Handle")]),
 			]),
 		};

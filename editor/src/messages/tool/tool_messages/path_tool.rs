@@ -619,8 +619,8 @@ impl Fsm for PathToolFsmState {
 		let general_hint_data = HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 			HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
 		]);
 
 		let hint_data = match self {
@@ -629,8 +629,8 @@ impl Fsm for PathToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					// TODO: Make hint dynamically say "Make Handle Smooth" or "Make Handle Sharp" based on its current state
-					// TODO: Only show this if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown
 					// TODO: Switch this to the "S" key
+					// TODO: Only show this if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown
 					HintInfo::keys([Key::Alt], "Toggle Smooth/Sharp Handles"),
 					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line)
 					// TODO: Show this only when a handle is being dragged

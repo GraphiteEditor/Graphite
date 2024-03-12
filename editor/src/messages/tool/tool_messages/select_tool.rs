@@ -1025,7 +1025,6 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::Ready { selection } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup({
 						let mut hints = vec![HintInfo::mouse(MouseMotion::Lmb, "Select Object"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()];
 						if *selection == NestedSelectionBehavior::Shallowest {
@@ -1037,6 +1036,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 						HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 					]),
+					HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
 					HintGroup(vec![
 						HintInfo::arrow_keys("Nudge Selected"),
 						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
@@ -1053,14 +1053,17 @@ impl Fsm for SelectToolFsmState {
 			SelectToolFsmState::Dragging => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
 					HintGroup(vec![
-						HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
+						HintInfo::keys([Key::Alt], "Move Duplicate"),
 						HintInfo::keys([Key::Control, Key::KeyD], "Place Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 					]),
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
 			SelectToolFsmState::DrawingBox { .. } => {
+				// TODO: Add hint and implement functionality for holding Shift to extend the selection, thus preventing the prior selection from being cleared
+				// TODO: Also fix the current functionality so canceling the box select doesn't clear the prior selection
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
