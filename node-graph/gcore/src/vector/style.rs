@@ -189,9 +189,17 @@ pub enum Fill {
 }
 
 impl Fill {
-	/// Construct a new solid [Fill] from a [Color].
+	/// Construct a new [Fill::Solid] from a [Color].
 	pub fn solid(color: Color) -> Self {
 		Self::Solid(color)
+	}
+
+	/// Construct a new [Fill::Solid] or [Fill::None] from an optional [Color].
+	pub fn solid_or_none(color: Option<Color>) -> Self {
+		match color {
+			Some(color) => Self::Solid(color),
+			None => Self::None,
+		}
 	}
 
 	/// Evaluate the color at some point on the fill. Doesn't currently work for Gradient.

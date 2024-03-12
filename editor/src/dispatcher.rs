@@ -222,7 +222,9 @@ impl Dispatcher {
 	/// Logs a message that is about to be executed,
 	/// either as a tree with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
-		if !MessageDiscriminant::from(message).local_name().ends_with("PointerMove") {
+		let message_name = MessageDiscriminant::from(message).local_name();
+
+		if !(message_name.ends_with("PointerMove") || message_name.ends_with("AnimationFrame")) {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

@@ -4,9 +4,9 @@ use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
-use graphene_core::uuid::ManipulatorGroupId;
 
 use glam::{DAffine2, DVec2};
+use graphene_std::vector::PointId;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -141,7 +141,7 @@ impl DocumentMetadata {
 		self.folders = HashSet::new();
 		self.artboards = HashSet::new();
 
-		let id = graph.outputs[0].node_id;
+		let id = graph.exports[0].node_id;
 		let Some(output_node) = graph.nodes.get(&id) else {
 			return;
 		};
@@ -287,7 +287,7 @@ impl DocumentMetadata {
 			.reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<ManipulatorGroupId>> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
 		static EMPTY: Vec<ClickTarget> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().map(|click_target| &click_target.subpath)

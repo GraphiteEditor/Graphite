@@ -269,7 +269,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Inserts a new node and modifies the inputs
 	fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let output_node_id = self.layer_node.unwrap_or(self.document_network.outputs[0].node_id);
+		let output_node_id = self.layer_node.unwrap_or(self.document_network.exports[0].node_id);
 		let Some(output_node) = self.document_network.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
 			return;
@@ -302,7 +302,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network
 			.upstream_flow_back_from_nodes(
 				self.layer_node
-					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 				true,
 			)
 			.find(|(node, _)| node.name == name)
@@ -327,7 +327,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.document_network
 			.upstream_flow_back_from_nodes(
 				self.layer_node
-					.map_or_else(|| self.document_network.outputs.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
 				true,
 			)
 			.filter(|(node, _)| node.name == name)
@@ -516,7 +516,9 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		LayerNodeIdentifier::new(id, self.document_network).delete(self.document_metadata);
+		let layer_node = LayerNodeIdentifier::new(id, self.document_network);
+		let child_layers = layer_node.decendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
+		layer_node.delete(self.document_metadata);
 
 		let new_input = node.inputs[1].clone();
 		let deleted_position = node.metadata.position;
@@ -536,7 +538,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut delete_nodes = vec![id];
-		for (_node, id) in self.document_network.upstream_flow_back_from_nodes(vec![id], true) {
+		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
 			// Don't delete the node if other layers depend on it.
 			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
@@ -773,6 +775,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
 					Ok(t) => t,
 					Err(e) => {
+						responses.add(DocumentMessage::DocumentHistoryBackward);
 						responses.add(DialogMessage::DisplayDialogError {
 							title: "SVG parsing failed".to_string(),
 							description: e.to_string(),

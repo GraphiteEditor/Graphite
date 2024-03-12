@@ -1,7 +1,6 @@
 use super::*;
 use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE};
 use crate::utils::{SubpathTValue, TValue, TValueType};
-use crate::ProjectionOptions;
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
@@ -25,10 +24,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Return the sum of the approximation of the length of each `Bezier` curve along the `Subpath`.
-	/// - `num_subdivisions` - Number of subdivisions used to approximate the curve. The default value is `1000`.
+	/// - `tolerance` - Tolerance used to approximate the curve.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/length/solo" title="Length Demo"></iframe>
-	pub fn length(&self, num_subdivisions: Option<usize>) -> f64 {
-		self.iter().map(|bezier| bezier.length(num_subdivisions)).sum()
+	pub fn length(&self, tolerance: Option<f64>) -> f64 {
+		self.iter().map(|bezier| bezier.length(tolerance)).sum()
 	}
 
 	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
@@ -98,9 +97,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns the segment index and `t` value that corresponds to the closest point on the curve to the provided point.
-	/// Uses a searching algorithm akin to binary search that can be customized using the [ProjectionOptions] structure.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/project/solo" title="Project Demo"></iframe>
-	pub fn project(&self, point: DVec2, options: Option<ProjectionOptions>) -> Option<(usize, f64)> {
+	pub fn project(&self, point: DVec2) -> Option<(usize, f64)> {
 		if self.is_empty() {
 			return None;
 		}
@@ -109,7 +107,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let (index, (_, project_t)) = self
 			.iter()
 			.map(|bezier| {
-				let project_t = bezier.project(point, options);
+				let project_t = bezier.project(point);
 				(bezier.evaluate(TValue::Parametric(project_t)).distance(point), project_t)
 			})
 			.enumerate()

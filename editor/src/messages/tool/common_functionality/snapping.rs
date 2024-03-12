@@ -172,8 +172,8 @@ impl<'a> SnapData<'a> {
 	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
 		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
 	}
-	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: ManipulatorGroupId) -> bool {
-		self.manipulators.contains(&(layer, manipulator))
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<ManipulatorGroupId>) -> bool {
+		self.manipulators.contains(&(layer, manipulator.into()))
 	}
 }
 impl SnapManager {
@@ -327,7 +327,7 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
 				let Some(curve) = curve else { continue };
-				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
+				overlay_context.outline::<ManipulatorGroupId>([Subpath::from_bezier(curve)].iter(), to_viewport);
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad);

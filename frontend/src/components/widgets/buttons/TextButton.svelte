@@ -65,7 +65,6 @@
 		tabindex={disabled ? -1 : 0}
 		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
 		on:click={onClick}
-		on:keydown={(e) => self?.keydown(e, false)}
 	>
 		{#if icon}
 			<IconLabel {icon} />

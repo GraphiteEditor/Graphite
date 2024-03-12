@@ -2,7 +2,8 @@ mod quad;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
-use crate::uuid::{generate_uuid, ManipulatorGroupId};
+use crate::uuid::generate_uuid;
+use crate::vector::PointId;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
 
@@ -14,7 +15,7 @@ use glam::{DAffine2, DVec2};
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
 pub struct ClickTarget {
-	pub subpath: bezier_rs::Subpath<ManipulatorGroupId>,
+	pub subpath: bezier_rs::Subpath<PointId>,
 	pub stroke_width: f64,
 }
 
@@ -296,7 +297,10 @@ impl GraphicElementRendered for VectorData {
 		let transformed_bounds = self.bounding_box_with_transform(multiplied_transform).unwrap_or_default();
 
 		let mut path = String::new();
-		for subpath in &self.subpaths {
+		for (_, subpath) in self.region_bezier_paths() {
+			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
+		}
+		for subpath in self.stroke_bezier_paths() {
 			let _ = subpath.subpath_to_svg(&mut path, multiplied_transform);
 		}
 
@@ -326,11 +330,8 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		let update_closed = |mut subpath: bezier_rs::Subpath<ManipulatorGroupId>| {
-			subpath.set_closed(self.style.fill().is_some());
-			subpath
-		};
-		click_targets.extend(self.subpaths.iter().cloned().map(update_closed).map(|subpath| ClickTarget { stroke_width, subpath }))
+		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
+		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
@@ -340,7 +341,7 @@ impl GraphicElementRendered for VectorData {
 		let vector_data = self;
 
 		let transform = to_transform(vector_data.transform);
-		for subpath in vector_data.subpaths.iter() {
+		for subpath in vector_data.stroke_bezier_paths() {
 			let start = vector_data.transform.transform_point2(subpath[0].anchor);
 			builder.move_to(start.x as f32, start.y as f32);
 			for bezier in subpath.iter() {

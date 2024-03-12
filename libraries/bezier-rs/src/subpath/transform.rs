@@ -296,8 +296,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			let start_tangent = second_bezier.non_normalized_tangent(0.);
 
 			// Compute an average unit vector, weighing the segments by a rough estimation of their relative size.
-			let segment1_len = first_bezier.length(Some(5));
-			let segment2_len = second_bezier.length(Some(5));
+			let segment1_len = first_bezier.length(None);
+			let segment2_len = second_bezier.length(None);
 			let average_unit_tangent = (end_tangent.normalize() * segment1_len + start_tangent.normalize() * segment2_len) / (segment1_len + segment2_len);
 
 			// Adjust start and end handles to fit the average tangent

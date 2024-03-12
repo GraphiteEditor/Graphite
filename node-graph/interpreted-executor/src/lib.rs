@@ -16,8 +16,8 @@ mod tests {
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
-				inputs: vec![NodeId(0), NodeId(0)],
-				outputs: vec![NodeOutput::new(NodeId(1), 0)],
+				imports: vec![NodeId(0), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: [
 					(
 						NodeId(0),
@@ -45,8 +45,8 @@ mod tests {
 		}
 
 		let network = NodeNetwork {
-			inputs: vec![NodeId(0)],
-			outputs: vec![NodeOutput::new(NodeId(0), 0)],
+			imports: vec![NodeId(0)],
+			exports: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(
 				NodeId(0),
 				DocumentNode {
@@ -86,8 +86,8 @@ mod tests {
 		use graph_craft::*;
 
 		let network = NodeNetwork {
-			inputs: vec![NodeId(0)],
-			outputs: vec![NodeOutput::new(NodeId(1), 0)],
+			imports: vec![NodeId(0)],
+			exports: vec![NodeOutput::new(NodeId(1), 0)],
 			nodes: [
 				// Simple identity node taking a number as input from outside the graph
 				(

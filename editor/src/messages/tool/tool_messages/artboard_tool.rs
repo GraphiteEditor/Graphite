@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
@@ -27,6 +28,7 @@ pub enum ArtboardToolMessage {
 	NudgeSelected { delta_x: f64, delta_y: f64 },
 	PointerDown,
 	PointerMove { constrain_axis_or_aspect: Key, center: Key },
+	PointerOutsideViewport { constrain_axis_or_aspect: Key, center: Key },
 	PointerUp,
 }
 
@@ -47,14 +49,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
 	}
 
-	advertise_actions!(ArtboardToolMessageDiscriminant;
-		PointerDown,
-		PointerUp,
-		PointerMove,
-		DeleteSelected,
-		NudgeSelected,
-		Abort,
-	);
+	fn actions(&self) -> ActionList {
+		use ArtboardToolFsmState::*;
+
+		let mut common = actions!(ArtboardToolMessageDiscriminant;
+			DeleteSelected,
+			NudgeSelected,
+			PointerMove,
+		);
+
+		let additional = match self.fsm_state {
+			Ready => actions!(ArtboardToolMessageDiscriminant; PointerDown),
+			_ => actions!(ArtboardToolMessageDiscriminant; PointerUp, Abort),
+		};
+		common.extend(additional);
+
+		common
+	}
 }
 
 impl LayoutHolder for ArtboardTool {
@@ -90,6 +101,7 @@ struct ArtboardToolData {
 	cursor: MouseCursorIcon,
 	drag_start: DVec2,
 	drag_current: DVec2,
+	auto_panning: AutoPanning,
 }
 
 impl ArtboardToolData {
@@ -201,10 +213,20 @@ impl Fsm for ArtboardToolFsmState {
 				let mouse_position = input.mouse.position;
 				tool_data.resize_artboard(responses, document, mouse_position, from_center, constrain_square);
 
+				tool_data.auto_panning.setup_by_mouse_position(
+					mouse_position,
+					input.viewport_bounds.size(),
+					&[
+						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+					],
+					responses,
+				);
+
 				ArtboardToolFsmState::ResizingBounds
 			}
-			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, .. }) => {
-				if let Some(bounds) = &tool_data.bounding_box_manager {
+			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 					let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
 					let size = bounds.bounds[1] - bounds.bounds[0];
@@ -216,7 +238,22 @@ impl Fsm for ArtboardToolFsmState {
 						dimensions: size.round().as_ivec2(),
 					});
 
-					tool_data.drag_current = mouse_position;
+					// The second term is added to prevent the slow change in position due to rounding errors.
+					tool_data.drag_current = mouse_position + bounds.transform.transform_vector2(position.round() - position);
+
+					// Update bounds if another `PointerMove` message comes before `ResizeArtboard` is finished.
+					bounds.bounds[0] = position.round();
+					bounds.bounds[1] = position.round() + size.round();
+
+					tool_data.auto_panning.setup_by_mouse_position(
+						mouse_position,
+						input.viewport_bounds.size(),
+						&[
+							ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+							ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+						],
+						responses,
+					);
 				}
 				ArtboardToolFsmState::Dragging
 			}
@@ -266,6 +303,16 @@ impl Fsm for ArtboardToolFsmState {
 					})
 				}
 
+				tool_data.auto_panning.setup_by_mouse_position(
+					mouse_position,
+					input.viewport_bounds.size(),
+					&[
+						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+					],
+					responses,
+				);
+
 				ArtboardToolFsmState::Drawing
 			}
 			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerMove { .. }) => {
@@ -277,6 +324,37 @@ impl Fsm for ArtboardToolFsmState {
 				}
 
 				ArtboardToolFsmState::Ready
+			}
+			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				ArtboardToolFsmState::ResizingBounds
+			}
+			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_current += shift;
+					tool_data.drag_start += shift;
+				}
+
+				ArtboardToolFsmState::Dragging
+			}
+			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_start += shift;
+				}
+
+				ArtboardToolFsmState::Drawing
+			}
+			(state, ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }) => {
+				tool_data.auto_panning.stop(
+					&[
+						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+					],
+					responses,
+				);
+
+				state
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerUp) => {
 				tool_data.snap_manager.cleanup(responses);
@@ -326,9 +404,14 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
-			(_, ArtboardToolMessage::Abort) => {
-				tool_data.snap_manager.cleanup(responses);
+			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+
+				// ArtboardTool currently doesn't implement snapping
+				// tool_data.snap_manager.cleanup(responses);
+
 				responses.add(OverlaysMessage::Draw);
+
 				ArtboardToolFsmState::Ready
 			}
 			_ => self,
@@ -342,10 +425,14 @@ impl Fsm for ArtboardToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
-			ArtboardToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")])]),
-			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => {
-				HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")])])
-			}
+			ArtboardToolFsmState::Dragging => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
+			]),
+			ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

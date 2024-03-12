@@ -118,7 +118,7 @@
 	onMount(() => {
 		// Measure the content and round up its width and height to the nearest even integer.
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
-		const floatingMenuContentDiv = floatingMenuContent?.div();
+		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
 			// TODO: Also use https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver to detect any changes which may affect the size of the content.
 			// TODO: The current method only notices when the dialog size increases but can't detect when it decreases.
@@ -142,7 +142,7 @@
 
 	afterUpdate(() => {
 		// Remove the size constraint after the content updates so the resize observer can measure the content and reapply a newly calculated one
-		const floatingMenuContentDiv = floatingMenuContent?.div();
+		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
 			// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
 			floatingMenuContentDiv.style.setProperty("min-width", "unset");
@@ -164,7 +164,7 @@
 
 		const workspace = document.querySelector("[data-workspace]");
 
-		const floatingMenuContentDiv = floatingMenuContent?.div();
+		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
 		workspaceBounds = workspace.getBoundingClientRect();
@@ -265,7 +265,7 @@
 
 		// Measure the width of the floating menu content element, if it's currently visible
 		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy Svelte template if condition
-		const naturalWidth: number | undefined = floatingMenuContent?.div()?.clientWidth;
+		const naturalWidth: number | undefined = floatingMenuContent?.div?.()?.clientWidth;
 
 		// Turn off measuring mode for the component, which triggers another call to the `afterUpdate()` Svelte event, so we can turn off the protection after that has happened
 		measuringOngoing = false;

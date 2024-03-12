@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::utility_funcitons::should_extend;
+use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};

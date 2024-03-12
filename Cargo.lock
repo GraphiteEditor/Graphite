@@ -1273,12 +1273,6 @@ dependencies = [
 
 [[package]]
 name = "data-url"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
-
-[[package]]
-name = "data-url"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c297a1c74b71ae29df00c3e22dd9534821d60eb9af5a0192823fa2acea70c2a"
@@ -1684,21 +1678,7 @@ version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a595cb550439a117696039dfc69830492058211b771a2a165379f2a1a53d84d"
 dependencies = [
- "roxmltree 0.19.0",
-]
-
-[[package]]
-name = "fontdb"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af8d8cbea8f21307d7e84bca254772981296f058a1d36b461bf4d83a7499fc9e"
-dependencies = [
- "fontconfig-parser",
- "log",
- "memmap2 0.6.2",
- "slotmap",
- "tinyvec",
- "ttf-parser 0.19.2",
+ "roxmltree",
 ]
 
 [[package]]
@@ -1709,7 +1689,7 @@ checksum = "b0299020c3ef3f60f526a4f64ab4a3d4ce116b1acbf24cdd22da0068e5d81dc3"
 dependencies = [
  "fontconfig-parser",
  "log",
- "memmap2 0.9.4",
+ "memmap2",
  "slotmap",
  "tinyvec",
  "ttf-parser 0.20.0",
@@ -2355,7 +2335,7 @@ dependencies = [
  "glam",
  "image",
  "js-sys",
- "kurbo 0.11.0",
+ "kurbo 0.11.0 (git+https://github.com/linebender/kurbo.git)",
  "log",
  "node-macro",
  "num-derive",
@@ -2366,7 +2346,8 @@ dependencies = [
  "serde",
  "specta",
  "spirv-std",
- "usvg 0.39.0",
+ "tokio",
+ "usvg",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -2403,7 +2384,6 @@ dependencies = [
  "tokio",
  "url",
  "vello",
- "vello_svg",
  "vulkan-executor",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2457,7 +2437,7 @@ dependencies = [
  "serde_json",
  "specta",
  "thiserror",
- "usvg 0.39.0",
+ "usvg",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3216,6 +3196,16 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e5aa9f0f96a938266bdb12928a67169e8d22c6a786fda8ed984b85e6ba93c3c"
+dependencies = [
+ "arrayvec",
+ "smallvec",
+]
+
+[[package]]
+name = "kurbo"
+version = "0.11.0"
 source = "git+https://github.com/linebender/kurbo.git#7141477ea77eb982fcfbf8241da8870d6505eb63"
 dependencies = [
  "arrayvec",
@@ -3413,15 +3403,6 @@ name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
-
-[[package]]
-name = "memmap2"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d28bba84adfe6646737845bc5ebbfa2c08424eb1c37e94a1fd2a82adb56a872"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "memmap2"
@@ -4146,9 +4127,10 @@ checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
 [[package]]
 name = "peniko"
 version = "0.1.0"
-source = "git+https://github.com/linebender/peniko?rev=8717635681dedfab3e9f3741fcbc7f3318a82ff0#8717635681dedfab3e9f3741fcbc7f3318a82ff0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caaf7fec601d640555d9a4cab7343eba1e1c7a5a71c9993ff63b4c26bc5d50c5"
 dependencies = [
- "kurbo 0.10.4",
+ "kurbo 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec",
 ]
 
@@ -4667,12 +4649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rctree"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b42e27ef78c35d3998403c1d26f3efd9e135d3e5121b0a4845cc5cc27547f4f"
-
-[[package]]
 name = "read-fonts"
 version = "0.15.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4818,9 +4794,9 @@ dependencies = [
  "pico-args",
  "png",
  "rgb",
- "svgtypes 0.14.0",
+ "svgtypes",
  "tiny-skia",
- "usvg 0.39.0",
+ "usvg",
 ]
 
 [[package]]
@@ -4881,28 +4857,6 @@ dependencies = [
  "bitflags 2.4.2",
  "serde",
  "serde_derive",
-]
-
-[[package]]
-name = "rosvgtree"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad747e7384940e7bf33b15ba433b7bad9f44c0c6d5287a67c2cb22cd1743d497"
-dependencies = [
- "log",
- "roxmltree 0.18.1",
- "simplecss",
- "siphasher",
- "svgtypes 0.11.0",
-]
-
-[[package]]
-name = "roxmltree"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "862340e351ce1b271a378ec53f304a5558f7db87f3769dc655a8f6ecbb68b302"
-dependencies = [
- "xmlparser",
 ]
 
 [[package]]
@@ -4995,22 +4949,6 @@ name = "rustversion"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ffc183a10b4478d04cbbbfc96d0873219d962dd5accaff2ffbd4ceb7df837f4"
-
-[[package]]
-name = "rustybuzz"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "162bdf42e261bee271b3957691018634488084ef577dddeb6420a9684cab2a6a"
-dependencies = [
- "bitflags 1.3.2",
- "bytemuck",
- "smallvec",
- "ttf-parser 0.18.1",
- "unicode-bidi-mirroring",
- "unicode-ccc",
- "unicode-general-category",
- "unicode-script",
-]
 
 [[package]]
 name = "rustybuzz"
@@ -5113,7 +5051,7 @@ checksum = "82b2eaf3a5b264a521b988b2e73042e742df700c4f962cde845d1541adb46550"
 dependencies = [
  "ab_glyph",
  "log",
- "memmap2 0.9.4",
+ "memmap2",
  "smithay-client-toolkit",
  "tiny-skia",
 ]
@@ -5492,7 +5430,7 @@ dependencies = [
  "cursor-icon",
  "libc",
  "log",
- "memmap2 0.9.4",
+ "memmap2",
  "rustix 0.38.31",
  "thiserror",
  "wayland-backend",
@@ -5604,7 +5542,7 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git?rev=08e7559012ab6645cf36f6cce84426f9e34b88d9#08e7559012ab6645cf36f6cce84426f9e34b88d9"
+source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
 dependencies = [
  "bitflags 1.3.2",
  "glam",
@@ -5616,7 +5554,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git?rev=08e7559012ab6645cf36f6cce84426f9e34b88d9#08e7559012ab6645cf36f6cce84426f9e34b88d9"
+source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5627,7 +5565,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.9.0"
-source = "git+https://github.com/EmbarkStudios/rust-gpu.git?rev=08e7559012ab6645cf36f6cce84426f9e34b88d9#08e7559012ab6645cf36f6cce84426f9e34b88d9"
+source = "git+https://github.com/EmbarkStudios/rust-gpu.git#54f6978c25b7e168ded04e720b996625b3654ebd"
 
 [[package]]
 name = "stable_deref_trait"
@@ -5696,16 +5634,6 @@ name = "svg_fmt"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fb1df15f412ee2e9dfc1c504260fa695c1c3f10fe9f4a6ee2d2184d7d6450e2"
-
-[[package]]
-name = "svgtypes"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed4b0611e7f3277f68c0fa18e385d9e2d26923691379690039548f867cef02a7"
-dependencies = [
- "kurbo 0.9.5",
- "siphasher",
-]
 
 [[package]]
 name = "svgtypes"
@@ -6537,12 +6465,6 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "ttf-parser"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0609f771ad9c6155384897e1df4d948e692667cc0588548b68eb44d052b27633"
-
-[[package]]
-name = "ttf-parser"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49d64318d8311fc2668e48b63969f4343e0a85c4a109aa8460d6672e364b8bd1"
@@ -6587,12 +6509,6 @@ name = "unicode-ccc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc2520efa644f8268dce4dcd3050eaa7fc044fca03961e9998ac7e2e92b77cf1"
-
-[[package]]
-name = "unicode-general-category"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2281c8c1d221438e373249e065ca4989c4c36952c211ff21a0ee91c44a3869e7"
 
 [[package]]
 name = "unicode-ident"
@@ -6665,89 +6581,29 @@ dependencies = [
 
 [[package]]
 name = "usvg"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae32eb823aab35fc343b19c4d354f70e713b442ce34cdfa8497bf6c39af8a342"
-dependencies = [
- "base64 0.21.7",
- "log",
- "pico-args",
- "usvg-parser",
- "usvg-text-layout",
- "usvg-tree",
- "xmlwriter",
-]
-
-[[package]]
-name = "usvg"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e753216e7c0e49048a0c986ed9ad7284451844a21107374392aaa107ec805c9c"
 dependencies = [
  "base64 0.21.7",
- "data-url 0.3.1",
+ "data-url",
  "flate2",
- "fontdb 0.16.2",
+ "fontdb",
  "imagesize",
  "kurbo 0.9.5",
  "log",
  "pico-args",
- "roxmltree 0.19.0",
+ "roxmltree",
  "rustybuzz 0.12.1",
  "simplecss",
  "siphasher",
  "strict-num",
- "svgtypes 0.14.0",
+ "svgtypes",
  "tiny-skia-path",
  "unicode-bidi",
  "unicode-script",
  "unicode-vo",
  "xmlwriter",
-]
-
-[[package]]
-name = "usvg-parser"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7529174e721c8078d62b08399258469b1d68b4e5f2983b347d6a9d39779366c"
-dependencies = [
- "data-url 0.2.0",
- "flate2",
- "imagesize",
- "kurbo 0.9.5",
- "log",
- "rosvgtree",
- "strict-num",
- "svgtypes 0.11.0",
- "usvg-tree",
-]
-
-[[package]]
-name = "usvg-text-layout"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e672fbc19261c6553113cc04ff2ff38ae52fadbd90f2d814040857795fb5c50"
-dependencies = [
- "fontdb 0.14.1",
- "kurbo 0.9.5",
- "log",
- "rustybuzz 0.7.0",
- "unicode-bidi",
- "unicode-script",
- "unicode-vo",
- "usvg-tree",
-]
-
-[[package]]
-name = "usvg-tree"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a56e9cd3be5eb6d6744477e95b82d52d393fc1dba4b5b090912c33af337c20b"
-dependencies = [
- "kurbo 0.9.5",
- "rctree",
- "strict-num",
- "svgtypes 0.11.0",
 ]
 
 [[package]]
@@ -6779,12 +6635,12 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vello"
-version = "0.0.1"
-source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9a4b96a2d6d6effa67868b4436560e3a767f71f0e043df007587c5d6b2e8b7a"
 dependencies = [
  "bytemuck",
  "futures-intrusive",
- "kurbo 0.10.4",
  "peniko",
  "raw-window-handle 0.6.0",
  "skrifa",
@@ -6795,21 +6651,13 @@ dependencies = [
 [[package]]
 name = "vello_encoding"
 version = "0.1.0"
-source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c5b6c6ec113c9b6ee1e1894ccef1b5559373aead718b7442811f2fefff7d423"
 dependencies = [
  "bytemuck",
  "guillotiere",
  "peniko",
  "skrifa",
-]
-
-[[package]]
-name = "vello_svg"
-version = "0.0.1"
-source = "git+https://github.com/linebender/vello.git?rev=f075f58fc50c569daf5ca720fe81b5fee946ce7f#f075f58fc50c569daf5ca720fe81b5fee946ce7f"
-dependencies = [
- "usvg 0.33.0",
- "vello",
 ]
 
 [[package]]
@@ -7841,7 +7689,7 @@ dependencies = [
  "js-sys",
  "libc",
  "log",
- "memmap2 0.9.4",
+ "memmap2",
  "ndk 0.8.0",
  "ndk-sys 0.5.0+25.2.9519653",
  "objc2",
@@ -8058,12 +7906,6 @@ name = "xml-rs"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fcb9cbac069e033553e8bb871be2fbdffcab578eb25bd0f7c508cedc6dcd75a"
-
-[[package]]
-name = "xmlparser"
-version = "0.13.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "xmlwriter"

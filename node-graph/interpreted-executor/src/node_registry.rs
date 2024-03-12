@@ -705,6 +705,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::RepeatNode<_, _>, input: VectorData, params: [DVec2, u32]),
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::ConvexHullNode, input: VectorData, params: []),
+		register_node!(graphene_core::vector::SolidifyStrokeNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f64, f64, u32]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
@@ -750,7 +751,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_std::raster::MandelbrotNode, input: Footprint, params: []),
 		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData, () => f64, () => f64, () => f64, () => f64]),
 		async_node!(graphene_core::vector::CopyToPoints<_, _, _, _, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => VectorData, Footprint => GraphicGroup, () => f64, () => f64, () => f64, () => f64]),
-		async_node!(graphene_core::vector::SamplePoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => f64, () => f64, () => f64, () => bool, Footprint => Vec<Vec<f64>>]),
+		async_node!(graphene_core::vector::SamplePoints<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => f64, () => f64, () => f64, () => bool, Footprint => Vec<f64>]),
 		register_node!(graphene_core::vector::PoissonDiskPoints<_>, input: VectorData, params: [f64]),
 		register_node!(graphene_core::vector::LengthsOfSegmentsOfSubpaths, input: VectorData, params: []),
 		register_node!(graphene_core::vector::SplinesFromPointsNode, input: VectorData, params: []),
