@@ -4,6 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -49,6 +50,7 @@ pub enum PolygonToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove { center: Key, lock_ratio: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	UpdateOptions(PolygonOptionsUpdate),
 }
 
@@ -217,6 +219,7 @@ enum PolygonToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct PolygonToolData {
 	data: Resize,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for PolygonToolFsmState {
@@ -267,12 +270,38 @@ impl Fsm for PolygonToolFsmState {
 					responses.add(message);
 				}
 
+				tool_data.auto_panning.setup_by_mouse_position(
+					input.mouse.position,
+					input.viewport_bounds.size(),
+					&[
+						PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+						PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
+					],
+					responses,
+				);
+
 				self
 			}
 			(_, PolygonToolMessage::PointerMove { .. }) => {
 				polygon_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
+			}
+			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerOutsideViewport { .. }) => {
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				PolygonToolFsmState::Drawing
+			}
+			(state, PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+				tool_data.auto_panning.stop(
+					&[
+						PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+						PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
+					],
+					responses,
+				);
+
+				state
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::DragStop) => {
 				input.mouse.finish_transaction(polygon_data.viewport_drag_start(document), responses);
