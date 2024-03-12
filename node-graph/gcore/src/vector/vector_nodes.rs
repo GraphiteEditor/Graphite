@@ -98,9 +98,10 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> 
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ConvexHullNode {}
+pub struct ConvexHullNode;
 
-fn convex_hull(mut vector_data: VectorData) -> VectorData {
+#[node_macro::node_fn(ConvexHullNode)]
+fn convex_hull(vector_data: VectorData) -> VectorData {
 	VectorData::empty()
 }
 
