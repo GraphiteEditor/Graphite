@@ -11,6 +11,7 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
+	import SpectrumInput from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -49,12 +50,12 @@
 	let value = hsva.v;
 	let alpha = hsva.a;
 	let isNone = hsvaOrNone === undefined;
-	// Initial color components
-	let initialHue = hsva.h;
-	let initialSaturation = hsva.s;
-	let initialValue = hsva.v;
-	let initialAlpha = hsva.a;
-	let initialIsNone = hsvaOrNone === undefined;
+	// Old color components
+	let oldHue = hsva.h;
+	let oldSaturation = hsva.s;
+	let oldValue = hsva.v;
+	let oldAlpha = hsva.a;
+	let oldIsNone = hsvaOrNone === undefined;
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
@@ -64,7 +65,7 @@
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	$: initialColor = generateColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone);
+	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
 	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
@@ -79,7 +80,7 @@
 		if (open) {
 			setTimeout(() => hexCodeInputWidget?.focus(), 0);
 		} else {
-			setInitialHSVA(hue, saturation, value, alpha, isNone);
+			setOldHSVA(hue, saturation, value, alpha, isNone);
 		}
 	}
 
@@ -166,8 +167,8 @@
 		dispatch("color", colorToEmit);
 	}
 
-	function swapNewWithInitial() {
-		const initial = initialColor;
+	function swapNewWithOld() {
+		const old = oldColor;
 
 		const tempHue = hue;
 		const tempSaturation = saturation;
@@ -175,10 +176,10 @@
 		const tempAlpha = alpha;
 		const tempIsNone = isNone;
 
-		setNewHSVA(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone);
-		setInitialHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
+		setNewHSVA(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
+		setOldHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
 
-		setColor(initial);
+		setColor(old);
 	}
 
 	function setColorCode(colorCode: string) {
@@ -241,12 +242,12 @@
 		isNone = none;
 	}
 
-	function setInitialHSVA(h: number, s: number, v: number, a: number, none: boolean) {
-		initialHue = h;
-		initialSaturation = s;
-		initialValue = v;
-		initialAlpha = a;
-		initialIsNone = none;
+	function setOldHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		oldHue = h;
+		oldSaturation = s;
+		oldValue = v;
+		oldAlpha = a;
+		oldIsNone = none;
 	}
 
 	async function activateEyedropperSample() {
@@ -277,36 +278,48 @@
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
 			"--new-color-contrasting": newColor.contrastingColor(),
-			"--initial-color": initialColor.toHexOptionalAlpha(),
-			"--initial-color-contrasting": initialColor.contrastingColor(),
+			"--old-color": oldColor.toHexOptionalAlpha(),
+			"--old-color-contrasting": oldColor.contrastingColor(),
 			"--hue-color": opaqueHueColor.toRgbCSS(),
 			"--hue-color-contrasting": opaqueHueColor.contrastingColor(),
 			"--opaque-color": (newColor.opaque() || new Color(0, 0, 0, 1)).toHexNoAlpha(),
 			"--opaque-color-contrasting": (newColor.opaque() || new Color(0, 0, 0, 1)).contrastingColor(),
 		}}
 	>
-		<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
-			{#if !isNone}
-				<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
-			{/if}
-		</LayoutCol>
-		<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
-			{#if !isNone}
-				<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
-			{/if}
-		</LayoutCol>
-		<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
-			{#if !isNone}
-				<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
-			{/if}
+		<LayoutCol class="pickers-and-gradient">
+			<LayoutRow class="pickers">
+				<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
+					{#if !isNone}
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+					{/if}
+				</LayoutCol>
+				<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
+					{#if !isNone}
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+					{/if}
+				</LayoutCol>
+				<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
+					{#if !isNone}
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+					{/if}
+				</LayoutCol>
+			</LayoutRow>
+			<LayoutRow class="gradient">
+				<SpectrumInput />
+				<NumberInput value={50} displayDecimalPlaces={1} unit="%" />
+			</LayoutRow>
 		</LayoutCol>
 		<LayoutCol class="details">
-			<LayoutRow class="choice-preview" on:click={swapNewWithInitial} tooltip="Comparison views of the present color choice (left) and the color before any change (right). Click to swap sides.">
+			<LayoutRow class="choice-preview" tooltip="Comparison views of the present color choice (left) and the color before any change (right)">
+				{#if !newColor.equals(oldColor)}
+					<div class="swap-button-background"></div>
+					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltip="Swap" />
+				{/if}
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
 					<TextLabel>New</TextLabel>
 				</LayoutCol>
-				<LayoutCol class="initial-color" classes={{ none: initialIsNone }}>
-					<TextLabel>Initial</TextLabel>
+				<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
+					<TextLabel>Old</TextLabel>
 				</LayoutCol>
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltip="Color model, color space, and HDR (coming soon)" /> -->
@@ -374,6 +387,7 @@
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
 							minWidth={56}
+							displayDecimalPlaces={1}
 							tooltip={{
 								h: `Hue component, the shade along the spectrum of the rainbow`,
 								s: `Saturation component, the vividness from grayscale to full color`,
@@ -429,103 +443,123 @@
 
 <style lang="scss" global>
 	.color-picker {
-		.saturation-value-picker {
-			width: 256px;
-			background-blend-mode: multiply;
-			background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
-			position: relative;
-		}
+		.pickers-and-gradient {
+			.pickers {
+				.saturation-value-picker {
+					width: 256px;
+					background-blend-mode: multiply;
+					background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
+					position: relative;
+				}
 
-		.saturation-value-picker,
-		.hue-picker,
-		.alpha-picker {
-			height: 256px;
-			position: relative;
-			overflow: hidden;
-		}
+				.saturation-value-picker,
+				.hue-picker,
+				.alpha-picker {
+					height: 256px;
+					border-radius: 2px;
+					position: relative;
+					overflow: hidden;
+				}
 
-		.hue-picker,
-		.alpha-picker {
-			width: 24px;
-			margin-left: 8px;
-			position: relative;
-		}
+				.hue-picker,
+				.alpha-picker {
+					width: 24px;
+					margin-left: 8px;
+					position: relative;
+				}
 
-		.hue-picker {
-			background-blend-mode: screen;
-			background:
-				// Reds
-				linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
-				// Greens
-				linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%),
-				// Blues
-				linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
-			--selection-needle-color: var(--hue-color-contrasting);
-		}
+				.hue-picker {
+					background-blend-mode: screen;
+					background:
+						// Reds
+						linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
+						// Greens
+						linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%),
+						// Blues
+						linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
+					--selection-needle-color: var(--hue-color-contrasting);
+				}
 
-		.alpha-picker {
-			background: linear-gradient(to bottom, var(--opaque-color), transparent);
-			--selection-needle-color: var(--new-color-contrasting);
+				.alpha-picker {
+					background: linear-gradient(to bottom, var(--opaque-color), transparent);
+					--selection-needle-color: var(--new-color-contrasting);
 
-			&::before {
-				content: "";
-				width: 100%;
-				height: 100%;
-				z-index: -1;
-				position: relative;
-				background: var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
+					&::before {
+						content: "";
+						width: 100%;
+						height: 100%;
+						z-index: -1;
+						position: relative;
+						background: var(--color-transparent-checkered-background);
+						background-size: var(--color-transparent-checkered-background-size);
+						background-position: var(--color-transparent-checkered-background-position);
+					}
+				}
+
+				.selection-circle {
+					position: absolute;
+					left: 0%;
+					top: 0%;
+					width: 0;
+					height: 0;
+					pointer-events: none;
+
+					&::after {
+						content: "";
+						display: block;
+						position: relative;
+						left: -6px;
+						top: -6px;
+						width: 12px;
+						height: 12px;
+						border-radius: 50%;
+						border: 2px solid var(--opaque-color-contrasting);
+						box-sizing: border-box;
+					}
+				}
+
+				.selection-needle {
+					position: absolute;
+					top: 0%;
+					width: 100%;
+					height: 0;
+					pointer-events: none;
+
+					&::before {
+						content: "";
+						position: absolute;
+						top: -4px;
+						left: 0;
+						border-style: solid;
+						border-width: 4px 0 4px 4px;
+						border-color: transparent transparent transparent var(--selection-needle-color);
+					}
+
+					&::after {
+						content: "";
+						position: absolute;
+						top: -4px;
+						right: 0;
+						border-style: solid;
+						border-width: 4px 4px 4px 0;
+						border-color: transparent var(--selection-needle-color) transparent transparent;
+					}
+				}
 			}
-		}
 
-		.selection-circle {
-			position: absolute;
-			left: 0%;
-			top: 0%;
-			width: 0;
-			height: 0;
-			pointer-events: none;
+			.gradient {
+				margin-top: 16px;
 
-			&::after {
-				content: "";
-				display: block;
-				position: relative;
-				left: -6px;
-				top: -6px;
-				width: 12px;
-				height: 12px;
-				border-radius: 50%;
-				border: 2px solid var(--opaque-color-contrasting);
-				box-sizing: border-box;
-			}
-		}
+				.spectrum-input {
+					flex: 1 1 100%;
+				}
 
-		.selection-needle {
-			position: absolute;
-			top: 0%;
-			width: 100%;
-			height: 0;
-			pointer-events: none;
-
-			&::before {
-				content: "";
-				position: absolute;
-				top: -4px;
-				left: 0;
-				border-style: solid;
-				border-width: 4px 0 4px 4px;
-				border-color: transparent transparent transparent var(--selection-needle-color);
-			}
-
-			&::after {
-				content: "";
-				position: absolute;
-				top: -4px;
-				right: 0;
-				border-style: solid;
-				border-width: 4px 4px 4px 0;
-				border-color: transparent var(--selection-needle-color) transparent transparent;
+				.number-input {
+					margin-left: 8px;
+					min-width: 0;
+					width: calc(24px + 8px + 24px);
+					flex: 0 0 auto;
+				}
 			}
 		}
 
@@ -556,6 +590,45 @@
 				border: 1px solid var(--color-1-nearblack);
 				box-sizing: border-box;
 				overflow: hidden;
+				position: relative;
+
+				.swap-button-background {
+					overflow: hidden;
+					position: absolute;
+					mix-blend-mode: multiply;
+					opacity: 0.25;
+					border-radius: 2px;
+					width: 16px;
+					height: 16px;
+					top: 50%;
+					left: 50%;
+					transform: translate(-50%, -50%);
+
+					&::before,
+					&::after {
+						content: "";
+						position: absolute;
+						width: 50%;
+						height: 100%;
+					}
+
+					&::before {
+						left: 0;
+						background: var(--new-color-contrasting);
+					}
+
+					&::after {
+						right: 0;
+						background: var(--old-color-contrasting);
+					}
+				}
+
+				.swap-button {
+					position: absolute;
+					transform: translate(-50%, -50%);
+					top: 50%;
+					left: 50%;
+				}
 
 				.new-color {
 					background: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
@@ -567,18 +640,18 @@
 					}
 				}
 
-				.initial-color {
-					background: linear-gradient(var(--initial-color), var(--initial-color)), var(--color-transparent-checkered-background);
+				.old-color {
+					background: linear-gradient(var(--old-color), var(--old-color)), var(--color-transparent-checkered-background);
 
 					.text-label {
 						text-align: right;
 						margin: 2px 8px;
-						color: var(--initial-color-contrasting);
+						color: var(--old-color-contrasting);
 					}
 				}
 
 				.new-color,
-				.initial-color {
+				.old-color {
 					width: 50%;
 					height: 100%;
 					background-size: var(--color-transparent-checkered-background-size);

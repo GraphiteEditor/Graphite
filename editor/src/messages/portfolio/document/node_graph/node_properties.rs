@@ -848,7 +848,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 			}
 		};
 		let invert = TextButton::new("Invert")
-			.icon(Some("Swap".into()))
+			.icon(Some("SwapVertical".into()))
 			.tooltip("Reverse the order of each color stop")
 			.on_update(update_value(on_update, node_id, input_index))
 			.on_commit(commit_value)

@@ -313,6 +313,11 @@ export class Color {
 		return new Color(r / 255, g / 255, b / 255, a / 255);
 	}
 
+	equals(other: Color): boolean {
+		if (this.none && other.none) return true;
+		return this.red === other.red && this.green === other.green && this.blue === other.blue && this.alpha === other.alpha;
+	}
+
 	toHexNoAlpha(): string | undefined {
 		if (this.none) return undefined;
 

@@ -74,9 +74,6 @@
 				<IconLabel icon={hoverIcon} />
 			{/if}
 		{/if}
-		{#if icon && label}
-			<Separator type={flush ? "Unrelated" : "Related"} />
-		{/if}
 		{#if label}
 			<TextLabel>{label}</TextLabel>
 		{/if}
@@ -161,22 +158,26 @@
 			}
 		}
 
-		.widget-span.row > & + .text-button,
-		.layout-row > & + .text-button {
-			margin-left: 8px;
-		}
-
-		.widget-span.column > & + .text-button,
-		.layout-column > & + .text-button {
-			margin-top: 8px;
-		}
-
 		.icon-label {
 			fill: var(--button-text-color);
+
+			+ .text-label {
+				margin-left: 8px;
+			}
 		}
 
 		.text-label {
 			overflow: hidden;
+		}
+
+		// Custom styling for when multiple TextButton widgets are used next to one another in a row or column
+		.widget-span.row > & + .text-button,
+		.layout-row > & + .text-button {
+			margin-left: 8px;
+		}
+		.widget-span.column > & + .text-button,
+		.layout-column > & + .text-button {
+			margin-top: 8px;
 		}
 	}
 </style>
