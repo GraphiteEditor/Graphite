@@ -400,10 +400,7 @@ impl Fsm for BrushToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),
 				HintGroup(vec![HintInfo::keys([Key::BracketLeft, Key::BracketRight], "Shrink/Grow Brush")]),
 			]),
-			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Rmb, ""),
-				HintInfo::keys([Key::Escape], "Cancel Brushstroke").prepend_slash(),
-			])]),
+			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

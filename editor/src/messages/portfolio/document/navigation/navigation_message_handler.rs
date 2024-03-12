@@ -192,6 +192,8 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![
+						// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 						HintGroup(vec![HintInfo {
 							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
 							key_groups_mac: None,
@@ -200,8 +202,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 							plus: false,
 							slash: false,
 						}]),
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Confirm")]),
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")]),
 					]),
 				});
 
@@ -268,7 +268,8 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")])]),
+					// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
+					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 				});
 
 				self.mouse_position = ipp.mouse.position;
@@ -302,6 +303,8 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
 				responses.add(FrontendMessage::UpdateInputHints {
 					hint_data: HintData(vec![
+						// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 						HintGroup(vec![HintInfo {
 							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
 							key_groups_mac: None,
@@ -310,7 +313,6 @@ impl MessageHandler<NavigationMessage, (&DocumentMetadata, Option<[DVec2; 2]>, &
 							plus: false,
 							slash: false,
 						}]),
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Cancel")]),
 					]),
 				});
 

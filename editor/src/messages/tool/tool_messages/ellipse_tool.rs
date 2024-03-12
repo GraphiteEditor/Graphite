@@ -261,7 +261,7 @@ impl Fsm for EllipseToolFsmState {
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
 			EllipseToolFsmState::Drawing => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Ellipse").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
 		};

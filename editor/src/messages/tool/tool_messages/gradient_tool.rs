@@ -460,7 +460,7 @@ impl Fsm for GradientToolFsmState {
 				HintInfo::keys([Key::Shift], "Snap 15°").prepend_plus(),
 			])]),
 			GradientToolFsmState::Drawing => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Gradient").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°")]),
 			]),
 		};

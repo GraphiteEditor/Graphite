@@ -626,22 +626,29 @@ impl Fsm for PathToolFsmState {
 		let hint_data = match self {
 			PathToolFsmState::Ready => general_hint_data,
 			PathToolFsmState::Dragging => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Transform").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
-					HintInfo::keys([Key::Alt], "Split/Align Handles (Toggle)"),
-					HintInfo::keys([Key::Shift], "Share Lengths of Aligned Handles"),
+					// TODO: Make hint dynamically say "Make Handle Smooth" or "Make Handle Sharp" based on its current state
+					// TODO: Only show this if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown
+					// TODO: Switch this to the "S" key
+					HintInfo::keys([Key::Alt], "Toggle Smooth/Sharp Handles"),
+					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line)
+					// TODO: Show this only when a handle is being dragged
+					HintInfo::keys([Key::Shift], "Equidistant Handles (Smooth Only)"),
+					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged)
+					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged)
 				]),
 			]),
 			PathToolFsmState::DrawingBox => HintData(vec![
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Selection").prepend_slash()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 					HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus(),
 				]),
 			]),
 			PathToolFsmState::InsertPoint => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point")]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel Insertion").prepend_slash()]),
 			]),
 		};
 

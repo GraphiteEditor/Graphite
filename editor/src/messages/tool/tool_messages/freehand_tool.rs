@@ -305,10 +305,7 @@ impl Fsm for FreehandToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline")])]),
-			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Rmb, ""),
-				HintInfo::keys([Key::Escape], "Cancel Polyline").prepend_slash(),
-			])]),
+			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
