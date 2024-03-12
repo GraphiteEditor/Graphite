@@ -2,10 +2,10 @@ use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;

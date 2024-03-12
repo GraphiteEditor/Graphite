@@ -3,10 +3,10 @@ use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_POINT_ON_SEGMEN
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
-use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
@@ -483,10 +483,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(
 					input.mouse.position,
 					input.viewport_bounds.size(),
-					&[
-						PathToolMessage::PointerOutsideViewport { alt, shift }.into(),
-						PathToolMessage::PointerMove { alt, shift }.into(),
-					],
+					&[PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()],
 					responses,
 				);
 
@@ -500,10 +497,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.auto_panning.setup_by_mouse_position(
 					input.mouse.position,
 					input.viewport_bounds.size(),
-					&[
-						PathToolMessage::PointerOutsideViewport { alt, shift }.into(),
-						PathToolMessage::PointerMove { alt, shift }.into(),
-					],
+					&[PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()],
 					responses,
 				);
 
@@ -526,10 +520,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(state, PathToolMessage::PointerOutsideViewport { alt, shift }) => {
 				tool_data.auto_panning.stop(
-					&[
-						PathToolMessage::PointerOutsideViewport { alt, shift }.into(),
-						PathToolMessage::PointerMove { alt, shift }.into(),
-					],
+					&[PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()],
 					responses,
 				);
 
