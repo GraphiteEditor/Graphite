@@ -274,37 +274,33 @@ impl TransformOperation {
 		use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-		let mut hints = Vec::new();
-
-		let axis_str = |vector: DVec2, separate: bool| match axis_constraint {
-			Axis::Both => {
-				if separate {
-					format!("X: {}, Y: {}", vector.x, vector.y)
-				} else {
-					vector.x.to_string()
-				}
-			}
-			Axis::X => format!("X: {}", vector.x),
-			Axis::Y => format!("Y: {}", vector.y),
-		};
-
-		let value_str = match self {
-			TransformOperation::None => String::new(),
-			TransformOperation::Grabbing(translation) => format!("Translate {}", axis_str(translation.to_dvec(), true)),
-			TransformOperation::Rotating(rotation) => format!("Rotate {}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
-			TransformOperation::Scaling(scale) => format!("Scale {}", axis_str(scale.to_dvec(snapping), false)),
-		};
-		hints.push(HintInfo::label(value_str));
-		hints.push(HintInfo::keys([Key::Shift], "Precision Mode"));
+		let mut input_hints = Vec::new();
+		input_hints.push(HintInfo::keys([Key::Shift], "Slow Mode"));
 		if matches!(self, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) {
-			hints.push(HintInfo::keys([Key::Control], "Snap"));
+			input_hints.push(HintInfo::keys([Key::Control], "Snap"));
 		}
 		if matches!(self, TransformOperation::Grabbing(_) | TransformOperation::Scaling(_)) {
-			hints.push(HintInfo::keys([Key::KeyX], "X Axis"));
-			hints.push(HintInfo::keys([Key::KeyY], "Y Axis"));
+			input_hints.push(HintInfo::keys([Key::KeyX], "Along X Axis"));
+			input_hints.push(HintInfo::keys([Key::KeyY], "Along Y Axis"));
 		}
 
-		let hint_data = HintData(vec![HintGroup(hints)]);
+		// TODO: Eventually, move this somewhere else (maybe an overlay in the corner of the viewport, design is TBD) since servicable but not ideal for UI design consistency to have it in the hints bar
+		let axis_text = |vector: DVec2, separate: bool| match (axis_constraint, separate) {
+			(Axis::Both, false) => format!("by {:.3}", vector.x),
+			(Axis::Both, true) => format!("by {:.3}, {:.3}", vector.x, vector.y),
+			(Axis::X, _) => format!("X by {:.3}", vector.x),
+			(Axis::Y, _) => format!("Y by {:.3}", vector.y),
+		};
+		let grs_value_text = match self {
+			TransformOperation::None => String::new(),
+			// TODO: Fix that the translation is showing numbers in viewport space, not document space
+			TransformOperation::Grabbing(translation) => format!("Translating {}", axis_text(translation.to_dvec(), true)),
+			TransformOperation::Rotating(rotation) => format!("Rotating by {:.3}°", rotation.to_f64(snapping) * 360. / std::f64::consts::TAU),
+			TransformOperation::Scaling(scale) => format!("Scaling {}", axis_text(scale.to_dvec(snapping), false)),
+		};
+		let grs_value = vec![HintInfo::label(grs_value_text)];
+
+		let hint_data = HintData(vec![HintGroup(input_hints), HintGroup(grs_value)]);
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
 	}
 }
