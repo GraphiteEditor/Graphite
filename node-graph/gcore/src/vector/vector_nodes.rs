@@ -2,10 +2,11 @@ use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
+use crate::uuid::ManipulatorGroupId;
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
-use bezier_rs::{Subpath, SubpathTValue, TValue};
+use bezier_rs::{Cap, Join, Subpath, SubpathTValue, TValue};
 use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
@@ -88,8 +89,6 @@ pub struct RepeatNode<Direction, Count> {
 fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
 	// Repeat the vector data
 	let mut result = VectorData::empty();
-	let inverse = vector_data.transform.inverse();
-	let direction = inverse.transform_vector2(direction);
 	for i in 0..count {
 		let transform = DAffine2::from_translation(direction * i as f64);
 		result.concat(&vector_data, transform);
@@ -134,6 +133,57 @@ fn generate_bounding_box(vector_data: VectorData) -> VectorData {
 		vector_data.transform.transform_point2(bounding_box[0]),
 		vector_data.transform.transform_point2(bounding_box[1]),
 	))
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SolidifyStrokeNode;
+
+#[node_macro::node_fn(SolidifyStrokeNode)]
+fn solidify_stroke(vector_data: VectorData) -> VectorData {
+	// Grab what we need from original data.
+	let VectorData { transform, style, .. } = &vector_data;
+	let subpaths = vector_data.stroke_bezier_paths();
+	let mut result = VectorData::empty();
+
+	// Perform operation on all subpaths in this shape.
+	for mut subpath in subpaths {
+		let stroke = style.stroke().unwrap();
+		let transform = transform.clone();
+		subpath.apply_transform(transform);
+
+		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+		let subpath_out = subpath.outline(
+			stroke.weight / 2., // Diameter to radius.
+			match stroke.line_join {
+				crate::vector::style::LineJoin::Miter => Join::Miter(Some(stroke.line_join_miter_limit)),
+				crate::vector::style::LineJoin::Bevel => Join::Bevel,
+				crate::vector::style::LineJoin::Round => Join::Round,
+			},
+			match stroke.line_cap {
+				crate::vector::style::LineCap::Butt => Cap::Butt,
+				crate::vector::style::LineCap::Round => Cap::Round,
+				crate::vector::style::LineCap::Square => Cap::Square,
+			},
+		);
+
+		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
+		if subpath_out.1.is_some() {
+			// Two closed subpaths, closed shape. Add both subpaths.
+			result.append_subpath(subpath_out.0);
+			result.append_subpath(subpath_out.1.unwrap());
+		} else {
+			// One closed subpath, open path.
+			result.append_subpath(subpath_out.0);
+		}
+	}
+
+	// We set our fill to our stroke's color, then clear our stroke.
+	if let Some(stroke) = vector_data.style.stroke() {
+		result.style.set_fill(Fill::solid_or_none(stroke.color));
+		result.style.set_stroke(Stroke::default());
+	}
+
+	result
 }
 
 pub trait ConcatElement {
@@ -488,6 +538,19 @@ mod test {
 		}
 		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
 		assert_eq!(repeated.region_bezier_paths().count(), 3);
+		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
+			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
+		}
+	}
+	#[test]
+	fn repeat_transform_position() {
+		let direction = DVec2::new(12., 10.);
+		let repeated = RepeatNode {
+			direction: ClonedNode::new(direction),
+			count: ClonedNode::new(8),
+		}
+		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
+		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
 		}
