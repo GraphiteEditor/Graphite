@@ -4,6 +4,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -55,6 +56,7 @@ pub enum EllipseToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove { center: Key, lock_ratio: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	UpdateOptions(EllipseOptionsUpdate),
 }
 
@@ -173,6 +175,7 @@ enum EllipseToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct EllipseToolData {
 	data: Resize,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for EllipseToolFsmState {
@@ -223,12 +226,38 @@ impl Fsm for EllipseToolFsmState {
 					responses.add(message);
 				}
 
+				tool_data.auto_panning.setup_by_mouse_position(
+					input.mouse.position,
+					input.viewport_bounds.size(),
+					&[
+						EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+						EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
+					],
+					responses,
+				);
+
 				self
 			}
 			(_, EllipseToolMessage::PointerMove { .. }) => {
 				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
+			}
+			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerOutsideViewport { .. }) => {
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				EllipseToolFsmState::Drawing
+			}
+			(state, EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+				tool_data.auto_panning.stop(
+					&[
+						EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+						EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
+					],
+					responses,
+				);
+
+				state
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);
