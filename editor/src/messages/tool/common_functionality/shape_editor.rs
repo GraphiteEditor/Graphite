@@ -318,15 +318,6 @@ impl ShapeState {
 		document.metadata.document_to_viewport.transform_vector2(offset)
 	}
 
-	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: ManipulatorGroupId, add_to_selection: bool) {
-		if !add_to_selection {
-			self.deselect_all();
-		}
-		let point = ManipulatorPointId::new(id, SelectedType::Anchor);
-		let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
-		selected_state.select_point(point);
-	}
-
 	/// Select/deselect the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
 	pub fn change_point_selection(
@@ -359,7 +350,7 @@ impl ShapeState {
 			if new_selected {
 				let retain_existing_selection = add_to_selection || already_selected;
 				if !retain_existing_selection {
-					self.deselect_all();
+					self.deselect_all_points();
 				}
 
 				// Add to the selected points
@@ -383,20 +374,43 @@ impl ShapeState {
 		None
 	}
 
-	pub fn select_all_points(&mut self, document_network: &NodeNetwork) {
-		for (layer, state) in self.selected_shape_state.iter_mut() {
-			let Some(subpaths) = get_subpaths(*layer, document_network) else { return };
-			for manipulator in get_manipulator_groups(subpaths) {
-				state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor));
-				for selected_type in &[SelectedType::InHandle, SelectedType::OutHandle] {
-					state.deselect_point(ManipulatorPointId::new(manipulator.id, *selected_type));
-				}
-			}
+	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: ManipulatorGroupId, add_to_selection: bool) {
+		if !add_to_selection {
+			self.deselect_all_points();
+		}
+		let point = ManipulatorPointId::new(id, SelectedType::Anchor);
+		let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
+		selected_state.select_point(point);
+	}
+
+	/// Selects all anchors, and deselects all handles, for the given layer.
+	pub fn select_all_anchors_in_layer(&mut self, document_network: &NodeNetwork, layer: LayerNodeIdentifier) {
+		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
+		Self::select_all_anchors_in_layer_with_state(document_network, layer, state);
+	}
+
+	/// Selects all anchors, and deselects all handles, for the selected layers.
+	pub fn select_all_anchors_in_selected_layers(&mut self, document_network: &NodeNetwork) {
+		for (&layer, state) in self.selected_shape_state.iter_mut() {
+			Self::select_all_anchors_in_layer_with_state(document_network, layer, state);
 		}
 	}
 
-	pub fn deselect_all(&mut self) {
-		self.selected_shape_state.values_mut().for_each(|state| state.selected_points.clear());
+	/// Internal helper function that selects all anchors, and deselects all handles, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
+	fn select_all_anchors_in_layer_with_state(document_network: &NodeNetwork, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
+		let Some(subpaths) = get_subpaths(layer, document_network) else { return };
+		for manipulator in get_manipulator_groups(subpaths) {
+			state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor));
+			state.deselect_point(ManipulatorPointId::new(manipulator.id, SelectedType::InHandle));
+			state.deselect_point(ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle));
+		}
+	}
+
+	/// Deselects all points (anchors and handles) across every selected layer.
+	pub fn deselect_all_points(&mut self) {
+		for state in self.selected_shape_state.values_mut() {
+			state.selected_points.clear()
+		}
 	}
 
 	/// Set the shapes we consider for selection, we will choose draggable manipulators from these shapes.
@@ -407,6 +421,7 @@ impl ShapeState {
 		}
 	}
 
+	/// Returns an iterator over the currently selected layers to get their [`LayerNodeIdentifier`]s.
 	pub fn selected_layers(&self) -> impl Iterator<Item = &LayerNodeIdentifier> {
 		self.selected_shape_state.keys()
 	}
@@ -425,14 +440,6 @@ impl ShapeState {
 	/// A mutable iterator of all the manipulators, regardless of selection.
 	pub fn manipulator_groups<'a>(&'a self, document_network: &'a NodeNetwork) -> impl Iterator<Item = &'a ManipulatorGroup<ManipulatorGroupId>> {
 		self.iter(document_network).flat_map(|subpaths| get_manipulator_groups(subpaths))
-	}
-
-	pub fn select_all_anchors(&mut self, document_network: &NodeNetwork, layer: LayerNodeIdentifier) {
-		let Some(subpaths) = get_subpaths(layer, document_network) else { return };
-		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
-		for manipulator in get_manipulator_groups(subpaths) {
-			state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor))
-		}
 	}
 
 	/// Provide the currently selected points by reference.

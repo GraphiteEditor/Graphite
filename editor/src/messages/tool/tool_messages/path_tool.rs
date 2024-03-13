@@ -29,6 +29,7 @@ pub enum PathToolMessage {
 
 	// Tool-specific messages
 	BreakPath,
+	DeselectAllPoints,
 	Delete,
 	DeleteAndBreakPath,
 	DragStop {
@@ -58,7 +59,7 @@ pub enum PathToolMessage {
 		shift: Key,
 	},
 	RightClick,
-	SelectAllPoints,
+	SelectAllAnchors,
 	SelectedPointUpdated,
 	SelectedPointXChanged {
 		new_x: f64,
@@ -163,7 +164,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Delete,
 				NudgeSelectedPoints,
 				Enter,
-				SelectAllPoints,
+				SelectAllAnchors,
+				DeselectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
 			),
@@ -174,7 +176,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DragStop,
 				PointerMove,
 				Delete,
-				SelectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
 			),
@@ -184,7 +185,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				PointerMove,
 				Delete,
 				Enter,
-				SelectAllPoints,
 				BreakPath,
 				DeleteAndBreakPath,
 				Escape,
@@ -326,11 +326,12 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
-			shape_editor.select_all_anchors(&document.network, layer);
+			shape_editor.select_all_anchors_in_layer(&document.network, layer);
 
 			PathToolFsmState::Dragging
-		} else {
-			// Start drawing a box
+		}
+		// Start drawing a box
+		else {
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = input.mouse.position;
 
@@ -497,7 +498,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				shape_editor.deselect_all();
+				shape_editor.deselect_all_points();
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
 			}
@@ -532,7 +533,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
 					if clicked_selected {
-						shape_editor.deselect_all();
+						shape_editor.deselect_all_points();
 						shape_editor.change_point_selection(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
 						responses.add(OverlaysMessage::Draw);
 					}
@@ -577,8 +578,13 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::SelectAllPoints) => {
-				shape_editor.select_all_points(&document.network);
+			(_, PathToolMessage::SelectAllAnchors) => {
+				shape_editor.select_all_anchors_in_selected_layers(&document.network);
+				responses.add(OverlaysMessage::Draw);
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::DeselectAllPoints) => {
+				shape_editor.deselect_all_points();
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -616,15 +622,21 @@ impl Fsm for PathToolFsmState {
 	}
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
-		let general_hint_data = HintData(vec![
-			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-			HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
-			HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
-		]);
-
 		let hint_data = match self {
-			PathToolFsmState::Ready => general_hint_data,
+			PathToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+				// TODO: Only show the following hints if at least one point is selected
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
+				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
+				HintGroup(vec![HintInfo::arrow_keys("Nudge Selected"), HintInfo::keys([Key::Shift], "10x").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Delete], "Delete Selected"),
+					// TODO: Only show the following hints if at least one anchor is selected
+					HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus(),
+					HintInfo::keys([Key::Shift], "Break Anchor").prepend_plus(),
+				]),
+			]),
 			PathToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
