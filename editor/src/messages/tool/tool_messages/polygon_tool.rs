@@ -22,7 +22,7 @@ pub struct PolygonOptions {
 	fill: ToolColorOptions,
 	stroke: ToolColorOptions,
 	vertices: u32,
-	primitive_shape_type: PrimitiveShapeType,
+	polygon_type: PolygonType,
 }
 
 impl Default for PolygonOptions {
@@ -32,7 +32,7 @@ impl Default for PolygonOptions {
 			line_weight: 5.,
 			fill: ToolColorOptions::new_secondary(),
 			stroke: ToolColorOptions::new_primary(),
-			primitive_shape_type: PrimitiveShapeType::Polygon,
+			polygon_type: PolygonType::Convex,
 		}
 	}
 }
@@ -53,8 +53,8 @@ pub enum PolygonToolMessage {
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
-pub enum PrimitiveShapeType {
-	Polygon = 0,
+pub enum PolygonType {
+	Convex = 0,
 	Star = 1,
 }
 
@@ -63,7 +63,7 @@ pub enum PolygonOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
 	LineWeight(f64),
-	PrimitiveShapeType(PrimitiveShapeType),
+	PolygonType(PolygonType),
 	StrokeColor(Option<Color>),
 	StrokeColorType(ToolColorType),
 	Vertices(u32),
@@ -93,16 +93,16 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 		.widget_holder()
 }
 
-fn create_star_option_widget(primitive_shape_type: PrimitiveShapeType) -> WidgetHolder {
+fn create_star_option_widget(polygon_type: PolygonType) -> WidgetHolder {
 	let entries = vec![
-		RadioEntryData::new("polygon")
-			.label("Polygon")
-			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Polygon)).into()),
+		RadioEntryData::new("convex")
+			.label("Convex")
+			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PolygonType(PolygonType::Convex)).into()),
 		RadioEntryData::new("star")
 			.label("Star")
-			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PrimitiveShapeType(PrimitiveShapeType::Star)).into()),
+			.on_update(move |_| PolygonToolMessage::UpdateOptions(PolygonOptionsUpdate::PolygonType(PolygonType::Star)).into()),
 	];
-	RadioInput::new(entries).selected_index(Some(primitive_shape_type as u32)).widget_holder()
+	RadioInput::new(entries).selected_index(Some(polygon_type as u32)).widget_holder()
 }
 
 fn create_weight_widget(line_weight: f64) -> WidgetHolder {
@@ -118,7 +118,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 impl LayoutHolder for PolygonTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = vec![
-			create_star_option_widget(self.options.primitive_shape_type),
+			create_star_option_widget(self.options.polygon_type),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			create_sides_widget(self.options.vertices),
 		];
@@ -156,7 +156,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Polygon
 		};
 		match action {
 			PolygonOptionsUpdate::Vertices(vertices) => self.options.vertices = vertices,
-			PolygonOptionsUpdate::PrimitiveShapeType(primitive_shape_type) => self.options.primitive_shape_type = primitive_shape_type,
+			PolygonOptionsUpdate::PolygonType(polygon_type) => self.options.polygon_type = polygon_type,
 			PolygonOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -242,9 +242,9 @@ impl Fsm for PolygonToolFsmState {
 				polygon_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
 
-				let subpath = match tool_options.primitive_shape_type {
-					PrimitiveShapeType::Polygon => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
-					PrimitiveShapeType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
+				let subpath = match tool_options.polygon_type {
+					PolygonType::Convex => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
+					PolygonType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
 				};
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
 				polygon_data.layer = Some(layer);
@@ -302,10 +302,13 @@ impl Fsm for PolygonToolFsmState {
 		let hint_data = match self {
 			PolygonToolFsmState::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
-				HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect").prepend_plus(),
+				HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
 				HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 			])]),
-			PolygonToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain 1:1 Aspect"), HintInfo::keys([Key::Alt], "From Center")])]),
+			PolygonToolFsmState::Drawing => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });

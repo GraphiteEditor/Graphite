@@ -455,11 +455,14 @@ impl Fsm for TextToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			TextToolFsmState::Ready => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Text"), HintInfo::mouse(MouseMotion::Lmb, "Edit Text")])]),
-			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
-				HintInfo::keys([Key::Control, Key::Enter], "Commit Edit").add_mac_keys([Key::Command, Key::Enter]),
-				HintInfo::keys([Key::Escape], "Discard Edit"),
-			])]),
+			TextToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Place Text")]),
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
+			]),
+			TextToolFsmState::Editing => HintData(vec![
+				HintGroup(vec![HintInfo::keys([Key::Escape], "Discard Changes")]),
+				HintGroup(vec![HintInfo::keys([Key::Control, Key::Enter], "Commit Changes").add_mac_keys([Key::Command, Key::Enter])]),
+			]),
 		};
 
 		responses.add(FrontendMessage::UpdateInputHints { hint_data });
