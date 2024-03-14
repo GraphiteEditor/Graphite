@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
@@ -44,6 +45,7 @@ pub enum LineToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove { center: Key, lock_angle: Key, snap_angle: Key },
+	PointerOutsideViewport { center: Key, lock_angle: Key, snap_angle: Key },
 	UpdateOptions(LineOptionsUpdate),
 }
 
@@ -149,6 +151,7 @@ struct LineToolData {
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for LineToolFsmState {
@@ -196,12 +199,35 @@ impl Fsm for LineToolFsmState {
 				let snap_data = SnapData::ignore(document, input, &ignore);
 				responses.add(generate_transform(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center)));
 
+				// Auto-panning
+				let messages = [
+					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
+					LineToolMessage::PointerMove { center, snap_angle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
 				LineToolFsmState::Drawing
 			}
 			(_, LineToolMessage::PointerMove { .. }) => {
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
+			}
+			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				LineToolFsmState::Drawing
+			}
+			(state, LineToolMessage::PointerOutsideViewport { center, lock_angle, snap_angle }) => {
+				// Auto-panning
+				let messages = [
+					LineToolMessage::PointerOutsideViewport { center, lock_angle, snap_angle }.into(),
+					LineToolMessage::PointerMove { center, lock_angle, snap_angle }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::DragStop) => {
 				tool_data.snap_manager.cleanup(responses);

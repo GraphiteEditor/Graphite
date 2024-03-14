@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_gradient;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 
@@ -31,6 +32,7 @@ pub enum GradientToolMessage {
 	InsertStop,
 	PointerDown,
 	PointerMove { constrain_axis: Key },
+	PointerOutsideViewport { constrain_axis: Key },
 	PointerUp,
 	UpdateOptions(GradientOptionsUpdate),
 }
@@ -225,6 +227,7 @@ struct GradientToolData {
 	selected_gradient: Option<SelectedGradient>,
 	snap_manager: SnapManager,
 	drag_start: DVec2,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for GradientToolFsmState {
@@ -431,9 +434,36 @@ impl Fsm for GradientToolFsmState {
 					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 				}
+
+				// Auto-panning
+				let messages = [
+					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					GradientToolMessage::PointerMove { constrain_axis }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
 				GradientToolFsmState::Drawing
 			}
+			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
+						selected_gradient.transform.translation += shift;
+					}
+				}
 
+				GradientToolFsmState::Drawing
+			}
+			(state, GradientToolMessage::PointerOutsideViewport { constrain_axis }) => {
+				// Auto-panning
+				let messages = [
+					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					GradientToolMessage::PointerMove { constrain_axis }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
+			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
 				tool_data.snap_manager.cleanup(responses);

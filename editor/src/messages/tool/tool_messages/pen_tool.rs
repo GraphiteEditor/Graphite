@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
@@ -53,6 +54,7 @@ pub enum PenToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove { snap_angle: Key, break_handle: Key, lock_angle: Key },
+	PointerOutsideViewport { snap_angle: Key, break_handle: Key, lock_angle: Key },
 	Redo,
 	Undo,
 	UpdateOptions(PenOptionsUpdate),
@@ -202,6 +204,7 @@ struct PenToolData {
 	// Indicates that curve extension is occurring from the first point, rather than (more commonly) the last point
 	from_start: bool,
 	angle: f64,
+	auto_panning: AutoPanning,
 }
 impl PenToolData {
 	fn extend_subpath(&mut self, layer: LayerNodeIdentifier, subpath_index: usize, from_start: bool, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
@@ -674,9 +677,18 @@ impl Fsm for PenToolFsmState {
 					break_handle: input.keyboard.key(break_handle),
 				};
 				let snap_data = SnapData::new(document, input);
-				tool_data
+				let state = tool_data
 					.drag_handle(snap_data, transform, input.mouse.position, modifiers, responses)
-					.unwrap_or(PenToolFsmState::Ready)
+					.unwrap_or(PenToolFsmState::Ready);
+
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
+				state
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
 				let modifiers = ModifierState {
@@ -684,14 +696,45 @@ impl Fsm for PenToolFsmState {
 					lock_angle: input.keyboard.key(lock_angle),
 					break_handle: input.keyboard.key(break_handle),
 				};
-				tool_data
+				let state = tool_data
 					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, modifiers, responses)
-					.unwrap_or(PenToolFsmState::Ready)
+					.unwrap_or(PenToolFsmState::Ready);
+
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
+				state
 			}
 			(PenToolFsmState::Ready, PenToolMessage::PointerMove { .. }) => {
 				tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
+			}
+			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				PenToolFsmState::DraggingHandle
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				PenToolFsmState::PlacingAnchor
+			}
+			(state, PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }) => {
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
 				// Abort or commit the transaction to the undo history

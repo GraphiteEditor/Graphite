@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
@@ -55,6 +56,7 @@ pub enum RectangleToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove { center: Key, lock_ratio: Key },
+	PointerOutsideViewport { center: Key, lock_ratio: Key },
 	UpdateOptions(RectangleOptionsUpdate),
 }
 
@@ -174,6 +176,7 @@ enum RectangleToolFsmState {
 #[derive(Clone, Debug, Default)]
 struct RectangleToolData {
 	data: Resize,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for RectangleToolFsmState {
@@ -229,12 +232,35 @@ impl Fsm for RectangleToolFsmState {
 					responses.add(message);
 				}
 
+				// Auto-panning
+				let messages = [
+					RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
 				self
 			}
 			(_, RectangleToolMessage::PointerMove { .. }) => {
 				shape_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 				responses.add(OverlaysMessage::Draw);
 				self
+			}
+			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				RectangleToolFsmState::Drawing
+			}
+			(state, RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
+				// Auto-panning
+				let messages = [
+					RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::DragStop) => {
 				input.mouse.finish_transaction(shape_data.viewport_drag_start(document), responses);

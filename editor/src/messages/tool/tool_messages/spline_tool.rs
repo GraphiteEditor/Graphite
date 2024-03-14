@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
@@ -47,6 +48,7 @@ pub enum SplineToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove,
+	PointerOutsideViewport,
 	Undo,
 	UpdateOptions(SplineOptionsUpdate),
 }
@@ -184,6 +186,7 @@ struct SplineToolData {
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
+	auto_panning: AutoPanning,
 }
 
 impl Fsm for SplineToolFsmState {
@@ -266,7 +269,24 @@ impl Fsm for SplineToolFsmState {
 
 				update_spline(tool_data, true, responses);
 
+				// Auto-panning
+				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+
 				SplineToolFsmState::Drawing
+			}
+			(SplineToolFsmState::Drawing, SplineToolMessage::PointerOutsideViewport) => {
+				// Auto-panning
+				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+
+				SplineToolFsmState::Drawing
+			}
+			(state, SplineToolMessage::PointerOutsideViewport) => {
+				// Auto-panning
+				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {

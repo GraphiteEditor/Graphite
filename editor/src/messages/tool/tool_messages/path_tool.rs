@@ -3,6 +3,7 @@ use crate::consts::{COLOR_OVERLAY_YELLOW, DRAG_THRESHOLD, INSERT_POINT_ON_SEGMEN
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
@@ -55,6 +56,10 @@ pub enum PathToolMessage {
 		delta_y: f64,
 	},
 	PointerMove {
+		alt: Key,
+		shift: Key,
+	},
+	PointerOutsideViewport {
 		alt: Key,
 		shift: Key,
 	},
@@ -240,6 +245,7 @@ struct PathToolData {
 	selection_status: SelectionStatus,
 	segment: Option<ClosestSegment>,
 	double_click_handled: bool,
+	auto_panning: AutoPanning,
 }
 
 impl PathToolData {
@@ -470,20 +476,51 @@ impl Fsm for PathToolFsmState {
 				let direct_insert_without_sliding = input.keyboard.get(ctrl as usize);
 				tool_data.mouse_down(shape_editor, document, input, responses, add_to_selection, direct_insert_without_sliding)
 			}
-			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { .. }) => {
+			(PathToolFsmState::DrawingBox, PathToolMessage::PointerMove { alt, shift }) => {
 				tool_data.previous_mouse_position = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
+
+				// Auto-panning
+				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				PathToolFsmState::DrawingBox
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
-				let alt = input.keyboard.get(alt as usize);
-				let shift = input.keyboard.get(shift as usize);
-				tool_data.drag(shift, alt, shape_editor, document, input, responses);
+				let alt_state = input.keyboard.get(alt as usize);
+				let shift_state = input.keyboard.get(shift as usize);
+				tool_data.drag(shift_state, alt_state, shape_editor, document, input, responses);
+
+				// Auto-panning
+				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				PathToolFsmState::Dragging
 			}
+			(PathToolFsmState::DrawingBox, PathToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+					tool_data.drag_start_pos += shift;
+				}
 
+				PathToolFsmState::DrawingBox
+			}
+			(PathToolFsmState::Dragging, PathToolMessage::PointerOutsideViewport { shift, .. }) => {
+				// Auto-panning
+				if let Some(delta) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+					let shift_state = input.keyboard.get(shift as usize);
+					shape_editor.move_selected_points(&document.network, &document.metadata, -delta, shift_state, responses);
+				}
+
+				PathToolFsmState::Dragging
+			}
+			(state, PathToolMessage::PointerOutsideViewport { alt, shift }) => {
+				// Auto-panning
+				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				state
+			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::Enter { add_to_selection }) => {
 				let shift_pressed = input.keyboard.get(add_to_selection as usize);
 
