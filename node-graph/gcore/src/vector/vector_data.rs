@@ -18,9 +18,9 @@ pub struct VectorData {
 	pub transform: DAffine2,
 	pub style: PathStyle,
 	pub alpha_blending: AlphaBlending,
-	/// A list of all manipulator groups (referenced in `subpaths`) that have smooth handles (where their handles are colinear, or locked to 180° angles from one another)
-	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have subpath and mirror angle inputs"` to find it).
-	pub mirror_angle: Vec<ManipulatorGroupId>,
+	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
+	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
+	pub colinear_manipulators: Vec<ManipulatorGroupId>,
 
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
@@ -35,7 +35,7 @@ impl core::hash::Hash for VectorData {
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
 		self.style.hash(state);
 		self.alpha_blending.hash(state);
-		self.mirror_angle.hash(state);
+		self.colinear_manipulators.hash(state);
 	}
 }
 
@@ -46,7 +46,7 @@ impl VectorData {
 			transform: DAffine2::IDENTITY,
 			style: PathStyle::new(Some(Stroke::new(Some(Color::BLACK), 0.)), super::style::Fill::None),
 			alpha_blending: AlphaBlending::new(),
-			mirror_angle: Vec::new(),
+			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
 			region_domain: RegionDomain::new(),

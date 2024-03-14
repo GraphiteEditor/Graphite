@@ -200,11 +200,9 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], action_dispatch=PathToolMessage::DeselectAllPoints),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { shift_mirror_distance: Shift }),
-		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter {
-			add_to_selection: Shift
-		}),
-		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSharp),
+		entry!(KeyUp(Lmb); action_dispatch=PathToolMessage::DragStop { equidistant: Shift }),
+		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { add_to_selection: Shift }),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=PathToolMessage::FlipSmoothSharp),
 		entry!(KeyDown(ArrowRight); action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[Shift], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: BIG_NUDGE_AMOUNT, delta_y: 0. }),
 		entry!(KeyDown(ArrowRight); modifiers=[ArrowUp], action_dispatch=PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: -NUDGE_AMOUNT }),

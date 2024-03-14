@@ -205,7 +205,7 @@ impl Fsm for EllipseToolFsmState {
 				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
 				let manipulator_groups = subpath.manipulator_groups().to_vec();
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
-				graph_modification_utils::set_manipulator_mirror_angle(&manipulator_groups, layer, true, responses);
+				graph_modification_utils::set_manipulator_colinear_handles_state(&manipulator_groups, layer, true, responses);
 				shape_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();

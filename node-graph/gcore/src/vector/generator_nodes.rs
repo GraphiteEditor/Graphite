@@ -98,14 +98,14 @@ fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
 #[derive(Debug, Clone)]
-pub struct PathGenerator<Mirror> {
-	mirror: Mirror,
+pub struct PathGenerator<ColinearManipulators> {
+	colinear_manipulators: ColinearManipulators,
 }
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>, mirror: Vec<ManipulatorGroupId>) -> super::VectorData {
+fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>, colinear_manipulators: Vec<ManipulatorGroupId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data);
-	vector_data.mirror_angle = mirror;
+	vector_data.colinear_manipulators = colinear_manipulators;
 	vector_data
 }
 

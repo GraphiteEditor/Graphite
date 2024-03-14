@@ -462,8 +462,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut empty = false;
 
 		self.modify_inputs("Shape", false, |inputs, _node_id, _metadata| {
-			let [subpaths, mirror_angle_groups] = inputs.as_mut_slice() else {
-				panic!("Shape does not have subpath and mirror angle inputs");
+			let [subpaths, colinear_manipulators] = inputs.as_mut_slice() else {
+				panic!("Shape does not have both `subpath` and `colinear_manipulators` inputs");
 			};
 
 			let NodeInput::Value {
@@ -474,16 +474,16 @@ impl<'a> ModifyInputsContext<'a> {
 				return;
 			};
 			let NodeInput::Value {
-				tagged_value: TaggedValue::ManipulatorGroupIds(mirror_angle_groups),
+				tagged_value: TaggedValue::ManipulatorGroupIds(colinear_manipulators),
 				..
-			} = mirror_angle_groups
+			} = colinear_manipulators
 			else {
 				return;
 			};
 
 			[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 
-			transform_utils::VectorModificationState { subpaths, mirror_angle_groups }.modify(modification);
+			transform_utils::VectorModificationState { subpaths, colinear_manipulators }.modify(modification);
 			empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
 
 			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);

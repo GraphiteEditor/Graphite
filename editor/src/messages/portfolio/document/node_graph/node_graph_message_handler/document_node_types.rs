@@ -2442,7 +2442,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
-				DocumentInputType::value("Mirror", TaggedValue::ManipulatorGroupIds(vec![]), false),
+				DocumentInputType::value("Colinear Manipulators", TaggedValue::ManipulatorGroupIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			..Default::default()

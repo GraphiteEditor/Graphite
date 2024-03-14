@@ -231,6 +231,7 @@ import MouseHintLmb from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hin
 import MouseHintMmbDrag from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
 import MouseHintMmb from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-mmb.svg";
 import MouseHintNone from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-none.svg";
+import MouseHintRmbDouble from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-rmb-double.svg";
 import MouseHintRmbDrag from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-rmb-drag.svg";
 import MouseHintRmb from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-rmb.svg";
 import MouseHintScrollDown from "@graphite-frontend/assets/icon-16px-two-tone/mouse-hint-scroll-down.svg";
@@ -245,6 +246,7 @@ const TWO_TONE_16PX = {
 	MouseHintMmbDrag: { svg: MouseHintMmbDrag, size: 16 },
 	MouseHintNone: { svg: MouseHintNone, size: 16 },
 	MouseHintRmb: { svg: MouseHintRmb, size: 16 },
+	MouseHintRmbDouble: { svg: MouseHintRmbDouble, size: 16 },
 	MouseHintRmbDrag: { svg: MouseHintRmbDrag, size: 16 },
 	MouseHintScrollDown: { svg: MouseHintScrollDown, size: 16 },
 	MouseHintScrollUp: { svg: MouseHintScrollUp, size: 16 },

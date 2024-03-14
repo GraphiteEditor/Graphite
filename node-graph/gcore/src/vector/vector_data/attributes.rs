@@ -364,7 +364,7 @@ impl crate::vector::ConcatElement for super::VectorData {
 		self.region_domain.concat(&other.region_domain, transform * other.transform, &id_map);
 		// TODO: properly deal with fills such as gradients
 		self.style = other.style.clone();
-		self.mirror_angle.extend(other.mirror_angle.iter().copied());
+		self.colinear_manipulators.extend(other.colinear_manipulators.iter().copied());
 		self.alpha_blending = other.alpha_blending;
 	}
 }

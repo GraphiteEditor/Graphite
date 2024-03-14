@@ -132,8 +132,8 @@ pub enum VectorDataModification {
 	RemoveManipulatorGroup { id: ManipulatorGroupId },
 	RemoveManipulatorPoint { point: ManipulatorPointId },
 	SetClosed { index: usize, closed: bool },
-	SetManipulatorHandleMirroring { id: ManipulatorGroupId, mirror_angle: bool },
+	SetManipulatorColinearHandlesState { id: ManipulatorGroupId, colinear: bool },
 	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ToggleManipulatorHandleMirroring { id: ManipulatorGroupId },
+	ToggleManipulatorColinearHandlesState { id: ManipulatorGroupId },
 	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }

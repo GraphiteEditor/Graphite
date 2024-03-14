@@ -343,7 +343,7 @@ fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut
 		return;
 	};
 
-	graph_modification_utils::set_manipulator_mirror_angle(subpath.manipulator_groups(), layer, true, responses);
+	graph_modification_utils::set_manipulator_colinear_handles_state(subpath.manipulator_groups(), layer, true, responses);
 	let subpaths = vec![subpath];
 	let modification = VectorDataModification::UpdateSubpaths { subpaths };
 	responses.add_front(GraphOperationMessage::Vector { layer, modification });

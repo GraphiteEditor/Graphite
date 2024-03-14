@@ -47,22 +47,20 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Batch set all of the manipulator groups to mirror on a specific layer
-pub fn set_manipulator_mirror_angle(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+/// Batch set all of the manipulator groups to set their colinear handle state on a specific layer
+pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>], layer: LayerNodeIdentifier, colinear: bool, responses: &mut VecDeque<Message>) {
 	for manipulator_group in manipulator_groups {
 		responses.add(GraphOperationMessage::Vector {
 			layer,
-			modification: VectorDataModification::SetManipulatorHandleMirroring {
-				id: manipulator_group.id,
-				mirror_angle,
-			},
+			modification: VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator_group.id, colinear },
 		});
 	}
 }
 
 /// Locate the subpaths from the shape nodes of a particular layer
 pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
-	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document_network)?.find_input("Shape", 0)? {
+	let path_data_node_input_index = 0;
+	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document_network).find_input("Shape", path_data_node_input_index)? {
 		Some(subpaths)
 	} else {
 		None
@@ -71,7 +69,8 @@ pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) 
 
 /// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
 pub fn get_pivot(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<DVec2> {
-	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network)?.find_input("Transform", 5)? {
+	let pivot_node_input_index = 5;
+	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network).find_input("Transform", pivot_node_input_index)? {
 		Some(*pivot)
 	} else {
 		None
@@ -84,10 +83,11 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document_network: &NodeNet
 	document_metadata.transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
-/// Get the currently mirrored handles for a particular layer from the shape node
-pub fn get_mirror_handles(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<ManipulatorGroupId>> {
-	if let TaggedValue::ManipulatorGroupIds(mirror_handles) = NodeGraphLayer::new(layer, document_network)?.find_input("Shape", 1)? {
-		Some(mirror_handles)
+/// Get the manipulator groups that currently have colinear handles for a particular layer from the shape node
+pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<ManipulatorGroupId>> {
+	let colinear_manipulators_node_input_index = 1;
+	if let TaggedValue::ManipulatorGroupIds(manipulator_groups) = NodeGraphLayer::new(layer, document_network).find_input("Shape", colinear_manipulators_node_input_index)? {
+		Some(manipulator_groups)
 	} else {
 		None
 	}
@@ -95,7 +95,7 @@ pub fn get_mirror_handles(layer: LayerNodeIdentifier, document_network: &NodeNet
 
 /// Get the current gradient of a layer from the closest Fill node
 pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Gradient> {
-	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Fill")?;
+	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
 	let TaggedValue::FillType(FillType::Gradient) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
@@ -125,7 +125,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) 
 
 /// Get the current fill of a layer from the closest Fill node
 pub fn get_fill_color(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Color> {
-	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Fill")?;
+	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
 	let TaggedValue::Color(color) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
@@ -134,7 +134,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, document_network: &NodeNetwork
 
 /// Get the current blend mode of a layer from the closest Blend Mode node
 pub fn get_blend_mode(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Blend Mode")?;
+	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Blend Mode")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
@@ -149,7 +149,7 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, document_network: &NodeNetwork
 /// - The default value of 100% if no Opacity node is present, but this function returns None in that case
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Opacity")?;
+	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Opacity")?;
 	let TaggedValue::F64(opacity) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
@@ -157,16 +157,16 @@ pub fn get_opacity(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -
 }
 
 pub fn get_fill_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, document_network)?.node_id("Fill")
+	NodeGraphLayer::new(layer, document_network).node_id("Fill")
 }
 
 pub fn get_text_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, document_network)?.node_id("Text")
+	NodeGraphLayer::new(layer, document_network).node_id("Text")
 }
 
 /// Gets properties from the Text node
 pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&String, &Font, f64)> {
-	let inputs = NodeGraphLayer::new(layer, document_network)?.find_node_inputs("Text")?;
+	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Text")?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::String(text),
 		..
@@ -195,7 +195,8 @@ pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> O
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<f64> {
-	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network)?.find_input("Stroke", 2)? {
+	let weight_node_input_index = 2;
+	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network).find_input("Stroke", weight_node_input_index)? {
 		Some(*width)
 	} else {
 		None
@@ -204,7 +205,7 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Op
 
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network: &NodeNetwork, node_name: &str) -> bool {
-	NodeGraphLayer::new(layer, document_network).is_some_and(|layer| layer.find_node_inputs(node_name).is_some())
+	NodeGraphLayer::new(layer, document_network).find_node_inputs(node_name).is_some()
 }
 
 /// Convert subpaths to an iterator of manipulator groups
@@ -220,20 +221,16 @@ pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: Man
 /// An immutable reference to a layer within the document node graph for easy access.
 pub struct NodeGraphLayer<'a> {
 	node_graph: &'a NodeNetwork,
-	_outwards_links: HashMap<NodeId, Vec<NodeId>>,
 	layer_node: NodeId,
 }
 
 impl<'a> NodeGraphLayer<'a> {
 	/// Get the layer node from the document
-	pub fn new(layer: LayerNodeIdentifier, network: &'a NodeNetwork) -> Option<Self> {
-		let outwards_links = network.collect_outwards_links();
-
-		Some(Self {
+	pub fn new(layer: LayerNodeIdentifier, network: &'a NodeNetwork) -> Self {
+		Self {
 			node_graph: network,
-			_outwards_links: outwards_links,
 			layer_node: layer.to_node(),
-		})
+		}
 	}
 
 	/// Return an iterator up the primary flow of the layer
@@ -257,6 +254,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Find a specific input of a node within the layer's primary flow
 	pub fn find_input(&self, node_name: &str, index: usize) -> Option<&'a TaggedValue> {
+		// TODO: Find a better way to accept a node input rather than using its index (which is quite unclear and fragile)
 		self.find_node_inputs(node_name)?.get(index)?.as_value()
 	}
 }

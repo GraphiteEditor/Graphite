@@ -196,7 +196,7 @@ mod tests {
 	}
 
 	#[test]
-	fn insert_at_exisiting_manipulator_group_of_open_subpath() {
+	fn insert_at_existing_manipulator_group_of_open_subpath() {
 		// This will do nothing to the subpath
 		let mut subpath = set_up_open_subpath();
 		let location = subpath.evaluate(SubpathTValue::GlobalParametric(0.75));

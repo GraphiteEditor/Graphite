@@ -1,11 +1,11 @@
 use super::graph_modification_utils;
-use super::snapping::{group_smooth, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
+use super::snapping::{are_manipulator_handles_colinear, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE};
 use crate::messages::portfolio::document::node_graph::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_manipulator_groups, get_mirror_handles, get_subpaths};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_colinear_manipulators, get_manipulator_from_id, get_manipulator_groups, get_subpaths};
 
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use graph_craft::document::NodeNetwork;
@@ -17,8 +17,8 @@ use glam::DVec2;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {
-	Smooth,
-	Sharp,
+	Colinear,
+	Free,
 	Mixed,
 }
 
@@ -277,10 +277,10 @@ impl ShapeState {
 						}
 						let source = if handle.is_handle() {
 							SnapSource::Geometry(GeometrySnapSource::Handle)
-						} else if group_smooth(group, to_document, subpath, index) {
-							SnapSource::Geometry(GeometrySnapSource::Smooth)
+						} else if are_manipulator_handles_colinear(group, to_document, subpath, index) {
+							SnapSource::Geometry(GeometrySnapSource::HandlesColinear)
 						} else {
-							SnapSource::Geometry(GeometrySnapSource::Sharp)
+							SnapSource::Geometry(GeometrySnapSource::HandlesFree)
 						};
 						let Some(position) = handle.get_position(group) else { continue };
 						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
@@ -467,7 +467,7 @@ impl ShapeState {
 		if point.manipulator_type.is_handle() {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: false },
+				modification: VectorDataModification::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
 			});
 		}
 
@@ -490,28 +490,28 @@ impl ShapeState {
 		Some(())
 	}
 
-	// Iterates over the selected manipulator groups, returning whether they have mixed, sharp, or smooth angles.
-	// If there are no points selected this function returns mixed.
+	/// Iterates over the selected manipulator groups, returning whether their handles have mixed, colinear, or free angles.
+	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, document_network: &NodeNetwork) -> ManipulatorAngle {
-		// This iterator contains a bool indicating whether or not every selected point has a smooth manipulator angle.
-		let mut point_smoothness_status = self
+		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
+		let mut points_colinear_status = self
 			.selected_shape_state
 			.iter()
-			.filter_map(|(&layer, selection_state)| Some((graph_modification_utils::get_mirror_handles(layer, document_network)?, selection_state)))
-			.flat_map(|(mirror, selection_state)| selection_state.selected_points.iter().map(|selected_point| mirror.contains(&selected_point.group)));
+			.filter_map(|(&layer, selection_state)| Some((graph_modification_utils::get_colinear_manipulators(layer, document_network)?, selection_state)))
+			.flat_map(|(colinear_manipulators, selection_state)| selection_state.selected_points.iter().map(|selected_point| colinear_manipulators.contains(&selected_point.group)));
 
-		let Some(first_is_smooth) = point_smoothness_status.next() else { return ManipulatorAngle::Mixed };
-
-		if point_smoothness_status.any(|point| first_is_smooth != point) {
+		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
+		if points_colinear_status.any(|point| first_is_colinear != point) {
 			return ManipulatorAngle::Mixed;
 		}
-		match first_is_smooth {
-			false => ManipulatorAngle::Sharp,
-			true => ManipulatorAngle::Smooth,
+
+		match first_is_colinear {
+			false => ManipulatorAngle::Free,
+			true => ManipulatorAngle::Colinear,
 		}
 	}
 
-	pub fn smooth_manipulator_group(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
+	pub fn convert_manipulator_handles_to_colinear(&self, subpath: &bezier_rs::Subpath<ManipulatorGroupId>, index: usize, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
 		let manipulator_groups = subpath.manipulator_groups();
 		let manipulator = manipulator_groups[index];
 
@@ -542,13 +542,10 @@ impl ShapeState {
 			(None, None) => return,
 		};
 
-		// Mirror the angle but not the distance
+		// Set the manipulator to have colinear handles
 		responses.add(GraphOperationMessage::Vector {
 			layer,
-			modification: VectorDataModification::SetManipulatorHandleMirroring {
-				id: manipulator.id,
-				mirror_angle: true,
-			},
+			modification: VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
 		});
 
 		let (sin, cos) = handle_direction.sin_cos();
@@ -569,7 +566,6 @@ impl ShapeState {
 				modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
 			});
 		}
-
 		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 			responses.add(GraphOperationMessage::Vector {
@@ -579,8 +575,11 @@ impl ShapeState {
 		}
 	}
 
-	/// Smooths the set of selected control points, assuming that the selected set is homogeneously sharp.
-	pub fn smooth_selected_groups(&self, responses: &mut VecDeque<Message>, document_network: &NodeNetwork) -> Option<()> {
+	/// Converts all selected points to colinear while moving the handles to ensure their 180° angle separation.
+	/// If only one handle is selected, the other handle will be moved to match the angle of the selected handle.
+	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
+	/// Assumes all selected manipulators have handles that are already not colinear.
+	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document_network: &NodeNetwork) -> Option<()> {
 		let mut skip_set = HashSet::new();
 
 		for (&layer, layer_state) in self.selected_shape_state.iter() {
@@ -593,10 +592,6 @@ impl ShapeState {
 
 				skip_set.insert(point.group);
 
-				let anchor_selected = layer_state.selected_points.contains(&ManipulatorPointId {
-					group: point.group,
-					manipulator_type: SelectedType::Anchor,
-				});
 				let out_selected = layer_state.selected_points.contains(&ManipulatorPointId {
 					group: point.group,
 					manipulator_type: SelectedType::OutHandle,
@@ -607,8 +602,9 @@ impl ShapeState {
 				});
 				let group = graph_modification_utils::get_manipulator_from_id(subpaths, point.group)?;
 
-				match (anchor_selected, out_selected, in_selected) {
-					(_, true, false) => {
+				match (out_selected, in_selected) {
+					// If the out handle is selected, only move the angle of the in handle
+					(true, false) => {
 						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
 						if let Some(position) = group.out_handle {
 							responses.add(GraphOperationMessage::Vector {
@@ -617,7 +613,8 @@ impl ShapeState {
 							});
 						}
 					}
-					(_, false, true) => {
+					// If the in handle is selected, only move the angle of the out handle
+					(false, true) => {
 						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
 						if let Some(position) = group.in_handle {
 							responses.add(GraphOperationMessage::Vector {
@@ -626,7 +623,9 @@ impl ShapeState {
 							});
 						}
 					}
-					(_, _, _) => {
+					// If both or neither handles are selected, average the angles of the handles weighted proportional to their lengths
+					// TODO: This is bugged, it doesn't successfully average the angles
+					(_, _) => {
 						let found = subpaths.iter().find_map(|subpath| {
 							let group_slice = subpath.manipulator_groups();
 							let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
@@ -635,7 +634,7 @@ impl ShapeState {
 						});
 
 						if let Some((subpath, index)) = found {
-							self.smooth_manipulator_group(subpath, index, responses, layer);
+							self.convert_manipulator_handles_to_colinear(subpath, index, responses, layer);
 						}
 					}
 				}
@@ -646,10 +645,12 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, mirror_distance: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(mirror_angle) = get_mirror_handles(layer, document_network) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+				continue;
+			};
 
 			let transform = document_metadata.transform_to_viewport(layer);
 			let delta = transform.inverse().transform_vector2(delta);
@@ -677,20 +678,19 @@ impl ShapeState {
 					move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
 				}
 
-				if mirror_distance && point.manipulator_type != SelectedType::Anchor {
-					let mut mirror = mirror_angle.contains(&point.group);
+				if equidistant && point.manipulator_type != SelectedType::Anchor {
+					let mut colinear = colinear_manipulators.contains(&point.group);
 
-					// If there is no opposing handle, we mirror even if mirror_angle doesn't contain the group
-					// and set angle mirroring to true.
-					if !mirror && point.manipulator_type.opposite().get_position(group).is_none() {
+					// If there is no opposing handle, we consider it colinear
+					if !colinear && point.manipulator_type.opposite().get_position(group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
 							layer,
-							modification: VectorDataModification::SetManipulatorHandleMirroring { id: group.id, mirror_angle: true },
+							modification: VectorDataModification::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
 						});
-						mirror = true;
+						colinear = true;
 					}
 
-					if mirror {
+					if colinear {
 						let Some(mut original_handle_position) = point.manipulator_type.get_position(group) else {
 							continue;
 						};
@@ -711,7 +711,7 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete selected and mirrored handles with zero length when the drag stops.
+	/// Delete selected and colinear handles with zero length when the drag stops.
 	pub fn delete_selected_handles_with_zero_length(
 		&self,
 		document_network: &NodeNetwork,
@@ -721,7 +721,9 @@ impl ShapeState {
 	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(mirror_angle) = get_mirror_handles(layer, document_network) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+				continue;
+			};
 
 			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
 
@@ -749,9 +751,9 @@ impl ShapeState {
 						modification: VectorDataModification::RemoveManipulatorPoint { point },
 					});
 
-					// Remove opposing handle if it is not selected and is mirrored.
+					// Remove opposing handle if it is not selected and is colinear.
 					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-					if !state.is_selected(opposite_point) && mirror_angle.contains(&point.group) {
+					if !state.is_selected(opposite_point) && colinear_manipulators.contains(&point.group) {
 						if let Some(lengths) = opposing_handle_lengths {
 							if lengths.contains_key(&point.group) {
 								responses.add(GraphOperationMessage::Vector {
@@ -812,12 +814,14 @@ impl ShapeState {
 	pub fn reset_opposing_handle_lengths(&self, document_network: &NodeNetwork, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(mirror_angle) = get_mirror_handles(layer, document_network) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+				continue;
+			};
 			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
 
 			for subpath in subpaths {
 				for manipulator_group in subpath.manipulator_groups() {
-					if !mirror_angle.contains(&manipulator_group.id) {
+					if !colinear_manipulators.contains(&manipulator_group.id) {
 						continue;
 					}
 
@@ -1014,33 +1018,27 @@ impl ShapeState {
 				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
 			}
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification: VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths },
-			});
+			let modification = VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths };
+			responses.add(GraphOperationMessage::Vector { layer, modification });
 		}
 	}
 
-	/// Toggle if the handles should mirror angle across the anchor position.
-	pub fn toggle_handle_mirroring_on_selected(&self, responses: &mut VecDeque<Message>) {
+	/// Toggle if the handles of the selected points should be colinear.
+	pub fn toggle_colinear_handles_state_on_selected(&self, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::ToggleManipulatorHandleMirroring { id: point.group },
-				})
+				let modification = VectorDataModification::ToggleManipulatorColinearHandlesState { id: point.group };
+				responses.add(GraphOperationMessage::Vector { layer, modification })
 			}
 		}
 	}
 
-	/// Toggle if the handles should mirror angle across the anchor position.
-	pub fn set_handle_mirroring_on_selected(&self, mirror_angle: bool, responses: &mut VecDeque<Message>) {
+	/// Set whether the handles of the selected points should be colinear.
+	pub fn set_colinear_handles_state_on_selected(&self, colinear: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorHandleMirroring { id: point.group, mirror_angle },
-				});
+				let modification = VectorDataModification::SetManipulatorColinearHandlesState { id: point.group, colinear };
+				responses.add(GraphOperationMessage::Vector { layer, modification });
 			}
 		}
 	}
@@ -1160,8 +1158,10 @@ impl ShapeState {
 		}
 	}
 
-	/// Handles the flipping between sharp corner and smooth (which can be activated by double clicking on an anchor with the Path tool).
-	pub fn flip_sharp(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
+	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
+	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
+	/// This can can be activated by double clicking on an anchor with the Path tool.
+	pub fn flip_smooth_sharp(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
 			let subpaths = get_subpaths(layer, document_network)?;
 
@@ -1188,31 +1188,30 @@ impl ShapeState {
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
 			let already_sharp = match (manipulator.in_handle, manipulator.out_handle) {
+				// Check if both handles are zero-length (sharp)
 				(Some(in_handle), Some(out_handle)) => anchor_position.abs_diff_eq(in_handle, 1e-10) && anchor_position.abs_diff_eq(out_handle, 1e-10),
+				// Check if the only one handle is zero-length (sharp)
 				(Some(handle), None) | (None, Some(handle)) => anchor_position.abs_diff_eq(handle, 1e-10),
+				// No handles mean zero-length (sharp)
 				(None, None) => true,
 			};
 
 			if already_sharp {
-				self.smooth_manipulator_group(subpath, index, responses, layer);
+				self.convert_manipulator_handles_to_colinear(subpath, index, responses, layer);
 			} else {
+				// Set in handle position to anchor position
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
-				});
+				let modification = VectorDataModification::SetManipulatorPosition { point, position: anchor_position };
+				responses.add(GraphOperationMessage::Vector { layer, modification });
+
+				// Set out handle position to anchor position
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorPosition { point, position: anchor_position },
-				});
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification: VectorDataModification::SetManipulatorHandleMirroring {
-						id: manipulator.id,
-						mirror_angle: false,
-					},
-				});
+				let modification = VectorDataModification::SetManipulatorPosition { point, position: anchor_position };
+				responses.add(GraphOperationMessage::Vector { layer, modification });
+
+				// Set the manipulator to have non-colinear handles
+				let modification = VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification });
 			};
 
 			Some(true)

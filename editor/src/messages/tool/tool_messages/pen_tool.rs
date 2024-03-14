@@ -200,7 +200,7 @@ struct PenToolData {
 	layer: Option<LayerNodeIdentifier>,
 	subpath_index: usize,
 	snap_manager: SnapManager,
-	should_mirror: bool,
+	colinear_handles: bool,
 	// Indicates that curve extension is occurring from the first point, rather than (more commonly) the last point
 	from_start: bool,
 	angle: f64,
@@ -212,21 +212,16 @@ impl PenToolData {
 		self.from_start = from_start;
 		self.subpath_index = subpath_index;
 
-		// Stop the handles on the first point from mirroring
-		let Some(subpaths) = get_subpaths(layer, &document.network) else {
-			return;
-		};
+		let Some(subpaths) = get_subpaths(layer, &document.network) else { return };
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
-		let Some(last_handle) = (if from_start { manipulator_groups.first() } else { manipulator_groups.last() }) else {
-			return;
-		};
+		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
+		let Some(last_handle) = first_or_last else { return };
+		let id = last_handle.id;
 
+		// Stop the handles on the first point from being colinear
 		responses.add(GraphOperationMessage::Vector {
 			layer,
-			modification: VectorDataModification::SetManipulatorHandleMirroring {
-				id: last_handle.id,
-				mirror_angle: false,
-			},
+			modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
 		});
 	}
 
@@ -270,53 +265,56 @@ impl PenToolData {
 		self.subpath_index = 0;
 	}
 
-	// TODO: tooltip / user documentation?
-	/// If you place the anchor on top of the previous anchor then you break the mirror
-	fn check_break(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<()> {
-		// Get subpath
-		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
+	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
+	fn bend_from_previous_point(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) {
+		(|| -> Option<()> {
+			// Get subpath
+			let layer = self.layer?;
+			let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
 
-		// Get the last manipulator group and the one previous to that
-		let mut manipulator_groups = subpath.manipulator_groups().iter();
-		let last_manipulator_group = if self.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
-		let previous_manipulator_group = if self.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+			// Get the last manipulator group and the one previous to that
+			let mut manipulator_groups = subpath.manipulator_groups().iter();
+			let last_manipulator_group = if self.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
+			let previous_manipulator_group = if self.from_start { manipulator_groups.next()? } else { manipulator_groups.next_back()? };
 
-		// Get correct handle types
-		let outwards_handle = if self.from_start { SelectedType::InHandle } else { SelectedType::OutHandle };
+			// Get correct handle types
+			let outwards_handle = if self.from_start { SelectedType::InHandle } else { SelectedType::OutHandle };
 
-		// Get manipulator points
-		let last_anchor = last_manipulator_group.anchor;
-		let previous_anchor = previous_manipulator_group.anchor;
+			// Get manipulator points
+			let last_anchor = last_manipulator_group.anchor;
+			let previous_anchor = previous_manipulator_group.anchor;
 
-		// Break the control
-		let transform = document.metadata.document_to_viewport * transform;
-		let on_top = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(previous_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-		if !on_top {
-			return None;
-		}
-		// Remove the point that has just been placed
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
-		});
+			// Break the control
+			let transform = document.metadata.document_to_viewport * transform;
+			let on_top = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(previous_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+			if !on_top {
+				return None;
+			}
 
-		// Move the in handle of the previous anchor to on top of the previous position
-		let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification: VectorDataModification::SetManipulatorPosition { point, position: previous_anchor },
-		});
+			// Remove the point that has just been placed
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
+			});
 
-		// Stop the handles on the last point from mirroring
-		let id = previous_manipulator_group.id;
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
-		});
+			// Move the in handle of the previous anchor to on top of the previous position
+			let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::SetManipulatorPosition { point, position: previous_anchor },
+			});
 
-		self.should_mirror = false;
-		None
+			// Stop the handles on the last point from being colinear
+			let id = previous_manipulator_group.id;
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
+			});
+
+			self.colinear_handles = false;
+
+			None
+		})();
 	}
 
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
@@ -357,11 +355,11 @@ impl PenToolData {
 				modification: VectorDataModification::SetManipulatorPosition { point, position: last_in },
 			});
 
-			// Stop the handles on the first point from mirroring
+			// Stop the handles on the first point from being colinear
 			let id = first_manipulator_group.id;
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: false },
+				modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
 			});
 
 			// Remove the point that has just been placed
@@ -409,11 +407,11 @@ impl PenToolData {
 		// Get manipulator points
 		let last_anchor = last_manipulator_group.anchor;
 
-		let should_mirror = !modifiers.break_handle && self.should_mirror;
+		let colinear = !modifiers.break_handle && self.colinear_handles;
 
 		snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
-		let pos = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, should_mirror, mouse, Some(last_anchor), false);
-		if !pos.is_finite() {
+		let position = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(last_anchor), false);
+		if !position.is_finite() {
 			return Some(PenToolFsmState::DraggingHandle);
 		}
 
@@ -421,25 +419,25 @@ impl PenToolData {
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
 			layer: self.layer?,
-			modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
+			modification: VectorDataModification::SetManipulatorPosition { point, position },
 		});
 
-		// Mirror handle of last segment
-		if should_mirror {
+		// Place the previous anchor's in handle at the opposing position
+		if colinear {
 			// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
-			let pos = last_anchor - (pos - last_anchor);
+			let position = last_anchor - (position - last_anchor);
 			let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
 				layer: self.layer?,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
+				modification: VectorDataModification::SetManipulatorPosition { point, position },
 			});
 		}
 
-		// Update the mirror status of the currently modifying point
+		// Update the colinear handles status of the currently modifying point
 		let id = last_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
 			layer: self.layer?,
-			modification: VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle: should_mirror },
+			modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear },
 		});
 
 		Some(PenToolFsmState::DraggingHandle)
@@ -487,7 +485,7 @@ impl PenToolData {
 	}
 
 	/// Snap the angle of the line from relative to position if the key is pressed.
-	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, mirror: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
+	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let document = snap_data.document;
 		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
@@ -509,7 +507,7 @@ impl PenToolData {
 			};
 			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone());
 			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors);
-			if mirror {
+			if colinear {
 				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, None);
 				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, None);
 				document_pos = if snapped_far.other_snap_better(&snapped) {
@@ -523,7 +521,7 @@ impl PenToolData {
 				document_pos = snapped.snapped_point_document;
 				snap.update_indicator(snapped);
 			}
-		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| mirror) {
+		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| colinear) {
 			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone()), None, false);
 			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors), None, false);
 			document_pos = if snapped_far.other_snap_better(&snapped) {
@@ -641,8 +639,8 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::Ready, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				// Disable this tool's mirroring
-				tool_data.should_mirror = false;
+				// Prevent the initial point from having a colinear in handle while dragging the out handle
+				tool_data.colinear_handles = false;
 
 				// Perform extension of an existing path
 				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
@@ -663,11 +661,11 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
-				tool_data.check_break(document, transform, responses);
+				tool_data.bend_from_previous_point(document, transform, responses);
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => {
-				tool_data.should_mirror = true;
+				tool_data.colinear_handles = true;
 				tool_data.finish_placing_handle(document, transform, responses).unwrap_or(PenToolFsmState::PlacingAnchor)
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }) => {
@@ -677,6 +675,7 @@ impl Fsm for PenToolFsmState {
 					break_handle: input.keyboard.key(break_handle),
 				};
 				let snap_data = SnapData::new(document, input);
+
 				let state = tool_data
 					.drag_handle(snap_data, transform, input.mouse.position, modifiers, responses)
 					.unwrap_or(PenToolFsmState::Ready);
@@ -772,6 +771,10 @@ impl Fsm for PenToolFsmState {
 				]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Add Sharp Point"), HintInfo::mouse(MouseMotion::LmbDrag, "Add Smooth Point")]),
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, ""),
+					HintInfo::mouse(MouseMotion::LmbDrag, "Bend from Prev. Point").prepend_slash(),
+				]),
 			]),
 			PenToolFsmState::DraggingHandle => HintData(vec![
 				HintGroup(vec![
@@ -780,6 +783,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::keys([Key::Enter], "End Path").prepend_slash(),
 				]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Snap 15°"), HintInfo::keys([Key::Control], "Lock Angle")]),
+				// TODO: Only show this if the handle being dragged is colinear, so don't show this when bending from the previous point (by clicking and dragging from the previously placed anchor)
 				HintGroup(vec![HintInfo::keys([Key::Alt], "Bend Handle")]),
 			]),
 		};

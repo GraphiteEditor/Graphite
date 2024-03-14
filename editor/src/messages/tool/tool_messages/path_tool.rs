@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_over
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_from_id, get_mirror_handles, get_subpaths};
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_colinear_manipulators, get_manipulator_from_id, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
 
@@ -34,19 +34,19 @@ pub enum PathToolMessage {
 	Delete,
 	DeleteAndBreakPath,
 	DragStop {
-		shift_mirror_distance: Key,
+		equidistant: Key,
 	},
 	Enter {
 		add_to_selection: Key,
 	},
 	Escape,
-	FlipSharp,
+	FlipSmoothSharp,
 	GRS {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
 		key: Key,
 	},
-	ManipulatorAngleMakeSharp,
-	ManipulatorAngleMakeSmooth,
+	ManipulatorMakeHandlesFree,
+	ManipulatorMakeHandlesColinear,
 	MouseDown {
 		ctrl: Key,
 		shift: Key,
@@ -126,23 +126,37 @@ impl LayoutHolder for PathTool {
 		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
 		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
 
-		let manipulator_angle_options = vec![
-			RadioEntryData::new("smooth").label("Smooth").on_update(|_| PathToolMessage::ManipulatorAngleMakeSmooth.into()),
-			RadioEntryData::new("sharp").label("Sharp").on_update(|_| PathToolMessage::ManipulatorAngleMakeSharp.into()),
-		];
-		let manipulator_angle_index = manipulator_angle.and_then(|angle| match angle {
-			ManipulatorAngle::Smooth => Some(0),
-			ManipulatorAngle::Sharp => Some(1),
+		let colinear_handles_tooltip = "Ensures both handles remain 180° apart";
+		let colinear_handles_state = manipulator_angle.and_then(|angle| match angle {
+			ManipulatorAngle::Colinear => Some(true),
+			ManipulatorAngle::Free => Some(false),
 			ManipulatorAngle::Mixed => None,
-		});
-
-		let manipulator_angle_radio = RadioInput::new(manipulator_angle_options)
+		})
+		// TODO: Remove `unwrap_or_default` once checkboxes are capable of displaying a mixed state
+		.unwrap_or_default();
+		let colinear_handle_checkbox = CheckboxInput::new(colinear_handles_state)
 			.disabled(self.tool_data.selection_status.is_none())
-			.selected_index(manipulator_angle_index)
+			.on_update(|&CheckboxInput { checked, .. }| {
+				if checked {
+					PathToolMessage::ManipulatorMakeHandlesColinear.into()
+				} else {
+					PathToolMessage::ManipulatorMakeHandlesFree.into()
+				}
+			})
+			.tooltip(colinear_handles_tooltip)
 			.widget_holder();
+		let colinear_handles_label = TextLabel::new("Colinear Handles").tooltip(colinear_handles_tooltip).widget_holder();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
-			widgets: vec![x_location, related_seperator, y_location, unrelated_seperator, manipulator_angle_radio],
+			widgets: vec![
+				x_location,
+				related_seperator.clone(),
+				y_location,
+				unrelated_seperator,
+				colinear_handle_checkbox,
+				related_seperator,
+				colinear_handles_label,
+			],
 		}]))
 	}
 }
@@ -164,7 +178,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 
 		match self.fsm_state {
 			Ready => actions!(PathToolMessageDiscriminant;
-				FlipSharp,
+				FlipSmoothSharp,
 				MouseDown,
 				Delete,
 				NudgeSelectedPoints,
@@ -177,7 +191,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 			Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
 				RightClick,
-				FlipSharp,
+				FlipSmoothSharp,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -185,7 +199,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				DeleteAndBreakPath,
 			),
 			DrawingBox => actions!(PathToolMessageDiscriminant;
-				FlipSharp,
+				FlipSmoothSharp,
 				DragStop,
 				PointerMove,
 				Delete,
@@ -378,7 +392,7 @@ impl PathToolData {
 		// Check if the alt key has just been pressed
 		if alt && !self.alt_debounce {
 			self.opposing_handle_lengths = None;
-			shape_editor.toggle_handle_mirroring_on_selected(responses);
+			shape_editor.toggle_colinear_handles_state_on_selected(responses);
 		}
 		self.alt_debounce = alt;
 
@@ -545,21 +559,21 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { shift_mirror_distance }) => {
-				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+			(PathToolFsmState::DrawingBox, PathToolMessage::DragStop { equidistant }) => {
+				let equidistant = input.keyboard.get(equidistant as usize);
 
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
+					shape_editor.select_all_in_quad(&document.network, &document.metadata, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !equidistant);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::DragStop { shift_mirror_distance }) => {
-				let shift_pressed = input.keyboard.get(shift_mirror_distance as usize);
+			(_, PathToolMessage::DragStop { equidistant }) => {
+				let equidistant = input.keyboard.get(equidistant as usize);
 
 				let nearest_point = shape_editor
 					.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD)
@@ -567,7 +581,7 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.metadata, &tool_data.opposing_handle_lengths, responses);
 
-				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !shift_pressed {
+				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
 					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
 					if clicked_selected {
 						shape_editor.deselect_all_points();
@@ -598,9 +612,9 @@ impl Fsm for PathToolFsmState {
 				shape_editor.delete_point_and_break_path(&document.network, responses);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::FlipSharp) => {
+			(_, PathToolMessage::FlipSmoothSharp) => {
 				if !tool_data.double_click_handled {
-					shape_editor.flip_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
+					shape_editor.flip_smooth_sharp(&document.network, &document.metadata, input.mouse.position, SELECTION_TOLERANCE, responses);
 					responses.add(PathToolMessage::SelectedPointUpdated);
 				}
 				self
@@ -641,16 +655,16 @@ impl Fsm for PathToolFsmState {
 				tool_data.selection_status = get_selection_status(&document.network, &document.metadata, shape_editor);
 				self
 			}
-			(_, PathToolMessage::ManipulatorAngleMakeSmooth) => {
+			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_handle_mirroring_on_selected(true, responses);
-				shape_editor.smooth_selected_groups(responses, &document.network);
+				shape_editor.set_colinear_handles_state_on_selected(true, responses);
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, &document.network);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::ManipulatorAngleMakeSharp) => {
+			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_handle_mirroring_on_selected(false, responses);
+				shape_editor.set_colinear_handles_state_on_selected(false, responses);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}
@@ -663,6 +677,8 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Point"), HintInfo::keys([Key::Shift], "Extend Selection").prepend_plus()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Point on Segment")]),
+				// TODO: Only show if at least one anchor is selected, and dynamically show either "Smooth" or "Sharp" based on the current state
+				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Make Anchor Smooth/Sharp")]),
 				// TODO: Only show the following hints if at least one point is selected
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
 				HintGroup(vec![HintInfo::keys([Key::KeyG, Key::KeyR, Key::KeyS], "Grab/Rotate/Scale Selected")]),
@@ -677,15 +693,13 @@ impl Fsm for PathToolFsmState {
 			PathToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![
-					// TODO: Make hint dynamically say "Make Handle Smooth" or "Make Handle Sharp" based on its current state
-					// TODO: Switch this to the "S" key
-					// TODO: Only show this if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown
-					HintInfo::keys([Key::Alt], "Toggle Smooth/Sharp Handles"),
-					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line)
-					// TODO: Show this only when a handle is being dragged
-					HintInfo::keys([Key::Shift], "Equidistant Handles (Smooth Only)"),
-					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged)
-					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged)
+					// TODO: Switch this to the "S" key. Also, make the hint dynamically say "Make Colinear" or "Make Not Colinear" based on its current state. And only
+					// TODO: show this hint if a handle (not an anchor) is being dragged, and disable that shortcut so it can't be pressed even with the hint not shown.
+					HintInfo::keys([Key::Alt], "Toggle Colinear Handles"),
+					// TODO: Switch this to the "Alt" key (since it's equivalent to the "From Center" modifier when drawing a line). And show this only when a handle is being dragged.
+					HintInfo::keys([Key::Shift], "Equidistant Handles"),
+					// TODO: Add "Snap 15°" modifier with the "Shift" key (only when a handle is being dragged).
+					// TODO: Add "Lock Angle" modifier with the "Ctrl" key (only when a handle is being dragged).
 				]),
 			]),
 			PathToolFsmState::DrawingBox => HintData(vec![
@@ -761,28 +775,31 @@ fn get_selection_status(document_network: &NodeNetwork, document_metadata: &Docu
 		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
 			return SelectionStatus::None;
 		};
-
 		let Some(subpaths) = get_subpaths(layer, document_network) else {
 			return SelectionStatus::None;
 		};
-		let Some(mirror) = get_mirror_handles(layer, document_network) else {
+		let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
 			return SelectionStatus::None;
 		};
 		let Some(point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};
-
-		let Some(group) = get_manipulator_from_id(subpaths, point.group) else {
+		let Some(manipulator) = get_manipulator_from_id(subpaths, point.group) else {
 			return SelectionStatus::None;
 		};
-		let Some(local_position) = point.manipulator_type.get_position(group) else {
+		let Some(local_position) = point.manipulator_type.get_position(manipulator) else {
 			return SelectionStatus::None;
 		};
 
-		let manipulator_angle = if mirror.contains(&point.group) { ManipulatorAngle::Smooth } else { ManipulatorAngle::Sharp };
+		let coordinates = document_metadata.transform_to_document(layer).transform_point2(local_position);
+		let manipulator_angle = if colinear_manipulators.contains(&point.group) {
+			ManipulatorAngle::Colinear
+		} else {
+			ManipulatorAngle::Free
+		};
 
 		return SelectionStatus::One(SingleSelectedPoint {
-			coordinates: document_metadata.transform_to_document(layer).transform_point2(local_position),
+			coordinates,
 			layer,
 			id: *point,
 			manipulator_angle,

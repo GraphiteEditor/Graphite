@@ -327,10 +327,10 @@ impl SnapCandidatePoint {
 		Self::new(document_point, source, SnapTarget::None)
 	}
 	pub fn handle(document_point: DVec2) -> Self {
-		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp))
+		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::HandlesFree))
 	}
 	pub fn handle_neighbors(document_point: DVec2, neighbors: impl Into<Vec<DVec2>>) -> Self {
-		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::Sharp));
+		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::HandlesFree));
 		point.neighbors = neighbors.into();
 		point
 	}
@@ -399,34 +399,37 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 			continue;
 		}
 
-		let smooth = group_smooth(group, to_document, subpath, index);
+		let colinear = are_manipulator_handles_colinear(group, to_document, subpath, index);
 
-		if smooth && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Smooth)) {
-			// Smooth points
+		if colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::HandlesColinear)) {
+			// Colinear handles
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::Smooth),
-				SnapTarget::Geometry(GeometrySnapTarget::Smooth),
+				SnapSource::Geometry(GeometrySnapSource::HandlesColinear),
+				SnapTarget::Geometry(GeometrySnapTarget::HandlesColinear),
 			));
-		} else if !smooth && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Sharp)) {
-			// Sharp points
+		} else if !colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::HandlesFree)) {
+			// Free handles
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::Sharp),
-				SnapTarget::Geometry(GeometrySnapTarget::Sharp),
+				SnapSource::Geometry(GeometrySnapSource::HandlesFree),
+				SnapTarget::Geometry(GeometrySnapTarget::HandlesFree),
 			));
 		}
 	}
 }
 
-pub fn group_smooth<Id: bezier_rs::Identifier>(group: &bezier_rs::ManipulatorGroup<Id>, to_document: DAffine2, subpath: &Subpath<Id>, index: usize) -> bool {
+/// Returns true if both handles in a manipulator group are colinear, unless the anchor is an endpoint. Endpoint anchors are never considered colinear.
+pub fn are_manipulator_handles_colinear<Id: bezier_rs::Identifier>(group: &bezier_rs::ManipulatorGroup<Id>, to_document: DAffine2, subpath: &Subpath<Id>, index: usize) -> bool {
 	let anchor = group.anchor;
 	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
-	let at_end = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
+	let anchor_is_endpoint = !subpath.closed() && (index == 0 || index == subpath.len() - 1);
 
-	handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5)) && !at_end
+	// Unless this is an endpoint, check if both handles are colinear (within an angular epsilon)
+	!anchor_is_endpoint && handle_in.is_some_and(|handle_in| handle_out.is_some_and(|handle_out| handle_in.angle_between(handle_out) < 1e-5))
 }
+
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
 	if document.metadata().is_artboard(layer) {

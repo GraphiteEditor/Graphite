@@ -61,7 +61,7 @@ pub struct SnappingState {
 	pub geometry_snapping: bool,
 	pub grid_snapping: bool,
 	pub bounds: BoundsSnapping,
-	pub nodes: NodeSnapping,
+	pub nodes: PointSnapping,
 	pub grid: GridSnapping,
 	pub tolerance: f64,
 	pub artboards: bool,
@@ -79,11 +79,11 @@ impl Default for SnappingState {
 				edge_midpoints: false,
 				centers: true,
 			},
-			nodes: NodeSnapping {
+			nodes: PointSnapping {
 				paths: true,
 				path_intersections: true,
-				sharp_nodes: true,
-				smooth_nodes: true,
+				point_handles_free: true,
+				point_handles_colinear: true,
 				line_midpoints: true,
 				normals: true,
 				tangents: true,
@@ -110,8 +110,8 @@ impl SnappingState {
 				BoundingBoxSnapTarget::Center => self.bounds.centers,
 			},
 			SnapTarget::Geometry(nodes) if self.geometry_snapping => match nodes {
-				GeometrySnapTarget::Smooth => self.nodes.smooth_nodes,
-				GeometrySnapTarget::Sharp => self.nodes.sharp_nodes,
+				GeometrySnapTarget::HandlesColinear => self.nodes.point_handles_colinear,
+				GeometrySnapTarget::HandlesFree => self.nodes.point_handles_free,
 				GeometrySnapTarget::LineMidpoint => self.nodes.line_midpoints,
 				GeometrySnapTarget::Path => self.nodes.paths,
 				GeometrySnapTarget::Normal => self.nodes.normals,
@@ -132,11 +132,11 @@ pub struct BoundsSnapping {
 	pub centers: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NodeSnapping {
+pub struct PointSnapping {
 	pub paths: bool,
 	pub path_intersections: bool,
-	pub sharp_nodes: bool,
-	pub smooth_nodes: bool,
+	pub point_handles_free: bool,
+	pub point_handles_colinear: bool,
 	pub line_midpoints: bool,
 	pub normals: bool,
 	pub tangents: bool,
@@ -227,8 +227,8 @@ pub enum BoardSnapSource {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapSource {
-	Smooth,
-	Sharp,
+	HandlesColinear,
+	HandlesFree,
 	LineMidpoint,
 	PathIntersection,
 	Handle,
@@ -258,8 +258,8 @@ pub enum BoundingBoxSnapTarget {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapTarget {
-	Smooth,
-	Sharp,
+	HandlesColinear,
+	HandlesFree,
 	LineMidpoint,
 	Path,
 	Normal,

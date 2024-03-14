@@ -199,7 +199,7 @@ pub fn nonzero_subpath_bounds(subpaths: &[Subpath<ManipulatorGroupId>]) -> [DVec
 
 pub struct VectorModificationState<'a> {
 	pub subpaths: &'a mut Vec<Subpath<ManipulatorGroupId>>,
-	pub mirror_angle_groups: &'a mut Vec<ManipulatorGroupId>,
+	pub colinear_manipulators: &'a mut Vec<ManipulatorGroupId>,
 }
 impl<'a> VectorModificationState<'a> {
 	fn insert_start(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<ManipulatorGroupId>) {
@@ -246,19 +246,19 @@ impl<'a> VectorModificationState<'a> {
 		}
 	}
 
-	fn set_mirror(&mut self, id: ManipulatorGroupId, mirror_angle: bool) {
-		if !mirror_angle {
-			self.mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
-		} else if !self.mirror_angle_groups.contains(&id) {
-			self.mirror_angle_groups.push(id);
+	fn set_manipulator_colinear_handles_state(&mut self, id: ManipulatorGroupId, colinear: bool) {
+		if !colinear {
+			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
+		} else if !self.colinear_manipulators.contains(&id) {
+			self.colinear_manipulators.push(id);
 		}
 	}
 
-	fn toggle_mirror(&mut self, id: ManipulatorGroupId) {
-		if self.mirror_angle_groups.contains(&id) {
-			self.mirror_angle_groups.retain(|&mirrored_id| mirrored_id != id);
+	fn toggle_manipulator_colinear_handles_state(&mut self, id: ManipulatorGroupId) {
+		if self.colinear_manipulators.contains(&id) {
+			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
 		} else {
-			self.mirror_angle_groups.push(id);
+			self.colinear_manipulators.push(id);
 		}
 	}
 
@@ -271,7 +271,7 @@ impl<'a> VectorModificationState<'a> {
 					SelectedType::InHandle => manipulator.in_handle = Some(position),
 					SelectedType::OutHandle => manipulator.out_handle = Some(position),
 				}
-				if point.manipulator_type != SelectedType::Anchor && self.mirror_angle_groups.contains(&point.group) {
+				if point.manipulator_type != SelectedType::Anchor && self.colinear_manipulators.contains(&point.group) {
 					let reflect = |opposite: DVec2| {
 						(manipulator.anchor - position)
 							.try_normalize()
@@ -298,9 +298,9 @@ impl<'a> VectorModificationState<'a> {
 			VectorDataModification::RemoveManipulatorGroup { id } => self.remove_group(id),
 			VectorDataModification::RemoveManipulatorPoint { point } => self.remove_point(point),
 			VectorDataModification::SetClosed { index, closed } => self.subpaths[index].set_closed(closed),
-			VectorDataModification::SetManipulatorHandleMirroring { id, mirror_angle } => self.set_mirror(id, mirror_angle),
+			VectorDataModification::SetManipulatorColinearHandlesState { id, colinear } => self.set_manipulator_colinear_handles_state(id, colinear),
 			VectorDataModification::SetManipulatorPosition { point, position } => self.set_position(point, position),
-			VectorDataModification::ToggleManipulatorHandleMirroring { id } => self.toggle_mirror(id),
+			VectorDataModification::ToggleManipulatorColinearHandlesState { id } => self.toggle_manipulator_colinear_handles_state(id),
 			VectorDataModification::UpdateSubpaths { subpaths } => *self.subpaths = subpaths,
 		}
 	}
