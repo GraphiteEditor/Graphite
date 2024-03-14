@@ -435,19 +435,17 @@ impl Fsm for GradientToolFsmState {
 					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
 				}
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
-						GradientToolMessage::PointerMove { constrain_axis }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					GradientToolMessage::PointerMove { constrain_axis }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				GradientToolFsmState::Drawing
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
 					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
 						selected_gradient.transform.translation += shift;
@@ -457,13 +455,12 @@ impl Fsm for GradientToolFsmState {
 				GradientToolFsmState::Drawing
 			}
 			(state, GradientToolMessage::PointerOutsideViewport { constrain_axis }) => {
-				tool_data.auto_panning.stop(
-					&[
-						GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
-						GradientToolMessage::PointerMove { constrain_axis }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
+					GradientToolMessage::PointerMove { constrain_axis }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

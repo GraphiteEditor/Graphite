@@ -270,15 +270,12 @@ impl Fsm for PolygonToolFsmState {
 					responses.add(message);
 				}
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				self
 			}
@@ -288,18 +285,18 @@ impl Fsm for PolygonToolFsmState {
 				self
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
 
 				PolygonToolFsmState::Drawing
 			}
 			(state, PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
-				tool_data.auto_panning.stop(
-					&[
-						PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					PolygonToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					PolygonToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

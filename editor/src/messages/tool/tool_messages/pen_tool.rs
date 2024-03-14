@@ -681,15 +681,12 @@ impl Fsm for PenToolFsmState {
 					.drag_handle(snap_data, transform, input.mouse.position, modifiers, responses)
 					.unwrap_or(PenToolFsmState::Ready);
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-						PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				state
 			}
@@ -703,15 +700,12 @@ impl Fsm for PenToolFsmState {
 					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, modifiers, responses)
 					.unwrap_or(PenToolFsmState::Ready);
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-						PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				state
 			}
@@ -721,23 +715,24 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
 
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
 
 				PenToolFsmState::PlacingAnchor
 			}
 			(state, PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }) => {
-				tool_data.auto_panning.stop(
-					&[
-						PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
-						PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					PenToolMessage::PointerOutsideViewport { snap_angle, break_handle, lock_angle }.into(),
+					PenToolMessage::PointerMove { snap_angle, break_handle, lock_angle }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

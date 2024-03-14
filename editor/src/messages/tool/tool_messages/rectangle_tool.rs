@@ -232,15 +232,12 @@ impl Fsm for RectangleToolFsmState {
 					responses.add(message);
 				}
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				self
 			}
@@ -250,18 +247,18 @@ impl Fsm for RectangleToolFsmState {
 				self
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
 
 				RectangleToolFsmState::Drawing
 			}
 			(state, RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
-				tool_data.auto_panning.stop(
-					&[
-						RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					RectangleToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					RectangleToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

@@ -40,8 +40,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-
-const DEBUG_MESSAGE_BLOCKLIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport"];
+const DEBUG_MESSAGE_BLOCK_LIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -226,7 +225,7 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let message_name = MessageDiscriminant::from(message).local_name();
 
-		if !DEBUG_MESSAGE_BLOCKLIST.iter().any(|blocked_name| message_name.ends_with(blocked_name)) {
+		if !DEBUG_MESSAGE_BLOCK_LIST.iter().any(|blocked_name| message_name.ends_with(blocked_name)) {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

@@ -226,15 +226,12 @@ impl Fsm for EllipseToolFsmState {
 					responses.add(message);
 				}
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
 
 				self
 			}
@@ -244,18 +241,18 @@ impl Fsm for EllipseToolFsmState {
 				self
 			}
 			(EllipseToolFsmState::Drawing, EllipseToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
 				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
 
 				EllipseToolFsmState::Drawing
 			}
 			(state, EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }) => {
-				tool_data.auto_panning.stop(
-					&[
-						EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
-						EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
-					],
-					responses,
-				);
+				// Auto-panning
+				let messages = [
+					EllipseToolMessage::PointerOutsideViewport { center, lock_ratio }.into(),
+					EllipseToolMessage::PointerMove { center, lock_ratio }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}
