@@ -2,6 +2,7 @@ use crate::messages::input_mapper::utility_types::input_keyboard::{Key, Modifier
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ViewportBounds};
 use crate::messages::prelude::*;
 
+use core::time::Duration;
 use serde::{Deserialize, Serialize};
 
 #[impl_message(Message, InputPreprocessor)]
@@ -14,5 +15,6 @@ pub enum InputPreprocessorMessage {
 	PointerDown { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerMove { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 	PointerUp { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
+	TimestampSet { timestamp: Duration },
 	WheelScroll { editor_mouse_state: EditorMouseState, modifier_keys: ModifierKeys },
 }

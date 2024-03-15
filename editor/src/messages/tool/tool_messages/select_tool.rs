@@ -654,15 +654,12 @@ impl Fsm for SelectToolFsmState {
 				}
 				tool_data.drag_current += mouse_delta;
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-						SelectToolMessage::PointerMove(modifier_keys).into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+					SelectToolMessage::PointerMove(modifier_keys).into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SelectToolFsmState::Dragging
 			}
@@ -698,15 +695,12 @@ impl Fsm for SelectToolFsmState {
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 
-						tool_data.auto_panning.setup_by_mouse_position(
-							input.mouse.position,
-							input.viewport_bounds.size(),
-							&[
-								SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-								SelectToolMessage::PointerMove(modifier_keys).into(),
-							],
-							responses,
-						);
+						// AutoPanning
+						let messages = [
+							SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+							SelectToolMessage::PointerMove(modifier_keys).into(),
+						];
+						tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 					}
 				}
 				SelectToolFsmState::ResizingBounds
@@ -751,15 +745,12 @@ impl Fsm for SelectToolFsmState {
 				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-						SelectToolMessage::PointerMove(modifier_keys).into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+					SelectToolMessage::PointerMove(modifier_keys).into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SelectToolFsmState::DraggingPivot
 			}
@@ -767,15 +758,12 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 				responses.add(OverlaysMessage::Draw);
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					input.mouse.position,
-					input.viewport_bounds.size(),
-					&[
-						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-						SelectToolMessage::PointerMove(modifier_keys).into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+					SelectToolMessage::PointerMove(modifier_keys).into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::DrawingBox { selection }
@@ -800,7 +788,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Dragging, SelectToolMessage::PointerOutsideViewport(_)) => {
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				// AutoPanning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
@@ -808,7 +797,8 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Dragging
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerOutsideViewport(_)) => {
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				// AutoPanning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
@@ -818,25 +808,26 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(_)) => {
-				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+				// AutoPanning
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				self
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				// AutoPanning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
 				}
 
 				self
 			}
 			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
-				tool_data.auto_panning.stop(
-					&[
-						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-						SelectToolMessage::PointerMove(modifier_keys).into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
+					SelectToolMessage::PointerMove(modifier_keys).into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

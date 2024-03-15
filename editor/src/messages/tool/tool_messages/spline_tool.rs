@@ -271,13 +271,13 @@ impl Fsm for SplineToolFsmState {
 
 				// Auto-panning
 				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
-				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerOutsideViewport) => {
 				// Auto-panning
-				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				SplineToolFsmState::Drawing
 			}

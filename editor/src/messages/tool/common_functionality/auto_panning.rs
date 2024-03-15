@@ -2,15 +2,17 @@ use crate::consts::{DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS, DRAG_BEYOND_V
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 
+use core::time::Duration;
+
 #[derive(Clone, Debug, Default)]
 pub struct AutoPanning {
-	subscribed_to_animation_frame: bool,
+	prev_timestamp: Option<Duration>,
 }
 
 impl AutoPanning {
-	pub fn start(&mut self, messages: &[Message], responses: &mut VecDeque<Message>) {
-		if !self.subscribed_to_animation_frame {
-			self.subscribed_to_animation_frame = true;
+	pub fn start(&mut self, input: &InputPreprocessorMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
+		if self.prev_timestamp.is_none() {
+			self.prev_timestamp = Some(input.timestamp);
 
 			for message in messages {
 				responses.add(BroadcastMessage::SubscribeEvent {
@@ -22,9 +24,7 @@ impl AutoPanning {
 	}
 
 	pub fn stop(&mut self, messages: &[Message], responses: &mut VecDeque<Message>) {
-		if self.subscribed_to_animation_frame {
-			self.subscribed_to_animation_frame = false;
-
+		if self.prev_timestamp.take().is_some() {
 			for message in messages {
 				responses.add(BroadcastMessage::UnsubscribeEvent {
 					on: BroadcastEvent::AnimationFrame,
@@ -34,11 +34,13 @@ impl AutoPanning {
 		}
 	}
 
-	pub fn setup_by_mouse_position(&mut self, mouse_position: DVec2, viewport_size: DVec2, messages: &[Message], responses: &mut VecDeque<Message>) {
+	pub fn setup_by_mouse_position(&mut self, input: &InputPreprocessorMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
+		let mouse_position = input.mouse.position;
+		let viewport_size = input.viewport_bounds.size();
 		let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
 		match is_pointer_outside_edge {
-			true => self.start(messages, responses),
+			true => self.start(input, messages, responses),
 			false => self.stop(messages, responses),
 		}
 	}
@@ -47,8 +49,9 @@ impl AutoPanning {
 	///
 	/// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
 	/// The shift is proportional to the distance between edge and mouse. It is also guaranteed to be integral.
-	pub fn shift_viewport(mouse_position: DVec2, viewport_size: DVec2, responses: &mut VecDeque<Message>) -> Option<DVec2> {
-		let mouse_position = mouse_position.clamp(
+	pub fn shift_viewport(&mut self, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Option<DVec2> {
+		let viewport_size = input.viewport_bounds.size();
+		let mouse_position = input.mouse.position.clamp(
 			DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 			viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 		);
@@ -72,7 +75,10 @@ impl AutoPanning {
 			return None;
 		}
 
-		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size).round();
+		let time_delta = (input.timestamp - self.prev_timestamp?).as_secs_f64();
+		self.prev_timestamp = Some(input.timestamp);
+
+		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size * time_delta).round();
 		responses.add(NavigationMessage::TranslateCanvas { delta });
 		Some(delta)
 	}

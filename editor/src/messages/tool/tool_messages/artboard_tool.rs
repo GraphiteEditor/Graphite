@@ -213,15 +213,12 @@ impl Fsm for ArtboardToolFsmState {
 				let mouse_position = input.mouse.position;
 				tool_data.resize_artboard(responses, document, mouse_position, from_center, constrain_square);
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					mouse_position,
-					input.viewport_bounds.size(),
-					&[
-						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
-						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
@@ -245,15 +242,12 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.bounds[0] = position.round();
 					bounds.bounds[1] = position.round() + size.round();
 
-					tool_data.auto_panning.setup_by_mouse_position(
-						mouse_position,
-						input.viewport_bounds.size(),
-						&[
-							ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
-							ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
-						],
-						responses,
-					);
+					// AutoPanning
+					let messages = [
+						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 				}
 				ArtboardToolFsmState::Dragging
 			}
@@ -303,15 +297,12 @@ impl Fsm for ArtboardToolFsmState {
 					})
 				}
 
-				tool_data.auto_panning.setup_by_mouse_position(
-					mouse_position,
-					input.viewport_bounds.size(),
-					&[
-						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
-						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
@@ -326,12 +317,14 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+				// AutoPanning
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				// AutoPanning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_current += shift;
 					tool_data.drag_start += shift;
 				}
@@ -339,20 +332,20 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				// AutoPanning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
 				}
 
 				ArtboardToolFsmState::Drawing
 			}
 			(state, ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }) => {
-				tool_data.auto_panning.stop(
-					&[
-						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
-						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
-					],
-					responses,
-				);
+				// AutoPanning
+				let messages = [
+					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+				];
+				tool_data.auto_panning.stop(&messages, responses);
 
 				state
 			}

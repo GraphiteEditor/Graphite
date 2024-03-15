@@ -204,7 +204,7 @@ impl Fsm for LineToolFsmState {
 					LineToolMessage::PointerOutsideViewport { center, snap_angle, lock_angle }.into(),
 					LineToolMessage::PointerMove { center, snap_angle, lock_angle }.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				LineToolFsmState::Drawing
 			}
@@ -215,7 +215,7 @@ impl Fsm for LineToolFsmState {
 			}
 			(LineToolFsmState::Drawing, LineToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				let _ = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses);
+				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				LineToolFsmState::Drawing
 			}

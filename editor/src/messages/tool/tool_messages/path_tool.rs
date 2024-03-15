@@ -496,7 +496,7 @@ impl Fsm for PathToolFsmState {
 
 				// Auto-panning
 				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
-				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::DrawingBox
 			}
@@ -507,13 +507,13 @@ impl Fsm for PathToolFsmState {
 
 				// Auto-panning
 				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
-				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				PathToolFsmState::Dragging
 			}
 			(PathToolFsmState::DrawingBox, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start_pos += shift;
 				}
 
@@ -521,7 +521,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::PointerOutsideViewport { shift, .. }) => {
 				// Auto-panning
-				if let Some(delta) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				if let Some(delta) = tool_data.auto_panning.shift_viewport(input, responses) {
 					let shift_state = input.keyboard.get(shift as usize);
 					shape_editor.move_selected_points(&document.network, &document.metadata, -delta, shift_state, responses);
 				}
