@@ -40,9 +40,7 @@ pub enum DocumentMessage {
 	ClearArtboards,
 	ClearLayersPanel,
 	CommitTransaction,
-	CreateEmptyFolder {
-		parent: LayerNodeIdentifier,
-	},
+	CreateEmptyFolder,
 	DebugPrintDocument,
 	DeleteLayer {
 		id: NodeId,
