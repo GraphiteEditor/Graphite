@@ -440,13 +440,13 @@ impl Fsm for GradientToolFsmState {
 					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
 					GradientToolMessage::PointerMove { constrain_axis }.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input.mouse.position, input.viewport_bounds.size(), &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				GradientToolFsmState::Drawing
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = AutoPanning::shift_viewport(input.mouse.position, input.viewport_bounds.size(), responses) {
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
 						selected_gradient.transform.translation += shift;
 					}

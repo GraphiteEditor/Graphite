@@ -34,7 +34,9 @@ impl AutoPanning {
 		}
 	}
 
-	pub fn setup_by_mouse_position(&mut self, mouse_position: DVec2, viewport_size: DVec2, messages: &[Message], responses: &mut VecDeque<Message>) {
+	pub fn setup_by_mouse_position(&mut self, input: &InputPreprocessorMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
+		let mouse_position = input.mouse.position;
+		let viewport_size = input.viewport_bounds.size();
 		let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
 		match is_pointer_outside_edge {
@@ -46,9 +48,15 @@ impl AutoPanning {
 	/// Shifts the viewport when the mouse reaches the edge of the viewport.
 	///
 	/// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
-	/// The shift is proportional to the distance between edge and mouse. It is also guaranteed to be integral.
-	pub fn shift_viewport(mouse_position: DVec2, viewport_size: DVec2, responses: &mut VecDeque<Message>) -> Option<DVec2> {
-		let mouse_position = mouse_position.clamp(
+	/// The shift is proportional to the distance between edge and mouse, and to the duration of the frame.
+	/// It is also guaranteed to be integral.
+	pub fn shift_viewport(&self, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Option<DVec2> {
+		if !self.subscribed_to_animation_frame {
+			return None;
+		}
+
+		let viewport_size = input.viewport_bounds.size();
+		let mouse_position = input.mouse.position.clamp(
 			DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 			viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 		);
@@ -72,7 +80,8 @@ impl AutoPanning {
 			return None;
 		}
 
-		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size).round();
+		let time_delta = input.frame_time.frame_duration()?.as_secs_f64();
+		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size * time_delta).round();
 		responses.add(NavigationMessage::TranslateCanvas { delta });
 		Some(delta)
 	}
