@@ -382,14 +382,8 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					}
 				};
 
-				if insert_index == -1 {
-					for entry in self.copy_buffer[clipboard as usize].iter().rev() {
-						paste(entry, responses)
-					}
-				} else {
-					for entry in self.copy_buffer[clipboard as usize].iter() {
-						paste(entry, responses)
-					}
+				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
+					paste(entry, responses)
 				}
 			}
 			PortfolioMessage::PasteSerializedData { data } => {
