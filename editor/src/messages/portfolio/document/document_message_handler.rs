@@ -864,43 +864,50 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::StartTransaction);
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
-				let mut ungrouped_folders = HashMap::new();
+				let mut ungrouped_folders = HashSet::new();
+
 				for folder in folder_paths {
 					// Select all the children of the folder
-					let mut selected: Vec<NodeId> = Vec::new();
-					for decendant in folder.decendants(self.metadata()) {
-						if decendant.parent(self.metadata()).expect("No Parent") == folder && !ungrouped_folders.contains_key(&decendant.to_node()) {
-							selected.push(decendant.to_node());
-						} else if ungrouped_folders.contains_key(&decendant.parent(self.metadata()).expect("No Parent").to_node()) && !ungrouped_folders.contains_key(&decendant.to_node()) {
-							selected.push(decendant.to_node());
-						}
-					}
+					let selected = folder
+						.descendants(self.metadata())
+						.filter_map(|descendant| {
+							if ungrouped_folders.contains(&descendant.to_node()) {
+								return None;
+							};
+
+							let parent = descendant.parent(self.metadata()).expect("No parent");
+							if parent != folder && !ungrouped_folders.contains(&parent.to_node()) {
+								return None;
+							}
+
+							Some(descendant.to_node())
+						})
+						.collect::<Vec<NodeId>>();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
 
 					// Copy them
 					responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 
 					// Paste them into the folder above
-					let calculated_insert_index = folder
+					let insert_index = folder
 						.parent(self.metadata())
 						.unwrap_or(LayerNodeIdentifier::ROOT)
 						.children(self.metadata())
 						.enumerate()
-						.find_map(|(index, item)| {
-							if item == folder {
-								return Some(index as isize);
-							}
-							None
-						});
+						.find_map(|(index, item)| (item == folder).then_some(index as isize))
+						.unwrap_or(-1);
 					responses.add(PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
 						parent: folder.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT),
-						insert_index: calculated_insert_index.unwrap_or(-1),
+						insert_index,
 					});
-					ungrouped_folders.insert(folder.to_node(), true);
+
+					// Mark the folder for deletion
+					ungrouped_folders.insert(folder.to_node());
 				}
-				for ungrouped_folder in ungrouped_folders.keys() {
-					responses.add(GraphOperationMessage::DeleteLayer { id: *ungrouped_folder });
+
+				for id in ungrouped_folders {
+					responses.add(GraphOperationMessage::DeleteLayer { id });
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}
