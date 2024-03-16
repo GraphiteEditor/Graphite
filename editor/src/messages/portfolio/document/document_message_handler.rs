@@ -864,24 +864,50 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::StartTransaction);
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
+				let mut ungrouped_folders = HashSet::new();
 
 				for folder in folder_paths {
 					// Select all the children of the folder
-					responses.add(NodeGraphMessage::SelectedNodesSet {
-						nodes: folder.children(self.metadata()).map(LayerNodeIdentifier::to_node).collect(),
-					});
+					let selected = folder
+						.descendants(self.metadata())
+						.filter_map(|descendant| {
+							if ungrouped_folders.contains(&descendant.to_node()) {
+								return None;
+							};
+
+							let parent = descendant.parent(self.metadata()).expect("No parent");
+							if parent != folder && !ungrouped_folders.contains(&parent.to_node()) {
+								return None;
+							}
+
+							Some(descendant.to_node())
+						})
+						.collect::<Vec<NodeId>>();
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
 
 					// Copy them
 					responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 
 					// Paste them into the folder above
+					let insert_index = folder
+						.parent(self.metadata())
+						.unwrap_or(LayerNodeIdentifier::ROOT)
+						.children(self.metadata())
+						.enumerate()
+						.find_map(|(index, item)| (item == folder).then_some(index as isize))
+						.unwrap_or(-1);
 					responses.add(PortfolioMessage::PasteIntoFolder {
 						clipboard: Clipboard::Internal,
 						parent: folder.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT),
-						insert_index: -1,
+						insert_index,
 					});
-					// Delete the parent folder
-					responses.add(GraphOperationMessage::DeleteLayer { id: folder.to_node() });
+
+					// Mark the folder for deletion
+					ungrouped_folders.insert(folder.to_node());
+				}
+
+				for id in ungrouped_folders {
+					responses.add(GraphOperationMessage::DeleteLayer { id });
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}
