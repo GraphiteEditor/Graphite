@@ -357,22 +357,23 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 			CommitTransaction => (),
 			CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
+
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
-				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, item)| {
-					if self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>().contains(&item) {
-						return Some(index as isize);
-					}
-					None
-				});
+				let insert_index = parent
+					.children(self.metadata())
+					.enumerate()
+					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as isize))
+					.unwrap_or(-1);
+
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: calculated_insert_index.unwrap_or(-1),
+					insert_index,
 					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
