@@ -1126,6 +1126,10 @@ impl DocumentMessageHandler {
 		self.current_hash() == self.saved_hash
 	}
 
+	pub fn is_graph_overlay_open(&self) -> bool {
+		self.graph_view_overlay_open
+	}
+
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
 			self.auto_saved_hash = self.current_hash();

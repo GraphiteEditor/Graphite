@@ -430,6 +430,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
+				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {
 					if !document.is_auto_saved() {
 						responses.add(PortfolioMessage::AutoSaveDocument {
@@ -437,6 +438,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 							document_id: self.active_document_id.unwrap(),
 						});
 					}
+					node_graph_open = document.is_graph_overlay_open();
 				}
 
 				// Set the new active document ID
@@ -451,6 +453,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,
