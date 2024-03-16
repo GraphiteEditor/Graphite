@@ -2,17 +2,15 @@ use crate::consts::{DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS, DRAG_BEYOND_V
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 
-use core::time::Duration;
-
 #[derive(Clone, Debug, Default)]
 pub struct AutoPanning {
-	prev_timestamp: Option<Duration>,
+	subscribed_to_animation_frame: bool,
 }
 
 impl AutoPanning {
-	pub fn start(&mut self, input: &InputPreprocessorMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
-		if self.prev_timestamp.is_none() {
-			self.prev_timestamp = Some(input.timestamp);
+	pub fn start(&mut self, messages: &[Message], responses: &mut VecDeque<Message>) {
+		if !self.subscribed_to_animation_frame {
+			self.subscribed_to_animation_frame = true;
 
 			for message in messages {
 				responses.add(BroadcastMessage::SubscribeEvent {
@@ -24,7 +22,9 @@ impl AutoPanning {
 	}
 
 	pub fn stop(&mut self, messages: &[Message], responses: &mut VecDeque<Message>) {
-		if self.prev_timestamp.take().is_some() {
+		if self.subscribed_to_animation_frame {
+			self.subscribed_to_animation_frame = false;
+
 			for message in messages {
 				responses.add(BroadcastMessage::UnsubscribeEvent {
 					on: BroadcastEvent::AnimationFrame,
@@ -40,7 +40,7 @@ impl AutoPanning {
 		let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
 		match is_pointer_outside_edge {
-			true => self.start(input, messages, responses),
+			true => self.start(messages, responses),
 			false => self.stop(messages, responses),
 		}
 	}
@@ -75,9 +75,7 @@ impl AutoPanning {
 			return None;
 		}
 
-		let time_delta = (input.timestamp - self.prev_timestamp?).as_secs_f64();
-		self.prev_timestamp = Some(input.timestamp);
-
+		let time_delta = input.time.frame_duration()?.as_secs_f64();
 		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size * time_delta).round();
 		responses.add(NavigationMessage::TranslateCanvas { delta });
 		Some(delta)

@@ -40,7 +40,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport", "TimestampSet"];
+const DEBUG_MESSAGE_BLOCK_LIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport", "TimestampAdvance"];
 
 impl Dispatcher {
 	pub fn new() -> Self {

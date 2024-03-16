@@ -1,17 +1,17 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState, ViewportBounds};
+use crate::messages::input_mapper::utility_types::input_time::TimeInfo;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
-use core::time::Duration;
 use glam::DVec2;
 
 #[derive(Debug, Default)]
 pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	pub time: TimeInfo,
 	pub viewport_bounds: ViewportBounds,
-	pub timestamp: Duration,
 }
 
 impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputPreprocessorMessageHandler {
@@ -86,8 +86,8 @@ impl MessageHandler<InputPreprocessorMessage, KeyboardPlatformLayout> for InputP
 
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
-			InputPreprocessorMessage::TimestampSet { timestamp } => {
-				self.timestamp = timestamp;
+			InputPreprocessorMessage::TimestampAdvance { timestamp } => {
+				self.time.advance_timestamp(timestamp);
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);

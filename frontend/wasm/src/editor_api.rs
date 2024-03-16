@@ -239,10 +239,10 @@ impl JsEditorHandle {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				call_closure_with_editor_and_handle(|editor, handle| {
-					let micros: f64 = timestamp * 1000.0;
+					let micros: f64 = timestamp * 1000.;
 					let timestamp = Duration::from_micros(micros.round() as u64);
 
-					for message in editor.handle_message(InputPreprocessorMessage::TimestampSet { timestamp }) {
+					for message in editor.handle_message(InputPreprocessorMessage::TimestampAdvance { timestamp }) {
 						handle.send_frontend_message_to_js(message);
 					}
 
