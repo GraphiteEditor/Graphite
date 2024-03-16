@@ -80,7 +80,7 @@ impl AutoPanning {
 			return None;
 		}
 
-		let time_delta = input.time.frame_duration()?.as_secs_f64();
+		let time_delta = input.frame_time.frame_duration()?.as_secs_f64();
 		let delta = (shift_percent * DRAG_BEYOND_VIEWPORT_SPEED_FACTOR * viewport_size * time_delta).round();
 		responses.add(NavigationMessage::TranslateCanvas { delta });
 		Some(delta)

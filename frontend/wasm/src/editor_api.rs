@@ -242,7 +242,7 @@ impl JsEditorHandle {
 					let micros: f64 = timestamp * 1000.;
 					let timestamp = Duration::from_micros(micros.round() as u64);
 
-					for message in editor.handle_message(InputPreprocessorMessage::TimestampAdvance { timestamp }) {
+					for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
 						handle.send_frontend_message_to_js(message);
 					}
 
