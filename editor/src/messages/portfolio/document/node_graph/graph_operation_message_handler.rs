@@ -605,8 +605,9 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		selected_nodes.retain_selected_nodes(|id| !delete_nodes.contains(id));
-		self.responses.add(BroadcastEvent::SelectionChanged);
 
+		self.outwards_links = self.document_network.collect_outwards_links();
+		self.responses.add(BroadcastEvent::SelectionChanged);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -635,6 +636,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.document_network.nodes.remove(&id);
 		selected_nodes.retain_selected_nodes(|&node_id| id != node_id);
 
+		self.outwards_links = self.document_network.collect_outwards_links();
 		self.responses.add(BroadcastEvent::SelectionChanged);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
@@ -846,10 +848,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 						.upstream_flow_back_from_nodes(vec![layer], true)
 						.filter_map(|(node, _id)| if node.is_artboard() { Some(_id) } else { None })
 						.collect::<Vec<_>>();
+					if artboards.is_empty() {
+						continue;
+					}
 					for artboard in artboards {
 						modify_inputs.delete_artboard(artboard, selected_nodes);
-						modify_inputs.delete_layer(layer, selected_nodes, true);
 					}
+					modify_inputs.delete_layer(layer, selected_nodes, true);
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
