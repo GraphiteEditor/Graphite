@@ -1125,6 +1125,7 @@ impl DocumentMessageHandler {
 	pub fn is_saved(&self) -> bool {
 		self.current_hash() == self.saved_hash
 	}
+
 	pub fn is_graph_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
 	}
