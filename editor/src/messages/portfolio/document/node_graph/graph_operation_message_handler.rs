@@ -510,7 +510,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
+	fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, is_artboard_layer: bool) {
 		let Some(node) = self.document_network.nodes.get(&id) else {
 			warn!("Deleting layer node that does not exist");
 			return;
@@ -520,14 +520,70 @@ impl<'a> ModifyInputsContext<'a> {
 		let child_layers = layer_node.descendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
 		layer_node.delete(self.document_metadata);
 
-		let new_input = node.inputs[1].clone();
+		// An artboard layer is a layer node to which an artboard node was connected.
+		// However, since this method is called after `delete_artboard`, the artboard node is already deleted.
+		// So, instead of a single ordinary node, we have a stack of layers connected to the current artboard layer through `node_inputs[0]` (instead of `node_inputs[1]`).
+		let is_artboard_layer = if is_artboard_layer && matches!(&node.inputs[0], NodeInput::Value { .. }) {
+			false
+		} else {
+			is_artboard_layer
+		};
+
+		// For an artboard layer, the new input is the top of the stack of layers that is connected to it through `node_inputs[0]`.
+		// For an ordinary layer, the new input is the next layer in the current stack of layers, which is connected to it through `node_inputs[1]`.
+		let new_input = if is_artboard_layer && !matches!(&node.inputs[0], NodeInput::Value { .. }) {
+			node.inputs[0].clone()
+		} else {
+			node.inputs[1].clone()
+		};
 		let deleted_position = node.metadata.position;
 
+		if let Some(new_input_id) = is_artboard_layer.then(|| new_input.as_node()).flatten() {
+			// This is the artboard layer that will be connected to the bottom of the stack of layers that is connected to the current artboard layer to be deleted.
+			// This will move the stack into the "main stack" of layers that leads to the output.
+			let new_input_artboard_layer = node.inputs[1].clone();
+
+			// Find the last layer node in the stack of layers that is connected to the current artboard layer to be deleted.
+			let mut final_layer_node_id = new_input_id;
+
+			let nodes = &self.document_network.nodes;
+			while let Some(input_id) = nodes.get(&final_layer_node_id).and_then(|input_node| input_node.inputs.get(1).and_then(|x| x.as_node())) {
+				final_layer_node_id = input_id;
+			}
+
+			// Connect `new_input_artboard_layer` to `final_layer_node`
+			if let Some(final_layer_node) = self.document_network.nodes.get_mut(&final_layer_node_id) {
+				final_layer_node.inputs[1] = new_input_artboard_layer.clone();
+			}
+
+			// Shift the position of the stack of layers connected to `new_input_artboard_layer` to the bottom of `final_layer_node`
+			if let Some(final_layer_node) = self.document_network.nodes.get(&final_layer_node_id) {
+				if let Some(new_input_artboard_layer_id) = new_input_artboard_layer.as_node() {
+					if let Some(new_input_artboard_layer_node) = self.document_network.nodes.get(&new_input_artboard_layer_id) {
+						let shift = final_layer_node.metadata.position - new_input_artboard_layer_node.metadata.position + IVec2::new(0, 3);
+
+						let node_ids = self
+							.document_network
+							.upstream_flow_back_from_nodes(vec![new_input_artboard_layer_id], false)
+							.map(|(_, id)| id)
+							.collect::<Vec<_>>();
+
+						for node_id in node_ids {
+							let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
+							node.metadata.position += shift;
+						}
+					}
+				}
+			}
+		}
+
+		// Get all nodes that the layer to be deleted is connected to
 		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
 			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
 				continue;
 			};
 
+			// Update the inputs of these nodes by replacing the layer to be deleted with `new_input`
 			for input in &mut node.inputs {
 				if let NodeInput::Node { node_id, .. } = input {
 					if *node_id == id {
@@ -539,10 +595,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut delete_nodes = vec![id];
 		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
-			// Don't delete the node if other layers depend on it.
-			if self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
+			// Don't delete the node if it's an artboard layer or if other layers depend on it.
+			if is_artboard_layer || self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
 				break;
 			}
+			// Delete the node if it is connected to only the current layer
 			if self.outwards_links.get(&id).is_some_and(|outwards| outwards.len() == 1) {
 				delete_nodes.push(id);
 			}
@@ -552,6 +609,7 @@ impl<'a> ModifyInputsContext<'a> {
 			self.document_network.nodes.remove(node_id);
 		}
 
+		// Shift the position of the nodes that are connected to the deleted nodes
 		if let Some(node_id) = new_input.as_node() {
 			if let Some(shift) = self.document_network.nodes.get(&node_id).map(|node| deleted_position - node.metadata.position) {
 				for node_id in self.document_network.upstream_flow_back_from_nodes(vec![node_id], false).map(|(_, id)| id).collect::<Vec<_>>() {
@@ -562,8 +620,44 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		selected_nodes.retain_selected_nodes(|id| !delete_nodes.contains(id));
-		self.responses.add(BroadcastEvent::SelectionChanged);
 
+		// Update the outwards links
+		self.outwards_links = self.document_network.collect_outwards_links();
+		self.responses.add(BroadcastEvent::SelectionChanged);
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn delete_artboard(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
+		let Some(node) = self.document_network.nodes.get(&id) else {
+			warn!("Deleting artboard node that does not exist");
+			return;
+		};
+
+		let new_input = node.inputs[0].clone();
+
+		// Get all nodes that the artboard is connected to
+		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
+			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
+				continue;
+			};
+
+			// Update the inputs of these nodes by replacing the artboard with `new_input`
+			for input in &mut node.inputs {
+				if let NodeInput::Node { node_id, .. } = input {
+					if *node_id == id {
+						*input = new_input.clone();
+					}
+				}
+			}
+		}
+
+		// Delete the artboard node
+		self.document_network.nodes.remove(&id);
+		selected_nodes.retain_selected_nodes(|&node_id| id != node_id);
+
+		// Update the outwards links
+		self.outwards_links = self.document_network.collect_outwards_links();
+		self.responses.add(BroadcastEvent::SelectionChanged);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }
@@ -752,16 +846,35 @@ impl MessageHandler<GraphOperationMessage, GraphOperationHandlerData<'_>> for Gr
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.delete_layer(id, selected_nodes);
+				modify_inputs.delete_layer(id, selected_nodes, false);
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+			}
+			GraphOperationMessage::DeleteArtboard { id } => {
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				if let Some(artboard_id) = modify_inputs.document_network.nodes.get(&id).and_then(|node| node.inputs[0].as_node()) {
+					modify_inputs.delete_artboard(artboard_id, selected_nodes);
+				} else {
+					warn!("Artboard does not exist");
+				}
+				modify_inputs.delete_layer(id, selected_nodes, true);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
 				for layer in layer_nodes {
-					if modify_inputs.document_network.upstream_flow_back_from_nodes(vec![layer], true).any(|(node, _id)| node.is_artboard()) {
-						modify_inputs.delete_layer(layer, selected_nodes);
+					let artboards = modify_inputs
+						.document_network
+						.upstream_flow_back_from_nodes(vec![layer], true)
+						.filter_map(|(node, _id)| if node.is_artboard() { Some(_id) } else { None })
+						.collect::<Vec<_>>();
+					if artboards.is_empty() {
+						continue;
 					}
+					for artboard in artboards {
+						modify_inputs.delete_artboard(artboard, selected_nodes);
+					}
+					modify_inputs.delete_layer(layer, selected_nodes, true);
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
