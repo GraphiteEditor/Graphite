@@ -928,9 +928,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Shift nodes connected to the output port of the specified node
-				for &decendant in outwards_links.get(&node_id).unwrap_or(&Vec::new()) {
-					let shift = required_shift(node_id, decendant, network);
-					let mut stack = vec![decendant];
+				for &descendant in outwards_links.get(&node_id).unwrap_or(&Vec::new()) {
+					let shift = required_shift(node_id, descendant, network);
+					let mut stack = vec![descendant];
 					while let Some(id) = stack.pop() {
 						shift_node(id, shift, network);
 						stack.extend(outwards_links.get(&id).unwrap_or(&Vec::new()).iter().copied())

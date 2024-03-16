@@ -48,8 +48,8 @@ impl DocumentMetadata {
 		LayerNodeIdentifier::ROOT
 	}
 
-	pub fn all_layers(&self) -> DecendantsIter<'_> {
-		self.root().decendants(self)
+	pub fn all_layers(&self) -> DescendantsIter<'_> {
+		self.root().descendants(self)
 	}
 
 	pub fn layer_exists(&self, layer: LayerNodeIdentifier) -> bool {
@@ -396,9 +396,9 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	/// Iterator through all decendants, including recursive children (not including self)
-	pub fn decendants(self, metadata: &DocumentMetadata) -> DecendantsIter {
-		DecendantsIter {
+	/// Iterator through all descendants, including recursive children (not including self)
+	pub fn descendants(self, metadata: &DocumentMetadata) -> DescendantsIter {
+		DescendantsIter {
 			front: self.first_child(metadata),
 			back: self.last_child(metadata).and_then(|child| child.last_children(metadata).last()),
 			metadata,
@@ -488,7 +488,7 @@ impl LayerNodeIdentifier {
 		}
 
 		let mut delete = vec![self];
-		delete.extend(self.decendants(metadata));
+		delete.extend(self.descendants(metadata));
 		for node in delete {
 			metadata.structure.remove(&node);
 		}
@@ -533,17 +533,17 @@ impl<'a> Iterator for AxisIter<'a> {
 }
 
 // ==============
-// DecendantsIter
+// DescendantsIter
 // ==============
 
 #[derive(Clone)]
-pub struct DecendantsIter<'a> {
+pub struct DescendantsIter<'a> {
 	front: Option<LayerNodeIdentifier>,
 	back: Option<LayerNodeIdentifier>,
 	metadata: &'a DocumentMetadata,
 }
 
-impl<'a> Iterator for DecendantsIter<'a> {
+impl<'a> Iterator for DescendantsIter<'a> {
 	type Item = LayerNodeIdentifier;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -561,7 +561,7 @@ impl<'a> Iterator for DecendantsIter<'a> {
 		}
 	}
 }
-impl<'a> DoubleEndedIterator for DecendantsIter<'a> {
+impl<'a> DoubleEndedIterator for DescendantsIter<'a> {
 	fn next_back(&mut self) -> Option<Self::Item> {
 		if self.front == self.back {
 			self.front = None;
@@ -618,7 +618,7 @@ fn test_tree() {
 	assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);
 	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(6)));
 	assert_eq!(root.children(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
-	assert_eq!(root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
+	assert_eq!(root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(), vec![NodeId(3), NodeId(6)]);
 	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_after(metadata, LayerNodeIdentifier::new_unchecked(NodeId(4)));
 	LayerNodeIdentifier::new_unchecked(NodeId(3)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(2)));
 	LayerNodeIdentifier::new_unchecked(NodeId(6)).add_before(metadata, LayerNodeIdentifier::new_unchecked(NodeId(5)));
@@ -631,11 +631,11 @@ fn test_tree() {
 		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(6), NodeId(7), NodeId(8), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+		root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
 		vec![NodeId(9), NodeId(8), NodeId(7), NodeId(6), NodeId(5), NodeId(4), NodeId(3), NodeId(2), NodeId(1)]
 	);
 	assert!(root.children(metadata).all(|child| child.parent(metadata) == Some(root)));
@@ -647,11 +647,11 @@ fn test_tree() {
 		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9)]
 	);
 	assert_eq!(
-		root.decendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
+		root.descendants(metadata).map(LayerNodeIdentifier::to_node).collect::<Vec<_>>(),
 		vec![NodeId(2), NodeId(3), NodeId(4), NodeId(5), NodeId(9), NodeId(10)]
 	);
 	assert_eq!(
-		root.decendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
+		root.descendants(metadata).map(LayerNodeIdentifier::to_node).rev().collect::<Vec<_>>(),
 		vec![NodeId(10), NodeId(9), NodeId(5), NodeId(4), NodeId(3), NodeId(2)]
 	);
 }

@@ -493,7 +493,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 						return Some(index as isize);
 					}
 
-					for descendant in direct_child.decendants(self.metadata()) {
+					for descendant in direct_child.descendants(self.metadata()) {
 						if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
 							return Some(index as isize);
 						}
@@ -918,7 +918,7 @@ impl DocumentMessageHandler {
 		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
 		self.metadata
 			.root()
-			.decendants(&self.metadata)
+			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
@@ -931,7 +931,7 @@ impl DocumentMessageHandler {
 		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.metadata
 			.root()
-			.decendants(&self.metadata)
+			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))

@@ -434,7 +434,7 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 	let document = snap_data.document;
 	if document.metadata().is_artboard(layer) {
 	} else if document.metadata().is_folder(layer) {
-		for child in layer.decendants(document.metadata()) {
+		for child in layer.descendants(document.metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}
 	} else {

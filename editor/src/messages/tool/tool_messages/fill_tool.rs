@@ -92,13 +92,11 @@ impl Fsm for FillToolFsmState {
 				let Some(layer_identifier) = document.click(input.mouse.position, &document.network) else {
 					return self;
 				};
-				// TODO: Use a match statement here instead of if-else
-				let color = if color_event == FillToolMessage::FillPrimaryColor {
-					global_tool_data.primary_color
-				} else {
-					global_tool_data.secondary_color
+				let fill = match color_event {
+					FillToolMessage::FillPrimaryColor => Fill::Solid(global_tool_data.primary_color),
+					FillToolMessage::FillSecondaryColor => Fill::Solid(global_tool_data.secondary_color),
+					_ => return self,
 				};
-				let fill = Fill::Solid(color);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
@@ -109,7 +107,8 @@ impl Fsm for FillToolFsmState {
 			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
 			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				return FillToolFsmState::Ready;
+
+				FillToolFsmState::Ready
 			}
 			_ => self,
 		}
