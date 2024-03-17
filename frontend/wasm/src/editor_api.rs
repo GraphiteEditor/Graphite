@@ -350,13 +350,6 @@ impl JsEditorHandle {
 		Ok(())
 	}
 
-	/// Update the value of a given UI widget, and commit it to the history
-	#[wasm_bindgen(js_name = widgetValueRevert)]
-	pub fn widget_value_revert(&self) -> Result<(), JsValue> {
-		self.dispatch(DocumentMessage::Undo);
-		Ok(())
-	}
-
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: String) {
 		let message = PreferencesMessage::Load { preferences };

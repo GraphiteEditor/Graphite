@@ -67,10 +67,6 @@ pub struct DropdownInput {
 
 	pub tooltip: String,
 
-	#[derivative(Default(value = "false"))]
-	#[serde(rename = "previewOnHover")]
-	pub preview_on_hover: bool,
-
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
 	//

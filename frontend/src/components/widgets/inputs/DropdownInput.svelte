@@ -10,7 +10,7 @@
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: undefined }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
 
 	let menuList: MenuList | undefined;
 	let self: LayoutRow | undefined;
@@ -21,15 +21,24 @@
 	export let interactive = true;
 	export let disabled = false;
 	export let tooltip: string | undefined = undefined;
-	export let previewOnHover = false;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
+	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
 	let minWidth = 0;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchActiveEntry(activeEntry);
+	$: watchOpen(open);
+
+	function watchOpen(open: boolean) {
+		if (open) {
+			initialSelectedIndex = selectedIndex;
+		} else {
+			initialSelectedIndex = undefined;
+		}
+	}
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_?: number) {
@@ -41,22 +50,19 @@
 	function watchActiveEntry(activeEntry: MenuListEntry) {
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
-		} else if (activeEntry !== DASH_ENTRY && !previewOnHover) {
-			// when previewOnHover is enabled, do not dispatch selectedIndex, because hoverInEntry is dispatched yet.
+		} else if (activeEntry !== DASH_ENTRY) {
+			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
+			dispatch("hoverInEntry", initialSelectedIndex);
 			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		if (previewOnHover) {
-			dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
-		}
+		dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
 	}
 
 	function dispatchHoverOutEntry() {
-		if (previewOnHover) {
-			dispatch("hoverOutEntry");
-		}
+		dispatch("hoverOutEntry", initialSelectedIndex);
 	}
 
 	function makeActiveEntry(): MenuListEntry {

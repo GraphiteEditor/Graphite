@@ -69,10 +69,6 @@
 		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
-	function widgetValueRevert() {
-		editor.instance.widgetValueRevert();
-	}
-
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
 	function exclude<T extends object>(props: T, additional?: (keyof T)[]): Omit<T, typeof additional extends Array<infer K> ? K : never> {
 		const exclusions = ["kind", ...(additional || [])];
@@ -102,8 +98,8 @@
 		{#if dropdownInput}
 			<DropdownInput
 				{...exclude(dropdownInput)}
-				on:hoverInEntry={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
-				on:hoverOutEntry={() => widgetValueRevert()}
+				on:hoverInEntry={({ detail }) => widgetValueUpdate(index, detail)}
+				on:hoverOutEntry={({ detail }) => widgetValueUpdate(index, detail)}
 				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
 			/>
 		{/if}
