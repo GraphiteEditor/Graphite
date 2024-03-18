@@ -98,8 +98,14 @@
 		{#if dropdownInput}
 			<DropdownInput
 				{...exclude(dropdownInput)}
-				on:hoverInEntry={({ detail }) => widgetValueUpdate(index, detail)}
-				on:hoverOutEntry={({ detail }) => widgetValueUpdate(index, detail)}
+				on:hoverInEntry={({ detail }) => {
+					console.log(index, detail);
+					return widgetValueUpdate(index, detail);
+				}}
+				on:hoverOutEntry={({ detail }) => {
+					console.log(index, detail);
+					return widgetValueUpdate(index, detail);
+				}}
 				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
 			/>
 		{/if}
