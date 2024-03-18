@@ -372,7 +372,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-//TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -400,7 +400,7 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -426,7 +426,7 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 	LayoutGroup::Row { widgets }.with_tooltip("Style of noise pattern")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -452,7 +452,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	LayoutGroup::Row { widgets }.with_tooltip("Style of layered levels of the noise pattern")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -481,7 +481,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 	LayoutGroup::Row { widgets }.with_tooltip("Distance function used by the cellular noise")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -507,7 +507,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 	LayoutGroup::Row { widgets }.with_tooltip("Return type of the cellular noise")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {

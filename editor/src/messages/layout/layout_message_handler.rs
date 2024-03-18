@@ -174,32 +174,26 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::NumberInput(number_input) => {
-				match action {
-					WidgetValueAction::Commit => {
-						let callback_message = (number_input.on_commit.callback)(&());
+			Widget::NumberInput(number_input) => match action {
+				WidgetValueAction::Commit => {
+					let callback_message = (number_input.on_commit.callback)(&());
+					responses.add(callback_message);
+				}
+				WidgetValueAction::Update => match value {
+					Value::Number(num) => {
+						let update_value = num.as_f64().unwrap();
+						number_input.value = Some(update_value);
+						let callback_message = (number_input.on_update.callback)(number_input);
 						responses.add(callback_message);
 					}
-					WidgetValueAction::Update => {
-						match value {
-							Value::Number(num) => {
-								let update_value = num.as_f64().unwrap();
-								number_input.value = Some(update_value);
-								let callback_message = (number_input.on_update.callback)(number_input);
-								responses.add(callback_message);
-							}
-							Value::String(str) => match str.as_str() {
-								"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
-								"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
-								_ => {
-									panic!("Invalid string found when updating `NumberInput`")
-								}
-							},
-							_ => {} // If it's some other type we could just ignore it and leave the value as is
-						}
-					}
-				}
-			}
+					Value::String(str) => match str.as_str() {
+						"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
+						"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),
+						_ => panic!("Invalid string found when updating `NumberInput`"),
+					},
+					_ => {}
+				},
+			},
 			Widget::ParameterExposeButton(parameter_expose_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),

@@ -1229,11 +1229,11 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
 							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
 							.label(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
 					.selected_index(Some(self.document_mode as u32))
 					.draw_icon(true)
