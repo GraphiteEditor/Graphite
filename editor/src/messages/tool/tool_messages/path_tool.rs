@@ -345,7 +345,7 @@ impl PathToolData {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 			}
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = input.mouse.position;
+			self.previous_mouse_position = document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
 			shape_editor.select_all_anchors_in_layer(&document.network, layer);
 
 			PathToolFsmState::Dragging
@@ -353,13 +353,13 @@ impl PathToolData {
 		// Start drawing a box
 		else {
 			self.drag_start_pos = input.mouse.position;
-			self.previous_mouse_position = input.mouse.position;
+			self.previous_mouse_position = document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
 
 			PathToolFsmState::DrawingBox
 		}
 	}
 
-	fn start_dragging_point(&mut self, mut selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, _document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn start_dragging_point(&mut self, mut selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::StartTransaction);
 
 		// TODO: enable snapping
@@ -384,8 +384,8 @@ impl PathToolData {
 		}
 		selected_points.points.extend(additional_selected_points);
 
-		self.drag_start_pos = input.mouse.position;
-		self.previous_mouse_position = input.mouse.position - selected_points.offset;
+		let viewport_to_document = document.metadata.document_to_viewport.inverse();
+		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
 	}
 
 	fn drag(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -406,9 +406,10 @@ impl PathToolData {
 		}
 
 		// Move the selected points with the mouse
-		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, self.previous_mouse_position);
+		let previous_mouse = document.metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
+		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
 		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_delta, shift, responses);
-		self.previous_mouse_position += snapped_delta;
+		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
