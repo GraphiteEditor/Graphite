@@ -1096,7 +1096,6 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		debug!("start transaction");
 		self.backup_with_document(self.network.clone(), responses);
 	}
 

@@ -197,9 +197,7 @@
 
 		if (newValue !== undefined) {
 			const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
-			if (newValue !== oldValue) {
-				dispatch("startHistoryTransaction");
-			}
+			if (newValue !== oldValue) dispatch("startHistoryTransaction");
 		}
 		updateValue(newValue);
 

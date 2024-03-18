@@ -33,11 +33,7 @@
 	$: watchOpen(open);
 
 	function watchOpen(open: boolean) {
-		if (open) {
-			initialSelectedIndex = selectedIndex;
-		} else {
-			initialSelectedIndex = undefined;
-		}
+		initialSelectedIndex = open ? selectedIndex : undefined;
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
