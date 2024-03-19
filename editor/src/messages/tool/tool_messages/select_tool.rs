@@ -516,7 +516,7 @@ impl Fsm for SelectToolFsmState {
 							&ToolType::Select,
 						);
 
-						bounds.center_of_transformation = selected.mean_average_of_pivots();
+						bounds.center_of_transformation = selected.center_of_aabb();
 					}
 
 					log::debug!("start rotating");

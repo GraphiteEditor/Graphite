@@ -378,8 +378,8 @@ impl<'a> Selected<'a> {
 		let to = document_metadata.downstream_transform_to_viewport(layer);
 		log::warn!("pivot: {:?}", pivot);
 		log::debug!("to: {to:?} transformation: {transformation:?}, original_transform: {original_transform:?}");
-		let pivot = DAffine2::from_translation(pivot);
-		let new = pivot * transformation * pivot.inverse();
+		let new = transformation;
+		responses.add(GraphOperationMessage::TransformSetPivot { layer: layer.clone(), pivot });
 		responses.add(GraphOperationMessage::TransformChange {
 			layer,
 			transform: new,

@@ -226,7 +226,6 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
-		log::debug!("click_targets: {:?}", new_click_targets);
 		self.click_targets = new_click_targets;
 	}
 
