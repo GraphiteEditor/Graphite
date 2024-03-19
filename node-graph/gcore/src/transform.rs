@@ -16,6 +16,7 @@ use crate::Node;
 
 pub trait Transform {
 	fn transform(&self) -> DAffine2;
+	// TODO: Remove?
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		pivot
 	}
@@ -244,16 +245,16 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 where
 	Fut::Output: TransformMut,
 {
-	// TODO: This is hack and might break for Vector data because the pivot may be incorrect
+	//let pivot = pivot / scale;
+	//log::debug!("{:?}", pivot);
+	// TOOD: This is hack and might break for Vector data because the pivot may be incorrect
 	let transform = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
-	if !footprint.ignore_modifications {
-		let pivot_transform = DAffine2::from_translation(pivot);
-		let modification = pivot_transform * transform * pivot_transform.inverse();
-		*footprint.transform_mut() = footprint.transform() * modification;
-	}
+	let pivot_transform = DAffine2::from_translation(pivot);
+	let modification = pivot_transform * transform * pivot_transform.inverse();
+	*footprint.transform_mut() = footprint.transform() * modification;
 
 	let mut data = self.transform_target.eval(footprint).await;
-	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));
+	let pivot_transform = DAffine2::from_translation(pivot);
 
 	let modification = pivot_transform * transform * pivot_transform.inverse();
 	let data_transform = data.transform_mut();

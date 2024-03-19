@@ -63,7 +63,6 @@ fn init_logging() {
 	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
 	fern::Dispatch::new()
 		.chain(std::io::stdout())
-		.level_for("iced", log::LevelFilter::Trace)
 		.level_for("wgpu", log::LevelFilter::Debug)
 		.level(log::LevelFilter::Trace)
 		.format(move |out, message, record| {
