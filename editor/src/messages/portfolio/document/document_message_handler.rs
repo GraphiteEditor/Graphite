@@ -614,8 +614,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
-				let all_layers_except_artboards = metadata.all_layers().filter(move |&layer| !metadata.is_artboard(layer));
-				let nodes = all_layers_except_artboards.map(|layer| layer.to_node()).collect();
+				let network = self.network();
+				let all_layers_except_artboards_and_invisible = metadata
+					.all_layers()
+					.filter(move |&layer| !metadata.is_artboard(layer))
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, network, metadata));
+				let nodes = all_layers_except_artboards_and_invisible.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			DocumentMessage::SelectedLayersLower => {
