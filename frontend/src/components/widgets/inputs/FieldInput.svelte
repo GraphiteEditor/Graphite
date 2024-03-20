@@ -85,6 +85,8 @@
 			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
 			on:pointerdown
+			on:wheel
+			on:pointerenter
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
 		/>
@@ -104,11 +106,13 @@
 			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && dispatch("textChangeCanceled")}
 			on:pointerdown
+			on:wheel
+			on:pointerenter
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 		/>
 	{/if}
 	{#if label}
-		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		<label for={`field-input-${id}`} on:pointerdown on:wheel on:pointerenter>{label}</label>
 	{/if}
 	<slot />
 </LayoutRow>

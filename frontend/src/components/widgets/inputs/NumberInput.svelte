@@ -26,6 +26,7 @@
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
 	export let isInteger = false;
+	export let defaultValue: number | undefined = undefined;
 
 	// Number presentation
 	export let displayDecimalPlaces = 2;
@@ -56,6 +57,8 @@
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
 
+	let unsubscribeOnDestroy: (() => void) | undefined = undefined;
+
 	let self: FieldInput | undefined;
 	let inputRangeElement: HTMLInputElement | undefined;
 	let text = displayText(value);
@@ -77,6 +80,10 @@
 	let cumulativeDragDelta = 0;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
+	let arrowLastDirection: "Decrease" | "Increase" | undefined = undefined;
+	let arrowButtonTimeoutId: number | undefined = undefined;
+	let isCancelValueUsed: boolean = false;
+	let cancelableValue: number | undefined = undefined;
 
 	$: watchValue(value);
 
@@ -97,7 +104,36 @@
 		removeEventListener("keydown", trackCtrl);
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
+		if (unsubscribeOnDestroy) {
+			unsubscribeOnDestroy();
+			unsubscribeOnDestroy = undefined;
+		}
 	});
+
+	// ===========================
+	// CANCEL VALUE FNS
+	// ===========================
+
+	// say that we not use cancel value anymore
+	function resetCancelValue() {
+		isCancelValueUsed = false;
+	}
+	// save value for cancelation if needed
+	function setCancelValue() {
+		if (!isCancelValueUsed) {
+			cancelableValue = value;
+			isCancelValueUsed = true;
+		}
+	}
+	function getCancelValue(): number | undefined {
+		return isCancelValueUsed ? cancelableValue : undefined;
+	}
+	// update value with old value (as it was before actions that should be canceled)
+	function cancelValue() {
+		let oldValue = getCancelValue();
+		updateValue(oldValue);
+		resetCancelValue();
+	}
 
 	// ===============================
 	// TRACKING AND UPDATING THE VALUE
@@ -134,10 +170,7 @@
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
-			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
-			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
-
-			if (isInteger) newValueValidated = Math.round(newValueValidated);
+			newValueValidated = toValidValue(newValueValidated);
 
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
@@ -154,6 +187,18 @@
 	// ================
 	// HELPER FUNCTIONS
 	// ================
+
+	// return best valid input value (checks min/max/rounding/etc)
+	// Returns the value that needs to be coverted to valid
+	function toValidValue(newValue: number): number {
+		let validValue = newValue;
+		if (typeof min === "number" && !Number.isNaN(min)) validValue = Math.max(validValue, min);
+		if (typeof max === "number" && !Number.isNaN(max)) validValue = Math.min(validValue, max);
+
+		if (isInteger) validValue = Math.round(validValue);
+
+		return validValue;
+	}
 
 	function displayText(displayValue: number | undefined): string {
 		if (displayValue === undefined) return "-";
@@ -178,9 +223,7 @@
 		else if (unitIsHiddenWhenEditing) text = String(value);
 		else text = `${value}${unPluralize(unit, value)}`;
 
-		editing = true;
-
-		self?.selectAllText(text);
+		textFocus();
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
@@ -189,34 +232,69 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
-		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
-		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
-
-		let newValue = evaluateMathExpression(textWithLeadingZeroes);
-		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
+		let newValue = calcTextField();
 		updateValue(newValue);
 
-		editing = false;
-		self?.unFocus();
+		textUnFocus();
 	}
 
 	function onTextChangeCanceled() {
-		updateValue(undefined);
+		cancelValue();
 
 		const valueOrZero = value !== undefined ? value : 0;
 		rangeSliderValue = valueOrZero;
 		rangeSliderValueAsRendered = valueOrZero;
 
-		editing = false;
+		textUnFocus();
+	}
 
+	// Returns calculated value of input (if it's valid)
+	function calcTextField(): number | undefined {
+		// Insert a leading zero before all decimal points lacking a preceding digit, since the library doesn't realize that "point" means "zero point".
+		const textWithLeadingZeroes = text.replaceAll(/(?<=^|[^0-9])\./g, "0."); // Match any "." that is preceded by the start of the string (^) or a non-digit character ([^0-9])
+
+		let newValue = evaluateMathExpression(textWithLeadingZeroes);
+		if (newValue !== undefined && isNaN(newValue)) newValue = undefined; // Rejects `sqrt(-1)`
+		return newValue;
+	}
+
+	function textFocus() {
+		editing = true;
+		resetCancelValue();
+		self?.selectAllText(text);
+		addEventListener("keydown", textValueChangeByArrow);
+	}
+
+	function textUnFocus() {
+		editing = false;
 		self?.unFocus();
+		removeEventListener("keydown", textValueChangeByArrow);
+	}
+
+	function textValueChangeByArrow(e: KeyboardEvent) {
+		let key = e.key;
+		let shift = e.shiftKey;
+		let delta = shift ? 10 : !ctrlKeyDown || isInteger ? 1 : 0.1;
+
+		if (key == "ArrowDown") delta = -delta;
+		else if (key != "ArrowUp") return;
+
+		e.preventDefault();
+
+		let prevValue = calcTextField() ?? value ?? defaultValue ?? 0;
+		let newValue = toValidValue(prevValue + delta);
+
+		setCancelValue();
+
+		text = `${newValue}`;
+		dispatch("value", newValue);
 	}
 
 	// =============================
 	// INCREMENT MODE: ARROW BUTTONS
 	// =============================
 
-	function onIncrement(direction: "Decrease" | "Increase") {
+	function increment(direction: "Decrease" | "Increase") {
 		if (value === undefined) return;
 
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
@@ -239,6 +317,66 @@
 		actions[incrementBehavior]();
 	}
 
+	// Left/Right Button Arrows down
+	function onButtonArrowsDown(e: MouseEvent, direction: "Decrease" | "Increase") {
+		// button must be exact left
+		if (e.buttons == BUTTONS_LEFT) {
+			onIncrement(direction);
+		}
+	}
+	// Left/Right Button Arrows up
+	function onButtonArrowsUp(e: MouseEvent) {
+		// button must not contain left
+		if (!(e.buttons & BUTTONS_LEFT)) {
+			stopIncrement();
+		}
+	}
+	// needed to Left/Right Button Arrows stop incrementing when we alt+tab browser window
+	function onButtonArrowsFocusOff(direction: "Decrease" | "Increase") {
+		if (arrowLastDirection == direction) {
+			stopIncrement();
+		}
+	}
+
+	function onIncrement(direction: "Decrease" | "Increase") {
+		if (arrowButtonTimeoutId) stopIncrement();
+
+		addEventListener("pointerup", onButtonArrowsUp);
+		addEventListener("keydown", onButtonArrowsEsc);
+
+		arrowLastDirection = direction;
+		resetCancelValue();
+		setCancelValue();
+		increment(direction);
+
+		const INC_DELTAS_MS = [350, 250, 200, 150, 150, 100, 75];
+		let incIndex = 0;
+
+		let repAction = () => {
+			increment(direction);
+			incIndex = Math.min(incIndex + 1, INC_DELTAS_MS.length - 1);
+			let ms = INC_DELTAS_MS[incIndex];
+			arrowButtonTimeoutId = window.setTimeout(repAction, ms);
+		};
+
+		arrowButtonTimeoutId = window.setTimeout(repAction, INC_DELTAS_MS[incIndex]);
+		// setInterval(rep_action, INC_DELTAS_MS[inc_index])
+	}
+	// cancel value changes for Left/Right Button Arrows on `Esc` down (when LR buttons still pressed)
+	function onButtonArrowsEsc(e: KeyboardEvent) {
+		if (e.key == "Escape") {
+			stopIncrement();
+			cancelValue();
+		}
+	}
+
+	function stopIncrement() {
+		removeEventListener("pointerup", onButtonArrowsUp);
+		removeEventListener("keydown", onButtonArrowsEsc);
+		clearTimeout(arrowButtonTimeoutId);
+		arrowButtonTimeoutId = undefined;
+	}
+
 	// =======================================
 	// INCREMENT MODE: DRAGGING LEFT AND RIGHT
 	// =======================================
@@ -253,7 +391,7 @@
 
 	function onDragPointerDown(e: PointerEvent) {
 		// Only drag the number with left click (and when it's valid to do so)
-		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled) return;
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled || editing) return;
 
 		// Don't drag the text value from is input element
 		e.preventDefault();
@@ -575,6 +713,101 @@
 		removeEventListener("pointermove", sliderAbortFromDragging);
 		removeEventListener("keydown", sliderAbortFromDragging);
 	}
+
+	// ===========================
+	// ALL MODES: WHEEL
+	// ===========================
+
+	function onWheel(e: WheelEvent) {
+		if (!ctrlKeyDown) return;
+		// prevent zoom
+		e.preventDefault();
+
+		// in range mode we don't want to switch to text input mode
+		// but therefore we cannot cancel value (at least so easy)
+		if (!editing && mode === "Increment") {
+			//allow to use Esc/Enter
+			textFocus();
+			// save value for `Esc` case
+			setCancelValue();
+		}
+
+		// TODO: wheelPointerLock & MAYBE: better `Esc`/`Enter`
+		//     | highly possible that some discussion about it will be attached to this commit
+
+		let delta = -e.deltaY;
+		if (delta == 0) delta = e.deltaX;
+
+		if (delta > 0) increment("Increase");
+		else if (delta < 0) increment("Decrease");
+	}
+
+	// ========================
+	// ALL MODES: POINTER ENTER
+	// ========================
+
+	function onPointerEnter(e: PointerEvent) {
+		var element = e.target;
+		if (!element) return;
+		var elem = element;
+
+		let onKeyDown = (e: KeyboardEvent) => {
+			if (ctrlKeyDown && !editing) {
+				let key = e.key;
+				if (key == "/" && !isInteger && value !== undefined) {
+					if (value != 0) updateValue(1 / value);
+					else if (max !== undefined) updateValue(max);
+				} else if (key == "-" && value !== undefined) {
+					// prevent page scaling
+					e.preventDefault();
+					// prevent canvas scaling
+					e.stopImmediatePropagation();
+					let negativeAllowed = (min ?? -1) < 0;
+					if (negativeAllowed) updateValue(-value);
+				} else if (key == "Enter" && !editing) {
+					onTextFocused();
+				} else if (key == "Backspace") {
+					// prevent text removing in Text Tool
+					e.preventDefault();
+					// shouldn't delete currently selected points
+					e.stopImmediatePropagation();
+					if (defaultValue !== undefined) {
+						updateValue(defaultValue);
+					}
+				} else if (key == "c") {
+					e.stopImmediatePropagation();
+					let write = value === undefined ? "" : `${value}`;
+					navigator.clipboard.writeText(write);
+				}
+			}
+		};
+
+		let onPaste = (e: ClipboardEvent) => {
+			if (!editing) {
+				let clipboardText = e.clipboardData?.getData("text");
+				if (clipboardText === undefined) return;
+				let num = parseFloat(clipboardText);
+				if (!Number.isNaN(num)) {
+					updateValue(num);
+				}
+			}
+		};
+
+		const options = { capture: true };
+
+		const onPointerLeave = () => {
+			removeEventListener("keydown", onKeyDown, options);
+			removeEventListener("paste", onPaste, options);
+			elem.removeEventListener("pointerleave", onPointerLeave);
+			unsubscribeOnDestroy = undefined;
+		};
+
+		addEventListener("keydown", onKeyDown, options);
+		addEventListener("paste", onPaste, options);
+		elem.addEventListener("pointerleave", onPointerLeave);
+		// needed, for example, when we use Ctrl+Backspace on Tilt NumberInput
+		unsubscribeOnDestroy = onPointerLeave;
+	}
 </script>
 
 <FieldInput
@@ -589,6 +822,8 @@
 	on:textChanged={onTextChanged}
 	on:textChangeCanceled={onTextChangeCanceled}
 	on:pointerdown={onDragPointerDown}
+	on:wheel={onWheel}
+	on:pointerenter={onPointerEnter}
 	{label}
 	{disabled}
 	{tooltip}
@@ -599,8 +834,22 @@
 >
 	{#if value !== undefined}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
-			<button class="arrow left" on:click={() => onIncrement("Decrease")} tabindex="-1" />
-			<button class="arrow right" on:click={() => onIncrement("Increase")} tabindex="-1" />
+			<button
+				class="arrow left"
+				on:mousedown={(e) => onButtonArrowsDown(e, "Decrease")}
+				on:focusout={() => {
+					onButtonArrowsFocusOff("Decrease");
+				}}
+				tabindex="-1"
+			/>
+			<button
+				class="arrow right"
+				on:mousedown={(e) => onButtonArrowsDown(e, "Increase")}
+				on:focusout={() => {
+					onButtonArrowsFocusOff("Increase");
+				}}
+				tabindex="-1"
+			/>
 		{/if}
 		{#if mode === "Range"}
 			<input
@@ -616,7 +865,11 @@
 				on:input={onSliderInput}
 				on:pointerup={onSliderPointerUp}
 				on:contextmenu|preventDefault
-				on:wheel={(e) => /* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur()}
+				on:wheel={(e) => {
+					/* Stops slider eating the scroll event in Firefox */ e.target instanceof HTMLInputElement && e.target.blur();
+					onWheel(e);
+				}}
+				on:pointerenter={onPointerEnter}
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}

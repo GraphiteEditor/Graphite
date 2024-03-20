@@ -335,6 +335,7 @@
 								strength = detail;
 								setColorRGB(channel, detail);
 							}}
+							defaultValue={255}
 							min={0}
 							max={255}
 							minWidth={56}
@@ -359,6 +360,7 @@
 								strength = detail;
 								setColorHSV(channel, detail);
 							}}
+							defaultValue={channel === "h" ? 360 : 100}
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
@@ -379,6 +381,7 @@
 					if (detail !== undefined) alpha = detail / 100;
 					setColorAlphaPercent(detail);
 				}}
+				defaultValue={100}
 				min={0}
 				max={100}
 				rangeMin={0}
