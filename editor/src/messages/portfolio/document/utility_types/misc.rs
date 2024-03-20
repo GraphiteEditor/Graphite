@@ -1,31 +1,31 @@
 use glam::DVec2;
-use serde::{Deserialize, Serialize};
+
 use std::fmt;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DocumentId(pub u64);
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Hash)]
 pub enum FlipAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Hash, specta::Type)]
 pub enum AlignAxis {
 	X,
 	Y,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, Hash, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Hash, specta::Type)]
 pub enum AlignAggregate {
 	Min,
 	Max,
 	Center,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DocumentMode {
 	#[default]
 	DesignMode,
@@ -124,14 +124,14 @@ impl SnappingState {
 		}
 	}
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BoundsSnapping {
 	pub edges: bool,
 	pub corners: bool,
 	pub edge_midpoints: bool,
 	pub centers: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PointSnapping {
 	pub paths: bool,
 	pub path_intersections: bool,
@@ -141,7 +141,7 @@ pub struct PointSnapping {
 	pub normals: bool,
 	pub tangents: bool,
 }
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
 	Rectangle { spacing: DVec2 },
 	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
@@ -178,7 +178,7 @@ impl GridType {
 		}
 	}
 }
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
@@ -310,7 +310,7 @@ impl fmt::Display for SnappingOptions {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PTZ {
 	pub pan: DVec2,
 	pub tilt: f64,

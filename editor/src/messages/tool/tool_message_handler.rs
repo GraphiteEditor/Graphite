@@ -9,6 +9,14 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graphene_core::raster::color::Color;
 
+pub struct ToolMessageData<'a> {
+	pub document_id: DocumentId,
+	pub document: &'a DocumentMessageHandler,
+	pub input: &'a InputPreprocessorMessageHandler,
+	pub persistent_data: &'a PersistentData,
+	pub node_graph: &'a NodeGraphExecutor,
+}
+
 #[derive(Debug, Default)]
 pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
@@ -16,13 +24,15 @@ pub struct ToolMessageHandler {
 	pub shape_editor: ShapeState,
 }
 
-impl MessageHandler<ToolMessage, (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor)> for ToolMessageHandler {
-	fn process_message(
-		&mut self,
-		message: ToolMessage,
-		responses: &mut VecDeque<Message>,
-		(document, document_id, input, persistent_data, node_graph): (&DocumentMessageHandler, DocumentId, &InputPreprocessorMessageHandler, &PersistentData, &NodeGraphExecutor),
-	) {
+impl MessageHandler<ToolMessage, ToolMessageData<'_>> for ToolMessageHandler {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, data: ToolMessageData) {
+		let ToolMessageData {
+			document_id,
+			document,
+			input,
+			persistent_data,
+			node_graph,
+		} = data;
 		let font_cache = &persistent_data.font_cache;
 
 		match message {

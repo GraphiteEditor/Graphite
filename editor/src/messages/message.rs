@@ -2,10 +2,8 @@ use crate::messages::prelude::*;
 
 use graphite_proc_macros::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Message {
 	NoOp,
 	Init,

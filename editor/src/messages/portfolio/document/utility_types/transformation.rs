@@ -1,5 +1,5 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::graph_operation::utility_types::{TransformIn, VectorDataModification};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -398,11 +398,9 @@ impl<'a> Selected<'a> {
 			let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
 			let point = *point_id;
 			let position = new_pos_viewport;
+			let modification = VectorDataModification::SetManipulatorPosition { point, position };
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position },
-			});
+			responses.add(GraphOperationMessage::Vector { layer, modification });
 		}
 	}
 

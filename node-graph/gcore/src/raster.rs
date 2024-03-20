@@ -621,9 +621,8 @@ pub(crate) mod image;
 
 #[cfg(test)]
 mod test {
-	use crate::{ops::CloneNode, structural::Then, value::ValueNode, Node};
-
 	use super::*;
+	use crate::{ops::CloneNode, structural::Then, value::ValueNode, Node};
 
 	#[ignore]
 	#[test]

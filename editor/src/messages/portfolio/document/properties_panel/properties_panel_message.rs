@@ -1,9 +1,7 @@
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, DocumentMessage, PropertiesPanel)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PropertiesPanelMessage {
 	// Messages
 	Clear,

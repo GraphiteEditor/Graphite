@@ -1,9 +1,7 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendDocumentDetails {
 	#[serde(rename = "isAutoSaved")]
 	pub is_auto_saved: bool,
@@ -13,7 +11,7 @@ pub struct FrontendDocumentDetails {
 	pub id: DocumentId,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum MouseCursorIcon {
 	#[default]
 	Default,
@@ -31,7 +29,7 @@ pub enum MouseCursorIcon {
 	Rotate,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FileType {
 	#[default]
 	Png,
@@ -49,7 +47,7 @@ impl FileType {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ExportBounds {
 	#[default]
 	AllArtwork,

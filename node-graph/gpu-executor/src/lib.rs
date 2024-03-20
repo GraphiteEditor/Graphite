@@ -8,14 +8,14 @@ use futures::Future;
 use glam::{DAffine2, UVec3};
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
-use serde::{Deserialize, Serialize};
+
 use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
 
 type ReadBackFuture = Pin<Box<dyn Future<Output = Result<Vec<u8>>>>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, dyn_any::DynAny)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, dyn_any::DynAny)]
 pub enum ComputePassDimensions {
 	X(u32),
 	XY(u32, u32),
@@ -65,13 +65,13 @@ pub trait SpirVCompiler {
 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompileRequest {
 	pub networks: Vec<ProtoNetwork>,
 	pub io: ShaderIO,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 /// GPU constants that can be used as inputs to a shader.
 pub enum GPUConstant {
 	SubGroupId,
@@ -102,7 +102,7 @@ impl GPUConstant {
 		}
 	}
 }
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct DummyExecutor;
 
 impl GpuExecutor for DummyExecutor {
@@ -161,7 +161,7 @@ impl GpuExecutor for DummyExecutor {
 
 type AbstractShaderInput = ShaderInput<DummyExecutor>;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 /// All the possible inputs to a shader.
 pub enum ShaderInput<E: GpuExecutor + ?Sized> {
 	UniformBuffer(E::BufferHandle, Type),
@@ -255,7 +255,7 @@ pub struct Shader<'a> {
 	pub io: ShaderIO,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ShaderIO {
 	pub inputs: Vec<AbstractShaderInput>,
 	pub output: AbstractShaderInput,

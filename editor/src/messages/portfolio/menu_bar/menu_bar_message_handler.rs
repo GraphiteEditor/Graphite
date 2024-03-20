@@ -3,21 +3,26 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::prelude::*;
 
+pub struct MenuBarMessageData {
+	pub has_active_document: bool,
+	pub rulers_visible: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
 	has_active_document: bool,
 	rulers_visible: bool,
 }
 
-impl MessageHandler<MenuBarMessage, (bool, bool)> for MenuBarMessageHandler {
-	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, (has_active_document, rulers_visible): (bool, bool)) {
-		use MenuBarMessage::*;
+impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandler {
+	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, data: MenuBarMessageData) {
+		let MenuBarMessageData { has_active_document, rulers_visible } = data;
 
 		self.has_active_document = has_active_document;
 		self.rulers_visible = rulers_visible;
 
 		match message {
-			SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
+			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
 		}
 	}
 

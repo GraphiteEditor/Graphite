@@ -11,22 +11,22 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::Color;
 
 use glam::DAffine2;
-use serde::{Deserialize, Serialize};
+
 #[impl_message(Message, PortfolioMessage, Document)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DocumentMessage {
 	Noop,
 	// Sub-messages
 	#[child]
+	GraphOperation(GraphOperationMessage),
+	#[child]
 	Navigation(NavigationMessage),
+	#[child]
+	NodeGraph(NodeGraphMessage),
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
-	#[child]
-	NodeGraph(NodeGraphMessage),
-	#[child]
-	GraphOperation(GraphOperationMessage),
 
 	// Messages
 	AbortTransaction,

@@ -1,10 +1,8 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, ToolMessage, TransformLayer)]
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformLayerMessage {
 	// Messages
 	ApplyTransformOperation,

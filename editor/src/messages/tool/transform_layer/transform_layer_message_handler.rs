@@ -43,8 +43,6 @@ impl TransformLayerMessageHandler {
 type TransformData<'a> = (&'a DocumentMessageHandler, &'a InputPreprocessorMessageHandler, &'a ToolData, &'a mut ShapeState);
 impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
-		use TransformLayerMessage::*;
-
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
 		let selected_layers = document.selected_nodes.selected_layers(document.metadata()).collect::<Vec<_>>();
@@ -91,7 +89,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 		};
 
 		match message {
-			ApplyTransformOperation => {
+			TransformLayerMessage::ApplyTransformOperation => {
 				selected.original_transforms.clear();
 
 				self.typing.clear();
@@ -101,7 +99,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			BeginGrab => {
+			TransformLayerMessage::BeginGrab => {
 				if let TransformOperation::Grabbing(_) = self.transform_operation {
 					return;
 				}
@@ -117,7 +115,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				selected.original_transforms.clear();
 			}
-			BeginRotate => {
+			TransformLayerMessage::BeginRotate => {
 				if let TransformOperation::Rotating(_) = self.transform_operation {
 					return;
 				}
@@ -133,7 +131,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				selected.original_transforms.clear();
 			}
-			BeginScale => {
+			TransformLayerMessage::BeginScale => {
 				if let TransformOperation::Scaling(_) = self.transform_operation {
 					return;
 				}
@@ -149,7 +147,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				selected.original_transforms.clear();
 			}
-			CancelTransformOperation => {
+			TransformLayerMessage::CancelTransformOperation => {
 				selected.revert_operation();
 
 				selected.original_transforms.clear();
@@ -159,9 +157,9 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 
 				responses.add(ToolMessage::UpdateHints);
 			}
-			ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
-			ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
-			PointerMove { slow_key, snap_key } => {
+			TransformLayerMessage::ConstrainX => self.transform_operation.constrain_axis(Axis::X, &mut selected, self.snap),
+			TransformLayerMessage::ConstrainY => self.transform_operation.constrain_axis(Axis::Y, &mut selected, self.snap),
+			TransformLayerMessage::PointerMove { slow_key, snap_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
 
 				let new_snap = input.keyboard.get(snap_key as usize);
@@ -214,14 +212,14 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				}
 				self.mouse_position = input.mouse.position;
 			}
-			SelectionChanged => {
+			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.selected_nodes.selected_layers(document.metadata()).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
-			TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
-			TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
-			TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
-			TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
+			TransformLayerMessage::TypeBackspace => self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, self.snap),
+			TransformLayerMessage::TypeDecimalPoint => self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, self.snap),
+			TransformLayerMessage::TypeDigit { digit } => self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, self.snap),
+			TransformLayerMessage::TypeNegate => self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, self.snap),
 		}
 	}
 

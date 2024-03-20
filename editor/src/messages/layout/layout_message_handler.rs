@@ -272,9 +272,8 @@ impl LayoutMessageHandler {
 
 impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage, F> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, action_input_mapping: F) {
-		use LayoutMessage::*;
 		match message {
-			ResendActiveWidget { layout_target, widget_id } => {
+			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
 					Layout::MenuLayout(_) => return,
@@ -289,15 +288,15 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 				// Resend that diff
 				self.send_diff(vec![diff], layout_target, responses, &action_input_mapping);
 			}
-			SendLayout { layout, layout_target } => {
+			LayoutMessage::SendLayout { layout, layout_target } => {
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, &action_input_mapping);
 			}
-			WidgetValueCommit { layout_target, widget_id, value } => {
+			LayoutMessage::WidgetValueCommit { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
 			}
-			WidgetValueUpdate { layout_target, widget_id, value } => {
+			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
-				responses.add(ResendActiveWidget { layout_target, widget_id });
+				responses.add(LayoutMessage::ResendActiveWidget { layout_target, widget_id });
 			}
 		}
 	}

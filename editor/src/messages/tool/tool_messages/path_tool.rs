@@ -21,7 +21,7 @@ pub struct PathTool {
 }
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PathToolMessage {
 	// Standard messages
 	Abort,
@@ -174,10 +174,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 
 	// Different actions depending on state may be wanted:
 	fn actions(&self) -> ActionList {
-		use PathToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::Ready => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
 				MouseDown,
 				Delete,
@@ -188,7 +186,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 			),
-			Dragging => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::Dragging => actions!(PathToolMessageDiscriminant;
 				Escape,
 				RightClick,
 				FlipSmoothSharp,
@@ -198,7 +196,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				BreakPath,
 				DeleteAndBreakPath,
 			),
-			DrawingBox => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::DrawingBox => actions!(PathToolMessageDiscriminant;
 				FlipSmoothSharp,
 				DragStop,
 				PointerMove,
@@ -209,7 +207,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for PathToo
 				Escape,
 				RightClick,
 			),
-			InsertPoint => actions!(PathToolMessageDiscriminant;
+			PathToolFsmState::InsertPoint => actions!(PathToolMessageDiscriminant;
 				Enter,
 				MouseDown,
 				PointerMove,

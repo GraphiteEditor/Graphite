@@ -2,9 +2,7 @@ use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::prelude::*;
 use graph_craft::imaginate_input::ImaginatePreferences;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PreferencesMessageHandler {
 	pub imaginate_server_hostname: String,
 	pub imaginate_refresh_frequency: f64,

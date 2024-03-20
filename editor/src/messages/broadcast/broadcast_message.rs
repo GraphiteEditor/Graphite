@@ -1,9 +1,7 @@
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, Broadcast)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum BroadcastMessage {
 	// Sub-messages
 	#[child]

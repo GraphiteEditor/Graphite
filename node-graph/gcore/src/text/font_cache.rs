@@ -1,9 +1,9 @@
 use dyn_any::{DynAny, StaticType};
-use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,
@@ -17,7 +17,7 @@ impl Font {
 }
 
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default, PartialEq)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font with ttf_parser and rustybuzz
 	font_file_data: HashMap<Font, Vec<u8>>,

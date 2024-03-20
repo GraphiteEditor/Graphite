@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{ROTATE_SNAP_ANGLE, SELECTION_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
@@ -31,12 +32,12 @@ pub struct SelectOptions {
 	nested_selection_behavior: NestedSelectionBehavior,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum NestedSelectionBehavior {
 	#[default]
 	Deepest,
@@ -52,7 +53,7 @@ impl fmt::Display for NestedSelectionBehavior {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct SelectToolPointerKeys {
 	pub axis_align: Key,
 	pub snap_angle: Key,
@@ -61,7 +62,7 @@ pub struct SelectToolPointerKeys {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
@@ -204,8 +205,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 	}
 
 	fn actions(&self) -> ActionList {
-		use SelectToolFsmState::*;
-
 		let mut common = actions!(SelectToolMessageDiscriminant;
 			PointerMove,
 			Abort,
@@ -214,7 +213,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 		);
 
 		let additional = match self.fsm_state {
-			Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
+			SelectToolFsmState::Ready { .. } => actions!(SelectToolMessageDiscriminant; DragStart),
 			_ => actions!(SelectToolMessageDiscriminant; DragStop),
 		};
 		common.extend(additional);

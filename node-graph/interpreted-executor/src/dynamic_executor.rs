@@ -227,9 +227,9 @@ impl BorrowTree {
 
 #[cfg(test)]
 mod test {
-	use graph_craft::document::value::TaggedValue;
-
 	use super::*;
+
+	use graph_craft::document::value::TaggedValue;
 
 	#[test]
 	fn push_node_sync() {

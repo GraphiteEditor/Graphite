@@ -1,9 +1,10 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::node_graph::{self, IMAGINATE_NODE};
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_types::{new_image_network, IMAGINATE_NODE};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::resize::Resize;
 
-use serde::{Deserialize, Serialize};
+use graph_craft::document::{generate_uuid, DocumentNodeMetadata, NodeId, NodeInput};
 
 #[derive(Default)]
 pub struct ImaginateTool {
@@ -12,7 +13,7 @@ pub struct ImaginateTool {
 }
 
 #[impl_message(Message, ToolMessage, Imaginate)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ImaginateToolMessage {
 	// Standard messages
 	Abort,
@@ -35,13 +36,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Imagina
 	}
 
 	fn actions(&self) -> ActionList {
-		use ImaginateToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(ImaginateToolMessageDiscriminant;
+			ImaginateToolFsmState::Ready => actions!(ImaginateToolMessageDiscriminant;
 				DragStart,
 			),
-			Drawing => actions!(ImaginateToolMessageDiscriminant;
+			ImaginateToolFsmState::Drawing => actions!(ImaginateToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				Resize,
@@ -107,17 +106,15 @@ impl Fsm for ImaginateToolFsmState {
 				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				use graph_craft::document::*;
-
 				// Utility function to offset the position of each consecutive node
 				let mut pos = 8;
 				let mut next_pos = || {
 					pos += 8;
-					graph_craft::document::DocumentNodeMetadata::position((pos, 4))
+					DocumentNodeMetadata::position((pos, 4))
 				};
 
 				// Get the node type for the Transform and Imaginate nodes
-				let Some(transform_node_type) = crate::messages::portfolio::document::node_graph::resolve_document_node_type("Transform") else {
+				let Some(transform_node_type) = resolve_document_node_type("Transform") else {
 					warn!("Transform node should be in registry");
 					return ImaginateToolFsmState::Drawing;
 				};
@@ -128,7 +125,7 @@ impl Fsm for ImaginateToolFsmState {
 				let imaginate_node_id = NodeId(101);
 
 				// Create the network based on the Input -> Output passthrough default network
-				let mut network = node_graph::new_image_network(16, imaginate_node_id);
+				let mut network = new_image_network(16, imaginate_node_id);
 
 				// Insert the nodes into the default network
 				network.nodes.insert(
@@ -137,7 +134,7 @@ impl Fsm for ImaginateToolFsmState {
 				);
 				network.nodes.insert(
 					imaginate_node_id,
-					imaginate_node_type.to_document_node_default_inputs([Some(graph_craft::document::NodeInput::node(transform_node_id, 0))], next_pos()),
+					imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
 				);
 				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 

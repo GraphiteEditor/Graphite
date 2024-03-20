@@ -1,3 +1,5 @@
+use super::utility_types::TransformIn;
+use super::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
@@ -10,7 +12,6 @@ use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::ManipulatorPointId;
 use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -39,7 +40,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,
 	},
-
 	TransformChange {
 		layer: LayerNodeIdentifier,
 		transform: DAffine2,
@@ -56,7 +56,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		pivot: DVec2,
 	},
-
 	Vector {
 		layer: LayerNodeIdentifier,
 		modification: VectorDataModification,
@@ -65,7 +64,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
-
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,
@@ -116,27 +114,4 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},
-}
-
-#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum TransformIn {
-	Local,
-	Scope { scope: DAffine2 },
-	Viewport,
-}
-
-type ManipulatorGroup = bezier_rs::ManipulatorGroup<ManipulatorGroupId>;
-
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDataModification {
-	AddEndManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: ManipulatorGroupId },
-	AddStartManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	RemoveManipulatorGroup { id: ManipulatorGroupId },
-	RemoveManipulatorPoint { point: ManipulatorPointId },
-	SetClosed { index: usize, closed: bool },
-	SetManipulatorColinearHandlesState { id: ManipulatorGroupId, colinear: bool },
-	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ToggleManipulatorColinearHandlesState { id: ManipulatorGroupId },
-	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
