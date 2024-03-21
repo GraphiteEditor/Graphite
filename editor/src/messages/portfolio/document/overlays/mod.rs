@@ -5,6 +5,6 @@ pub mod utility_functions;
 pub mod utility_types;
 
 #[doc(inline)]
-pub use overlays_message::*;
+pub use overlays_message::{OverlaysMessage, OverlaysMessageDiscriminant};
 #[doc(inline)]
-pub use overlays_message_handler::*;
+pub use overlays_message_handler::{OverlaysMessageData, OverlaysMessageHandler};

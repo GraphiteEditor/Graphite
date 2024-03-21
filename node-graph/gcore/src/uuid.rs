@@ -1,7 +1,6 @@
 use dyn_any::{DynAny, StaticType};
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Uuid(
 	#[serde(with = "u64_string")]
 	#[specta(type = String)]

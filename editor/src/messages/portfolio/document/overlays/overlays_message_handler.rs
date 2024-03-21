@@ -1,6 +1,11 @@
 use super::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 
+pub struct OverlaysMessageData<'a> {
+	pub overlays_visible: bool,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
@@ -8,8 +13,10 @@ pub struct OverlaysMessageHandler {
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
-impl MessageHandler<OverlaysMessage, (bool, &InputPreprocessorMessageHandler)> for OverlaysMessageHandler {
-	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, (overlays_visible, ipp): (bool, &InputPreprocessorMessageHandler)) {
+impl MessageHandler<OverlaysMessage, OverlaysMessageData<'_>> for OverlaysMessageHandler {
+	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, data: OverlaysMessageData) {
+		let OverlaysMessageData { overlays_visible, ipp } = data;
+
 		match message {
 			#[cfg(target_arch = "wasm32")]
 			OverlaysMessage::Draw => {

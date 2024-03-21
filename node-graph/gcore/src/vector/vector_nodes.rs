@@ -2,7 +2,6 @@ use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
-use crate::uuid::ManipulatorGroupId;
 use crate::{Color, GraphicGroup, Node};
 use core::future::Future;
 
@@ -510,12 +509,14 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 
 #[cfg(test)]
 mod test {
-	use bezier_rs::Bezier;
-
 	use super::*;
 	use crate::transform::CullNode;
 	use crate::value::ClonedNode;
+
+	use bezier_rs::Bezier;
+
 	use std::pin::Pin;
+
 	#[derive(Clone)]
 	pub struct FutureWrapperNode<Node: Clone>(Node);
 

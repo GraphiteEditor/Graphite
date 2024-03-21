@@ -5,7 +5,8 @@ use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::{GraphOperationHandlerData, NodeGraphHandlerData};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -29,18 +30,25 @@ use graphene_core::{concrete, generic, ProtoNodeIdentifier};
 use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
+
 use std::vec;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DocumentMessageData<'a> {
+	pub document_id: DocumentId,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub persistent_data: &'a PersistentData,
+	pub executor: &'a mut NodeGraphExecutor,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DocumentMessageHandler {
 	// ======================
 	// Child message handlers
 	// ======================
 	#[serde(skip)]
-	node_graph_handler: NodeGraphMessageHandler,
-	#[serde(skip)]
 	navigation_handler: NavigationMessageHandler,
+	#[serde(skip)]
+	node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
@@ -92,172 +100,34 @@ pub struct DocumentMessageHandler {
 	pub metadata: DocumentMetadata,
 }
 
-impl Default for DocumentMessageHandler {
-	fn default() -> Self {
-		Self {
-			// ======================
-			// Child message handlers
-			// ======================
-			node_graph_handler: Default::default(),
-			navigation_handler: NavigationMessageHandler::default(),
-			overlays_message_handler: OverlaysMessageHandler::default(),
-			properties_panel_message_handler: PropertiesPanelMessageHandler,
-			// ============================================
-			// Fields that are saved in the document format
-			// ============================================
-			network: root_network(),
-			selected_nodes: SelectedNodes::default(),
-			collapsed: CollapsedLayers::default(),
-			name: DEFAULT_DOCUMENT_NAME.to_string(),
-			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			navigation: PTZ::default(),
-			document_mode: DocumentMode::DesignMode,
-			view_mode: ViewMode::default(),
-			overlays_visible: true,
-			rulers_visible: true,
-			// =============================================
-			// Fields omitted from the saved document format
-			// =============================================
-			document_undo_history: VecDeque::new(),
-			document_redo_history: VecDeque::new(),
-			saved_hash: None,
-			auto_saved_hash: None,
-			undo_in_progress: false,
-			graph_view_overlay_open: false,
-			snapping_state: SnappingState::default(),
-			layer_range_selection_reference: None,
-			metadata: Default::default(),
-		}
-	}
-}
-
-#[inline(always)]
-fn default_network() -> NodeNetwork {
-	DocumentMessageHandler::default().network
-}
-#[inline(always)]
-fn default_selected_nodes() -> SelectedNodes {
-	DocumentMessageHandler::default().selected_nodes
-}
-#[inline(always)]
-fn default_collapsed() -> CollapsedLayers {
-	DocumentMessageHandler::default().collapsed
-}
-#[inline(always)]
-fn default_name() -> String {
-	DocumentMessageHandler::default().name
-}
-#[inline(always)]
-fn default_commit_hash() -> String {
-	DocumentMessageHandler::default().commit_hash
-}
-#[inline(always)]
-fn default_pan_tilt_zoom() -> PTZ {
-	DocumentMessageHandler::default().navigation
-}
-#[inline(always)]
-fn default_document_mode() -> DocumentMode {
-	DocumentMessageHandler::default().document_mode
-}
-#[inline(always)]
-fn default_view_mode() -> ViewMode {
-	DocumentMessageHandler::default().view_mode
-}
-#[inline(always)]
-fn default_overlays_visible() -> bool {
-	DocumentMessageHandler::default().overlays_visible
-}
-#[inline(always)]
-fn default_rulers_visible() -> bool {
-	DocumentMessageHandler::default().rulers_visible
-}
-
-fn root_network() -> NodeNetwork {
-	{
-		let mut network = NodeNetwork::default();
-		let node = graph_craft::document::DocumentNode {
-			name: "Output".into(),
-			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
-			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(3), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(3), 0)],
-				nodes: [
-					DocumentNode {
-						name: "EditorApi".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
-						skip_deduplication: true,
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "RenderNode".to_string(),
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
-							NodeInput::node(NodeId(2), 0),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			metadata: DocumentNodeMetadata::position((8, 4)),
-			..Default::default()
-		};
-		network.push_node(node);
-		network
-	}
-}
-
-pub struct DocumentInputs<'a> {
-	pub document_id: DocumentId,
-	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub persistent_data: &'a PersistentData,
-	pub executor: &'a mut NodeGraphExecutor,
-}
-
-impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHandler {
-	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, document_inputs: DocumentInputs) {
-		let DocumentInputs {
+impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
+	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, data: DocumentMessageData) {
+		let DocumentMessageData {
 			document_id,
 			ipp,
 			persistent_data,
 			executor,
-		} = document_inputs;
-		use DocumentMessage::*;
+		} = data;
 
 		match message {
 			// Sub-messages
-			Navigation(message) => {
+			DocumentMessage::Navigation(message) => {
 				let document_bounds = self.metadata().document_bounds_viewport_space();
-				self.navigation_handler.process_message(
-					message,
-					responses,
-					(&self.metadata, document_bounds, ipp, self.selected_visible_layers_bounding_box_viewport(), &mut self.navigation),
-				);
+				let data = NavigationMessageData {
+					metadata: &self.metadata,
+					document_bounds,
+					ipp,
+					selection_bounds: self.selected_visible_layers_bounding_box_viewport(),
+					ptz: &mut self.navigation,
+				};
+
+				self.navigation_handler.process_message(message, responses, data);
 			}
-			Overlays(message) => {
-				self.overlays_message_handler.process_message(message, responses, (self.overlays_visible, ipp));
+			DocumentMessage::Overlays(message) => {
+				let overlays_visible = self.overlays_visible;
+				self.overlays_message_handler.process_message(message, responses, OverlaysMessageData { overlays_visible, ipp });
 			}
-			PropertiesPanel(message) => {
+			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
 					node_graph_message_handler: &self.node_graph_handler,
 					executor,
@@ -269,7 +139,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
 			}
-			NodeGraph(message) => {
+			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
 					responses,
@@ -285,26 +155,26 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					},
 				);
 			}
-			GraphOperation(message) => GraphOperationMessageHandler.process_message(
-				message,
-				responses,
-				GraphOperationHandlerData {
+			DocumentMessage::GraphOperation(message) => {
+				let data = GraphOperationMessageData {
 					document_network: &mut self.network,
 					document_metadata: &mut self.metadata,
 					selected_nodes: &mut self.selected_nodes,
 					collapsed: &mut self.collapsed,
 					node_graph: &mut self.node_graph_handler,
-				},
-			),
+				};
+				let mut graph_operation_message_handler = GraphOperationMessageHandler {};
+				graph_operation_message_handler.process_message(message, responses, data);
+			}
 
 			// Messages
-			AbortTransaction => {
+			DocumentMessage::AbortTransaction => {
 				if !self.undo_in_progress {
 					self.undo(responses);
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
-			AlignSelectedLayers { axis, aggregate } => {
+			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 
 				let axis = match axis {
@@ -338,12 +208,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					});
 				}
 			}
-			BackupDocument { network } => self.backup_with_document(network, responses),
-			ClearArtboards => {
+			DocumentMessage::BackupDocument { network } => self.backup_with_document(network, responses),
+			DocumentMessage::ClearArtboards => {
 				self.backup(responses);
 				responses.add(GraphOperationMessage::ClearArtboards);
 			}
-			ClearLayersPanel => {
+			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				let data_buffer: RawBuffer = Self::default().serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
@@ -354,8 +224,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					layout_target: LayoutTarget::LayersPanelOptions,
 				});
 			}
-			CommitTransaction => (),
-			CreateEmptyFolder => {
+			DocumentMessage::CommitTransaction => (),
+			DocumentMessage::CreateEmptyFolder => {
 				let id = NodeId(generate_uuid());
 
 				let parent = self
@@ -378,14 +248,14 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
-			DebugPrintDocument => {
+			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network);
 			}
-			DeleteLayer { id } => {
+			DocumentMessage::DeleteLayer { id } => {
 				responses.add(GraphOperationMessage::DeleteLayer { id });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
-			DeleteSelectedLayers => {
+			DocumentMessage::DeleteSelectedLayers => {
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
@@ -393,20 +263,20 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
 				}
 			}
-			DeselectAllLayers => {
+			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentHistoryBackward => self.undo_with_history(responses),
-			DocumentHistoryForward => self.redo_with_history(responses),
-			DocumentStructureChanged => {
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(responses),
+			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				self.metadata.load_structure(&self.network, &mut self.selected_nodes);
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
-			DuplicateSelectedLayers => {
+			DocumentMessage::DuplicateSelectedLayers => {
 				self.backup(responses);
 				for layer_ancestors in self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata)) {
 					let Some(layer) = layer_ancestors.last().copied() else { continue };
@@ -437,7 +307,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					});
 				}
 			}
-			FlipSelectedLayers { flip_axis } => {
+			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
 				let scale = match flip_axis {
 					FlipAxis::X => DVec2::new(-1., 1.),
@@ -456,7 +326,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					}
 				}
 			}
-			GraphViewOverlay { open } => {
+			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
 				if open {
@@ -464,25 +334,25 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
-			GraphViewOverlayToggle => {
+			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
-			GridOptions(grid) => {
+			DocumentMessage::GridOptions(grid) => {
 				self.snapping_state.grid = grid;
 				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			GridOverlays(mut overlay_context) => {
+			DocumentMessage::GridOverlays(mut overlay_context) => {
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			GridVisible(enabled) => {
+			DocumentMessage::GridVisible(enabled) => {
 				self.snapping_state.grid_snapping = enabled;
 				responses.add(OverlaysMessage::Draw);
 			}
-			GroupSelectedLayers => {
+			DocumentMessage::GroupSelectedLayers => {
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
@@ -521,8 +391,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 			}
-			ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
-			ImaginateRandom { imaginate_node, then_generate } => {
+			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
+			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
 				// Generate a random seed. We only want values between -2^53 and 2^53, because integer values
 				// outside of this range can get rounded in f64
 				let random_bits = generate_uuid();
@@ -542,7 +412,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(DocumentMessage::ImaginateGenerate);
 				}
 			}
-			ImportSvg {
+			DocumentMessage::ImportSvg {
 				id,
 				svg,
 				transform,
@@ -558,7 +428,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					insert_index,
 				});
 			}
-			MoveSelectedLayersTo { parent, insert_index } => {
+			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
 
 				// Disallow trying to insert into self
@@ -576,7 +446,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					insert_index,
 				});
 			}
-			NudgeSelectedLayers {
+			DocumentMessage::NudgeSelectedLayers {
 				delta_x,
 				delta_y,
 				resize,
@@ -628,7 +498,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					};
 				}
 			}
-			PasteImage { image, mouse } => {
+			DocumentMessage::PasteImage { image, mouse } => {
 				// All the image's pixels have been converted to 0..=1, linear, and premultiplied by `Color::from_rgba8_srgb`
 
 				let image_size = DVec2::new(image.width as f64, image.height as f64);
@@ -665,7 +535,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				// Force chosen tool to be Select Tool after importing image.
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			PasteSvg { svg, mouse } => {
+			DocumentMessage::PasteSvg { svg, mouse } => {
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
@@ -673,18 +543,18 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			Redo => {
+			DocumentMessage::Redo => {
 				responses.add(SelectToolMessage::Abort);
 				responses.add(DocumentMessage::DocumentHistoryForward);
 				responses.add(ToolMessage::Redo);
 				responses.add(OverlaysMessage::Draw);
 			}
-			RenameDocument { new_name } => {
+			DocumentMessage::RenameDocument { new_name } => {
 				self.name = new_name;
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
-			RenderRulers => {
+			DocumentMessage::RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
 
 				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
@@ -699,7 +569,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					visible: self.rulers_visible,
 				});
 			}
-			RenderScrollbars => {
+			DocumentMessage::RenderScrollbars => {
 				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
@@ -720,7 +590,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					multiplier: scrollbar_multiplier.into(),
 				});
 			}
-			SaveDocument => {
+			DocumentMessage::SaveDocument => {
 				self.set_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
@@ -735,28 +605,28 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					name,
 				})
 			}
-			SelectAllLayers => {
+			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
 				let all_layers_except_artboards = metadata.all_layers().filter(move |&layer| !metadata.is_artboard(layer));
 				let nodes = all_layers_except_artboards.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
-			SelectedLayersLower => {
+			DocumentMessage::SelectedLayersLower => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: 1 });
 			}
-			SelectedLayersLowerToBack => {
+			DocumentMessage::SelectedLayersLowerToBack => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MAX });
 			}
-			SelectedLayersRaise => {
+			DocumentMessage::SelectedLayersRaise => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: -1 });
 			}
-			SelectedLayersRaiseToFront => {
+			DocumentMessage::SelectedLayersRaiseToFront => {
 				responses.add(DocumentMessage::SelectedLayersReorder { relative_index_offset: isize::MIN });
 			}
-			SelectedLayersReorder { relative_index_offset } => {
+			DocumentMessage::SelectedLayersReorder { relative_index_offset } => {
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
-			SelectLayer { id, ctrl, shift } => {
+			DocumentMessage::SelectLayer { id, ctrl, shift } => {
 				let layer = LayerNodeIdentifier::new(id, self.network());
 
 				let mut nodes = vec![];
@@ -800,13 +670,13 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					}
 				}
 			}
-			SetBlendModeForSelectedLayers { blend_mode } => {
+			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				self.backup(responses);
 				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
-			SetOpacityForSelectedLayers { opacity } => {
+			DocumentMessage::SetOpacityForSelectedLayers { opacity } => {
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.);
 
@@ -814,15 +684,15 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
-			SetOverlaysVisibility { visible } => {
+			DocumentMessage::SetOverlaysVisibility { visible } => {
 				self.overlays_visible = visible;
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
-			SetRangeSelectionLayer { new_layer } => {
+			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
 			}
-			SetSnapping {
+			DocumentMessage::SetSnapping {
 				snapping_enabled,
 				bounding_box_snapping,
 				geometry_snapping,
@@ -837,12 +707,12 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 					self.snapping_state.geometry_snapping = state
 				};
 			}
-			SetViewMode { view_mode } => {
+			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
-			StartTransaction => self.backup(responses),
-			ToggleLayerExpansion { id } => {
+			DocumentMessage::StartTransaction => self.backup(responses),
+			DocumentMessage::ToggleLayerExpansion { id } => {
 				let layer = LayerNodeIdentifier::new(id, self.network());
 				if self.collapsed.0.contains(&layer) {
 					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
@@ -851,7 +721,7 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			Undo => {
+			DocumentMessage::Undo => {
 				self.undo_in_progress = true;
 				responses.add(ToolMessage::PreUndo);
 				responses.add(DocumentMessage::DocumentHistoryBackward);
@@ -859,8 +729,8 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				responses.add(DocumentMessage::UndoFinished);
 				responses.add(ToolMessage::Undo);
 			}
-			UndoFinished => self.undo_in_progress = false,
-			UngroupSelectedLayers => {
+			DocumentMessage::UndoFinished => self.undo_in_progress = false,
+			DocumentMessage::UngroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
@@ -911,25 +781,25 @@ impl MessageHandler<DocumentMessage, DocumentInputs<'_>> for DocumentMessageHand
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}
-			UpdateDocumentTransform { transform } => {
+			DocumentMessage::UpdateDocumentTransform { transform } => {
 				self.metadata.document_to_viewport = transform;
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			ZoomCanvasTo100Percent => {
+			DocumentMessage::ZoomCanvasTo100Percent => {
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
 			}
-			ZoomCanvasTo200Percent => {
+			DocumentMessage::ZoomCanvasTo200Percent => {
 				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
 			}
-			ZoomCanvasToFitAll => {
+			DocumentMessage::ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
 					responses.add(NavigationMessage::SetCanvasTilt { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
-			Noop => (),
+			DocumentMessage::Noop => (),
 		}
 	}
 
@@ -1601,5 +1471,140 @@ impl DocumentMessageHandler {
 		common.extend(self.navigation_handler.actions());
 		common.extend(self.node_graph_handler.actions_with_node_graph_open(self.graph_view_overlay_open));
 		common
+	}
+}
+
+impl Default for DocumentMessageHandler {
+	fn default() -> Self {
+		Self {
+			// ======================
+			// Child message handlers
+			// ======================
+			navigation_handler: NavigationMessageHandler::default(),
+			node_graph_handler: NodeGraphMessageHandler::default(),
+			overlays_message_handler: OverlaysMessageHandler::default(),
+			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			// ============================================
+			// Fields that are saved in the document format
+			// ============================================
+			network: root_network(),
+			selected_nodes: SelectedNodes::default(),
+			collapsed: CollapsedLayers::default(),
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
+			navigation: PTZ::default(),
+			document_mode: DocumentMode::DesignMode,
+			view_mode: ViewMode::default(),
+			overlays_visible: true,
+			rulers_visible: true,
+			// =============================================
+			// Fields omitted from the saved document format
+			// =============================================
+			document_undo_history: VecDeque::new(),
+			document_redo_history: VecDeque::new(),
+			saved_hash: None,
+			auto_saved_hash: None,
+			undo_in_progress: false,
+			graph_view_overlay_open: false,
+			snapping_state: SnappingState::default(),
+			layer_range_selection_reference: None,
+			metadata: Default::default(),
+		}
+	}
+}
+
+#[inline(always)]
+fn default_network() -> NodeNetwork {
+	DocumentMessageHandler::default().network
+}
+#[inline(always)]
+fn default_selected_nodes() -> SelectedNodes {
+	DocumentMessageHandler::default().selected_nodes
+}
+#[inline(always)]
+fn default_collapsed() -> CollapsedLayers {
+	DocumentMessageHandler::default().collapsed
+}
+#[inline(always)]
+fn default_name() -> String {
+	DocumentMessageHandler::default().name
+}
+#[inline(always)]
+fn default_commit_hash() -> String {
+	DocumentMessageHandler::default().commit_hash
+}
+#[inline(always)]
+fn default_pan_tilt_zoom() -> PTZ {
+	DocumentMessageHandler::default().navigation
+}
+#[inline(always)]
+fn default_document_mode() -> DocumentMode {
+	DocumentMessageHandler::default().document_mode
+}
+#[inline(always)]
+fn default_view_mode() -> ViewMode {
+	DocumentMessageHandler::default().view_mode
+}
+#[inline(always)]
+fn default_overlays_visible() -> bool {
+	DocumentMessageHandler::default().overlays_visible
+}
+#[inline(always)]
+fn default_rulers_visible() -> bool {
+	DocumentMessageHandler::default().rulers_visible
+}
+
+fn root_network() -> NodeNetwork {
+	{
+		let mut network = NodeNetwork::default();
+		let node = graph_craft::document::DocumentNode {
+			name: "Output".into(),
+			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
+			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
+				imports: vec![NodeId(3), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(3), 0)],
+				nodes: [
+					DocumentNode {
+						name: "EditorApi".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "RenderNode".to_string(),
+						inputs: vec![
+							NodeInput::node(NodeId(0), 0),
+							NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
+							NodeInput::node(NodeId(2), 0),
+						],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			metadata: DocumentNodeMetadata::position((8, 4)),
+			..Default::default()
+		};
+		network.push_node(node);
+		network
 	}
 }

@@ -1,9 +1,7 @@
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, KeyMapping)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum KeyMappingMessage {
 	#[child]
 	Lookup(InputMapperMessage),
@@ -12,7 +10,7 @@ pub enum KeyMappingMessage {
 }
 
 #[impl_message(Message, KeyMappingMessage, ModifyMapping)]
-#[derive(PartialEq, Eq, Clone, Debug, Default, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MappingVariant {
 	#[default]
 	Default,

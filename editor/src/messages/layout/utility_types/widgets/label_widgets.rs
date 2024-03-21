@@ -1,8 +1,7 @@
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
 pub struct IconLabel {
 	#[widget_builder(constructor)]
 	pub icon: String,
@@ -12,7 +11,7 @@ pub struct IconLabel {
 	pub tooltip: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Default, PartialEq, Eq, WidgetBuilder, specta::Type)]
 pub struct ImageLabel {
 	#[widget_builder(constructor)]
 	pub image: String,
@@ -24,7 +23,7 @@ pub struct ImageLabel {
 	pub tooltip: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, WidgetBuilder, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 pub struct Separator {
 	pub direction: SeparatorDirection,
 
@@ -33,14 +32,14 @@ pub struct Separator {
 	pub separator_type: SeparatorType,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SeparatorDirection {
 	#[default]
 	Horizontal,
 	Vertical,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SeparatorType {
 	Related,
 	#[default]
@@ -48,7 +47,7 @@ pub enum SeparatorType {
 	Section,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
 pub struct TextLabel {
 	pub disabled: bool,
 

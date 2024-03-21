@@ -1233,11 +1233,12 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 
 #[cfg(test)]
 mod test {
-	use std::sync::atomic::AtomicU64;
-
 	use super::*;
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
+
 	use graphene_core::ProtoNodeIdentifier;
+
+	use std::sync::atomic::AtomicU64;
 
 	fn gen_node_id() -> NodeId {
 		static NODE_ID: AtomicU64 = AtomicU64::new(4);

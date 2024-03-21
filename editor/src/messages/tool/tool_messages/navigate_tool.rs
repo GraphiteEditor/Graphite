@@ -7,7 +7,7 @@ pub struct NavigateTool {
 }
 
 #[impl_message(Message, ToolMessage, Navigate)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum NavigateToolMessage {
 	// Standard messages
 	Abort,
@@ -45,10 +45,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Navigat
 	}
 
 	fn actions(&self) -> ActionList {
-		use NavigateToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(NavigateToolMessageDiscriminant;
+			NavigateToolFsmState::Ready => actions!(NavigateToolMessageDiscriminant;
 				TranslateCanvasBegin,
 				RotateCanvasBegin,
 				ZoomCanvasBegin,

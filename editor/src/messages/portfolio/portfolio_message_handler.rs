@@ -5,7 +5,7 @@ use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
-use crate::messages::portfolio::document::DocumentInputs;
+use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -14,6 +14,11 @@ use graph_craft::document::NodeId;
 use graphene_core::text::Font;
 
 use std::sync::Arc;
+
+pub struct PortfolioMessageData<'a> {
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
+}
 
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
@@ -26,8 +31,10 @@ pub struct PortfolioMessageHandler {
 	pub executor: NodeGraphExecutor,
 }
 
-impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)> for PortfolioMessageHandler {
-	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, (ipp, preferences): (&InputPreprocessorMessageHandler, &PreferencesMessageHandler)) {
+impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMessageHandler {
+	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, data: PortfolioMessageData) {
+		let PortfolioMessageData { ipp, preferences } = data;
+
 		match message {
 			// Sub-messages
 			PortfolioMessage::MenuBar(message) => {
@@ -39,12 +46,13 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 					rulers_visible = document.rulers_visible;
 				}
 
-				self.menu_bar_message_handler.process_message(message, responses, (has_active_document, rulers_visible));
+				self.menu_bar_message_handler
+					.process_message(message, responses, MenuBarMessageData { has_active_document, rulers_visible });
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
-						let document_inputs = DocumentInputs {
+						let document_inputs = DocumentMessageData {
 							document_id,
 							ipp,
 							persistent_data: &self.persistent_data,
@@ -58,7 +66,7 @@ impl MessageHandler<PortfolioMessage, (&InputPreprocessorMessageHandler, &Prefer
 			// Messages
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					let document_inputs = DocumentInputs {
+					let document_inputs = DocumentMessageData {
 						document_id,
 						ipp,
 						persistent_data: &self.persistent_data,

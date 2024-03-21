@@ -34,7 +34,7 @@ impl Default for EllipseToolOptions {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum EllipseOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -45,7 +45,7 @@ pub enum EllipseOptionsUpdate {
 }
 
 #[impl_message(Message, ToolMessage, Ellipse)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum EllipseToolMessage {
 	// Standard messages
 	Overlays(OverlayContext),
@@ -138,14 +138,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Ellipse
 	}
 
 	fn actions(&self) -> ActionList {
-		use EllipseToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(EllipseToolMessageDiscriminant;
+			EllipseToolFsmState::Ready => actions!(EllipseToolMessageDiscriminant;
 				DragStart,
 				PointerMove,
 			),
-			Drawing => actions!(EllipseToolMessageDiscriminant;
+			EllipseToolFsmState::Drawing => actions!(EllipseToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,

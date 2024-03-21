@@ -8,7 +8,7 @@ pub struct EyedropperTool {
 }
 
 #[impl_message(Message, ToolMessage, Eyedropper)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum EyedropperToolMessage {
 	// Standard messages
 	Abort,

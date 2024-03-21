@@ -3,6 +3,7 @@
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -41,7 +42,7 @@ impl Default for TextOptions {
 }
 
 #[impl_message(Message, ToolMessage, Text)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum TextToolMessage {
 	// Standard messages
 	Abort,
@@ -57,7 +58,7 @@ pub enum TextToolMessage {
 	UpdateOptions(TextOptionsUpdate),
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -163,13 +164,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for TextToo
 	}
 
 	fn actions(&self) -> ActionList {
-		use TextToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(TextToolMessageDiscriminant;
+			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				Interact,
 			),
-			Editing => actions!(TextToolMessageDiscriminant;
+			TextToolFsmState::Editing => actions!(TextToolMessageDiscriminant;
 				Interact,
 				Abort,
 				CommitText,

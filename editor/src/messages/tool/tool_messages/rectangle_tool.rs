@@ -34,7 +34,7 @@ impl Default for RectangleToolOptions {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum RectangleOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -45,7 +45,7 @@ pub enum RectangleOptionsUpdate {
 }
 
 #[impl_message(Message, ToolMessage, Rectangle)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum RectangleToolMessage {
 	// Standard messages
 	Overlays(OverlayContext),
@@ -127,14 +127,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Rectang
 	}
 
 	fn actions(&self) -> ActionList {
-		use RectangleToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(RectangleToolMessageDiscriminant;
+			RectangleToolFsmState::Ready => actions!(RectangleToolMessageDiscriminant;
 				DragStart,
 				PointerMove,
 			),
-			Drawing => actions!(RectangleToolMessageDiscriminant;
+			RectangleToolFsmState::Drawing => actions!(RectangleToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,

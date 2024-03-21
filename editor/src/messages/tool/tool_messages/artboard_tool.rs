@@ -17,7 +17,7 @@ pub struct ArtboardTool {
 }
 
 #[impl_message(Message, ToolMessage, Artboard)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
@@ -50,8 +50,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 	}
 
 	fn actions(&self) -> ActionList {
-		use ArtboardToolFsmState::*;
-
 		let mut common = actions!(ArtboardToolMessageDiscriminant;
 			DeleteSelected,
 			NudgeSelected,
@@ -59,7 +57,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 		);
 
 		let additional = match self.fsm_state {
-			Ready => actions!(ArtboardToolMessageDiscriminant; PointerDown),
+			ArtboardToolFsmState::Ready => actions!(ArtboardToolMessageDiscriminant; PointerDown),
 			_ => actions!(ArtboardToolMessageDiscriminant; PointerUp, Abort),
 		};
 		common.extend(additional);

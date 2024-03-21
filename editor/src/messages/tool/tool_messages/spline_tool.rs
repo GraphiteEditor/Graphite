@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -36,7 +36,7 @@ impl Default for SplineOptions {
 }
 
 #[impl_message(Message, ToolMessage, Spline)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
 	CanvasTransformed,
@@ -60,7 +60,7 @@ enum SplineToolFsmState {
 	Drawing,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SplineOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -148,17 +148,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 	}
 
 	fn actions(&self) -> ActionList {
-		use SplineToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(SplineToolMessageDiscriminant;
+			SplineToolFsmState::Ready => actions!(SplineToolMessageDiscriminant;
 				Undo,
 				DragStart,
 				DragStop,
 				Confirm,
 				Abort,
 			),
-			Drawing => actions!(SplineToolMessageDiscriminant;
+			SplineToolFsmState::Drawing => actions!(SplineToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Confirm,
