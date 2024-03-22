@@ -458,6 +458,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::ToggleHidden { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
 				if let Some(network) = document_network.nested_network(&self.network) {
 					let new_hidden = !network.disabled.contains(&node_id);
 					responses.add(NodeGraphMessage::SetHidden { node_id, hidden: new_hidden });
