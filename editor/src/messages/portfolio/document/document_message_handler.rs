@@ -469,7 +469,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 				} else {
 					// Nudge resize
-					let selected_bounding_box = self.metadata().selected_bounds_document_space(false, self.metadata(), &self.selected_nodes);
+					let selected_bounding_box = self.metadata().selected_bounds_document_space(false, &self.selected_nodes);
 
 					if let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box {
 						let size = existing_bottom_right - existing_top_left;
