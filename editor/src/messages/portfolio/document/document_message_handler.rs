@@ -457,9 +457,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
 
-				for layer in self.selected_nodes.selected_layers(self.metadata()) {
+				if !ipp.keyboard.key(resize) {
 					// Nudge translation
-					if !ipp.keyboard.key(resize) {
+					for layer in self.selected_nodes.selected_layers(self.metadata()) {
 						responses.add(GraphOperationMessage::TransformChange {
 							layer,
 							transform: DAffine2::from_translation(delta),
@@ -467,8 +467,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							skip_rerender: false,
 						});
 					}
+				} else {
 					// Nudge resize
-					else if let Some([existing_top_left, existing_bottom_right]) = self.metadata.bounding_box_document(layer) {
+					let selected_bounding_box = self.metadata().selected_bounds_document_space(false, self.metadata(), &self.selected_nodes);
+
+					if let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box {
 						let size = existing_bottom_right - existing_top_left;
 						let new_size = size + if opposite_corner { -delta } else { delta };
 						let enlargement_factor = new_size / size;
@@ -486,16 +489,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						let pivot = DAffine2::from_translation(pivot);
 						let transformation = pivot * scale * pivot.inverse();
 
-						let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-						let original_transform = self.metadata().upstream_transform(layer.to_node());
-						let new = to.inverse() * transformation * to * original_transform;
-						responses.add(GraphOperationMessage::TransformSet {
-							layer,
-							transform: new,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
-					};
+						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
+							let original_transform = self.metadata().upstream_transform(layer.to_node());
+							let new = to.inverse() * transformation * to * original_transform;
+							responses.add(GraphOperationMessage::TransformSet {
+								layer,
+								transform: new,
+								transform_in: TransformIn::Local,
+								skip_rerender: false,
+							});
+						}
+					}
 				}
 			}
 			DocumentMessage::PasteImage { image, mouse } => {
