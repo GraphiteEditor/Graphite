@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::node_graph::resolve_document_node_type;
-use crate::messages::portfolio::document::node_graph::transform_utils::{get_current_normalized_pivot, get_current_transform};
+use crate::messages::portfolio::document::graph_operation::transform_utils::{get_current_normalized_pivot, get_current_transform};
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
@@ -13,7 +13,7 @@ use graphene_core::Color;
 
 const BRUSH_MAX_SIZE: f64 = 5000.;
 
-#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DrawMode {
 	Draw = 0,
 	Erase,
@@ -52,7 +52,7 @@ impl Default for BrushOptions {
 }
 
 #[impl_message(Message, ToolMessage, Brush)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum BrushToolMessage {
 	// Standard messages
 	Abort,
@@ -65,7 +65,7 @@ pub enum BrushToolMessage {
 	UpdateOptions(BrushToolMessageOptionsUpdate),
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum BrushToolMessageOptionsUpdate {
 	BlendMode(BlendMode),
 	ChangeDiameter(f64),
@@ -222,15 +222,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for BrushTo
 	}
 
 	fn actions(&self) -> ActionList {
-		use BrushToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(BrushToolMessageDiscriminant;
+			BrushToolFsmState::Ready => actions!(BrushToolMessageDiscriminant;
 				DragStart,
 				DragStop,
 				UpdateOptions,
 			),
-			Drawing => actions!(BrushToolMessageDiscriminant;
+			BrushToolFsmState::Drawing => actions!(BrushToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Abort,

@@ -121,9 +121,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 #[cfg(test)]
 mod tests {
+	use super::*;
 	use crate::utils::SubpathTValue;
 
-	use super::*;
 	use glam::DVec2;
 
 	fn set_up_open_subpath() -> Subpath<EmptyId> {

@@ -11,7 +11,6 @@ mod tests {
 	#[test]
 	fn execute_add() {
 		use graph_craft::document::*;
-
 		use graph_craft::*;
 
 		fn add_network() -> NodeNetwork {
@@ -82,7 +81,6 @@ mod tests {
 	#[test]
 	fn double_number() {
 		use graph_craft::document::*;
-
 		use graph_craft::*;
 
 		let network = NodeNetwork {

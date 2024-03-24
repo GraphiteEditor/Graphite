@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -14,7 +14,6 @@ use graphene_core::Color;
 
 use bezier_rs::ManipulatorGroup;
 use glam::DVec2;
-use serde::{Deserialize, Serialize};
 
 #[derive(Default)]
 pub struct FreehandTool {
@@ -40,7 +39,7 @@ impl Default for FreehandOptions {
 }
 
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	Overlays(OverlayContext),
@@ -54,7 +53,7 @@ pub enum FreehandToolMessage {
 	UpdateOptions(FreehandOptionsUpdate),
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FreehandOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -149,14 +148,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Freehan
 	}
 
 	fn actions(&self) -> ActionList {
-		use FreehandToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(FreehandToolMessageDiscriminant;
+			FreehandToolFsmState::Ready => actions!(FreehandToolMessageDiscriminant;
 				DragStart,
 				DragStop,
 			),
-			Drawing => actions!(FreehandToolMessageDiscriminant;
+			FreehandToolFsmState::Drawing => actions!(FreehandToolMessageDiscriminant;
 				DragStop,
 				PointerMove,
 				Abort,

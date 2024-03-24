@@ -1,12 +1,18 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+pub struct PreferencesDialogMessageData<'a> {
+	pub preferences: &'a PreferencesMessageHandler,
+}
+
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default)]
 pub struct PreferencesDialogMessageHandler {}
 
-impl MessageHandler<PreferencesDialogMessage, &PreferencesMessageHandler> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, preferences: &PreferencesMessageHandler) {
+impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageData<'_>> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, data: PreferencesDialogMessageData) {
+		let PreferencesDialogMessageData { preferences } = data;
+
 		match message {
 			PreferencesDialogMessage::Confirm => {}
 		}

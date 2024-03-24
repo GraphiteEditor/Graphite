@@ -3,10 +3,8 @@ use crate::messages::prelude::*;
 
 use graphene_core::raster::color::Color;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, Tool)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ToolMessage {
 	// Sub-messages
 	#[child]

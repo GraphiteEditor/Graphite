@@ -1,11 +1,10 @@
 use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[repr(u8)]
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]
 pub enum Clipboard {
 	Internal,
 
@@ -16,7 +15,7 @@ pub enum Clipboard {
 
 pub const INTERNAL_CLIPBOARD_COUNT: u8 = Clipboard::_InternalClipboardCount as u8;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CopyBufferEntry {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	pub selected: bool,

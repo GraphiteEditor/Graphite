@@ -1,6 +1,6 @@
 use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::messages::portfolio::document::node_graph::wrap_network_in_scope;
+use crate::messages::portfolio::document::node_graph::document_node_types::wrap_network_in_scope;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 

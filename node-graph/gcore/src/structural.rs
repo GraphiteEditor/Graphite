@@ -175,9 +175,8 @@ impl<'input, S0: 'input, O: 'static> ApplyNode<O, S0> {
 
 #[cfg(test)]
 mod test {
-	use crate::{ops::IdentityNode, value::ValueNode};
-
 	use super::*;
+	use crate::{ops::IdentityNode, value::ValueNode};
 
 	#[test]
 	fn compose() {

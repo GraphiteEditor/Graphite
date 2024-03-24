@@ -190,7 +190,7 @@ impl RegionDomain {
 		self.fill.push(fill);
 	}
 
-	fn resolve_id(&self, id: RegionId) -> Option<usize> {
+	fn _resolve_id(&self, id: RegionId) -> Option<usize> {
 		self.ids.iter().position(|&check_id| check_id == id)
 	}
 

@@ -1,4 +1,5 @@
-use super::{node_properties, FrontendGraphDataType, FrontendNodeType};
+use super::node_properties;
+use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
@@ -7,12 +8,10 @@ use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::concrete;
+use graph_craft::document::value::*;
 use graph_craft::document::*;
-use graph_craft::document::{value::*, DocumentNodeMetadata};
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
-#[cfg(feature = "gpu")]
-use graphene_core::application_io::SurfaceHandle;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute,
@@ -22,14 +21,12 @@ use graphene_core::text::Font;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
-
-#[cfg(feature = "gpu")]
-use gpu_executor::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
+#[cfg(feature = "gpu")]
+use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
+
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
-#[cfg(feature = "gpu")]
-use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DocumentInputType {

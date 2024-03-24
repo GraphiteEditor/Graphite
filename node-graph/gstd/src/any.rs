@@ -265,6 +265,7 @@ impl<I, O> PanicNode<I, O> {
 #[cfg(test)]
 mod test {
 	use super::*;
+
 	use graphene_core::{ops::AddPairNode, ops::IdentityNode};
 
 	#[test]

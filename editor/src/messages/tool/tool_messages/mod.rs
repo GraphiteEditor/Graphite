@@ -25,5 +25,4 @@ pub mod tool_prelude {
 	pub use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 	pub use glam::{DAffine2, DVec2};
-	pub use serde::{Deserialize, Serialize};
 }

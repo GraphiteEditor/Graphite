@@ -5,10 +5,8 @@ use crate::messages::prelude::*;
 
 use graphene_core::text::Font;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, Portfolio)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]

@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -34,7 +35,7 @@ impl Default for LineOptions {
 }
 
 #[impl_message(Message, ToolMessage, Line)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum LineToolMessage {
 	// Standard messages
 	Overlays(OverlayContext),
@@ -49,7 +50,7 @@ pub enum LineToolMessage {
 	UpdateOptions(LineOptionsUpdate),
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum LineOptionsUpdate {
 	LineWeight(f64),
 	StrokeColor(Option<Color>),

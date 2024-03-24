@@ -1,11 +1,10 @@
 use graph_craft::document::{NodeId, NodeNetwork};
 
 use serde::ser::SerializeStruct;
-use serde::{Deserialize, Serialize};
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct RawBuffer(Vec<u8>);
 
 impl From<&[u64]> for RawBuffer {
@@ -14,7 +13,7 @@ impl From<&[u64]> for RawBuffer {
 		Self(v_from_raw)
 	}
 }
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct JsRawBuffer(Vec<u8>);
 
 impl From<RawBuffer> for JsRawBuffer {
@@ -22,7 +21,7 @@ impl From<RawBuffer> for JsRawBuffer {
 		Self(buffer.0)
 	}
 }
-impl Serialize for JsRawBuffer {
+impl serde::Serialize for JsRawBuffer {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		let mut buffer = serializer.serialize_struct("Buffer", 2)?;
 		buffer.serialize_field("pointer", &(self.0.as_ptr() as usize))?;
@@ -31,7 +30,7 @@ impl Serialize for JsRawBuffer {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub enum LayerClassification {
 	#[default]
 	Folder,
@@ -39,7 +38,7 @@ pub enum LayerClassification {
 	Layer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub name: String,
@@ -53,7 +52,7 @@ pub struct LayerPanelEntry {
 	pub depth: usize,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
@@ -106,5 +105,5 @@ impl SelectedNodes {
 	}
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, specta::Type)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct CollapsedLayers(pub Vec<LayerNodeIdentifier>);

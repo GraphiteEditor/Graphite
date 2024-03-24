@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 

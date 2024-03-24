@@ -1,7 +1,6 @@
 use gpu_executor::ShaderIO;
 use graph_craft::{proto::ProtoNetwork, Type};
 
-use serde::{Deserialize, Serialize};
 use std::io::Write;
 
 pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manifest_path: &str) -> anyhow::Result<Vec<u8>> {
@@ -41,7 +40,7 @@ pub fn compile_spirv(request: &CompileRequest, compile_dir: Option<&str>, manife
 	Ok(std::fs::read(compile_dir.unwrap().to_owned() + "/shader.spv")?)
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Hash, Eq)]
 pub struct CompileRequest {
 	networks: Vec<graph_craft::proto::ProtoNetwork>,
 	input_types: Vec<Type>,

@@ -30,7 +30,7 @@ Comments should be placed on a separate line, but exceptions are permitted where
 At the top of Rust files, please follow the convention of separating imports into three blocks, in this order:
 1. Local (`use super::` and `use crate::`)
 2. First-party crates (e.g. `use editor::`)
-3. Third-party libraries (e.g. `use std::` or `use serde::`)
+3. Third-party libraries (e.g. `use std::` or `use glam::`)
 
 Combine related imports with common paths at the same depth. For example, the lines `use crate::A::B::C;`, `use crate::A::B::C::Foo;`, and `use crate::A::B::C::Bar;` should be combined into `use crate::A::B::C::{self, Foo, Bar};`. But do not combine imports at mixed path depths. For example, `use crate::A::{B::C::Foo, X::Hello};` should be split into two separate import lines. In simpler terms, avoid putting a `::` inside `{}`.
 

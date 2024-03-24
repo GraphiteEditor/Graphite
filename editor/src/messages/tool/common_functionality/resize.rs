@@ -1,8 +1,8 @@
-use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::{input_mapper::utility_types::input_keyboard::Key, portfolio::document::graph_operation::utility_types::TransformIn};
 use glam::{DAffine2, DVec2, Vec2Swizzles};
 
 use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData};

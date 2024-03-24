@@ -208,6 +208,7 @@ impl Bezier {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
 	#[test]
 	fn test_evaluate() {
 		let p1 = DVec2::new(3., 5.);

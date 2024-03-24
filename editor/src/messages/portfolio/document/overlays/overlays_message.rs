@@ -1,10 +1,8 @@
 use super::utility_types::{empty_provider, OverlayProvider};
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, DocumentMessage, Overlays)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysMessage {
 	Draw,
 

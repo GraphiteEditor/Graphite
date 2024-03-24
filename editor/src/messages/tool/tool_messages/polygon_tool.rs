@@ -39,7 +39,7 @@ impl Default for PolygonOptions {
 }
 
 #[impl_message(Message, ToolMessage, Polygon)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PolygonToolMessage {
 	// Standard messages
 	Overlays(OverlayContext),
@@ -54,13 +54,13 @@ pub enum PolygonToolMessage {
 	UpdateOptions(PolygonOptionsUpdate),
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PolygonType {
 	Convex = 0,
 	Star = 1,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PolygonOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -182,14 +182,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Polygon
 	}
 
 	fn actions(&self) -> ActionList {
-		use PolygonToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(PolygonToolMessageDiscriminant;
+			PolygonToolFsmState::Ready => actions!(PolygonToolMessageDiscriminant;
 				DragStart,
 				PointerMove,
 			),
-			Drawing => actions!(PolygonToolMessageDiscriminant;
+			PolygonToolFsmState::Drawing => actions!(PolygonToolMessageDiscriminant;
 				DragStop,
 				Abort,
 				PointerMove,

@@ -3,11 +3,9 @@ use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
-
 use super::input_widgets::InvisibleStandinInput;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, specta::Type)]
 pub struct MenuBarEntryChildren(pub Vec<Vec<MenuBarEntry>>);
 
 impl MenuBarEntryChildren {
@@ -29,7 +27,7 @@ impl MenuBarEntryChildren {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
 pub struct MenuBarEntry {
 	pub label: String,
 	pub icon: Option<String>,
@@ -71,7 +69,7 @@ impl Default for MenuBarEntry {
 	}
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct MenuLayout {
 	pub layout: Vec<MenuBarEntry>,
 }

@@ -21,7 +21,7 @@ pub struct GradientOptions {
 }
 
 #[impl_message(Message, ToolMessage, Gradient)]
-#[derive(PartialEq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GradientToolMessage {
 	// Standard messages
 	Abort,
@@ -37,7 +37,7 @@ pub enum GradientToolMessage {
 	UpdateOptions(GradientOptionsUpdate),
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
 }

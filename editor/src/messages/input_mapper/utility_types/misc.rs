@@ -5,7 +5,6 @@ use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_B
 use crate::messages::prelude::*;
 
 use core::time::Duration;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
@@ -118,7 +117,7 @@ pub struct MappingEntry {
 	pub modifiers: KeyStates,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ActionKeys {
 	Action(MessageDiscriminant),
 	#[serde(rename = "keys")]
@@ -148,7 +147,7 @@ impl ActionKeys {
 	}
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrameTimeInfo {
 	timestamp: Duration,
 	prev_timestamp: Option<Duration>,

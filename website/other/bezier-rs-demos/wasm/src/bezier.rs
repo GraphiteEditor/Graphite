@@ -4,10 +4,9 @@ use crate::utils::parse_cap;
 use bezier_rs::{ArcStrategy, ArcsOptions, Bezier, Identifier, TValue, TValueType};
 
 use glam::DVec2;
-use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct CircleSector {
 	center: DVec2,
 	radius: f64,
@@ -32,7 +31,7 @@ const SCALE_UNIT_VECTOR_FACTOR: f64 = 50.;
 pub struct WasmBezier(Bezier);
 
 /// Serialize some data and then convert it to a JsValue.
-fn to_js_value<T: Serialize>(data: T) -> JsValue {
+fn to_js_value<T: serde::Serialize>(data: T) -> JsValue {
 	serde_wasm_bindgen::to_value(&serde_json::to_string(&data).unwrap()).unwrap()
 }
 
