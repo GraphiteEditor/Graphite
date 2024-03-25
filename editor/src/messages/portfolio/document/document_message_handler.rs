@@ -457,21 +457,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let opposite_corner = ipp.keyboard.key(resize_opposite_corner);
 				let delta = DVec2::new(delta_x, delta_y);
 
-				if !ipp.keyboard.key(resize) {
+				match ipp.keyboard.key(resize) {
 					// Nudge translation
-					for layer in self.selected_nodes.selected_layers(self.metadata()) {
-						responses.add(GraphOperationMessage::TransformChange {
-							layer,
-							transform: DAffine2::from_translation(delta),
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
+					false => {
+						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+							responses.add(GraphOperationMessage::TransformChange {
+								layer,
+								transform: DAffine2::from_translation(delta),
+								transform_in: TransformIn::Local,
+								skip_rerender: false,
+							});
+						}
 					}
-				} else {
 					// Nudge resize
-					let selected_bounding_box = self.metadata().selected_bounds_document_space(false, &self.selected_nodes);
+					true => {
+						let selected_bounding_box = self.metadata().selected_bounds_document_space(false, &self.selected_nodes);
+						let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
 
-					if let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box {
 						let size = existing_bottom_right - existing_top_left;
 						let new_size = size + if opposite_corner { -delta } else { delta };
 						let enlargement_factor = new_size / size;
