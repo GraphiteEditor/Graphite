@@ -2226,13 +2226,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Rectangle",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0)],
+				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Rectangle Generator".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(concrete!(f64)), NodeInput::Network(concrete!(f64))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::RectangleGenerator<_, _>")),
+						inputs: vec![
+							NodeInput::Network(concrete!(())),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(bool)),
+							NodeInput::Network(generic!(T)),
+							NodeInput::Network(concrete!(bool)),
+						],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -2253,6 +2260,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Size X", TaggedValue::F64(100.), false),
 				DocumentInputType::value("Size Y", TaggedValue::F64(100.), false),
+				DocumentInputType::value("Individual Corner Rounding", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Corner Radius", TaggedValue::F64(0.), false),
+				DocumentInputType::value("Clamped", TaggedValue::Bool(true), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
 			properties: node_properties::rectangle_properties,
