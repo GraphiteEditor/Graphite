@@ -279,9 +279,9 @@ impl DocumentMetadata {
 	}
 
 	/// Calculates the selected layer bounds in document space
-	pub fn selected_bounds_document_space(&self, include_artboards: bool, metadata: &DocumentMetadata, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
+	pub fn selected_bounds_document_space(&self, include_artboards: bool, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
 		selected_nodes
-			.selected_layers(metadata)
+			.selected_layers(self)
 			.filter(|&layer| include_artboards || !self.is_artboard(layer))
 			.filter_map(|layer| self.bounding_box_document(layer))
 			.reduce(Quad::combine_bounds)
