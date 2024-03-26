@@ -6,7 +6,7 @@ use crate::TValue;
 use glam::{DAffine2, DMat2, DVec2};
 use std::f64::consts::PI;
 
-impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Calculate the point on the subpath based on the parametric `t`-value provided.
 	/// Expects `t` to be within the inclusive range `[0, 1]`.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/evaluate/solo" title="Evaluate Demo"></iframe>
@@ -39,7 +39,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// This function expects the following:
 	/// - other: a [Bezier] curve to check intersections against
 	/// - error: an optional f64 value to provide an error bound
-	pub fn subpath_intersections(&self, other: &Subpath<ManipulatorGroupId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+	pub fn subpath_intersections(&self, other: &Subpath<PointId>, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersection_t_values: Vec<(usize, f64)> = other.iter().flat_map(|bezier| self.intersections(&bezier, error, minimum_separation)).collect();
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 		intersection_t_values
@@ -312,7 +312,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Alternatively, this can be interpreted as limiting the angle that the miter can form.
 	/// When the limit is exceeded, no manipulator group will be returned.
 	/// This value should be at least 1. If not, the default of 4 will be used.
-	pub(crate) fn miter_line_join(&self, other: &Subpath<ManipulatorGroupId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<ManipulatorGroupId>> {
+	pub(crate) fn miter_line_join(&self, other: &Subpath<PointId>, miter_limit: Option<f64>) -> Option<ManipulatorGroup<PointId>> {
 		let miter_limit = match miter_limit {
 			Some(miter_limit) if miter_limit >= 1. => miter_limit,
 			_ => 4.,
@@ -341,7 +341,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					anchor: intersection,
 					in_handle: None,
 					out_handle: None,
-					id: ManipulatorGroupId::new(),
+					id: PointId::new(),
 				});
 			}
 		}
@@ -354,7 +354,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - The `out_handle` for the last manipulator group of `self`
 	/// - The new manipulator group to be added
 	/// - The `in_handle` for the first manipulator group of `other`
-	pub(crate) fn round_line_join(&self, other: &Subpath<ManipulatorGroupId>, center: DVec2) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+	pub(crate) fn round_line_join(&self, other: &Subpath<PointId>, center: DVec2) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 
@@ -380,7 +380,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - The `out_handle` for the last manipulator group of `self`
 	/// - The new manipulator group to be added
 	/// - The `in_handle` for the first manipulator group of `other`
-	pub(crate) fn round_cap(&self, other: &Subpath<ManipulatorGroupId>) -> (DVec2, ManipulatorGroup<ManipulatorGroupId>, DVec2) {
+	pub(crate) fn round_cap(&self, other: &Subpath<PointId>) -> (DVec2, ManipulatorGroup<PointId>, DVec2) {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 
@@ -393,7 +393,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns the two manipulator groups that create a square cap between the end of `self` and the beginning of `other`.
-	pub(crate) fn square_cap(&self, other: &Subpath<ManipulatorGroupId>) -> [ManipulatorGroup<ManipulatorGroupId>; 2] {
+	pub(crate) fn square_cap(&self, other: &Subpath<PointId>) -> [ManipulatorGroup<PointId>; 2] {
 		let left = self.manipulator_groups[self.len() - 1].anchor;
 		let right = other.manipulator_groups[0].anchor;
 

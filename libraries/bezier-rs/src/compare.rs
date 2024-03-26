@@ -37,6 +37,6 @@ pub fn compare_arcs(arc1: CircleArc, arc2: CircleArc) -> bool {
 /// Compare Subpath by verifying that their bezier segments match.
 /// In this way, matching quadratic segments where the handles are on opposite manipulator groups will be considered equal.
 #[cfg(test)]
-pub fn compare_subpaths<ManipulatorGroupId: crate::Identifier>(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> bool {
+pub fn compare_subpaths<PointId: crate::Identifier>(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> bool {
 	subpath1.len() == subpath2.len() && subpath1.closed() == subpath2.closed() && subpath1.iter().eq(subpath2.iter())
 }

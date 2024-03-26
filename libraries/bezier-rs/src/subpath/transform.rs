@@ -18,12 +18,12 @@ fn map_index_within_range(index: usize, t: f64, max_size: usize) -> (usize, f64)
 }
 
 /// Functionality that transforms Subpaths, such as split, reduce, offset, etc.
-impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Returns either one or two Subpaths that result from splitting the original Subpath at the point corresponding to `t`.
 	/// If the original Subpath was closed, a single open Subpath will be returned.
 	/// If the original Subpath was open, two open Subpaths will be returned.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/split/solo" title="Split Demo"></iframe>
-	pub fn split(&self, t: SubpathTValue) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+	pub fn split(&self, t: SubpathTValue) -> (Subpath<PointId>, Option<Subpath<PointId>>) {
 		let (segment_index, t) = self.t_value_to_parametric(t);
 		let curve = self.get_segment(segment_index).unwrap();
 
@@ -48,7 +48,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				anchor: first_bezier.end(),
 				in_handle: last_curve.handle_end(),
 				out_handle: None,
-				id: ManipulatorGroupId::new(),
+				id: PointId::new(),
 			});
 		} else {
 			if !first_split.is_empty() {
@@ -68,7 +68,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					anchor: first_bezier.end(),
 					in_handle: first_bezier.handle_end(),
 					out_handle: None,
-					id: ManipulatorGroupId::new(),
+					id: PointId::new(),
 				});
 			}
 
@@ -79,7 +79,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 						anchor: second_bezier.start(),
 						in_handle: None,
 						out_handle: second_bezier.handle_start(),
-						id: ManipulatorGroupId::new(),
+						id: PointId::new(),
 					},
 				);
 			}
@@ -95,7 +95,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns [ManipulatorGroup]s with a reversed winding order.
-	fn reverse_manipulator_groups(manipulator_groups: &[ManipulatorGroup<ManipulatorGroupId>]) -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
+	fn reverse_manipulator_groups(manipulator_groups: &[ManipulatorGroup<PointId>]) -> Vec<ManipulatorGroup<PointId>> {
 		manipulator_groups
 			.iter()
 			.rev()
@@ -103,14 +103,14 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				anchor: group.anchor,
 				in_handle: group.out_handle,
 				out_handle: group.in_handle,
-				id: ManipulatorGroupId::new(),
+				id: PointId::new(),
 			})
-			.collect::<Vec<ManipulatorGroup<ManipulatorGroupId>>>()
+			.collect::<Vec<ManipulatorGroup<PointId>>>()
 	}
 
 	/// Returns a [Subpath] with a reversed winding order.
 	/// Note that a reversed closed subpath will start on the same manipulator group and simply wind the other direction
-	pub fn reverse(&self) -> Subpath<ManipulatorGroupId> {
+	pub fn reverse(&self) -> Subpath<PointId> {
 		let mut reversed = Subpath::reverse_manipulator_groups(self.manipulator_groups());
 		if self.closed {
 			reversed.rotate_right(1);
@@ -127,7 +127,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// That means, if the value of `t1` > `t2`, it will cross the break between endpoints from `t1` to `t = 1 = 0` to `t2`.
 	/// If a path winding in the reverse direction is desired, call `trim` on the `Subpath` returned from `Subpath::reverse`.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#subpath/trim/solo" title="Trim Demo"></iframe>
-	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<ManipulatorGroupId> {
+	pub fn trim(&self, t1: SubpathTValue, t2: SubpathTValue) -> Subpath<PointId> {
 		// Return a clone of the Subpath if it is not long enough to be a valid Bezier
 		if self.manipulator_groups.is_empty() {
 			return Subpath {
@@ -196,7 +196,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 			cloned_manipulator_groups
 				.drain(range_start..range_end.min(cloned_manipulator_groups.len()))
-				.collect::<Vec<ManipulatorGroup<ManipulatorGroupId>>>()
+				.collect::<Vec<ManipulatorGroup<PointId>>>()
 		};
 
 		// Adjust curve indices to match the cloned list
@@ -255,7 +255,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: front_split.start(),
 			in_handle: None,
 			out_handle: front_split.handle_start(),
-			id: ManipulatorGroupId::new(),
+			id: PointId::new(),
 		};
 
 		// Update the last two manipulator groups to match the back_split
@@ -264,7 +264,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: back_split.end(),
 			in_handle: back_split.handle_end(),
 			out_handle: None,
-			id: ManipulatorGroupId::new(),
+			id: PointId::new(),
 		};
 
 		Subpath {
@@ -313,7 +313,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	// at the incorrect location. This can be avoided by first trimming the two Subpaths at any extrema, effectively ignoring loopbacks.
 	/// Helper function to clip overlap of two intersecting open Subpaths. Returns an optional, as intersections may not exist for certain arrangements and distances.
 	/// Assumes that the Subpaths represents simple Bezier segments, and clips the Subpaths at the last intersection of the first Subpath, and first intersection of the last Subpath.
-	fn clip_simple_subpaths(subpath1: &Subpath<ManipulatorGroupId>, subpath2: &Subpath<ManipulatorGroupId>) -> Option<(Subpath<ManipulatorGroupId>, Subpath<ManipulatorGroupId>)> {
+	fn clip_simple_subpaths(subpath1: &Subpath<PointId>, subpath2: &Subpath<PointId>) -> Option<(Subpath<PointId>, Subpath<PointId>)> {
 		// Split the first subpath at its last intersection
 		let intersections1 = subpath1.subpath_intersections(subpath2, None, None);
 		if intersections1.is_empty() {
@@ -335,7 +335,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns a subpath that results from rotating this subpath around the origin by the given angle (in radians).
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#subpath/rotate/solo" title="Rotate Demo"></iframe>
-	pub fn rotate(&self, angle: f64) -> Subpath<ManipulatorGroupId> {
+	pub fn rotate(&self, angle: f64) -> Subpath<PointId> {
 		let mut rotated_subpath = self.clone();
 
 		let affine_transform: DAffine2 = DAffine2::from_angle(angle);
@@ -345,7 +345,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns a subpath that results from rotating this subpath around the provided point by the given angle (in radians).
-	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<ManipulatorGroupId> {
+	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<PointId> {
 		// Translate before and after the rotation to account for the pivot
 		let translate: DAffine2 = DAffine2::from_translation(pivot);
 		let rotate: DAffine2 = DAffine2::from_angle(angle);
@@ -359,7 +359,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Reduces the segments of the subpath into simple subcurves, then scales each subcurve a set `distance` away.
 	/// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
 	/// <iframe frameBorder="0" width="100%" height="400px" src="https://graphite.rs/libraries/bezier-rs#subpath/offset/solo" title="Offset Demo"></iframe>
-	pub fn offset(&self, distance: f64, join: Join) -> Subpath<ManipulatorGroupId> {
+	pub fn offset(&self, distance: f64, join: Join) -> Subpath<PointId> {
 		assert!(self.len_segments() > 1, "Cannot offset an empty Subpath.");
 
 		// An offset at a distance 0 from the curve is simply the same curve
@@ -368,11 +368,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			return self.clone();
 		}
 
-		let mut subpaths = self
-			.iter()
-			.filter(|bezier| !bezier.is_point())
-			.map(|bezier| bezier.offset(distance))
-			.collect::<Vec<Subpath<ManipulatorGroupId>>>();
+		let mut subpaths = self.iter().filter(|bezier| !bezier.is_point()).map(|bezier| bezier.offset(distance)).collect::<Vec<Subpath<PointId>>>();
 		let mut drop_common_point = vec![true; self.len()];
 
 		// Clip or join consecutive Subpaths
@@ -489,8 +485,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Helper function to combine the two offsets that make up an outline.
-	pub(crate) fn combine_outline(&self, other: &Subpath<ManipulatorGroupId>, cap: Cap) -> Subpath<ManipulatorGroupId> {
-		let mut result_manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = vec![];
+	pub(crate) fn combine_outline(&self, other: &Subpath<PointId>, cap: Cap) -> Subpath<PointId> {
+		let mut result_manipulator_groups: Vec<ManipulatorGroup<PointId>> = vec![];
 		result_manipulator_groups.extend_from_slice(self.manipulator_groups());
 		match cap {
 			Cap::Butt => {
@@ -527,7 +523,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// - `distance` - The outline's distance from the curve.
 	/// - `join` - The join type used to cap the endpoints of open bezier curves, and join successive subpath segments.
 	/// <iframe frameBorder="0" width="100%" height="425px" src="https://graphite.rs/libraries/bezier-rs#subpath/outline/solo" title="Outline Demo"></iframe>
-	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<ManipulatorGroupId>, Option<Subpath<ManipulatorGroupId>>) {
+	pub fn outline(&self, distance: f64, join: Join, cap: Cap) -> (Subpath<PointId>, Option<Subpath<PointId>>) {
 		let is_point = self.is_point();
 		let (pos_offset, neg_offset) = if is_point {
 			let point = self.manipulator_groups[0].anchor;

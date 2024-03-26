@@ -1,4 +1,4 @@
-use crate::uuid::ManipulatorGroupId;
+use crate::vector::PointId;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 
@@ -7,13 +7,13 @@ use rustybuzz::ttf_parser::{GlyphId, OutlineBuilder};
 use rustybuzz::{GlyphBuffer, UnicodeBuffer};
 
 struct Builder {
-	current_subpath: Subpath<ManipulatorGroupId>,
-	other_subpaths: Vec<Subpath<ManipulatorGroupId>>,
+	current_subpath: Subpath<PointId>,
+	other_subpaths: Vec<Subpath<PointId>>,
 	pos: DVec2,
 	offset: DVec2,
 	ascender: f64,
 	scale: f64,
-	id: ManipulatorGroupId,
+	id: PointId,
 }
 
 impl Builder {
@@ -80,7 +80,7 @@ fn wrap_word(line_width: Option<f64>, glyph_buffer: &GlyphBuffer, scale: f64, x_
 	false
 }
 
-pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Vec<Subpath<ManipulatorGroupId>> {
+pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, line_width: Option<f64>) -> Vec<Subpath<PointId>> {
 	let buzz_face = match buzz_face {
 		Some(face) => face,
 		// Show blank layer if font has not loaded
@@ -96,7 +96,7 @@ pub fn to_path(str: &str, buzz_face: Option<rustybuzz::Face>, font_size: f64, li
 		offset: DVec2::ZERO,
 		ascender: (buzz_face.ascender() as f64 / buzz_face.height() as f64) * font_size / scale,
 		scale,
-		id: ManipulatorGroupId::ZERO,
+		id: PointId::ZERO,
 	};
 
 	for line in str.split('\n') {

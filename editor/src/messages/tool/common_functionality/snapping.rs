@@ -9,7 +9,7 @@ use crate::messages::prelude::*;
 use bezier_rs::{Subpath, TValue};
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::PointId;
 use std::cmp::Ordering;
 pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
 
@@ -150,7 +150,7 @@ pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
-	pub manipulators: Vec<(LayerNodeIdentifier, ManipulatorGroupId)>,
+	pub manipulators: Vec<(LayerNodeIdentifier, PointId)>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
 impl<'a> SnapData<'a> {
@@ -172,7 +172,7 @@ impl<'a> SnapData<'a> {
 	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
 		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
 	}
-	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<ManipulatorGroupId>) -> bool {
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<PointId>) -> bool {
 		self.manipulators.contains(&(layer, manipulator.into()))
 	}
 }
@@ -327,7 +327,7 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
 				let Some(curve) = curve else { continue };
-				overlay_context.outline::<ManipulatorGroupId>([Subpath::from_bezier(curve)].iter(), to_viewport);
+				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad);

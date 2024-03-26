@@ -12,9 +12,9 @@ use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, 
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 
 use graph_craft::document::NodeId;
-use graphene_core::uuid::{generate_uuid, ManipulatorGroupId};
+use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -795,7 +795,7 @@ impl Fsm for PenToolFsmState {
 }
 
 /// Pushes a [ManipulatorGroup] to the current layer via a [GraphOperationMessage].
-fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<ManipulatorGroupId>) -> Message {
+fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<PointId>) -> Message {
 	let Some(layer) = layer else {
 		return Message::NoOp;
 	};

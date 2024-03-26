@@ -1,5 +1,4 @@
-use crate::uuid::ManipulatorGroupId;
-use crate::vector::VectorData;
+use crate::vector::{PointId, VectorData};
 use crate::Node;
 
 use bezier_rs::Subpath;
@@ -103,7 +102,7 @@ pub struct PathGenerator<ColinearManipulators> {
 }
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>, colinear_manipulators: Vec<ManipulatorGroupId>) -> super::VectorData {
+fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data);
 	vector_data.colinear_manipulators = colinear_manipulators;
 	vector_data

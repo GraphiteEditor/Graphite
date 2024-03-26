@@ -4,7 +4,7 @@ use crate::utils::{SubpathTValue, TValue, TValueType};
 use glam::DVec2;
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
-impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Return a selection of equidistant points on the bezier curve.
 	/// If no value is provided for `steps`, then the function will default `steps` to be 10.
 	/// <iframe frameBorder="0" width="100%" height="350px" src="https://graphite.rs/libraries/bezier-rs#subpath/lookup-table/solo" title="Lookup-Table Demo"></iframe>

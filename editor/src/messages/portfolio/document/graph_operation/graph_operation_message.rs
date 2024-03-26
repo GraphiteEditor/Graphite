@@ -9,9 +9,9 @@ use graph_craft::document::NodeId;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::vector::PointId;
 use graphene_core::{Artboard, Color};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -83,7 +83,7 @@ pub enum GraphOperationMessage {
 	},
 	NewVectorLayer {
 		id: NodeId,
-		subpaths: Vec<Subpath<ManipulatorGroupId>>,
+		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},

@@ -12,6 +12,8 @@ macro_rules! create_ids {
 			pub struct $id(u64);
 
 			impl $id {
+				pub const ZERO: $id = $id(0);
+
 				/// Generate a new random id
 				pub fn generate() -> Self {
 					Self(crate::uuid::generate_uuid())
@@ -19,6 +21,10 @@ macro_rules! create_ids {
 
 				pub fn inner(self) -> u64 {
 					self.0
+				}
+
+				pub fn next_id(self) -> Self {
+					Self(self.0 + 1)
 				}
 			}
 		)*
@@ -55,13 +61,27 @@ impl PointDomain {
 		self.positions.clear();
 	}
 
+	pub fn retain(&mut self, f: impl Fn(&PointId) -> bool) {
+		let mut keep = self.id.iter().map(&f);
+		self.positions.retain(|_| keep.next().unwrap_or_default());
+		self.id.retain(f);
+	}
+
 	pub fn push(&mut self, id: PointId, position: DVec2) {
+		if self.id.contains(&id) {
+			warn!("Duplicate point");
+			return;
+		}
 		self.id.push(id);
 		self.positions.push(position);
 	}
 
 	pub fn positions(&self) -> &[DVec2] {
 		&self.positions
+	}
+
+	pub fn positions_mut(&mut self) -> impl Iterator<Item = (PointId, &mut DVec2)> {
+		self.id.iter().copied().zip(self.positions.iter_mut())
 	}
 
 	pub fn ids(&self) -> &[PointId] {
@@ -99,7 +119,6 @@ pub struct SegmentDomain {
 	ids: Vec<SegmentId>,
 	start_point: Vec<PointId>,
 	end_point: Vec<PointId>,
-	// TODO: Also store handle points as `PointId`s rather than Bezier-rs's internal `DVec2`s
 	handles: Vec<bezier_rs::BezierHandles>,
 	stroke: Vec<StrokeId>,
 }
@@ -123,12 +142,41 @@ impl SegmentDomain {
 		self.stroke.clear();
 	}
 
+	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool) {
+		let mut keep = self.ids.iter().map(&f);
+		self.start_point.retain(|_| keep.next().unwrap_or_default());
+		let mut keep = self.ids.iter().map(&f);
+		self.end_point.retain(|_| keep.next().unwrap_or_default());
+		let mut keep = self.ids.iter().map(&f);
+		self.handles.retain(|_| keep.next().unwrap_or_default());
+		let mut keep = self.ids.iter().map(&f);
+		self.stroke.retain(|_| keep.next().unwrap_or_default());
+		self.ids.retain(f);
+	}
+
 	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
+		if self.ids.contains(&id) {
+			warn!("Duplicate segment");
+			return;
+		}
 		self.ids.push(id);
 		self.start_point.push(start);
 		self.end_point.push(end);
 		self.handles.push(handles);
 		self.stroke.push(stroke);
+	}
+
+	pub fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {
+		self.ids.iter().copied().zip(self.start_point.iter_mut())
+	}
+	pub fn end_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {
+		self.ids.iter().copied().zip(self.end_point.iter_mut())
+	}
+	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles)> {
+		self.ids.iter().copied().zip(self.handles.iter_mut())
+	}
+	pub fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
+		self.ids.iter().copied().zip(self.stroke.iter_mut())
 	}
 
 	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
@@ -184,7 +232,19 @@ impl RegionDomain {
 		self.fill.clear();
 	}
 
+	pub fn retain(&mut self, f: impl Fn(&RegionId) -> bool) {
+		let mut keep = self.ids.iter().map(&f);
+		self.segment_range.retain(|_| keep.next().unwrap_or_default());
+		let mut keep = self.ids.iter().map(&f);
+		self.fill.retain(|_| keep.next().unwrap_or_default());
+		self.ids.retain(&f);
+	}
+
 	pub fn push(&mut self, id: RegionId, segment_range: core::ops::RangeInclusive<SegmentId>, fill: FillId) {
+		if self.ids.contains(&id) {
+			warn!("Duplicate region");
+			return;
+		}
 		self.ids.push(id);
 		self.segment_range.push(segment_range);
 		self.fill.push(fill);
@@ -192,6 +252,14 @@ impl RegionDomain {
 
 	fn _resolve_id(&self, id: RegionId) -> Option<usize> {
 		self.ids.iter().position(|&check_id| check_id == id)
+	}
+
+	pub fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut core::ops::RangeInclusive<SegmentId>)> {
+		self.ids.iter().copied().zip(self.segment_range.iter_mut())
+	}
+
+	pub fn fill_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut FillId)> {
+		self.ids.iter().copied().zip(self.fill.iter_mut())
 	}
 
 	fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
@@ -237,17 +305,6 @@ impl super::VectorData {
 		let mut first_point = None;
 		let mut groups = Vec::new();
 		let mut last: Option<(PointId, bezier_rs::BezierHandles)> = None;
-		let end_point = |last: Option<(PointId, bezier_rs::BezierHandles)>, next: Option<PointId>, groups: &mut Vec<_>| {
-			if let Some((disconnected_previous, previous_handle)) = last.filter(|(end, _)| !next.is_some_and(|next| next == *end)) {
-				groups.push(bezier_rs::ManipulatorGroup {
-					anchor: self.point_domain.pos_from_id(disconnected_previous)?,
-					in_handle: previous_handle.end(),
-					out_handle: None,
-					id: disconnected_previous,
-				});
-			}
-			Some(())
-		};
 
 		for (handle, start, end) in segments {
 			if last.is_some_and(|(previous_end, _)| previous_end != start) {
@@ -255,7 +312,6 @@ impl super::VectorData {
 				return None;
 			}
 			first_point = Some(first_point.unwrap_or(start));
-			end_point(last, Some(start), &mut groups)?;
 
 			groups.push(bezier_rs::ManipulatorGroup {
 				anchor: self.point_domain.pos_from_id(start)?,
@@ -266,8 +322,21 @@ impl super::VectorData {
 
 			last = Some((end, handle));
 		}
-		end_point(last, None, &mut groups)?;
+
 		let closed = groups.len() > 1 && last.map(|(point, _)| point) == first_point;
+
+		if let Some((end, last_handle)) = last {
+			if closed {
+				groups[0].in_handle = last_handle.end();
+			} else {
+				groups.push(bezier_rs::ManipulatorGroup {
+					anchor: self.point_domain.pos_from_id(end)?,
+					in_handle: last_handle.end(),
+					out_handle: None,
+					id: end,
+				});
+			}
+		}
 		Some(bezier_rs::Subpath::new(groups, closed))
 	}
 
@@ -294,6 +363,17 @@ impl super::VectorData {
 		StrokePathIter { vector_data: self, segment_index: 0 }
 	}
 
+	/// Construct an iterator [`bezier_rs::ManipulatorGroup`] for stroke.
+	pub fn manipulator_groups(&self) -> impl Iterator<Item = bezier_rs::ManipulatorGroup<PointId>> + '_ {
+		self.stroke_bezier_paths().flat_map(|mut path| std::mem::take(path.manipulator_groups_mut()))
+	}
+
+	/// Get manipulator by id
+	pub fn manipulator_group_id(&self, id: impl Into<PointId>) -> Option<bezier_rs::ManipulatorGroup<PointId>> {
+		let id = id.into();
+		self.manipulator_groups().find(|group| group.id == id)
+	}
+
 	/// Transforms this vector data
 	pub fn transform(&mut self, transform: DAffine2) {
 		self.point_domain.transform(transform);
@@ -301,6 +381,7 @@ impl super::VectorData {
 	}
 }
 
+#[derive(Clone)]
 pub struct StrokePathIter<'a> {
 	vector_data: &'a super::VectorData,
 	segment_index: usize,
@@ -337,11 +418,6 @@ impl<'a> Iterator for StrokePathIter<'a> {
 impl bezier_rs::Identifier for PointId {
 	fn new() -> Self {
 		Self::generate()
-	}
-}
-impl From<crate::uuid::ManipulatorGroupId> for PointId {
-	fn from(value: crate::uuid::ManipulatorGroupId) -> Self {
-		Self(value.inner())
 	}
 }
 
