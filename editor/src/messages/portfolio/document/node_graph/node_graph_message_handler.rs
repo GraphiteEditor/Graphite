@@ -478,6 +478,35 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				self.update_selection_action_buttons(document_network, selected_nodes, responses);
 			}
+			NodeGraphMessage::ToggleSelectedLocked => {
+				if let Some(network) = document_network.nested_network(&self.network) {
+					responses.add(DocumentMessage::StartTransaction);
+
+					let new_locked = !selected_nodes.selected_nodes().any(|id| network.locked.contains(id));
+					for &node_id in selected_nodes.selected_nodes() {
+						responses.add(NodeGraphMessage::SetLocked { node_id, locked: new_locked });
+					}
+				}
+			}
+			NodeGraphMessage::ToggleLocked { node_id } => {
+				if let Some(network) = document_network.nested_network(&self.network) {
+					let new_locked = !network.locked.contains(&node_id);
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked: new_locked });
+				}
+			}
+			NodeGraphMessage::SetLocked { node_id, locked } => {
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
+					if !locked {
+						network.locked.retain(|&id| node_id != id);
+					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+						network.locked.push(node_id);
+					}
+					if network.connected_to_output(node_id) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+				self.update_selection_action_buttons(document_network, selected_nodes, responses);
+			}
 			NodeGraphMessage::SetName { node_id, name } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetNameImpl { node_id, name });
@@ -554,7 +583,7 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	/// Updates the buttons for disable and preview
+	/// Updates the buttons for disable, locked and preview
 	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		if let Some(network) = document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();
@@ -566,6 +595,7 @@ impl NodeGraphMessageHandler {
 			if selection.next().is_some() {
 				// Check if any of the selected nodes are disabled
 				let is_hidden = selected_nodes.selected_nodes().any(|id| network.disabled.contains(id));
+				let is_locked = selected_nodes.selected_nodes().any(|id| network.locked.contains(id));
 
 				// Check if multiple nodes are selected
 				let multiple_nodes = selection.next().is_some();
@@ -579,6 +609,15 @@ impl NodeGraphMessageHandler {
 					.on_update(move |_| NodeGraphMessage::ToggleSelectedHidden.into())
 					.widget_holder();
 				widgets.push(hide_button);
+
+				let (lock_unlock_label, lock_unlock_icon) = if is_locked { ("Make Unlock", "Lock") } else { ("Make Lock", "Unlock") };
+				let lock_button = TextButton::new(lock_unlock_label)
+					.icon(Some(lock_unlock_icon.to_string()))
+					.tooltip(if is_locked { "Unlock selected nodes/layers" } else { "Lock selected nodes/layers" }.to_string() + if multiple_nodes { "s" } else { "" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleLocked))
+					.on_update(move |_| NodeGraphMessage::ToggleSelectedLocked.into())
+					.widget_holder();
+				widgets.push(lock_button);
 
 				widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 			}
@@ -746,6 +785,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(node_id),
 				disabled: network.disabled.contains(&node_id),
+				locked: network.locked.contains(&node_id),
 				errors: errors.map(|e| format!("{e:?}")),
 			});
 		}
@@ -775,6 +815,7 @@ impl NodeGraphMessageHandler {
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					disabled: network.disabled.contains(&node_id),
+					locked: network.locked.contains(&node_id),
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

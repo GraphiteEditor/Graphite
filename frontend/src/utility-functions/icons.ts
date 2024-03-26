@@ -119,6 +119,7 @@ import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg"
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
+import Lock from "@graphite-frontend/assets/icon-16px-solid/lock.svg";
 import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite-frontend/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite-frontend/assets/icon-16px-solid/node-color-correction.svg";
@@ -140,6 +141,7 @@ import Rescale from "@graphite-frontend/assets/icon-16px-solid/rescale.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
 import Settings from "@graphite-frontend/assets/icon-16px-solid/settings.svg";
 import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
+import Unlock from "@graphite-frontend/assets/icon-16px-solid/unlock.svg";
 import ViewModeNormal from "@graphite-frontend/assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@graphite-frontend/assets/icon-16px-solid/view-mode-outline.svg";
 import ViewModePixels from "@graphite-frontend/assets/icon-16px-solid/view-mode-pixels.svg";
@@ -187,6 +189,7 @@ const SOLID_16PX = {
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
+	Lock: { svg: Lock, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
@@ -208,6 +211,7 @@ const SOLID_16PX = {
 	Reset: { svg: Reset, size: 16 },
 	Settings: { svg: Settings, size: 16 },
 	Trash: { svg: Trash, size: 16 },
+	Unlock: { svg: Unlock, size: 16 },
 	ViewModeNormal: { svg: ViewModeNormal, size: 16 },
 	ViewModeOutline: { svg: ViewModeOutline, size: 16 },
 	ViewModePixels: { svg: ViewModePixels, size: 16 },

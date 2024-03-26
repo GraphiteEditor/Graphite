@@ -133,6 +133,10 @@
 		editor.instance.toggleLayerVisibility(id);
 	}
 
+	function toggleLayerLock(id: bigint) {
+		editor.instance.toggleLayerLock(id);
+	}
+
 	function handleExpandArrowClick(id: bigint) {
 		editor.instance.toggleLayerExpansion(id);
 	}
@@ -419,6 +423,13 @@
 						size={24}
 						icon={listing.entry.disabled ? "EyeHidden" : "EyeVisible"}
 						tooltip={listing.entry.disabled ? "Disabled" : "Enabled"}
+					/>
+					<IconButton
+						class={"visibility"}
+						action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+						size={24}
+						icon={listing.entry.locked ? "Lock" : "Unlock"}
+						tooltip={listing.entry.locked ? "Locked" : "Unlocked"}
 					/>
 				</LayoutRow>
 			{/each}

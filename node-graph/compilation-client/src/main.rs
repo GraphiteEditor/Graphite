@@ -40,6 +40,7 @@ fn add_network() -> NodeNetwork {
 		imports: vec![],
 		exports: vec![NodeOutput::new(NodeId(0), 0)],
 		disabled: vec![],
+		locked: vec![],
 		previous_outputs: None,
 		nodes: [DocumentNode {
 			name: "Blend Image".into(),

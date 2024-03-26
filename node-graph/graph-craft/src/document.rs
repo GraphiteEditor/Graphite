@@ -526,6 +526,7 @@ pub struct NodeNetwork {
 	/// Nodes that the user has disabled/hidden with the visibility eye icon.
 	/// These nodes get replaced with Identity nodes during the graph flattening step.
 	pub disabled: Vec<NodeId>,
+	pub locked: Vec<NodeId>,
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
@@ -541,6 +542,7 @@ impl std::hash::Hash for NodeNetwork {
 			node.hash(state);
 		}
 		self.disabled.hash(state);
+		self.locked.hash(state);
 		self.previous_outputs.hash(state);
 	}
 }
@@ -568,6 +570,7 @@ impl NodeNetwork {
 			exports: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
 			disabled: vec![],
+			locked: vec![],
 			previous_outputs: None,
 		}
 	}
@@ -816,6 +819,7 @@ impl NodeNetwork {
 		self.imports.iter_mut().for_each(|id| *id = f(*id));
 		self.exports.iter_mut().for_each(|output| output.node_id = f(output.node_id));
 		self.disabled.iter_mut().for_each(|id| *id = f(*id));
+		self.locked.iter_mut().for_each(|id| *id = f(*id));
 		self.previous_outputs
 			.iter_mut()
 			.for_each(|nodes| nodes.iter_mut().for_each(|output| output.node_id = f(output.node_id)));
@@ -984,6 +988,7 @@ impl NodeNetwork {
 			// Copy nodes from the inner network into the parent network
 			self.nodes.extend(inner_network.nodes);
 			self.disabled.extend(inner_network.disabled);
+			self.locked.extend(inner_network.locked);
 
 			let mut network_offsets = HashMap::new();
 			assert_eq!(
