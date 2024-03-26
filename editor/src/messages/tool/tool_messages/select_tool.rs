@@ -1031,7 +1031,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::arrow_keys("Nudge Selected"),
 						HintInfo::keys([Key::Shift], "10x").prepend_plus(),
 						HintInfo::keys([Key::Alt], "Resize Corner").prepend_plus(),
-						HintInfo::keys([Key::Control], "Opp. Corner").prepend_plus(),
+						HintInfo::keys([Key::Control], "Other Corner").prepend_plus(),
 					]),
 					HintGroup(vec![
 						HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),

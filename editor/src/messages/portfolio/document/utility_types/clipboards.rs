@@ -19,6 +19,7 @@ pub const INTERNAL_CLIPBOARD_COUNT: u8 = Clipboard::_InternalClipboardCount as u
 pub struct CopyBufferEntry {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	pub selected: bool,
+	pub disabled: bool,
 	pub collapsed: bool,
 	pub alias: String,
 }
