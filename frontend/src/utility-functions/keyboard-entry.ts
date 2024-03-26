@@ -7,7 +7,11 @@ export function makeKeyboardModifiersBitfield(e: WheelEvent | PointerEvent | Mou
 		// Control (all platforms)
 		(Number(e.ctrlKey) << 2) |
 		// Meta (Windows/Linux) or Command (Mac)
-		(Number(e.metaKey) << 3)
+		(Number(e.metaKey) << 3) |
+		// Browser Back Button (Chrome)
+		(Number(e.getModifierState("BrowserBack")) << 4) |
+		// Browser Forward Button (Chrome)
+		(Number(e.getModifierState("BrowserForward")) << 5)
 	);
 }
 
