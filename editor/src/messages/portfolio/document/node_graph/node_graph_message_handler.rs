@@ -465,25 +465,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 			}
 			NodeGraphMessage::SetVisibility { node_id, visible } => {
-				if let Some(network) = document_network.nested_network_mut(&self.network) {
-					let mut visibility = None;
-					if visible {
-						visibility = Some(true);
-					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
-						visibility = Some(false);
-					}
+				(|| {
+					let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
-					if let Some(visibility) = visibility {
-						if let Some(node) = network.nodes.get_mut(&node_id) {
-							node.visible = visibility;
-						}
-					}
+					let input_or_output = network.imports.contains(&node_id) || network.original_outputs().iter().any(|output| output.node_id == node_id);
+					let visibility = if visible {
+						true
+					} else if !input_or_output {
+						false
+					} else {
+						return;
+					};
+
+					// Set what we determined shall be the visibility of the node
+					let Some(node) = network.nodes.get_mut(&node_id) else { return };
+					node.visible = visibility;
 
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-				}
+				})();
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
