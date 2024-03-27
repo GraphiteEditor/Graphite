@@ -83,7 +83,18 @@ impl OverlayContext {
 		self.render_context.fill();
 		self.render_context.stroke();
 	}
-
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		//let radius = radius.unwrap_or(DEFAULT_RADIUS); //DEFAULT_RADIUS has to be added to consts in order to use an option
+        let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
+        let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let position = position.round();
+		self.render_context.begin_path();
+        self.render_context.arc(position.x, position.y, radius, 0.0, 2.0 * PI).expect("draw circle");
+        self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+        self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
+        self.render_context.fill();
+        self.render_context.stroke();
+	}
 	pub fn pivot(&mut self, position: DVec2) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
