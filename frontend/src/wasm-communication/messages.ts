@@ -124,7 +124,7 @@ export class FrontendNode {
 
 	readonly previewed!: boolean;
 
-	readonly disabled!: boolean;
+	readonly visible!: boolean;
 
 	readonly errors!: string | undefined;
 }
@@ -613,7 +613,7 @@ export class LayerPanelEntry {
 
 	expanded!: boolean;
 
-	disabled!: boolean;
+	visible!: boolean;
 
 	parentId!: bigint | undefined;
 

@@ -202,7 +202,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							)
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
-							disabled: !active_document.selected_nodes.layer_visible(layer, active_document.network(), active_document.metadata()),
+							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							collapsed: false,
 							alias: previous_alias,
 						});
@@ -388,8 +388,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						if entry.selected {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						if entry.disabled {
-							responses.add(NodeGraphMessage::SetHidden { node_id: id, hidden: entry.disabled });
+						if !entry.visible {
+							responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
 						}
 					}
 				};
@@ -419,8 +419,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							if entry.selected {
 								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 							}
-							if entry.disabled {
-								responses.add(NodeGraphMessage::SetHidden { node_id: id, hidden: entry.disabled });
+							if !entry.visible {
+								responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
 							}
 						}
 

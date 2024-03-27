@@ -757,8 +757,8 @@ impl JsEditorHandle {
 	/// Toggle visibility of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerVisibility)]
 	pub fn toggle_layer_visibility(&self, id: u64) {
-		let id = NodeId(id);
-		let message = NodeGraphMessage::ToggleHidden { node_id: id };
+		let node_id = NodeId(id);
+		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
 	}
 
