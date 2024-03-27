@@ -5,9 +5,11 @@ use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, Gr
 use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
+use graphene_core::raster::color::Color;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
+	let grid_color: Color = document.snapping_state.grid.grid_color;
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
 		return;
 	};
@@ -33,7 +35,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(COLOR_OVERLAY_GRAY));
+			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color.rgb_hex_prefixed()));
 		}
 	}
 }
@@ -122,6 +124,15 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
 		update_val::<NumberInput>(grid, move |grid, val| {
+			if let Some(val) = val.value {
+				if let Some(update) = update(grid) {
+					*update = val;
+				}
+			}
+		})
+	};
+	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
+		update_val::<ColorButton>(grid, move |grid, val| {
 			if let Some(val) = val.value {
 				if let Some(update) = update(grid) {
 					*update = val;
@@ -252,5 +263,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		}),
 	}
 
+	widgets.push(LayoutGroup::Row{
+		widgets: vec![				
+			TextLabel::new("Color").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			ColorButton::new(Some(grid.grid_color))
+				.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
+				.widget_holder(),
+		]});
+		
 	widgets
 }

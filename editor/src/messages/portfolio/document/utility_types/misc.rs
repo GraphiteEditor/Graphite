@@ -1,6 +1,7 @@
 use glam::DVec2;
-
 use std::fmt;
+use crate::consts::COLOR_OVERLAY_GRAY;
+use graphene_core::raster::Color;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -86,6 +87,7 @@ impl Default for SnappingState {
 			grid: GridSnapping {
 				origin: DVec2::ZERO,
 				grid_type: GridType::RECTANGLE,
+				grid_color: Color::from_rgb_str_prefixed(COLOR_OVERLAY_GRAY.to_uppercase().as_str()).expect("color"),
 			},
 			tolerance: 8.,
 			artboards: true,
@@ -200,6 +202,7 @@ impl GridType {
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
+	pub grid_color: Color,
 }
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
