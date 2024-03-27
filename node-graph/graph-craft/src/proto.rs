@@ -200,7 +200,7 @@ impl ConstructionArgs {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-/// A protonode is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
+/// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -718,7 +718,7 @@ impl TypingContext {
 			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
-		// Get the node input type from the protonode declaration
+		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),

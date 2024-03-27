@@ -421,8 +421,8 @@
 						class={"visibility"}
 						action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
 						size={24}
-						icon={listing.entry.disabled ? "EyeHidden" : "EyeVisible"}
-						tooltip={listing.entry.disabled ? "Disabled" : "Enabled"}
+						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
+						tooltip={listing.entry.visible ? "Visible" : "Hidden"}
 					/>
 					<IconButton
 						class={"visibility"}

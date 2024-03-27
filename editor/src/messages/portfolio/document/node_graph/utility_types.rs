@@ -84,8 +84,7 @@ pub struct FrontendNode {
 	#[serde(rename = "exposedOutputs")]
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
 	pub position: (i32, i32),
-	pub disabled: bool,
-	pub locked: bool,
+	pub visible: bool,
 	pub previewed: bool,
 	pub errors: Option<String>,
 }

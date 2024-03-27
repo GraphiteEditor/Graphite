@@ -89,13 +89,13 @@ pub enum NodeGraphMessage {
 	ShiftNode {
 		node_id: NodeId,
 	},
-	ToggleSelectedHidden,
-	ToggleHidden {
+	ToggleSelectedVisibility,
+	ToggleVisibility {
 		node_id: NodeId,
 	},
-	SetHidden {
+	SetVisibility {
 		node_id: NodeId,
-		hidden: bool,
+		visible: bool,
 	},
 	ToggleSelectedLocked,
 	ToggleLocked {

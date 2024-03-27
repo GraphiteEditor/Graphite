@@ -124,7 +124,7 @@ export class FrontendNode {
 
 	readonly previewed!: boolean;
 
-	readonly disabled!: boolean;
+	readonly visible!: boolean;
 
 	readonly locked!: boolean;
 
@@ -615,7 +615,7 @@ export class LayerPanelEntry {
 
 	expanded!: boolean;
 
-	disabled!: boolean;
+	visible!: boolean;
 
 	locked!: boolean;
 

@@ -14,12 +14,15 @@ use std::num::NonZeroU64;
 // DocumentMetadata
 // ================
 
+// TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
+// TODO: it might be better to have a system that can query the state of the node network on demand.
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	artboards: HashSet<LayerNodeIdentifier>,
 	folders: HashSet<LayerNodeIdentifier>,
+	hidden: HashSet<NodeId>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
@@ -29,10 +32,11 @@ impl Default for DocumentMetadata {
 	fn default() -> Self {
 		Self {
 			upstream_transforms: HashMap::new(),
-			click_targets: HashMap::new(),
 			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
+			hidden: HashSet::new(),
+			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
 	}
@@ -118,6 +122,10 @@ impl DocumentMetadata {
 		self.artboards.contains(&layer)
 	}
 
+	pub fn node_is_visible(&self, layer: NodeId) -> bool {
+		!self.hidden.contains(&layer)
+	}
+
 	/// Folders sorted from most nested to least nested
 	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
 		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
@@ -138,8 +146,9 @@ impl DocumentMetadata {
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
-		self.folders = HashSet::new();
 		self.artboards = HashSet::new();
+		self.folders = HashSet::new();
+		self.hidden = HashSet::new();
 
 		let id = graph.exports[0].node_id;
 		let Some(output_node) = graph.nodes.get(&id) else {
@@ -150,22 +159,26 @@ impl DocumentMetadata {
 		};
 		let parent = LayerNodeIdentifier::ROOT;
 		let mut stack = vec![(layer_node, node_id, parent)];
-		while let Some((node, id, parent)) = stack.pop() {
-			let mut current = Some((node, id));
-			while let Some(&(current_node, current_id)) = current.as_ref() {
-				let current_identifier = LayerNodeIdentifier::new_unchecked(current_id);
-				if !self.structure.contains_key(&current_identifier) {
-					parent.push_child(self, current_identifier);
+		while let Some((node, node_id, parent)) = stack.pop() {
+			let mut current = Some((node, node_id));
+			while let Some(&(current_node, current_node_id)) = current.as_ref() {
+				let current_layer_id = LayerNodeIdentifier::new_unchecked(current_node_id);
+				if !self.structure.contains_key(&current_layer_id) {
+					parent.push_child(self, current_layer_id);
 
 					if let Some((child_node, child_id)) = first_child_layer(graph, current_node) {
-						stack.push((child_node, child_id, current_identifier));
+						stack.push((child_node, child_id, current_layer_id));
 					}
 
-					if is_artboard(current_identifier, graph) {
-						self.artboards.insert(current_identifier);
+					if is_artboard(current_layer_id, graph) {
+						self.artboards.insert(current_layer_id);
 					}
-					if is_folder(current_identifier, graph) {
-						self.folders.insert(current_identifier);
+					if is_folder(current_layer_id, graph) {
+						self.folders.insert(current_layer_id);
+					}
+
+					if !current_node.visible {
+						self.hidden.insert(current_node_id);
 					}
 				}
 
@@ -532,9 +545,9 @@ impl<'a> Iterator for AxisIter<'a> {
 	}
 }
 
-// ==============
+// ===============
 // DescendantsIter
-// ==============
+// ===============
 
 #[derive(Clone)]
 pub struct DescendantsIter<'a> {

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 pub enum Clipboard {
 	Internal,
 
-	_InternalClipboardCount, // Keep this as the last entry in internal clipboards since it is used for counting the number of enum variants
+	_InternalClipboardCount, // Keep this as the last entry of **internal** clipboards since it is used for counting the number of enum variants
 
 	Device,
 }
@@ -19,7 +19,7 @@ pub const INTERNAL_CLIPBOARD_COUNT: u8 = Clipboard::_InternalClipboardCount as u
 pub struct CopyBufferEntry {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	pub selected: bool,
-	pub disabled: bool,
+	pub visible: bool,
 	pub collapsed: bool,
 	pub alias: String,
 }

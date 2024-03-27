@@ -17,7 +17,7 @@ pub struct DynamicExecutor {
 	output: NodeId,
 	/// Stores all of the dynamic node structs.
 	tree: BorrowTree,
-	/// Stores the types of the protonodes.
+	/// Stores the types of the proto nodes.
 	typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: Vec<NodeId>,
@@ -111,11 +111,11 @@ impl<'a, I: StaticType + 'a> Executor<I, TaggedValue> for &'a DynamicExecutor {
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes.
 	nodes: HashMap<NodeId, SharedNodeContainer>,
-	/// A hashmap from the document path to the protonode ID.
+	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Vec<NodeId>, NodeId>,
-	/// Each document input source maps to one protonode input (however one protonode input may come from several sources)
+	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	inputs_source_map: HashMap<Source, (NodeId, usize)>,
-	/// A mapping of document input sources to the (single) protonode output
+	/// A mapping of document input sources to the (single) proto node output
 	outputs_source_map: HashMap<Source, NodeId>,
 }
 
@@ -193,7 +193,7 @@ impl BorrowTree {
 			.extend((0..params).flat_map(|i| proto_node.original_location.inputs(i).map(move |source| (source, (id, i)))));
 		self.outputs_source_map.extend(proto_node.original_location.outputs(0).map(|source| (source, id)));
 		for x in proto_node.original_location.outputs_source.values() {
-			assert_eq!(*x, 0, "protonodes should refer to output index 0");
+			assert_eq!(*x, 0, "Proto nodes should refer to output index 0");
 		}
 
 		match &proto_node.construction_args {

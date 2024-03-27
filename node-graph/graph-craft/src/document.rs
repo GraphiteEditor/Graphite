@@ -152,18 +152,24 @@ pub struct DocumentNode {
 	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
 	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
+	// TODO: Remove once this references its definition instead (see above TODO).
+	/// Indicates to the UI if a primary output should be drawn for this node.
+	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	#[serde(default = "return_true")]
+	pub visible: bool,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
-	/// When two different protonodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
+	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
+	/// Used as a hash of the graph input where applicable. This ensures that proto nodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub world_state_hash: u64,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
@@ -185,7 +191,7 @@ pub struct Source {
 pub struct OriginalLocation {
 	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
 	pub path: Option<Vec<NodeId>>,
-	/// Each document input source maps to one protonode input (however one protonode input may come from several sources)
+	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	pub inputs_source: HashMap<Source, usize>,
 	/// A list of document sources for the node's output
 	pub outputs_source: HashMap<Source, usize>,
@@ -203,6 +209,7 @@ impl Default for DocumentNode {
 			manual_composition: Default::default(),
 			has_primary_output: true,
 			implementation: Default::default(),
+			visible: true,
 			metadata: Default::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
@@ -272,7 +279,7 @@ impl DocumentNode {
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode. {:#?}", self.name);
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node. {:#?}", self.name);
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
@@ -445,9 +452,9 @@ pub enum DocumentNodeImplementation {
 	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
-	/// This describes a (document) node implemented as a protonode.
+	/// This describes a (document) node implemented as a proto node.
 	///
-	/// A protonode identifier which can be found in `node_registry.rs`.
+	/// A proto node identifier which can be found in `node_registry.rs`.
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -523,10 +530,6 @@ pub struct NodeNetwork {
 	pub exports: Vec<NodeOutput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Nodes that the user has disabled/hidden with the visibility eye icon.
-	/// These nodes get replaced with Identity nodes during the graph flattening step.
-	pub disabled: Vec<NodeId>,
-	pub locked: Vec<NodeId>,
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
@@ -541,8 +544,6 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.disabled.hash(state);
-		self.locked.hash(state);
 		self.previous_outputs.hash(state);
 	}
 }
@@ -569,8 +570,6 @@ impl NodeNetwork {
 			imports: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network(_))).map(|_| NodeId(0)).collect(),
 			exports: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
-			disabled: vec![],
-			locked: vec![],
 			previous_outputs: None,
 		}
 	}
@@ -818,8 +817,6 @@ impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.imports.iter_mut().for_each(|id| *id = f(*id));
 		self.exports.iter_mut().for_each(|output| output.node_id = f(output.node_id));
-		self.disabled.iter_mut().for_each(|id| *id = f(*id));
-		self.locked.iter_mut().for_each(|id| *id = f(*id));
 		self.previous_outputs
 			.iter_mut()
 			.for_each(|nodes| nodes.iter_mut().for_each(|output| output.node_id = f(output.node_id)));
@@ -847,7 +844,7 @@ impl NodeNetwork {
 		outwards_links
 	}
 
-	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting protonodes to the document node for the purposes of typing and finding monitor nodes.
+	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
 		for (node_id, node) in &mut self.nodes {
 			let mut new_path = prefix.to_vec();
@@ -934,8 +931,11 @@ impl NodeNetwork {
 			return;
 		};
 
-		if node.implementation != DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()) && self.disabled.contains(&id) {
-			node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		// If the node is hidden, replace it with an identity node
+		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		if !node.visible && node.implementation != identity_node {
+			node.implementation = identity_node;
+
 			if node.is_layer() {
 				// Connect layer node to the graphic group below
 				node.inputs.drain(..1);
@@ -943,6 +943,7 @@ impl NodeNetwork {
 				node.inputs.drain(1..);
 			}
 			self.nodes.insert(id, node);
+
 			return;
 		}
 
@@ -987,8 +988,6 @@ impl NodeNetwork {
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 			// Copy nodes from the inner network into the parent network
 			self.nodes.extend(inner_network.nodes);
-			self.disabled.extend(inner_network.disabled);
-			self.locked.extend(inner_network.locked);
 
 			let mut network_offsets = HashMap::new();
 			assert_eq!(

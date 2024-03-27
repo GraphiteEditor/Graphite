@@ -176,12 +176,12 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 		<span>Clean, familiar interface built by designers, for designers</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Real-time collaborative editing</span>
+		<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Multiplatform desktop app</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Windows/Mac/Linux/Web/iPad</span>
+		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Real-time collaborative editing</span>
 	</div>
 </div>
 
@@ -211,12 +211,12 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 		<span>Image Editing</span>
 	</div>
 	<div class="informational">
-		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Digital Painting</span>
-	</div>
-	<div class="informational">
 		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Motion Graphics</span>
+	</div>
+	<div class="informational">
+		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
+		<span>Digital Painting</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
