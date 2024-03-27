@@ -489,33 +489,36 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
-				if let Some(network) = document_network.nested_network(&self.network) {
-					responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::StartTransaction);
 
-					let new_locked = !selected_nodes.selected_nodes().any(|id| network.locked.contains(id));
-					for &node_id in selected_nodes.selected_nodes() {
-						responses.add(NodeGraphMessage::SetLocked { node_id, locked: new_locked });
-					}
+				let is_locked = !selected_nodes.selected_nodes().any(|&id| document_metadata.node_is_locked(id));
+
+				for &node_id in selected_nodes.selected_nodes() {
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
 				}
 			}
 			NodeGraphMessage::ToggleLocked { node_id } => {
-				if let Some(network) = document_network.nested_network(&self.network) {
-					let new_locked = !network.locked.contains(&node_id);
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked: new_locked });
-				}
+				responses.add(DocumentMessage::StartTransaction);
+				let is_locked = !document_metadata.node_is_locked(node_id);
+				responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
 			}
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
-					if !locked {
-						network.locked.retain(|&id| node_id != id);
+					let is_locked = if !locked {
+						false
 					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
-						network.locked.push(node_id);
-					}
+						true
+					} else {
+						return;
+					};
+					let Some(node) = network.nodes.get_mut(&node_id) else { return };
+					node.locked = is_locked;
+
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
-				self.update_selection_action_buttons(document_network, selected_nodes, responses);
+				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -619,6 +622,8 @@ impl NodeGraphMessageHandler {
 					.widget_holder();
 				widgets.push(hide_button);
 
+				// Check if any of the selected nodes are locked
+				let is_locked = selected_nodes.selected_nodes().all(|&id| document_metadata.node_is_locked(id));
 				let (lock_unlock_label, lock_unlock_icon) = if is_locked { ("Make Unlock", "Lock") } else { ("Make Lock", "Unlock") };
 				let lock_button = TextButton::new(lock_unlock_label)
 					.icon(Some(lock_unlock_icon.to_string()))
@@ -794,6 +799,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(node_id),
 				visible: node.visible,
+				locked: node.locked,
 				errors: errors.map(|e| format!("{e:?}")),
 			});
 		}
@@ -823,6 +829,7 @@ impl NodeGraphMessageHandler {
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
+					locked: node.locked,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}

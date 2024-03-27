@@ -85,6 +85,7 @@ pub struct FrontendNode {
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
 	pub position: (i32, i32),
 	pub visible: bool,
+	pub locked: bool,
 	pub previewed: bool,
 	pub errors: Option<String>,
 }
