@@ -171,7 +171,6 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				GridType::Rectangle { .. } => 0,
 				GridType::Isometric { .. } => 1,
 				GridType::Dot { .. } => 2,
-				_ => 0,
 			}))
 			.widget_holder(),
 		],
