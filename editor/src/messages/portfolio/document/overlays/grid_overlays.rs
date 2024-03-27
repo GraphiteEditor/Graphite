@@ -79,10 +79,34 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	}
 }
 
+fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
+	let origin = document.snapping_state.grid.origin;
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+		return;
+	};
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+
+	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
+	let min_x = bounds.0.iter().map(|&corner| corner.x).min_by(cmp).unwrap_or_default();
+	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
+	let min_y = bounds.0.iter().map(|&corner| corner.y).min_by(cmp).unwrap_or_default();
+	let max_y = bounds.0.iter().map(|&corner| corner.y).max_by(cmp).unwrap_or_default();
+	for line_index in 0..=((max_x - min_x) / spacing.x).ceil() as i32 {
+		let x_pos = (((min_x - origin.x) / spacing.x).ceil() + line_index as f64) * spacing.x + origin.x;
+		for line_index in 0..=((max_y - min_y) / spacing.y).ceil() as i32 {
+			let y_pos = (((min_y - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
+			let circle_pos =  DVec2::new(x_pos, y_pos);
+			overlay_context.circle(document_to_viewport.transform_point2(circle_pos), 1., Some(COLOR_OVERLAY_GRAY), Some(COLOR_OVERLAY_GRAY));
+		}
+	}		
+}
+
 pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	match document.snapping_state.grid.grid_type {
 		GridType::Rectangle { spacing } => grid_overlay_rectangular(document, overlay_context, spacing),
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => grid_overlay_isometric(document, overlay_context, y_axis_spacing, angle_a, angle_b),
+		GridType::Dot { spacing } => grid_overlay_dot(document, overlay_context, spacing),
 	}
 }
 
@@ -138,9 +162,17 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				RadioEntryData::new("isometric")
 					.label("Isometric")
 					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::ISOMETRIC)),
+				RadioEntryData::new("dot")
+					.label("Dot")
+					.on_update(update_val(grid, |grid, _| grid.grid_type = GridType::DOT)),
 			])
 			.min_width(200)
-			.selected_index(Some(if matches!(grid.grid_type, GridType::Rectangle { .. }) { 0 } else { 1 }))
+			.selected_index(Some(match grid.grid_type {
+				GridType::Rectangle { .. } => 0,
+				GridType::Isometric { .. } => 1,
+				GridType::Dot { .. } => 2,
+				_ => 0,
+			}))
 			.widget_holder(),
 		],
 	});
@@ -197,7 +229,28 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						.widget_holder(),
 				],
 			});
-		}
+		},
+		GridType::Dot { spacing } => widgets.push(LayoutGroup::Row {
+			widgets: vec![
+				TextLabel::new("Spacing").table_align(true).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				NumberInput::new(Some(spacing.x))
+					.label("X")
+					.unit(" px")
+					.min(0.)
+					.min_width(98)
+					.on_update(update_origin(grid, |grid| grid.grid_type.dot_spacing().map(|spacing| &mut spacing.x)))
+					.widget_holder(),
+				Separator::new(SeparatorType::Related).widget_holder(),
+				NumberInput::new(Some(spacing.y))
+					.label("Y")
+					.unit(" px")
+					.min(0.)
+					.min_width(98)
+					.on_update(update_origin(grid, |grid| grid.grid_type.dot_spacing().map(|spacing| &mut spacing.y)))
+					.widget_holder(),
+			],
+		}),
 	}
 
 	widgets
