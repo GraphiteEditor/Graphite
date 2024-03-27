@@ -492,10 +492,13 @@ impl PenToolData {
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| snap_angle || lock_angle) {
 			let resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+
 			let angle = if lock_angle {
 				self.angle
-			} else {
+			} else if (relative - document_pos) != DVec2::ZERO && !lock_angle {
 				(-(relative - document_pos).angle_between(DVec2::X) / resolution).round() * resolution
+			} else {
+				self.angle
 			};
 			document_pos = relative - (relative - document_pos).project_onto(DVec2::new(angle.cos(), angle.sin()));
 
@@ -535,7 +538,11 @@ impl PenToolData {
 		}
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)) {
-			self.angle = -(relative - document_pos).angle_between(DVec2::X)
+			if (relative - document_pos) != DVec2::ZERO {
+				self.angle = -(relative - document_pos).angle_between(DVec2::X)
+			} else {
+				self.angle = 0.0;
+			}
 		}
 
 		transform.inverse().transform_point2(document_pos)
