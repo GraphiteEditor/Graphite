@@ -60,7 +60,7 @@ pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context:
 }
 ```
 
-## Graphene (protonode executor)
+## Graphene (proto node executor)
 
 The graphene crate (found in `gcore/`) and the graphene standard library (found in `gstd/`) is where actual implementation for nodes are located. 
 
@@ -100,7 +100,7 @@ fn test_opacity_node() {
 
 The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f32` and returns it.
 
-## Creating a new protonode
+## Creating a new proto node
 
 Instead of manually implementing the `Node` trait with complex generics, one can use the `node_fn` macro, which can be applied to a function like `opacity_node` with an attribute of the name of the node:
 

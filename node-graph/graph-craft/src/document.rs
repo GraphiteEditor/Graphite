@@ -158,12 +158,12 @@ pub struct DocumentNode {
 	pub implementation: DocumentNodeImplementation,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
-	/// When two different protonodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
+	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// Used as a hash of the graph input where applicable. This ensures that protonodes that depend on the graph's input are always regenerated.
+	/// Used as a hash of the graph input where applicable. This ensures that proto nodes that depend on the graph's input are always regenerated.
 	#[serde(default)]
 	pub world_state_hash: u64,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
@@ -185,7 +185,7 @@ pub struct Source {
 pub struct OriginalLocation {
 	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
 	pub path: Option<Vec<NodeId>>,
-	/// Each document input source maps to one protonode input (however one protonode input may come from several sources)
+	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
 	pub inputs_source: HashMap<Source, usize>,
 	/// A list of document sources for the node's output
 	pub outputs_source: HashMap<Source, usize>,
@@ -272,7 +272,7 @@ impl DocumentNode {
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to protonode. {:#?}", self.name);
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node. {:#?}", self.name);
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
@@ -445,9 +445,9 @@ pub enum DocumentNodeImplementation {
 	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
-	/// This describes a (document) node implemented as a protonode.
+	/// This describes a (document) node implemented as a proto node.
 	///
-	/// A protonode identifier which can be found in `node_registry.rs`.
+	/// A proto node identifier which can be found in `node_registry.rs`.
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -843,7 +843,7 @@ impl NodeNetwork {
 		outwards_links
 	}
 
-	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting protonodes to the document node for the purposes of typing and finding monitor nodes.
+	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
 		for (node_id, node) in &mut self.nodes {
 			let mut new_path = prefix.to_vec();
