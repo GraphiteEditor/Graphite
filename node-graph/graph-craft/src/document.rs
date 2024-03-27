@@ -152,11 +152,15 @@ pub struct DocumentNode {
 	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
 	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
+	// TODO: Remove once this references its definition instead (see above TODO).
+	/// Indicates to the UI if a primary output should be drawn for this node.
+	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	#[serde(default = "return_true")]
 	pub visible: bool,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
