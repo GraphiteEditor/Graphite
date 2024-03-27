@@ -50,7 +50,7 @@ module.exports = {
 		camelcase: ["error", { properties: "always" }],
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
-		"max-len": ["error", { code: 200, tabWidth: 4 }],
+		"max-len": ["error", { code: 200, tabWidth: 4, ignorePattern: `d="([\\s\\S]*?)"` }],
 		"prefer-destructuring": "off",
 		"no-console": "warn",
 		"no-debugger": "warn",
@@ -81,6 +81,8 @@ module.exports = {
 
 		// Import plugin config (for intelligently validating module import statements)
 		"import/no-unresolved": "error",
+		// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
+		"import/no-duplicates": "off",
 		"import/prefer-default-export": "off",
 		"import/no-relative-packages": "error",
 		"import/order": [

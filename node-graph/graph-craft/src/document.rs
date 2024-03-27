@@ -156,6 +156,8 @@ pub struct DocumentNode {
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
+	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
+	pub visible: bool,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
@@ -203,6 +205,7 @@ impl Default for DocumentNode {
 			manual_composition: Default::default(),
 			has_primary_output: true,
 			implementation: Default::default(),
+			visible: true,
 			metadata: Default::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
@@ -523,9 +526,6 @@ pub struct NodeNetwork {
 	pub exports: Vec<NodeOutput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Nodes that the user has disabled/hidden with the visibility eye icon.
-	/// These nodes get replaced with Identity nodes during the graph flattening step.
-	pub disabled: Vec<NodeId>,
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
@@ -540,7 +540,6 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.disabled.hash(state);
 		self.previous_outputs.hash(state);
 	}
 }
@@ -567,7 +566,6 @@ impl NodeNetwork {
 			imports: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network(_))).map(|_| NodeId(0)).collect(),
 			exports: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
-			disabled: vec![],
 			previous_outputs: None,
 		}
 	}
@@ -815,7 +813,6 @@ impl NodeNetwork {
 	pub fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId + Copy) {
 		self.imports.iter_mut().for_each(|id| *id = f(*id));
 		self.exports.iter_mut().for_each(|output| output.node_id = f(output.node_id));
-		self.disabled.iter_mut().for_each(|id| *id = f(*id));
 		self.previous_outputs
 			.iter_mut()
 			.for_each(|nodes| nodes.iter_mut().for_each(|output| output.node_id = f(output.node_id)));
@@ -930,8 +927,11 @@ impl NodeNetwork {
 			return;
 		};
 
-		if node.implementation != DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()) && self.disabled.contains(&id) {
-			node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		// If the node is hidden, replace it with an identity node
+		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		if !node.visible && node.implementation != identity_node {
+			node.implementation = identity_node;
+
 			if node.is_layer() {
 				// Connect layer node to the graphic group below
 				node.inputs.drain(..1);
@@ -939,6 +939,7 @@ impl NodeNetwork {
 				node.inputs.drain(1..);
 			}
 			self.nodes.insert(id, node);
+
 			return;
 		}
 
@@ -983,7 +984,6 @@ impl NodeNetwork {
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 			// Copy nodes from the inner network into the parent network
 			self.nodes.extend(inner_network.nodes);
-			self.disabled.extend(inner_network.disabled);
 
 			let mut network_offsets = HashMap::new();
 			assert_eq!(
