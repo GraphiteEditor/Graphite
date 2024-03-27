@@ -145,6 +145,7 @@ pub struct PointSnapping {
 pub enum GridType {
 	Rectangle { spacing: DVec2 },
 	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
+	Dot { spacing: DVec2 },
 }
 impl GridType {
 	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
@@ -153,6 +154,7 @@ impl GridType {
 		angle_a: 30.,
 		angle_b: 30.,
 	};
+	pub const DOT: Self = GridType::Dot { spacing: DVec2::ONE };
 	pub fn rect_spacing(&mut self) -> Option<&mut DVec2> {
 		match self {
 			Self::Rectangle { spacing } => Some(spacing),
@@ -174,6 +176,12 @@ impl GridType {
 	pub fn angle_b(&mut self) -> Option<&mut f64> {
 		match self {
 			Self::Isometric { angle_b, .. } => Some(angle_b),
+			_ => None,
+		}
+	}
+	pub fn dot_spacing(&mut self) -> Option<&mut DVec2> {
+		match self {
+			Self::Dot { spacing } => Some(spacing),
 			_ => None,
 		}
 	}
