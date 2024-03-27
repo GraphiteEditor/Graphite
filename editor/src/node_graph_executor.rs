@@ -190,7 +190,7 @@ impl NodeRuntime {
 			image_frame: None,
 		};
 
-		// Required to ensure that the appropriate protonodes are reinserted when the Editor API changes.
+		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
 		let font_hash_code = graph_input_hash.finish();
@@ -218,7 +218,7 @@ impl NodeRuntime {
 				Err(e) => return Err(e),
 			};
 
-			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 			if let Err(e) = self.executor.update(proto_network).await {
 				self.node_graph_errors = e;
 			} else {

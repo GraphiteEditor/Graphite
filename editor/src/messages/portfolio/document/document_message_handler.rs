@@ -822,7 +822,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.root()
 			.descendants(&self.metadata)
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -835,7 +835,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.root()
 			.descendants(&self.metadata)
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.network(), self.metadata()))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -849,7 +849,7 @@ impl DocumentMessageHandler {
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_layers(self.network(), self.metadata())
+			.selected_visible_layers(self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -885,13 +885,6 @@ impl DocumentMessageHandler {
 		let mut document = Self::deserialize_document(&serialized_content)?;
 		document.name = name;
 		Ok(document)
-	}
-
-	/// Returns the bounding boxes for all visible layers.
-	pub fn bounding_boxes(&self) -> impl Iterator<Item = [DVec2; 2]> + '_ {
-		// TODO: Remove this function entirely?
-		// self.visible_layers().filter_map(|path| self.document_legacy.viewport_bounding_box(path, font_cache).ok()?)
-		std::iter::empty()
 	}
 
 	/// Called recursively by the entry function [`serialize_root`].
