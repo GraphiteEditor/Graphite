@@ -12,6 +12,8 @@ css = ["features.css"]
 
 The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. All this is built around a central node graph that stores layer data and provides a basic—but continually improving—procedural design and nondestructive editing workflow which is a unique feature among vector editing software.
 
+Stay tuned for major performance uplifts, a multiplatform native desktop app, and a full suite of raster editing tools being developed throughout 2024.
+
 </div>
 </section>
 
@@ -115,7 +117,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Procedurally-defined vector data</span>
 		</div>
-		<div class="informational">
+		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Graph data attribute spreadsheet</span>
 		</div>
@@ -124,20 +126,20 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>WebGPU accelerated rendering</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>New vector graphics renderer (Vello)</span>
-		</div>
-		<div class="informational">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Adaptive resolution raster rendering</span>
 		</div>
 		<div class="informational">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>New vector 2D renderer (with <a target="_blank" href="https://github.com/linebender/vello">Vello</a>)</span>
+		</div>
+		<div class="informational">
 			<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Desktop app with built-in AI models</span>
+			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 42" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Timeline and animation curves</span>
+			<span>Timeline and animation channels</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 22" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -170,6 +172,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>Remote compile/render server</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 46" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
+			<span>Portable, embeddable render engine</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -261,7 +267,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Native UI rewrite from HTML frontend</span>
+			<span>Native UI rewrite (no HTML frontend)</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
@@ -278,10 +284,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 45" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
 			<span>iPad app</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 46" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
-			<span>Portable, embeddable render engine</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 49" src="https://static.graphite.rs/icons/icon-atlas-roadmap.png" alt="" />
