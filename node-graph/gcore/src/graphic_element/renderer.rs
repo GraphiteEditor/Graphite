@@ -37,10 +37,7 @@ impl ClickTarget {
 			return true;
 		}
 		// Check if selection is entirely within the shape
-		if self.subpath.closed() && self.subpath.contains_point(quad.center()) {
-			return true;
-		}
-		if self.subpath.contains_point_open(quad.center()) {
+		if self.subpath.contains_point(quad.center()) {
 			return true;
 		}
 
