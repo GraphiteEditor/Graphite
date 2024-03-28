@@ -50,10 +50,14 @@ fn square_generator<T: Any>(_input: (), size_x: f64, size_y: f64, is_individual:
 
 	let corner_radius = &corner_radius as &dyn Any;
 	if let Some(&corner_radius) = corner_radius.downcast_ref::<f64>() {
-		let clamped_radius = if clamped { corner_radius.clamp(0., size_x.min(size_y) / 2.) } else { corner_radius };
+		let clamped_radius = if clamped { corner_radius.clamp(0., size_x.min(size_y).max(0.) / 2.) } else { corner_radius };
 		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, [clamped_radius; 4])])
 	} else if let Some(&corner_radius) = corner_radius.downcast_ref::<[f64; 4]>() {
-		let clamped_radius = if clamped { corner_radius.map(|x| x.clamp(0., size_x.min(size_y) / 2.)) } else { corner_radius };
+		let clamped_radius = if clamped {
+			corner_radius.map(|x| x.clamp(0., size_x.min(size_y).max(0.) / 2.))
+		} else {
+			corner_radius
+		};
 		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, clamped_radius)])
 	} else {
 		unreachable!()
