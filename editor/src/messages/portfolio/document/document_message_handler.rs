@@ -460,7 +460,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				match ipp.keyboard.key(resize) {
 					// Nudge translation
 					false => {
-						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+						for layer in self
+							.selected_nodes
+							.selected_layers(self.metadata())
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+						{
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
 								transform: DAffine2::from_translation(delta),
@@ -491,7 +495,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						let pivot = DAffine2::from_translation(pivot);
 						let transformation = pivot * scale * pivot.inverse();
 
-						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+						for layer in self
+							.selected_nodes
+							.selected_layers(self.metadata())
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
 							let new = to.inverse() * transformation * to * original_transform;
