@@ -19,6 +19,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::Quad;
 
 use std::fmt;
+use std::iter::zip;
 
 #[derive(Default)]
 pub struct SelectTool {
@@ -252,6 +253,7 @@ struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
 	layers_dragging: Vec<LayerNodeIdentifier>,
+	old_transforms: Vec<DAffine2>,
 	layer_selected_on_start: Option<LayerNodeIdentifier>,
 	select_single_layer: Option<LayerNodeIdentifier>,
 	has_dragged: bool,
@@ -552,6 +554,10 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
+					let old_layers = document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied());
+					tool_data.old_transforms = old_layers.iter().map(|x| {
+						document.metadata().transform_to_viewport(*x.last().unwrap())
+					}).collect();
 
 					tool_data.get_snap_candidates(document, input);
 
@@ -643,15 +649,20 @@ impl Fsm for SelectToolFsmState {
 				let mouse_delta = document.metadata.document_to_viewport.transform_vector2(offset);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
-					responses.add_front(GraphOperationMessage::TransformChange {
-						layer: *layer_ancestors.last().unwrap(),
-						transform: DAffine2::from_translation(mouse_delta),
+				tool_data.drag_current += mouse_delta;
+				let drag_dist = DAffine2::from_translation(tool_data.drag_current - tool_data.drag_start);
+				for (layer_ancestors, o_trans) in zip(
+					document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()),
+					tool_data.old_transforms.iter().copied(),
+				) {
+					let l = layer_ancestors.last().unwrap();
+					responses.add_front(GraphOperationMessage::TransformSet {
+						layer: *l,
+						transform: drag_dist * o_trans,
 						transform_in: TransformIn::Viewport,
 						skip_rerender: false,
 					});
 				}
-				tool_data.drag_current += mouse_delta;
 
 				// AutoPanning
 				let messages = [
