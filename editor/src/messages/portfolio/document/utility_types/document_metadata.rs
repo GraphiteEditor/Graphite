@@ -23,6 +23,7 @@ pub struct DocumentMetadata {
 	artboards: HashSet<LayerNodeIdentifier>,
 	folders: HashSet<LayerNodeIdentifier>,
 	hidden: HashSet<NodeId>,
+	locked: HashSet<NodeId>,
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
@@ -36,6 +37,7 @@ impl Default for DocumentMetadata {
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
 			hidden: HashSet::new(),
+			locked: HashSet::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -126,6 +128,10 @@ impl DocumentMetadata {
 		!self.hidden.contains(&layer)
 	}
 
+	pub fn node_is_locked(&self, layer: NodeId) -> bool {
+		self.locked.contains(&layer)
+	}
+
 	/// Folders sorted from most nested to least nested
 	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
 		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
@@ -149,6 +155,7 @@ impl DocumentMetadata {
 		self.artboards = HashSet::new();
 		self.folders = HashSet::new();
 		self.hidden = HashSet::new();
+		self.locked = HashSet::new();
 
 		let id = graph.exports[0].node_id;
 		let Some(output_node) = graph.nodes.get(&id) else {
@@ -179,6 +186,10 @@ impl DocumentMetadata {
 
 					if !current_node.visible {
 						self.hidden.insert(current_node_id);
+					}
+
+					if current_node.locked {
+						self.locked.insert(current_node_id);
 					}
 				}
 

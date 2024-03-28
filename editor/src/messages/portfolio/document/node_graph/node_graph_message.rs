@@ -97,6 +97,14 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		visible: bool,
 	},
+	ToggleSelectedLocked,
+	ToggleLocked {
+		node_id: NodeId,
+	},
+	SetLocked {
+		node_id: NodeId,
+		locked: bool,
+	},
 	SetName {
 		node_id: NodeId,
 		name: String,
