@@ -4,7 +4,7 @@ template = "book.html"
 page_template = "book.html"
 
 [extra]
-order = 3 # Chapter number
+order = 4 # Chapter number
 +++
 
 Graphite is built from a number of separate projects, each with a distinct focus. New developers may choose to specialize in one or more area without having to attain a working knowledge of the entire codebase. This chapter details each project's purpose, what knowledge or background is best suited for getting involved with it, and how to begin making useful contributions. Opportunities also exist for contributing to specific self-contained sub-projects for students interested in completing a Google Summer of Code or other internship program, a university capstone project, or another similar endeavor.
