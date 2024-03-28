@@ -1,3 +1,5 @@
+use core::any::Any;
+
 use crate::uuid::ManipulatorGroupId;
 use crate::vector::VectorData;
 use crate::Node;
@@ -32,18 +34,34 @@ fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RectangleGenerator<SizeX, SizeY> {
+pub struct RectangleGenerator<SizeX, SizeY, IsIndividual, CornerRadius, Clamped> {
 	size_x: SizeX,
 	size_y: SizeY,
+	is_individual: IsIndividual,
+	corner_radius: CornerRadius,
+	clamped: Clamped,
 }
 
 #[node_macro::node_fn(RectangleGenerator)]
-fn square_generator(_input: (), size_x: f64, size_y: f64) -> VectorData {
+fn square_generator<T: Any>(_input: (), size_x: f64, size_y: f64, is_individual: bool, corner_radius: T, clamped: bool) -> VectorData {
 	let size = DVec2::new(size_x, size_y);
 	let corner1 = -size / 2.;
 	let corner2 = size / 2.;
 
-	super::VectorData::from_subpath(Subpath::new_rect(corner1, corner2))
+	let corner_radius = &corner_radius as &dyn Any;
+	if let Some(&corner_radius) = corner_radius.downcast_ref::<f64>() {
+		let clamped_radius = if clamped { corner_radius.clamp(0., size_x.min(size_y).max(0.) / 2.) } else { corner_radius };
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, [clamped_radius; 4])])
+	} else if let Some(&corner_radius) = corner_radius.downcast_ref::<[f64; 4]>() {
+		let clamped_radius = if clamped {
+			corner_radius.map(|x| x.clamp(0., size_x.min(size_y).max(0.) / 2.))
+		} else {
+			corner_radius
+		};
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, clamped_radius)])
+	} else {
+		unreachable!()
+	}
 }
 
 #[derive(Debug, Clone, Copy)]

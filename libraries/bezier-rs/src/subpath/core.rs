@@ -2,7 +2,7 @@ use super::*;
 use crate::consts::*;
 
 use glam::DVec2;
-use std::fmt::Write;
+use std::{f64::consts::FRAC_1_SQRT_2, f64::consts::PI, fmt::Write};
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
@@ -215,6 +215,52 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// Constructs a rectangle with `corner1` and `corner2` as the two corners.
 	pub fn new_rect(corner1: DVec2, corner2: DVec2) -> Self {
 		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
+	}
+
+	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radius: [f64; 4]) -> Self {
+		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
+			let point1 = center + DVec2::from_angle(-PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
+			let point2 = center + DVec2::from_angle(PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
+			if radius == 0. {
+				return vec![ManipulatorGroup::new_anchor(point1), ManipulatorGroup::new_anchor(point2)];
+			}
+
+			// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
+			let handle_offset = radius * HANDLE_OFFSET_FACTOR;
+			vec![
+				ManipulatorGroup::new_anchor(point1),
+				ManipulatorGroup::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
+				ManipulatorGroup::new(point2, Some(point2 + handle_offset * (corner - point2).normalize()), None),
+				ManipulatorGroup::new_anchor(point2),
+			]
+		};
+		Self::new(
+			[
+				new_arc(
+					DVec2::new(corner1.x + corner_radius[0], corner1.y + corner_radius[0]),
+					DVec2::new(corner1.x, corner1.y),
+					corner_radius[0],
+				),
+				new_arc(
+					DVec2::new(corner2.x - corner_radius[1], corner1.y + corner_radius[1]),
+					DVec2::new(corner2.x, corner1.y),
+					corner_radius[1],
+				),
+				new_arc(
+					DVec2::new(corner2.x - corner_radius[2], corner2.y - corner_radius[2]),
+					DVec2::new(corner2.x, corner2.y),
+					corner_radius[2],
+				),
+				new_arc(
+					DVec2::new(corner1.x + corner_radius[3], corner2.y - corner_radius[3]),
+					DVec2::new(corner1.x, corner2.y),
+					corner_radius[3],
+				),
+			]
+			.concat(),
+			true,
+		)
 	}
 
 	/// Constructs an ellipse with `corner1` and `corner2` as the two corners of the bounding box.
