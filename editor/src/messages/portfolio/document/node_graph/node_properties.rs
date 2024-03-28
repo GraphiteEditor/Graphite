@@ -1559,6 +1559,10 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					tagged_value: TaggedValue::F64Array4(x),
 					exposed: false,
 				} => x,
+				NodeInput::Value {
+					tagged_value: TaggedValue::F64(x),
+					exposed: false,
+				} => [x; 4],
 				_ => [0.; 4],
 			};
 
@@ -1575,6 +1579,10 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					tagged_value: TaggedValue::F64(x),
 					exposed: false,
 				} => x,
+				NodeInput::Value {
+					tagged_value: TaggedValue::F64Array4(x),
+					exposed: false,
+				} => x[0],
 				_ => 0.,
 			};
 
