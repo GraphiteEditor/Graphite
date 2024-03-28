@@ -596,7 +596,7 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	/// Updates the buttons for visibility and preview
+	/// Updates the buttons for visibility, locked, and preview
 	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		if let Some(network) = document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();

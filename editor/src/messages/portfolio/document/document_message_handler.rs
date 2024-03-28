@@ -614,8 +614,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
-				let all_layers_except_artboards = metadata.all_layers().filter(move |&layer| !metadata.is_artboard(layer));
-				let nodes = all_layers_except_artboards.map(|layer| layer.to_node()).collect();
+				let all_layers_except_artboards_locked = metadata
+					.all_layers()
+					.filter(move |&layer| !metadata.is_artboard(layer))
+					.filter(|&layer| !self.selected_nodes.layer_locked(layer, metadata));
+				let nodes = all_layers_except_artboards_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			DocumentMessage::SelectedLayersLower => {
@@ -823,6 +826,7 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -836,6 +840,7 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
