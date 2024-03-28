@@ -269,7 +269,48 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Does a path contain a point? Based on the non zero winding
 	pub fn contains_point(&self, target_point: DVec2) -> bool {
-		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
+		let mut winding_modification = 0;
+
+		if !self.closed() {
+			// Fix winding number as if there were an edge from the last to first
+			// anchor point
+			let first = self.manipulator_groups.first();
+			let last = self.manipulator_groups.last();
+
+			if let (Some(first_manipulator_group), Some(last_manipulator_group)) = (first, last) {
+				let f = first_manipulator_group.anchor;
+				let l = last_manipulator_group.anchor;
+
+				// Set winding numbers based on the non-zero rule assuming leftward (-x) raycasts.
+				winding_modification = if (f.y - l.y).abs() <= f64::EPSILON {
+					0
+				} else {
+					// Interpolates between f and l
+					let t = (target_point.y - l.y) / (f.y - l.y);
+					// Intersection point lies between f and l
+					if (0.0..=1.0).contains(&t) {
+						let intersection_point = t * f + (1.0 - t) * l;
+						// Intersection point is right of the target point.
+						if intersection_point.x > target_point.x {
+							0
+						}
+						// This is a clockwise intersection, so subtract from the winding number.
+						else if f.y >= intersection_point.y {
+							-1
+						// This is a counterclockwise intersection, so add to the winding number.
+						} else {
+							1
+						}
+					// Intersection point lies outside of f and l
+					} else {
+						0
+					}
+				}
+			}
+		}
+
+		// Add the winding modification to the winding number of the rest of the curve.
+		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() + winding_modification != 0
 	}
 
 	/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
