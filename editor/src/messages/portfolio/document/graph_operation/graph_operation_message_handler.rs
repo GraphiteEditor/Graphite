@@ -105,7 +105,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0, 0) {
+				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
@@ -128,7 +128,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 				alias,
 			} => {
-				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
+				info!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
@@ -160,15 +160,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 						// Insert node into network
 						modify_inputs.document_network.nodes.insert(node_id, document_node);
+						info!("Inserting nodes");
 					}
 
 					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&NodeId(0)) {
-							layer_node.inputs[1] = NodeInput::node(input, 0)
+							layer_node.inputs[1] = NodeInput::node(input, 0);
+							info!("Linking node");
 						}
 					}
 
 					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else {
+					error!("Create failed");
 				}
 
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);

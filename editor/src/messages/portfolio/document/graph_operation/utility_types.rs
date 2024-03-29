@@ -114,40 +114,48 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
-		while let NodeInput::Node { node_id, output_index, .. } = &self.document_network.nodes.get(&output.node_id)?.primary_input()? {
+	pub fn skip_artboards(&self, output: &mut NodeId) -> Option<NodeId> {
+		while let NodeInput::Node { node_id, .. } = &self.document_network.nodes.get(output)?.primary_input()? {
 			let sibling_node = self.document_network.nodes.get(node_id)?;
 			if sibling_node.name != "Artboard" {
-				return Some((*node_id, *output_index));
+				return Some(*node_id);
 			}
-			*output = NodeOutput::new(*node_id, *output_index)
+			*output = *node_id;
 		}
 		None
 	}
 
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize, skip_layer_nodes: usize) -> Option<NodeId> {
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
-		let mut output = NodeOutput::new(output_node_id, input_index);
+		let mut output = output_node_id;
+		let mut output_in_index = 0;
 		let mut sibling_layer = None;
 		let mut shift = IVec2::new(0, 3);
 		// Locate the node output of the first sibling layer to the new layer
-		if let Some((node_id, output_index)) = self.skip_artboards(&mut output) {
+		let skipped_artboards = self.skip_artboards(&mut output);
+		// Connect to input 1 of the parent layer.
+		output_in_index = self.document_network.nodes.get(&output).map_or(0, |node| if node.is_layer() { 1 } else { 0 });
+		if let Some(node_id) = skipped_artboards {
 			let sibling_node = self.document_network.nodes.get(&node_id)?;
 			if sibling_node.is_layer() {
 				// There is already a layer node
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
 			} else {
+				info!("Insert between");
 				// The user has connected another node to the output. Insert a layer node between the output and the node.
 				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				let node_id = self.insert_between(NodeId(generate_uuid()), NodeOutput::new(node_id, output_index), output, node, 1, 0, IVec2::new(-8, 0))?;
+				let index = self.document_network.nodes.get(&output).map_or(0, |node| if node.is_layer() { 1 } else { 0 });
+				let post = NodeOutput::new(output, index);
+				let node_id = self.insert_between(NodeId(generate_uuid()), NodeOutput::new(node_id, 0), post, node, 1, 0, IVec2::new(-8, 0))?;
 				sibling_layer = Some(NodeOutput::new(node_id, 0));
 			}
 
 			// Skip some layer nodes
 			for _ in 0..skip_layer_nodes {
 				if let Some(old_sibling) = &sibling_layer {
-					output = NodeOutput::new(old_sibling.node_id, 0);
+					output = old_sibling.node_id;
+					output_in_index = 0;
 					sibling_layer = self.document_network.nodes.get(&old_sibling.node_id)?.inputs[0].as_node().map(|node| NodeOutput::new(node, 0));
 					shift = IVec2::new(0, 3);
 				}
@@ -160,10 +168,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Create node
 		let layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+
 		let new_id = if let Some(sibling_layer) = sibling_layer {
-			self.insert_between(new_id, sibling_layer, output, layer_node, 0, 0, shift)
+			self.insert_between(new_id, sibling_layer, NodeOutput::new(output, output_in_index), layer_node, 0, 0, shift)
 		} else {
-			self.insert_node_before(new_id, output.node_id, 0, layer_node, shift)
+			self.insert_node_before(new_id, output, output_in_index, layer_node, shift)
 		};
 
 		// Update the document metadata structure
@@ -188,7 +197,7 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			parent.to_node()
 		};
-		self.create_layer(new_id, output_node_id, 0, skip_layer_nodes)
+		self.create_layer(new_id, output_node_id, skip_layer_nodes)
 	}
 
 	pub fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
@@ -295,11 +304,12 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
+		let input_index = if output_node.is_layer() { 1 } else { 0 };
 		let metadata = output_node.metadata.clone();
-		let new_input = output_node.inputs.first().cloned().filter(|input| input.as_node().is_some());
+		let new_input = output_node.inputs.get(input_index).cloned().filter(|input| input.as_node().is_some());
 		let node_id = NodeId(generate_uuid());
 
-		output_node.inputs[0] = NodeInput::node(node_id, 0);
+		output_node.inputs[input_index] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
 			warn!("Node type \"{name}\" doesn't exist");
