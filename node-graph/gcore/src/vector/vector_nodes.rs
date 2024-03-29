@@ -357,15 +357,36 @@ pub struct SplinesFromPointsNode;
 
 #[node_macro::node_fn(SplinesFromPointsNode)]
 fn splines_from_points(mut vector_data: VectorData) -> VectorData {
-	for subpath in &mut vector_data.subpaths {
-		let mut spline = Subpath::new_cubic_spline(subpath.anchors());
+	let points = &vector_data.point_domain;
 
-		// Preserve the manipulator group ids
-		for (spline_manipulator_group, original_manipulator_group) in spline.manipulator_groups_mut().iter_mut().zip(subpath.manipulator_groups()) {
-			spline_manipulator_group.id = original_manipulator_group.id;
-		}
+	vector_data.segment_domain.clear();
 
-		*subpath = spline;
+	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
+
+	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
+		let handle_start = first_handles[start_index];
+		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
+		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
+		vector_data
+			.segment_domain
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
+	}
+	let start_points = vector_data.segment_domain.start_point.iter();
+	let end_points = vector_data.segment_domain.end_point.iter();
+	let first_point = points.ids().iter().next();
+	let last_point = points.ids().iter().last();
+	let closed = start_points
+		.zip(end_points)
+		.any(|(first, last)| (first == first_point && last == last_point) || (first == last_point && last == first_point));
+	if closed {
+		let handle_start = first_handles[start_index];
+		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
+		let handles = bezier_rs::BezierHandles::Cubic { handle_start, handle_end };
+
+		vector_data
+			.segment_domain
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
 	}
 
 	vector_data
