@@ -43,7 +43,7 @@
 	$: watchOpen(open);
 	$: watchEntries(entries);
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
-	// $: watchHighlightedWithSearch(filteredEntries, open);
+	$: watchHighlightedWithSearch(filteredEntries, open);
 
 	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
@@ -69,17 +69,17 @@
 	}
 
 	// Required to keep the highlighted item centered and to find a new highlighted item if necessary
-	// async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][], open: boolean) {
-	// 	if (highlighted && open) {
-	// 		// Allows the scrollable area to expand if necessary
-	// 		await tick();
+	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][], open: boolean) {
+		if (highlighted && open) {
+			// Allows the scrollable area to expand if necessary
+			await tick();
 
-	// 		const flattened = filteredEntries.flat();
-	// 		const highlightedFound = highlighted?.label && flattened.map((entry) => entry.label).includes(highlighted.label);
-	// 		const newHighlighted = highlightedFound ? highlighted : flattened[0];
-	// 		setHighlighted(newHighlighted);
-	// 	}
-	// }
+			const flattened = filteredEntries.flat();
+			const highlightedFound = highlighted?.label && flattened.map((entry) => entry.label).includes(highlighted.label);
+			const newHighlighted = highlightedFound ? highlighted : flattened[0];
+			setHighlighted(newHighlighted);
+		}
+	}
 
 	// Detect when the user types, which creates a search box
 	async function startSearch(e: KeyboardEvent) {
@@ -352,9 +352,9 @@
 		highlighted = newHighlight;
 
 		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
-			dispatch("activeEntry", newHighlight);
-		}
+		// if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
+		// 	dispatch("activeEntry", newHighlight);
+		// }
 
 		// Scroll into view
 		let container = scroller?.div?.();
