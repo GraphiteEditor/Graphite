@@ -759,7 +759,6 @@ impl NodeNetwork {
 			stack: node_ids,
 			network: self,
 			only_follow_primary,
-			unique: generate_uuid(),
 		}
 	}
 
@@ -807,92 +806,22 @@ struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
 	only_follow_primary: bool,
-	unique: u64,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
 	fn next(&mut self) -> Option<Self::Item> {
-		log::debug!("{} stack: {:?}", self.unique, self.stack);
 		loop {
 			let node_id = self.stack.pop()?;
-			log::debug!("{} current node_id: {:?}", self.unique, node_id);
+
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
 				let skip = if document_node.is_layer() { 1 } else { 0 };
 				let take = if self.only_follow_primary { 1 } else { usize::MAX };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
-				match inputs.clone().next() {
-					Some(x) => match x {
-						NodeInput::Node { node_id, output_index, lambda } => log::debug!("NodeInput::Node"),
-						NodeInput::Value { tagged_value, exposed } => match tagged_value {
-							TaggedValue::None => log::debug!("TaggedValue::None"),
-							TaggedValue::String(_) => log::debug!("TaggedValue::String"),
-							TaggedValue::U32(_) => log::debug!("TaggedValue::U32"),
-							TaggedValue::U64(_) => log::debug!("TaggedValue::U64"),
-							TaggedValue::F32(_) => log::debug!("TaggedValue::F32"),
-							TaggedValue::F64(_) => log::debug!("TaggedValue::F64"),
-							TaggedValue::Bool(_) => log::debug!("TaggedValue::Bool"),
-							TaggedValue::UVec2(_) => log::debug!("TaggedValue::UVec2"),
-							TaggedValue::DVec2(_) => log::debug!("TaggedValue::DVec2"),
-							TaggedValue::OptionalDVec2(_) => log::debug!("TaggedValue::OptionalDVec2"),
-							TaggedValue::DAffine2(_) => log::debug!("TaggedValue::DAffine2"),
-							TaggedValue::Image(_) => log::debug!("TaggedValue::Image"),
-							TaggedValue::ImaginateCache(_) => log::debug!("TaggedValue::ImaginateCache"),
-							TaggedValue::ImageFrame(_) => log::debug!("TaggedValue::ImageFrame"),
-							TaggedValue::Color(_) => log::debug!("TaggedValue::Color"),
-							TaggedValue::Subpaths(_) => log::debug!("TaggedValue::Subpaths"),
-							TaggedValue::RcSubpath(_) => log::debug!("TaggedValue::RcSubpath"),
-							TaggedValue::BlendMode(_) => log::debug!("TaggedValue::BlendMode"),
-							TaggedValue::LuminanceCalculation(_) => log::debug!("TaggedValue::LuminanceCalculation"),
-							TaggedValue::ImaginateSamplingMethod(_) => log::debug!("TaggedValue::ImaginateSamplingMethod"),
-							TaggedValue::ImaginateMaskStartingFill(_) => log::debug!("TaggedValue::ImaginateMaskStartingFill"),
-							TaggedValue::ImaginateController(_) => log::debug!("TaggedValue::ImaginateController"),
-							TaggedValue::VectorData(_) => log::debug!("TaggedValue::VectorData"),
-							TaggedValue::Fill(_) => log::debug!("TaggedValue::Fill"),
-							TaggedValue::Stroke(_) => log::debug!("TaggedValue::Stroke"),
-							TaggedValue::VecF64(_) => log::debug!("TaggedValue::VecF64"),
-							TaggedValue::VecDVec2(_) => log::debug!("TaggedValue::VecDVec2"),
-							TaggedValue::RedGreenBlue(_) => log::debug!("TaggedValue::RedGreenBlue"),
-							TaggedValue::NoiseType(_) => log::debug!("TaggedValue::NoiseType"),
-							TaggedValue::FractalType(_) => log::debug!("TaggedValue::FractalType"),
-							TaggedValue::CellularDistanceFunction(_) => log::debug!("TaggedValue::CellularDistanceFunction"),
-							TaggedValue::CellularReturnType(_) => log::debug!("TaggedValue::CellularReturnType"),
-							TaggedValue::DomainWarpType(_) => log::debug!("TaggedValue::DomainWarpType"),
-							TaggedValue::RelativeAbsolute(_) => log::debug!("TaggedValue::RelativeAbsolute"),
-							TaggedValue::SelectiveColorChoice(_) => log::debug!("TaggedValue::SelectiveColorChoice"),
-							TaggedValue::LineCap(_) => log::debug!("TaggedValue::LineCap"),
-							TaggedValue::LineJoin(_) => log::debug!("TaggedValue::LineJoin"),
-							TaggedValue::FillType(_) => log::debug!("TaggedValue::FillType"),
-							TaggedValue::GradientType(_) => log::debug!("TaggedValue::GradientType"),
-							TaggedValue::GradientPositions(_) => log::debug!("TaggedValue::GradientPositions"),
-							TaggedValue::Quantization(_) => log::debug!("TaggedValue::Quantization"),
-							TaggedValue::OptionalColor(_) => log::debug!("TaggedValue::OptionalColor"),
-							TaggedValue::ManipulatorGroupIds(_) => log::debug!("TaggedValue::ManipulatorGroupIds"),
-							TaggedValue::Font(_) => log::debug!("TaggedValue::Font"),
-							TaggedValue::BrushStrokes(_) => log::debug!("TaggedValue::BrushStrokes"),
-							TaggedValue::BrushCache(_) => log::debug!("TaggedValue::BrushCache"),
-							TaggedValue::Segments(_) => log::debug!("TaggedValue::Segments"),
-							TaggedValue::DocumentNode(_) => log::debug!("TaggedValue::DocumentNode"),
-							TaggedValue::GraphicGroup(_) => log::debug!("TaggedValue::GraphicGroup"),
-							TaggedValue::Artboard(_) => log::debug!("TaggedValue::Artboard"),
-							TaggedValue::Curve(_) => log::debug!("TaggedValue::Curve"),
-							TaggedValue::IVec2(_) => log::debug!("TaggedValue::IVec2"),
-							TaggedValue::SurfaceFrame(_) => log::debug!("TaggedValue::SurfaceFrame"),
-							TaggedValue::Footprint(_) => log::debug!("TaggedValue::Footprint"),
-							TaggedValue::RenderOutput(_) => log::debug!("TaggedValue::RenderOutput"),
-							TaggedValue::Palette(_) => log::debug!("TaggedValue::Palette"),
-						},
-						NodeInput::Network(_) => log::debug!("NodeInput::Network"),
-						NodeInput::Inline(_) => log::debug!("NodeInput::Inline"),
-					},
-					None => {
-						log::debug!("none");
-					}
-				}
-				log::debug!("{} inputs len: {}", self.unique, inputs.clone().len());
+
 				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
-				log::debug!("{} node_ids len: {}", self.unique, node_ids.clone().count());
 
 				self.stack.extend(node_ids);
+
 				return Some((document_node, node_id));
 			};
 		}

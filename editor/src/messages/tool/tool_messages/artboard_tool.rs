@@ -119,8 +119,8 @@ impl ArtboardToolData {
 			bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
 		}
 	}
+
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-		log::debug!("selected artboard");
 		responses.add(DocumentMessage::StartTransaction);
 
 		let mut intersections = document
@@ -129,7 +129,7 @@ impl ArtboardToolData {
 
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
-			log::debug!("intersection node: {}", intersection.to_node());
+
 			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
 				let bounding_box_manager = self.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 				bounding_box_manager.bounds = bounds;
@@ -138,7 +138,6 @@ impl ArtboardToolData {
 
 			true
 		} else {
-			log::debug!("empty");
 			self.selected_artboard = None;
 
 			responses.add(PropertiesPanelMessage::Clear);
@@ -192,7 +191,6 @@ impl Fsm for ArtboardToolFsmState {
 			}
 
 			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerDown) => {
-				log::debug!("ready and pointer down");
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 

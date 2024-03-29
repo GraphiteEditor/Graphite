@@ -117,7 +117,6 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
 		while let NodeInput::Node { node_id, output_index, .. } = &self.document_network.nodes.get(&output.node_id)?.primary_input()? {
 			let sibling_node = self.document_network.nodes.get(node_id)?;
-
 			if sibling_node.name != "Artboard" {
 				return Some((*node_id, *output_index));
 			}
@@ -550,8 +549,6 @@ impl<'a> ModifyInputsContext<'a> {
 			is_artboard_layer
 		};
 
-		// For an artboard layer, the new input is the top of the stack of layers that is connected to it through `node_inputs[0]`.
-		// For an ordinary layer, the new input is the next layer in the current stack of layers, which is connected to it through `node_inputs[0]`.
 		let new_input = node.inputs[0].clone();
 		let deleted_position = node.metadata.position;
 

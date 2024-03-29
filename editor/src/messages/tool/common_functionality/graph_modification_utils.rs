@@ -235,7 +235,6 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Return an iterator up the primary flow of the layer
 	pub fn primary_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
-		log::debug!("primary layer flow, {:?}", self.layer_node);
 		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], true)
 	}
 
