@@ -3,6 +3,10 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
+pub struct ExportDialogMessageData<'a> {
+	pub portfolio: &'a PortfolioMessageHandler,
+}
+
 /// A dialog to allow users to customize their file export.
 #[derive(Debug, Clone, Default)]
 pub struct ExportDialogMessageHandler {
@@ -14,8 +18,10 @@ pub struct ExportDialogMessageHandler {
 	pub has_selection: bool,
 }
 
-impl MessageHandler<ExportDialogMessage, &PortfolioMessageHandler> for ExportDialogMessageHandler {
-	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, portfolio: &PortfolioMessageHandler) {
+impl MessageHandler<ExportDialogMessage, ExportDialogMessageData<'_>> for ExportDialogMessageHandler {
+	fn process_message(&mut self, message: ExportDialogMessage, responses: &mut VecDeque<Message>, data: ExportDialogMessageData) {
+		let ExportDialogMessageData { portfolio } = data;
+
 		match message {
 			ExportDialogMessage::FileType(export_type) => self.file_type = export_type,
 			ExportDialogMessage::ScaleFactor(factor) => self.scale_factor = factor,

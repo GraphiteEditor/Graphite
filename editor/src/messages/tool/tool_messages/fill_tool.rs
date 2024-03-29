@@ -8,7 +8,7 @@ pub struct FillTool {
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,
@@ -42,14 +42,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for FillToo
 		self.fsm_state.process_event(message, &mut (), tool_data, &(), responses, true);
 	}
 	fn actions(&self) -> ActionList {
-		use FillToolFsmState::*;
-
 		match self.fsm_state {
-			Ready => actions!(FillToolMessageDiscriminant;
+			FillToolFsmState::Ready => actions!(FillToolMessageDiscriminant;
 				FillPrimaryColor,
 				FillSecondaryColor,
 			),
-			Filling => actions!(FillToolMessageDiscriminant;
+			FillToolFsmState::Filling => actions!(FillToolMessageDiscriminant;
 				PointerUp,
 				Abort,
 			),

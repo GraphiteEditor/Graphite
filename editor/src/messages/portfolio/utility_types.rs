@@ -1,14 +1,12 @@
 use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
 
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Default)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub imaginate: ImaginatePersistentData,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Platform {
 	#[default]
 	Unknown,
@@ -30,7 +28,7 @@ impl Platform {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub enum KeyboardPlatformLayout {
 	/// Standard keyboard mapping used by Windows and Linux
 	#[default]

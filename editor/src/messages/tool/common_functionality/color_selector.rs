@@ -3,9 +3,7 @@ use crate::messages::prelude::Message;
 
 use graphene_core::Color;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ToolColorType {
 	Primary,
 	Secondary,

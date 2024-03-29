@@ -1,14 +1,13 @@
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::FrontendGraphDataType;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 
 use graphene_core::raster::color::Color;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
-use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct IconButton {
 	#[widget_builder(constructor)]
@@ -36,7 +35,7 @@ pub struct IconButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct PopoverButton {
 	pub style: Option<String>,
@@ -65,7 +64,7 @@ pub struct PopoverButton {
 	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct ParameterExposeButton {
 	pub exposed: bool,
@@ -88,7 +87,7 @@ pub struct ParameterExposeButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct TextButton {
 	#[widget_builder(constructor)]
@@ -123,7 +122,7 @@ pub struct TextButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Derivative, Serialize, Deserialize, WidgetBuilder, specta::Type)]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorButton {
 	#[widget_builder(constructor)]
@@ -156,7 +155,7 @@ pub struct ColorButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct BreadcrumbTrailButtons {
 	#[widget_builder(constructor)]

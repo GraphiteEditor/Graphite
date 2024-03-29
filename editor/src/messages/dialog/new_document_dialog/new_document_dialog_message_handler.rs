@@ -21,7 +21,6 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 			NewDocumentDialogMessage::Infinite(infinite) => self.infinite = infinite,
 			NewDocumentDialogMessage::DimensionsX(x) => self.dimensions.x = x as u32,
 			NewDocumentDialogMessage::DimensionsY(y) => self.dimensions.y = y as u32,
-
 			NewDocumentDialogMessage::Submit => {
 				responses.add(PortfolioMessage::NewDocumentWithName { name: self.name.clone() });
 

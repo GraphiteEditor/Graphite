@@ -795,7 +795,7 @@
 				class="layer"
 				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
 				class:previewed={node.previewed}
-				class:disabled={node.disabled}
+				class:disabled={!node.visible}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
@@ -891,8 +891,8 @@
 					class={"visibility"}
 					action={(e) => (toggleLayerVisibility(node.id), e?.stopPropagation())}
 					size={24}
-					icon={node.disabled ? "EyeHidden" : "EyeVisible"}
-					tooltip={node.disabled ? "Disabled" : "Enabled"}
+					icon={node.visible ? "EyeVisible" : "EyeHidden"}
+					tooltip={node.visible ? "Visible" : "Hidden"}
 				/>
 
 				<svg class="border-mask" width="0" height="0">
@@ -913,7 +913,7 @@
 				class="node"
 				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
 				class:previewed={node.previewed}
-				class:disabled={node.disabled}
+				class:disabled={!node.visible}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}

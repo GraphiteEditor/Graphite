@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::messages::portfolio::document::node_graph::VectorDataModification;
+use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -41,7 +41,7 @@ impl Default for PenOptions {
 }
 
 #[impl_message(Message, ToolMessage, Pen)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PenToolMessage {
 	// Standard messages
 	Abort,
@@ -68,7 +68,7 @@ enum PenToolFsmState {
 	PlacingAnchor,
 }
 
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum PenOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
@@ -217,12 +217,10 @@ impl PenToolData {
 		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
 		let Some(last_handle) = first_or_last else { return };
 		let id = last_handle.id;
+		let modification = VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false };
 
 		// Stop the handles on the first point from being colinear
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
-		});
+		responses.add(GraphOperationMessage::Vector { layer, modification });
 	}
 
 	fn create_new_path(

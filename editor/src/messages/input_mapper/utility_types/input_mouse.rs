@@ -3,14 +3,14 @@ use crate::messages::prelude::*;
 
 use bitflags::bitflags;
 use glam::DVec2;
-use serde::{Deserialize, Serialize};
+
 use std::collections::VecDeque;
 
 // Origin is top left
 pub type ViewportPosition = DVec2;
 pub type EditorPosition = DVec2;
 
-#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ViewportBounds {
 	pub top_left: DVec2,
 	pub bottom_right: DVec2,
@@ -37,7 +37,7 @@ impl ViewportBounds {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ScrollDelta {
 	// TODO: Switch these to `f64` values (not trivial because floats don't provide PartialEq, Eq, and Hash)
 	pub x: i32,
@@ -60,7 +60,7 @@ impl ScrollDelta {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MouseState {
 	pub position: ViewportPosition,
 	pub mouse_keys: MouseKeys,
@@ -98,7 +98,7 @@ impl MouseState {
 	}
 }
 
-#[derive(Debug, Copy, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EditorMouseState {
 	pub editor_position: EditorPosition,
 	pub mouse_keys: MouseKeys,
@@ -138,7 +138,7 @@ impl EditorMouseState {
 }
 
 bitflags! {
-	#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+	#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 	#[repr(transparent)]
 	pub struct MouseKeys: u8 {
 		const LEFT   = 0b0000_0001;
@@ -148,7 +148,7 @@ bitflags! {
 }
 
 #[impl_message(Message, InputMapperMessage, DoubleClick)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type, num_enum::TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum MouseButton {
 	Left,

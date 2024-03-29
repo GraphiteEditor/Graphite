@@ -1,6 +1,6 @@
 use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
-use crate::messages::dialog::DialogData;
+use crate::messages::dialog::DialogMessageData;
 use crate::messages::prelude::*;
 
 use graphene_core::text::Font;
@@ -40,7 +40,12 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport", "FrameTimeAdvance"];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
+	MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::FrameTimeAdvance),
+];
+// TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -58,8 +63,6 @@ impl Dispatcher {
 	}
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) {
-		use Message::*;
-
 		self.message_queues.push(VecDeque::from_iter([message.into()]));
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
@@ -86,8 +89,8 @@ impl Dispatcher {
 
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
-				NoOp => {}
-				Init => {
+				Message::NoOp => {}
+				Message::Init => {
 					// Load persistent data from the browser database
 					queue.add(FrontendMessage::TriggerLoadAutoSaveDocuments);
 					queue.add(FrontendMessage::TriggerLoadPreferences);
@@ -100,18 +103,18 @@ impl Dispatcher {
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
 
-				Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
-				Debug(message) => {
+				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
+				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
-				Dialog(message) => {
-					let data = DialogData {
+				Message::Dialog(message) => {
+					let data = DialogMessageData {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
 					};
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, data);
 				}
-				Frontend(message) => {
+				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
 					if let FrontendMessage::TriggerFontLoad { .. } | FrontendMessage::TriggerRefreshBoundsOfViewports = message {
 						self.responses.push(message);
@@ -124,54 +127,56 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
-				Globals(message) => {
+				Message::Globals(message) => {
 					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
 				}
-				InputPreprocessor(message) => {
+				Message::InputPreprocessor(message) => {
 					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
-					self.message_handlers.input_preprocessor_message_handler.process_message(message, &mut queue, keyboard_platform);
+					self.message_handlers
+						.input_preprocessor_message_handler
+						.process_message(message, &mut queue, InputPreprocessorMessageData { keyboard_platform });
 				}
-				KeyMapping(message) => {
+				Message::KeyMapping(message) => {
+					let input = &self.message_handlers.input_preprocessor_message_handler;
 					let actions = self.collect_actions();
 
 					self.message_handlers
 						.key_mapping_message_handler
-						.process_message(message, &mut queue, (&self.message_handlers.input_preprocessor_message_handler, actions));
+						.process_message(message, &mut queue, KeyMappingMessageData { input, actions });
 				}
-				Layout(message) => {
+				Message::Layout(message) => {
 					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, action_input_mapping);
 				}
-				Portfolio(message) => {
-					self.message_handlers.portfolio_message_handler.process_message(
-						message,
-						&mut queue,
-						(&self.message_handlers.input_preprocessor_message_handler, &self.message_handlers.preferences_message_handler),
-					);
+				Message::Portfolio(message) => {
+					let ipp = &self.message_handlers.input_preprocessor_message_handler;
+					let preferences = &self.message_handlers.preferences_message_handler;
+
+					self.message_handlers
+						.portfolio_message_handler
+						.process_message(message, &mut queue, PortfolioMessageData { ipp, preferences });
 				}
-				Preferences(message) => {
+				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
 				}
-				Tool(message) => {
+				Message::Tool(message) => {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
-						self.message_handlers.tool_message_handler.process_message(
-							message,
-							&mut queue,
-							(
-								document,
-								self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
-								&self.message_handlers.input_preprocessor_message_handler,
-								&self.message_handlers.portfolio_message_handler.persistent_data,
-								&self.message_handlers.portfolio_message_handler.executor,
-							),
-						);
+						let data = ToolMessageData {
+							document_id: self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
+							document: document,
+							input: &self.message_handlers.input_preprocessor_message_handler,
+							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
+							node_graph: &self.message_handlers.portfolio_message_handler.executor,
+						};
+
+						self.message_handlers.tool_message_handler.process_message(message, &mut queue, data);
 					} else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
 					}
 				}
-				Workspace(message) => {
+				Message::Workspace(message) => {
 					self.message_handlers.workspace_message_handler.process_message(message, &mut queue, ());
 				}
 			}
@@ -223,9 +228,11 @@ impl Dispatcher {
 	/// Logs a message that is about to be executed,
 	/// either as a tree with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
-		let message_name = MessageDiscriminant::from(message).local_name();
+		let discriminant = MessageDiscriminant::from(message);
+		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.iter().any(|&blocked_discriminant| discriminant == blocked_discriminant)
+			|| DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
 
-		if !DEBUG_MESSAGE_BLOCK_LIST.iter().any(|blocked_name| message_name.ends_with(blocked_name)) {
+		if !is_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

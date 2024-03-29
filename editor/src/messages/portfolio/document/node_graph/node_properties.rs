@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_types::NodePropertiesContext;
-use super::FrontendGraphDataType;
+use super::document_node_types::{NodePropertiesContext, IMAGINATE_NODE};
+use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -1609,13 +1609,7 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let imaginate_node = [context.nested_path, &[node_id]].concat();
 
-	let resolve_input = |name: &str| {
-		super::IMAGINATE_NODE
-			.inputs
-			.iter()
-			.position(|input| input.name == name)
-			.unwrap_or_else(|| panic!("Input {name} not found"))
-	};
+	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 	let seed_index = resolve_input("Seed");
 	let resolution_index = resolve_input("Resolution");
 	let samples_index = resolve_input("Samples");

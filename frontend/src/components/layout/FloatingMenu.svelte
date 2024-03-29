@@ -286,7 +286,7 @@
 		// Assumes the spawner is a sibling of this FloatingMenu component
 		const ownSpawner: HTMLElement | undefined = self?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
 		// Get the spawner element containing whatever element the user is hovering over now, if there is one
-		const targetSpawner: HTMLElement | undefined = target?.closest("[data-floating-menu-spawner]") || undefined;
+		const targetSpawner: HTMLElement | undefined = target?.closest?.("[data-floating-menu-spawner]") || undefined;
 
 		// HOVER TRANSFER
 		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner

@@ -5,7 +5,6 @@ use dyn_any::DynAny;
 use graphene_core::*;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -76,7 +75,7 @@ impl NodeContainer {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default, PartialEq, Clone, Hash, Eq)]
 /// A list of [`ProtoNode`]s, which is an intermediate step between the [`crate::document::NodeNetwork`] and the `BorrowTree` containing a single flattened network.
 pub struct ProtoNetwork {
@@ -139,7 +138,7 @@ impl core::fmt::Display for ProtoNetwork {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone)]
 /// Defines the arguments used to construct the boxed node struct. This is used to call the constructor function in the `node_registry.rs` file - which is hidden behind a wall of macros.
 pub enum ConstructionArgs {
@@ -199,9 +198,9 @@ impl ConstructionArgs {
 	}
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
-/// A protonode is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
+/// A proto node is an intermediate step between the `DocumentNode` and the boxed struct that actually runs the node (found in the [`BorrowTree`]). It has one primary input and several secondary inputs in [`ConstructionArgs`].
 pub struct ProtoNode {
 	pub construction_args: ConstructionArgs,
 	pub input: ProtoNodeInput,
@@ -229,7 +228,7 @@ impl Default for ProtoNode {
 /// A ProtoNodeInput represents the primary input of a node in a ProtoNetwork.
 /// Similar to [`crate::document::NodeInput`].
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ProtoNodeInput {
 	/// [`ProtoNode`]s do not require any input, e.g. the value node just takes in [`ConstructionArgs`].
 	None,
@@ -719,7 +718,7 @@ impl TypingContext {
 			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
-		// Get the node input type from the protonode declaration
+		// Get the node input type from the proto node declaration
 		let input = match node.input {
 			ProtoNodeInput::None => concrete!(()),
 			ProtoNodeInput::ManualComposition(ref ty) => ty.clone(),

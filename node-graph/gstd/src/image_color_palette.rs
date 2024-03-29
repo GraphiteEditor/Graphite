@@ -62,9 +62,9 @@ fn image_color_palette(frame: ImageFrame<Color>, max_size: u32) -> Vec<Color> {
 
 #[cfg(test)]
 mod test {
-	use graphene_core::{raster::Image, value::CopiedNode};
-
 	use super::*;
+
+	use graphene_core::{raster::Image, value::CopiedNode};
 
 	#[test]
 	fn test_image_color_palette() {

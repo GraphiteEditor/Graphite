@@ -82,10 +82,10 @@ where
 
 #[cfg(test)]
 mod test {
+	use super::*;
 	use crate::value::{CopiedNode, OnceCellNode};
 	use crate::Node;
 
-	use super::*;
 	#[test]
 	fn get_node_array() {
 		let storage = [1, 2, 3];

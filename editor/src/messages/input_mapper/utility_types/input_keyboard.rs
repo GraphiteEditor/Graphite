@@ -2,7 +2,7 @@ use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 use bitflags::bitflags;
-use serde::{Deserialize, Serialize};
+
 use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
 
@@ -31,7 +31,7 @@ pub enum KeyPosition {
 }
 
 bitflags! {
-	#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+	#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 	#[repr(transparent)]
 	#[serde(transparent)]
 	pub struct ModifierKeys: u8 {
@@ -49,7 +49,7 @@ bitflags! {
 // (although we ignore the shift key, so the user doesn't have to press `Ctrl Shift +` on a US keyboard), even if the keyboard layout
 // is for a different locale where the `+` key is somewhere entirely different, shifted or not. This would then also work for numpad `+`.
 #[impl_message(Message, InputMapperMessage, KeyDown)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, specta::Type, num_enum::TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum Key {
 	// Writing system keys
@@ -305,7 +305,7 @@ impl From<Key> for LayoutKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 struct LayoutKey {
 	key: String,
 	label: String,
@@ -328,7 +328,7 @@ impl Serialize for Key {
 pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
 
 /// Only `Key`s that exist on a physical keyboard should be used.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeysGroup(pub Vec<Key>);
 
 impl fmt::Display for KeysGroup {
@@ -366,7 +366,7 @@ impl From<KeysGroup> for String {
 	}
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayoutKeysGroup(Vec<LayoutKey>);
 
 impl From<KeysGroup> for LayoutKeysGroup {
@@ -375,7 +375,7 @@ impl From<KeysGroup> for LayoutKeysGroup {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum MouseMotion {
 	None,
 	Lmb,

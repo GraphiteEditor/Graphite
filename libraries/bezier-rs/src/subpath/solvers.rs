@@ -417,11 +417,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::Bezier;
-	use glam::DVec2;
-
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils;
+	use crate::Bezier;
+
+	use glam::DVec2;
 
 	fn normalize_t(n: i64, t: f64) -> f64 {
 		t * (n as f64) % 1.

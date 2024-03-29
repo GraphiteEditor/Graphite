@@ -7,7 +7,6 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::prelude::*;
 
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -20,7 +19,7 @@ impl core::fmt::Display for WidgetId {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
@@ -100,7 +99,7 @@ pub trait DialogLayoutHolder: LayoutHolder {
 }
 
 /// Wraps a choice of layout type. The chosen layout contains an arrangement of widgets mounted somewhere specific in the frontend.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
 	MenuLayout(MenuLayout),
@@ -157,7 +156,7 @@ impl Default for Layout {
 	}
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
 pub struct WidgetLayout {
 	pub layout: SubLayout,
 }
@@ -290,7 +289,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 
 pub type SubLayout = Vec<LayoutGroup>;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -420,7 +419,7 @@ impl LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: WidgetId,
@@ -472,7 +471,7 @@ impl<T> Default for WidgetCallback<T> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
@@ -498,7 +497,7 @@ pub enum Widget {
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WidgetDiff {
 	/// A path to the change
 	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
@@ -513,7 +512,7 @@ pub struct WidgetDiff {
 /// The new value of the UI, sent as part of a diff.
 ///
 /// An update can represent a single widget or an entire SubLayout, or just a single layout group.
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DiffUpdate {
 	#[serde(rename = "subLayout")]
 	SubLayout(SubLayout),

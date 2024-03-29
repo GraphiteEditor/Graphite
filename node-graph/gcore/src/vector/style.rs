@@ -5,7 +5,7 @@ use crate::Color;
 
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
-use serde::{Deserialize, Serialize};
+
 use std::fmt::{self, Display, Write};
 
 /// Precision of the opacity value in digits after the decimal point.
@@ -20,7 +20,7 @@ fn format_opacity(attribute: &str, opacity: f32) -> String {
 	}
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, Serialize, Deserialize, DynAny, specta::Type)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub enum GradientType {
 	#[default]
 	Linear,
@@ -31,7 +31,7 @@ pub enum GradientType {
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Gradient {
 	pub start: DVec2,
 	pub end: DVec2,
@@ -180,7 +180,7 @@ impl Gradient {
 ///
 /// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
 #[repr(C)]
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum Fill {
 	#[default]
 	None,
@@ -265,7 +265,7 @@ impl Fill {
 
 /// Enum describing the type of [Fill]
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum FillType {
 	Solid,
 	Gradient,
@@ -273,7 +273,7 @@ pub enum FillType {
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineCap {
 	Butt,
 	Round,
@@ -291,7 +291,7 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineJoin {
 	Miter,
 	Bevel,
@@ -309,7 +309,7 @@ impl Display for LineJoin {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Stroke {
 	/// Stroke color
 	pub color: Option<Color>,
@@ -474,7 +474,7 @@ impl Default for Stroke {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct PathStyle {
 	stroke: Option<Stroke>,
 	fill: Fill,
@@ -638,7 +638,7 @@ impl PathStyle {
 }
 
 /// Represents different ways of rendering an object
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Hash, DynAny, specta::Type)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
 pub enum ViewMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]

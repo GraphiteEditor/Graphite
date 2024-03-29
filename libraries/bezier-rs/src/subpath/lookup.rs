@@ -120,10 +120,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 #[cfg(test)]
 mod tests {
+	use super::*;
 	use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 	use crate::utils::f64_compare;
-
-	use super::*;
 
 	#[test]
 	fn length_quadratic() {

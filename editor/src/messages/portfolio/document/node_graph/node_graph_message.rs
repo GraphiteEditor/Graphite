@@ -1,4 +1,5 @@
 use crate::messages::prelude::*;
+
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -88,13 +89,13 @@ pub enum NodeGraphMessage {
 	ShiftNode {
 		node_id: NodeId,
 	},
-	ToggleSelectedHidden,
-	ToggleHidden {
+	ToggleSelectedVisibility,
+	ToggleVisibility {
 		node_id: NodeId,
 	},
-	SetHidden {
+	SetVisibility {
 		node_id: NodeId,
-		hidden: bool,
+		visible: bool,
 	},
 	SetName {
 		node_id: NodeId,

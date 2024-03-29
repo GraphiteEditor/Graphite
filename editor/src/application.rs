@@ -52,20 +52,22 @@ pub fn commit_info_localized(localized_commit_date: &str) -> String {
 
 #[cfg(test)]
 mod test {
-	use crate::messages::{input_mapper::utility_types::input_mouse::ViewportBounds, prelude::*};
+	use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
+	use crate::messages::prelude::*;
 
 	// TODO: Fix and reenable
 	#[ignore]
 	#[test]
 	fn debug_ub() {
+		use super::Message;
+
 		let mut editor = super::Editor::new();
 		let mut responses = Vec::new();
-		use super::Message::*;
 
 		let messages: Vec<Message> = vec![
-			Init,
-			Preferences(PreferencesMessage::Load {
-				preferences: r#"{"imaginate_server_hostname":"https://exchange-encoding-watched-insured.trycloudflare.com/","imaginate_refresh_frequency":1,"zoom_with_scroll":false}"#.to_string(),
+			Message::Init,
+			Message::Preferences(PreferencesMessage::Load {
+				preferences: r#"{ "imaginate_server_hostname": "http://localhost:7860/", "imaginate_refresh_frequency": 1, "zoom_with_scroll": false }"#.to_string(),
 			}),
 			PortfolioMessage::OpenDocumentFileWithId {
 				document_id: DocumentId(0),

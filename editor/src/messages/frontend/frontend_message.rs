@@ -1,6 +1,6 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::{FrontendNode, FrontendNodeLink, FrontendNodeType};
+use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeLink, FrontendNodeType};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -9,10 +9,8 @@ use graph_craft::document::NodeId;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
-use serde::{Deserialize, Serialize};
-
 #[impl_message(Message, Frontend)]
-#[derive(PartialEq, Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendMessage {
 	// Display prefix: make the frontend show something, like a dialog
 	DisplayDialog {
