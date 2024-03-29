@@ -203,7 +203,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
+		self.insert_node_before(NodeId(generate_uuid()), layer, 1, artboard_node, IVec2::new(-8, 0))
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {

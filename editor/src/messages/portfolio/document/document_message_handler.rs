@@ -1127,13 +1127,14 @@ impl DocumentMessageHandler {
 		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as isize
 	}
 
+	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
 		self.metadata()
 			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
-	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document
+	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
 		for (_node_id, node) in self.network.recursive_nodes() {

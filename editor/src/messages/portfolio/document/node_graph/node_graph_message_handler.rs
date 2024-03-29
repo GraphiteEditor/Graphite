@@ -783,7 +783,7 @@ impl NodeGraphMessageHandler {
 
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: node.is_layer(),
+				is_layer: node.is_layer,
 				alias: node.alias.clone(),
 				name: node.name.clone(),
 				primary_input,

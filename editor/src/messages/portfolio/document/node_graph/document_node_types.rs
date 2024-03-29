@@ -81,6 +81,7 @@ pub struct NodePropertiesContext<'a> {
 pub struct DocumentNodeDefinition {
 	pub name: &'static str,
 	pub category: &'static str,
+	pub is_layer: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
@@ -94,6 +95,7 @@ impl Default for DocumentNodeDefinition {
 		Self {
 			name: Default::default(),
 			category: Default::default(),
+			is_layer: false,
 			implementation: Default::default(),
 			inputs: Default::default(),
 			outputs: Default::default(),
@@ -193,8 +195,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Layer",
 			category: "General",
+			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(2)],
+				imports: vec![NodeId(2), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					(
@@ -207,6 +210,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 					),
 					// The monitor node is used to display a thumbnail in the UI.
+					// TODO: Check if thumbnail is reversed
 					(
 						NodeId(1),
 						DocumentNode {
@@ -233,7 +237,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Stack", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
 			properties: node_properties::layer_no_properties,
@@ -2953,7 +2957,7 @@ impl DocumentNodeDefinition {
 		self.to_document_node(inputs, metadata)
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default
+	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default.
 	pub fn default_document_node(&self) -> DocumentNode {
 		self.to_document_node(self.inputs.iter().map(|input| input.default.clone()), DocumentNodeMetadata::default())
 	}
