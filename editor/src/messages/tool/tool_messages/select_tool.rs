@@ -391,7 +391,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
@@ -405,13 +405,13 @@ impl Fsm for SelectToolFsmState {
 				// Update bounds
 				let transform = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.filter_map(|layer| {
 						document
 							.metadata()
