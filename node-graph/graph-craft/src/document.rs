@@ -272,6 +272,14 @@ impl DocumentNode {
 		}
 	}
 
+	pub fn primary_input(&self) -> Option<&NodeInput> {
+		if self.is_layer() {
+			self.inputs.get(1)
+		} else {
+			self.inputs.first()
+		}
+	}
+
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
 		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
@@ -365,7 +373,7 @@ impl DocumentNode {
 	}
 
 	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
-		let input_connection = self.inputs.get(0).and_then(|input| input.as_node()).and_then(|node_id| network.nodes.get(&node_id));
+		let input_connection = self.inputs.get(1).and_then(|input| input.as_node()).and_then(|node_id| network.nodes.get(&node_id));
 		input_connection.map(|node| node.is_layer()).unwrap_or(false)
 	}
 }
@@ -810,7 +818,7 @@ impl<'a> Iterator for FlowIter<'a> {
 			log::debug!("{} current node_id: {:?}", self.unique, node_id);
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
 				let skip = if document_node.is_layer() { 1 } else { 0 };
-				let take = if self.only_follow_primary || skip == 1 { 1 } else { usize::MAX };
+				let take = if self.only_follow_primary { 1 } else { usize::MAX };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 				match inputs.clone().next() {
 					Some(x) => match x {

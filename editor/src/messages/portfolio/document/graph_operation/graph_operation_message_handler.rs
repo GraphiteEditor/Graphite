@@ -164,7 +164,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&NodeId(0)) {
-							layer_node.inputs[0] = NodeInput::node(input, 0)
+							layer_node.inputs[1] = NodeInput::node(input, 0)
 						}
 					}
 

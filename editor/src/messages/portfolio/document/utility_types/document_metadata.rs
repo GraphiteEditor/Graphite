@@ -148,7 +148,7 @@ impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
 		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-			graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
+			graph.upstream_flow_back_from_nodes(vec![node.primary_input()?.as_node()?], true).find(|(node, _)| node.is_layer())
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
@@ -194,7 +194,7 @@ impl DocumentMetadata {
 				}
 
 				// Get the sibling below
-				let construct_layer_node = &current_node.inputs[1];
+				let construct_layer_node = &current_node.inputs[0];
 				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)));
 			}
 		}
@@ -626,7 +626,7 @@ pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
+	network.nodes.get(&layer.to_node()).and_then(|node| node.primary_input()).is_some_and(|input| input.as_node().is_none())
 		|| network
 			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
 			.skip(1)
