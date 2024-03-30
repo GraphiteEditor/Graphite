@@ -39,6 +39,7 @@ create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 pub struct PointDomain {
 	id: Vec<PointId>,
 	positions: Vec<DVec2>,
+	g1_continous: Vec<Vec<[SegmentId; 2]>>,
 }
 
 impl core::hash::Hash for PointDomain {
@@ -53,27 +54,32 @@ impl PointDomain {
 		Self {
 			id: Vec::new(),
 			positions: Vec::new(),
+			g1_continous: Vec::new(),
 		}
 	}
 
 	pub fn clear(&mut self) {
 		self.id.clear();
 		self.positions.clear();
+		self.g1_continous.clear();
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&PointId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.positions.retain(|_| keep.next().unwrap_or_default());
+		let mut keep = self.id.iter().map(&f);
+		self.g1_continous.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(f);
 	}
 
-	pub fn push(&mut self, id: PointId, position: DVec2) {
+	pub fn push(&mut self, id: PointId, position: DVec2, g1_continous: Vec<[SegmentId; 2]>) {
 		if self.id.contains(&id) {
 			warn!("Duplicate point");
 			return;
 		}
 		self.id.push(id);
 		self.positions.push(position);
+		self.g1_continous.push(g1_continous);
 	}
 
 	pub fn positions(&self) -> &[DVec2] {
@@ -82,6 +88,9 @@ impl PointDomain {
 
 	pub fn positions_mut(&mut self) -> impl Iterator<Item = (PointId, &mut DVec2)> {
 		self.id.iter().copied().zip(self.positions.iter_mut())
+	}
+	pub fn g1_continous_mut(&mut self) -> impl Iterator<Item = (PointId, &mut Vec<[SegmentId; 2]>)> {
+		self.id.iter().copied().zip(self.g1_continous.iter_mut())
 	}
 
 	pub fn ids(&self) -> &[PointId] {
@@ -159,11 +168,22 @@ impl SegmentDomain {
 			warn!("Duplicate segment");
 			return;
 		}
-		self.ids.push(id);
-		self.start_point.push(start);
-		self.end_point.push(end);
-		self.handles.push(handles);
-		self.stroke.push(stroke);
+		// Attempt to keep line joins?
+		let after = self.end_point.iter().copied().position(|other_end| other_end == start || other_end == end);
+		let before = self.start_point.iter().copied().position(|other_start| other_start == start || other_start == end);
+		let (index, flip) = match (before, after) {
+			(Some(before), Some(after)) if before < after => (before, self.start_point[before] == start),
+			(Some(before), None) => (before, self.start_point[before] == start),
+
+			(_, Some(after)) => (after + 1, self.end_point[after] == end),
+
+			(None, None) => (self.ids.len(), false),
+		};
+		self.ids.insert(index, id);
+		self.start_point.insert(index, start);
+		self.end_point.insert(index, end);
+		self.handles.insert(index, if flip { handles.flipped() } else { handles });
+		self.stroke.insert(index, stroke);
 	}
 
 	pub fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {

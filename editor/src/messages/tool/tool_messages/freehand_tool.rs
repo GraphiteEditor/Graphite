@@ -1,15 +1,14 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
-
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 
 use bezier_rs::ManipulatorGroup;
@@ -217,16 +216,19 @@ impl Fsm for FreehandToolFsmState {
 					let manipulator_group = ManipulatorGroup::new_anchor(pos);
 					let modification = if from_start {
 						tool_data.extend_from_start = true;
-						VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group }
+						VectorModificationType::AddStartManipulatorGroup { subpath_index, manipulator_group }
 					} else {
-						VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group }
+						VectorModificationType::AddEndManipulatorGroup { subpath_index, manipulator_group }
 					};
 
 					tool_data.dragged = true;
 					tool_data.last_point = pos;
 					tool_data.layer = Some(layer);
 
-					responses.add(GraphOperationMessage::Vector { layer, modification });
+					responses.add(GraphOperationMessage::Vector {
+						layer,
+						modification_type: modification,
+					});
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
@@ -261,11 +263,14 @@ impl Fsm for FreehandToolFsmState {
 					if tool_data.last_point != pos {
 						let manipulator_group = ManipulatorGroup::new_anchor(pos);
 						let modification = if tool_data.extend_from_start {
-							VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
+							VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
 						} else {
-							VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
+							VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
 						};
-						responses.add(GraphOperationMessage::Vector { layer, modification });
+						responses.add(GraphOperationMessage::Vector {
+							layer,
+							modification_type: modification,
+						});
 						tool_data.dragged = true;
 						tool_data.last_point = pos;
 					}

@@ -1,6 +1,5 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
-use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -14,7 +13,7 @@ use crate::messages::tool::common_functionality::utility_functions::should_exten
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType};
+use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorModificationType};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -217,10 +216,13 @@ impl PenToolData {
 		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
 		let Some(last_handle) = first_or_last else { return };
 		let id = last_handle.id;
-		let modification = VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false };
+		let modification = VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false };
 
 		// Stop the handles on the first point from being colinear
-		responses.add(GraphOperationMessage::Vector { layer, modification });
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: modification,
+		});
 	}
 
 	fn create_new_path(
@@ -292,21 +294,21 @@ impl PenToolData {
 			// Remove the point that has just been placed
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
+				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 
 			// Move the in handle of the previous anchor to on top of the previous position
 			let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: previous_anchor },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: previous_anchor },
 			});
 
 			// Stop the handles on the last point from being colinear
 			let id = previous_manipulator_group.id;
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
+				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
 			});
 
 			self.colinear_handles = false;
@@ -350,26 +352,26 @@ impl PenToolData {
 			let point = ManipulatorPointId::new(first_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: last_in },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: last_in },
 			});
 
 			// Stop the handles on the first point from being colinear
 			let id = first_manipulator_group.id;
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear: false },
+				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
 			});
 
 			// Remove the point that has just been placed
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
+				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 
 			// Push a close path node
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetClosed { index: 0, closed: true },
+				modification_type: VectorModificationType::SetClosed { index: 0, closed: true },
 			});
 
 			responses.add(DocumentMessage::CommitTransaction);
@@ -417,7 +419,7 @@ impl PenToolData {
 		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		responses.add(GraphOperationMessage::Vector {
 			layer: self.layer?,
-			modification: VectorDataModification::SetManipulatorPosition { point, position },
+			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 		});
 
 		// Place the previous anchor's in handle at the opposing position
@@ -427,7 +429,7 @@ impl PenToolData {
 			let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
 			responses.add(GraphOperationMessage::Vector {
 				layer: self.layer?,
-				modification: VectorDataModification::SetManipulatorPosition { point, position },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 			});
 		}
 
@@ -435,7 +437,7 @@ impl PenToolData {
 		let id = last_manipulator_group.id;
 		responses.add(GraphOperationMessage::Vector {
 			layer: self.layer?,
-			modification: VectorDataModification::SetManipulatorColinearHandlesState { id, colinear },
+			modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear },
 		});
 
 		Some(PenToolFsmState::DraggingHandle)
@@ -476,7 +478,7 @@ impl PenToolData {
 			let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: pos },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: pos },
 			});
 		}
 		Some(PenToolFsmState::PlacingAnchor)
@@ -568,7 +570,7 @@ impl PenToolData {
 		if fsm == PenToolFsmState::PlacingAnchor {
 			responses.add(GraphOperationMessage::Vector {
 				layer: self.layer?,
-				modification: VectorDataModification::RemoveManipulatorGroup { id: last_manipulator_group.id },
+				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
 			});
 			last_manipulator_group = previous_manipulator_group;
 		}
@@ -578,7 +580,7 @@ impl PenToolData {
 		let position = last_manipulator_group.anchor;
 		responses.add(GraphOperationMessage::Vector {
 			layer: self.layer?,
-			modification: VectorDataModification::SetManipulatorPosition { point, position },
+			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 		});
 
 		Some(DocumentMessage::CommitTransaction)
@@ -800,9 +802,13 @@ fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, m
 		return Message::NoOp;
 	};
 	let modification = if from_start {
-		VectorDataModification::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
+		VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
 	} else {
-		VectorDataModification::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
+		VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
 	};
-	GraphOperationMessage::Vector { layer, modification }.into()
+	GraphOperationMessage::Vector {
+		layer,
+		modification_type: modification,
+	}
+	.into()
 }

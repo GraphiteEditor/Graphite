@@ -6,8 +6,9 @@ use graphene_core::vector::PointId;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
+use graphene_std::vector::VectorModification;
 
-use super::utility_types::VectorDataModification;
+use graphene_core::vector::VectorModificationType;
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
@@ -196,113 +197,4 @@ fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
 pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
 	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
 	clamp_bounds(bounds_min, bounds_max)
-}
-
-pub struct VectorModificationState<'a> {
-	pub subpaths: &'a mut Vec<Subpath<PointId>>,
-	pub colinear_manipulators: &'a mut Vec<PointId>,
-}
-impl<'a> VectorModificationState<'a> {
-	fn insert_start(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<PointId>) {
-		self.subpaths[subpath_index].insert_manipulator_group(0, manipulator_group)
-	}
-
-	fn insert_end(&mut self, subpath_index: usize, manipulator_group: ManipulatorGroup<PointId>) {
-		let subpath = &mut self.subpaths[subpath_index];
-		subpath.insert_manipulator_group(subpath.len(), manipulator_group)
-	}
-
-	fn insert(&mut self, manipulator_group: ManipulatorGroup<PointId>, after_id: PointId) {
-		for subpath in self.subpaths.iter_mut() {
-			if let Some(index) = subpath.manipulator_index_from_id(after_id) {
-				subpath.insert_manipulator_group(index + 1, manipulator_group);
-				break;
-			}
-		}
-	}
-
-	fn remove_group(&mut self, id: PointId) {
-		for subpath in self.subpaths.iter_mut() {
-			if let Some(index) = subpath.manipulator_index_from_id(id) {
-				subpath.remove_manipulator_group(index);
-				break;
-			}
-		}
-	}
-
-	fn remove_point(&mut self, point: ManipulatorPointId) {
-		for subpath in self.subpaths.iter_mut() {
-			if point.manipulator_type == SelectedType::Anchor {
-				if let Some(index) = subpath.manipulator_index_from_id(point.group) {
-					subpath.remove_manipulator_group(index);
-					break;
-				}
-			} else if let Some(group) = subpath.manipulator_mut_from_id(point.group) {
-				if point.manipulator_type == SelectedType::InHandle {
-					group.in_handle = None;
-				} else if point.manipulator_type == SelectedType::OutHandle {
-					group.out_handle = None;
-				}
-			}
-		}
-	}
-
-	fn set_manipulator_colinear_handles_state(&mut self, id: PointId, colinear: bool) {
-		if !colinear {
-			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
-		} else if !self.colinear_manipulators.contains(&id) {
-			self.colinear_manipulators.push(id);
-		}
-	}
-
-	fn toggle_manipulator_colinear_handles_state(&mut self, id: PointId) {
-		if self.colinear_manipulators.contains(&id) {
-			self.colinear_manipulators.retain(|&manipulator_group_id| manipulator_group_id != id);
-		} else {
-			self.colinear_manipulators.push(id);
-		}
-	}
-
-	fn set_position(&mut self, point: ManipulatorPointId, position: DVec2) {
-		assert!(position.is_finite(), "Point position should be finite");
-		for subpath in self.subpaths.iter_mut() {
-			if let Some(manipulator) = subpath.manipulator_mut_from_id(point.group) {
-				match point.manipulator_type {
-					SelectedType::Anchor => manipulator.anchor = position,
-					SelectedType::InHandle => manipulator.in_handle = Some(position),
-					SelectedType::OutHandle => manipulator.out_handle = Some(position),
-				}
-				if point.manipulator_type != SelectedType::Anchor && self.colinear_manipulators.contains(&point.group) {
-					let reflect = |opposite: DVec2| {
-						(manipulator.anchor - position)
-							.try_normalize()
-							.map(|direction| direction * (opposite - manipulator.anchor).length() + manipulator.anchor)
-							.unwrap_or(opposite)
-					};
-					match point.manipulator_type {
-						SelectedType::InHandle => manipulator.out_handle = manipulator.out_handle.map(reflect),
-						SelectedType::OutHandle => manipulator.in_handle = manipulator.in_handle.map(reflect),
-						_ => {}
-					}
-				}
-
-				break;
-			}
-		}
-	}
-
-	pub fn modify(&mut self, modification: VectorDataModification) {
-		match modification {
-			VectorDataModification::AddEndManipulatorGroup { subpath_index, manipulator_group } => self.insert_end(subpath_index, manipulator_group),
-			VectorDataModification::AddStartManipulatorGroup { subpath_index, manipulator_group } => self.insert_start(subpath_index, manipulator_group),
-			VectorDataModification::AddManipulatorGroup { manipulator_group, after_id } => self.insert(manipulator_group, after_id),
-			VectorDataModification::RemoveManipulatorGroup { id } => self.remove_group(id),
-			VectorDataModification::RemoveManipulatorPoint { point } => self.remove_point(point),
-			VectorDataModification::SetClosed { index, closed } => self.subpaths[index].set_closed(closed),
-			VectorDataModification::SetManipulatorColinearHandlesState { id, colinear } => self.set_manipulator_colinear_handles_state(id, colinear),
-			VectorDataModification::SetManipulatorPosition { point, position } => self.set_position(point, position),
-			VectorDataModification::ToggleManipulatorColinearHandlesState { id } => self.toggle_manipulator_colinear_handles_state(id),
-			VectorDataModification::UpdateSubpaths { subpaths } => *self.subpaths = subpaths,
-		}
-	}
 }

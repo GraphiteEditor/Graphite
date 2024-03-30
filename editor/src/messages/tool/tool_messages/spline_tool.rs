@@ -1,15 +1,15 @@
 use super::tool_prelude::*;
 use crate::consts::DRAG_THRESHOLD;
-use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-
-use graph_craft::document::NodeId;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -222,7 +222,22 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let layer = graph_modification_utils::new_vector_layer(vec![], NodeId(generate_uuid()), parent, responses);
+				let layer = NodeId(generate_uuid());
+				let insert_index = -1;
+				let nodes = {
+					let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
+					let node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))], Default::default());
+
+					HashMap::from([(NodeId(0), node)])
+				};
+				responses.add(GraphOperationMessage::NewCustomLayer {
+					id: layer,
+					nodes,
+					parent,
+					insert_index,
+					alias: String::new(),
+				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] });
 
 				responses.add(GraphOperationMessage::FillSet {
 					layer,
@@ -252,7 +267,7 @@ impl Fsm for SplineToolFsmState {
 					}
 				}
 
-				update_spline(tool_data, true, responses);
+				update_spline(document, tool_data, true, responses);
 
 				SplineToolFsmState::Drawing
 			}
@@ -265,7 +280,7 @@ impl Fsm for SplineToolFsmState {
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 
-				update_spline(tool_data, true, responses);
+				update_spline(document, tool_data, true, responses);
 
 				// Auto-panning
 				let messages = [SplineToolMessage::PointerOutsideViewport.into(), SplineToolMessage::PointerMove.into()];
@@ -288,7 +303,7 @@ impl Fsm for SplineToolFsmState {
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
 				if tool_data.points.len() >= 2 {
-					update_spline(tool_data, false, responses);
+					update_spline(document, tool_data, false, responses);
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
 					responses.add(DocumentMessage::AbortTransaction);
@@ -329,20 +344,19 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn update_spline(tool_data: &SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
+fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, show_preview: bool, responses: &mut VecDeque<Message>) {
 	let mut points = tool_data.points.clone();
 	if show_preview {
 		points.push(tool_data.next_point)
 	}
-
-	let subpath = bezier_rs::Subpath::new_cubic_spline(points);
+	let value = TaggedValue::VecDVec2(points);
 
 	let Some(layer) = tool_data.layer else {
 		return;
 	};
 
-	graph_modification_utils::set_manipulator_colinear_handles_state(subpath.manipulator_groups(), layer, true, responses);
-	let subpaths = vec![subpath];
-	let modification = VectorDataModification::UpdateSubpaths { subpaths };
-	responses.add_front(GraphOperationMessage::Vector { layer, modification });
+	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).node_id("Spline") else {
+		return;
+	};
+	responses.add_front(NodeGraphMessage::SetInputValue { node_id, input_index: 1, value });
 }

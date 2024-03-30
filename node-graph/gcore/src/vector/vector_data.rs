@@ -64,8 +64,9 @@ impl VectorData {
 	/// Push a subpath to the vector data
 	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>) {
 		let subpath = subpath.borrow();
+		let stroke_id = StrokeId::ZERO;
 		for point in subpath.manipulator_groups() {
-			self.point_domain.push(point.id, point.anchor);
+			self.point_domain.push(point.id, point.anchor, Vec::new());
 		}
 
 		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
@@ -78,19 +79,21 @@ impl VectorData {
 			let id = SegmentId::generate();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
-			self.segment_domain.push(id, pair[0].id, pair[1].id, handles(&pair[0], &pair[1]), StrokeId::generate());
+			self.segment_domain.push(id, pair[0].id, pair[1].id, handles(&pair[0], &pair[1]), stroke_id);
 		}
+
+		let fill_id = FillId::ZERO;
 
 		if subpath.closed() {
 			if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
 				let id = SegmentId::generate();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
-				self.segment_domain.push(id, last.id, first.id, handles(last, first), StrokeId::generate());
+				self.segment_domain.push(id, last.id, first.id, handles(last, first), stroke_id);
 			}
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
-				self.region_domain.push(RegionId::generate(), first_seg..=last_seg, FillId::generate());
+				self.region_domain.push(RegionId::generate(), first_seg..=last_seg, fill_id);
 			}
 		}
 	}
@@ -156,14 +159,10 @@ impl Default for VectorData {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ManipulatorPointId {
-	pub group: PointId,
-	pub manipulator_type: SelectedType,
-}
-impl ManipulatorPointId {
-	pub fn new(group: PointId, manipulator_type: SelectedType) -> Self {
-		Self { group, manipulator_type }
-	}
+pub enum ManipulatorPointId {
+	Anchor(PointId),
+	StartHandle(SegmentId),
+	EndHandle(SegmentId),
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

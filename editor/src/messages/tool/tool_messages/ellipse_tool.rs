@@ -1,12 +1,12 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-
-use graph_craft::document::NodeId;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
@@ -200,10 +200,24 @@ impl Fsm for EllipseToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				// Create a new ellipse vector shape
-				let subpath = bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE);
-				let manipulator_groups = subpath.manipulator_groups().to_vec();
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
-				graph_modification_utils::set_manipulator_colinear_handles_state(&manipulator_groups, layer, true, responses);
+				let layer = NodeId(generate_uuid());
+				let insert_index = -1;
+				let nodes = {
+					let node_type = resolve_document_node_type("Ellipse").expect("Ellipse node does not exist");
+					let node = node_type.to_document_node_default_inputs(
+						[None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))],
+						Default::default(),
+					);
+
+					HashMap::from([(NodeId(0), node)])
+				};
+				responses.add(GraphOperationMessage::NewCustomLayer {
+					id: layer,
+					nodes,
+					parent: document.new_layer_parent(),
+					insert_index,
+					alias: String::new(),
+				});
 				shape_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();

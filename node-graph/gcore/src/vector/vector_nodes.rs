@@ -345,7 +345,7 @@ async fn sample_points<FV: Future<Output = VectorData>, FL: Future<Output = Vec<
 
 			let parametric_t = segment.euclidean_to_parametric_with_total_length((total_distance - total_length_before) / length, 0.001, length);
 			let point = segment.evaluate(TValue::Parametric(parametric_t));
-			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point), Vec::new());
 		}
 	}
 
@@ -369,7 +369,7 @@ fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -
 		subpath.apply_transform(vector_data.transform);
 
 		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
-			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point), Vec::new());
 		}
 	}
 
@@ -398,6 +398,8 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
 
+	let stroke_id = StrokeId::ZERO;
+
 	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
 		let handle_start = first_handles[start_index];
 		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
@@ -405,7 +407,7 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 		vector_data
 			.segment_domain
-			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, stroke_id)
 	}
 
 	vector_data

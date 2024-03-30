@@ -771,7 +771,7 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn to_rgba8_srgb(&self) -> [u8; 4] {
-		let gamma = self.to_gamma_srgb();
+		let gamma = self.to_gamma_srgb().to_gamma_srgb();
 		[(gamma.red * 255.) as u8, (gamma.green * 255.) as u8, (gamma.blue * 255.) as u8, (gamma.alpha * 255.) as u8]
 	}
 

@@ -1,7 +1,7 @@
 use super::utility_types::TransformIn;
-use super::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use graphene_core::vector::VectorModificationType;
 
 use bezier_rs::Subpath;
 use graph_craft::document::DocumentNode;
@@ -58,7 +58,7 @@ pub enum GraphOperationMessage {
 	},
 	Vector {
 		layer: LayerNodeIdentifier,
-		modification: VectorDataModification,
+		modification_type: VectorModificationType,
 	},
 	Brush {
 		layer: LayerNodeIdentifier,

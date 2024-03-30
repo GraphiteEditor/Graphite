@@ -1,22 +1,24 @@
 use crate::consts::{ROTATE_SNAP_ANGLE, SCALE_SNAP_INTERVAL};
-use crate::messages::portfolio::document::graph_operation::utility_types::{TransformIn, VectorDataModification};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
+use graphene_core::vector::VectorModificationType;
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
+use graphene_std::vector::PointId;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum OriginalTransforms {
 	Layer(HashMap<LayerNodeIdentifier, DAffine2>),
-	Path(HashMap<LayerNodeIdentifier, Vec<(ManipulatorPointId, DVec2)>>),
+	Path(HashMap<LayerNodeIdentifier, Vec<(PointId, DVec2)>>),
 }
 impl Default for OriginalTransforms {
 	fn default() -> Self {
@@ -379,13 +381,7 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(
-		document_metadata: &DocumentMetadata,
-		layer: LayerNodeIdentifier,
-		initial_points: Option<&Vec<(ManipulatorPointId, DVec2)>>,
-		transformation: DAffine2,
-		responses: &mut VecDeque<Message>,
-	) {
+	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: Option<&Vec<(PointId, DVec2)>>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
@@ -393,14 +389,16 @@ impl<'a> Selected<'a> {
 			return;
 		};
 
-		for (point_id, position) in initial_points {
-			let viewport_point = viewspace.transform_point2(*position);
+		for &(point, position) in initial_points {
+			let viewport_point = viewspace.transform_point2(position);
 			let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-			let point = *point_id;
-			let position = new_pos_viewport;
-			let modification = VectorDataModification::SetManipulatorPosition { point, position };
+			let delta = new_pos_viewport;
+			let modification = VectorModificationType::ApplyDelta { point, delta };
 
-			responses.add(GraphOperationMessage::Vector { layer, modification });
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: modification,
+			});
 		}
 	}
 
@@ -439,10 +437,10 @@ impl<'a> Selected<'a> {
 				}
 				OriginalTransforms::Path(path) => {
 					for (&layer, points) in path {
-						for &(point, position) in points {
+						for &(point, delta) in points {
 							self.responses.add(GraphOperationMessage::Vector {
 								layer,
-								modification: VectorDataModification::SetManipulatorPosition { point, position },
+								modification_type: VectorModificationType::ApplyDelta { point, delta },
 							});
 						}
 					}

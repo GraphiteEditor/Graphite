@@ -10,7 +10,7 @@ use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
-use graphene_core::vector::PointId;
+use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
 
@@ -26,20 +26,6 @@ pub enum TransformIn {
 }
 
 type ManipulatorGroup = bezier_rs::ManipulatorGroup<PointId>;
-
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorDataModification {
-	AddEndManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	AddManipulatorGroup { manipulator_group: ManipulatorGroup, after_id: PointId },
-	AddStartManipulatorGroup { subpath_index: usize, manipulator_group: ManipulatorGroup },
-	RemoveManipulatorGroup { id: PointId },
-	RemoveManipulatorPoint { point: ManipulatorPointId },
-	SetClosed { index: usize, closed: bool },
-	SetManipulatorColinearHandlesState { id: PointId, colinear: bool },
-	SetManipulatorPosition { point: ManipulatorPointId, position: DVec2 },
-	ToggleManipulatorColinearHandlesState { id: PointId },
-	UpdateSubpaths { subpaths: Vec<Subpath<PointId>> },
-}
 
 pub struct ModifyInputsContext<'a> {
 	pub document_metadata: &'a mut DocumentMetadata,
@@ -476,45 +462,34 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn vector_modify(&mut self, modification: VectorDataModification) {
+	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let mut empty = false;
 
 		self.modify_inputs("Vector Modify", false, |inputs, _node_id, _metadata| {
-			let [subpaths, colinear_manipulators] = inputs.as_mut_slice() else {
-				panic!("Shape does not have both `subpath` and `colinear_manipulators` inputs");
-			};
-
-			let NodeInput::Value {
-				tagged_value: TaggedValue::Subpaths(subpaths),
+			let [NodeInput::Value {
+				tagged_value: TaggedValue::VectorModification(modification),
 				..
-			} = subpaths
+			}] = inputs.as_mut_slice()
 			else {
-				return;
-			};
-			let NodeInput::Value {
-				tagged_value: TaggedValue::PointIds(colinear_manipulators),
-				..
-			} = colinear_manipulators
-			else {
-				return;
+				panic!("Vector Modify does not have modification input");
 			};
 
-			[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
+			//[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 
-			transform_utils::VectorModificationState { subpaths, colinear_manipulators }.modify(modification);
-			empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
+			modification.modify(&modification_type);
+			//empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
 
-			[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
+			//[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
 
-		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
-		if empty {
-			if let Some(id) = self.layer_node {
-				self.responses.add(DocumentMessage::DeleteLayer { id })
-			}
-		}
+		// self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
+		// if empty {
+		// 	if let Some(id) = self.layer_node {
+		// 		self.responses.add(DocumentMessage::DeleteLayer { id })
+		// 	}
+		// }
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {

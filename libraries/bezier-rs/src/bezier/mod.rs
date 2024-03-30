@@ -80,6 +80,17 @@ impl BezierHandles {
 			}
 		}
 	}
+
+	#[must_use]
+	pub fn flipped(self) -> Self {
+		match self {
+			BezierHandles::Cubic { handle_start, handle_end } => Self::Cubic {
+				handle_start: handle_end,
+				handle_end: handle_start,
+			},
+			_ => self,
+		}
+	}
 }
 
 #[cfg(feature = "dyn-any")]

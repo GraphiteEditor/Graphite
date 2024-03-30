@@ -4,13 +4,14 @@ use dyn_any::{DynAny, StaticType};
 use std::collections::{HashMap, HashSet};
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct PointMofication {
+pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
 	delta: HashMap<PointId, DVec2>,
+	g1_continous: HashMap<PointId, HashMap<[SegmentId; 2], bool>>,
 }
 
-impl PointMofication {
+impl PointModification {
 	pub fn apply(&self, point_domain: &mut PointDomain) {
 		point_domain.retain(|id| !self.remove.contains(id));
 
@@ -18,11 +19,29 @@ impl PointMofication {
 			let Some(&delta) = self.delta.get(&id) else { continue };
 			*pos += delta;
 		}
+		for (id, g1_continous) in point_domain.g1_continous_mut() {
+			let Some(change) = self.g1_continous.get(&id) else { continue };
+			g1_continous.retain(|current| change.get(current) != Some(&false));
+			for (&add, _) in change.iter().filter(|(_, enable)| **enable) {
+				g1_continous.push(add);
+			}
+		}
 
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
-			point_domain.push(add_id, position);
+			let get_continous = |continous: &HashMap<[SegmentId; 2], bool>| continous.iter().filter(|(_, enabled)| **enabled).map(|(val, _)| *val).collect();
+			let g1_continous = self.g1_continous.get(&add_id).map(get_continous).unwrap_or_default();
+			point_domain.push(add_id, position, g1_continous);
 		}
+	}
+	fn push(&mut self, id: PointId, pos: DVec2) {
+		self.add.push(id);
+		self.delta.insert(id, pos);
+	}
+	fn remove(&mut self, id: PointId) {
+		self.remove.insert(id);
+		self.add.retain(|&add| add != id);
+		self.delta.remove(&id);
 	}
 }
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -65,6 +84,21 @@ impl SegmentModification {
 			segment_domain.push(add_id, start, end, handles, stroke);
 		}
 	}
+	fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
+		self.add.push(id);
+		self.start_point.insert(id, start);
+		self.end_point.insert(id, end);
+		self.handles.insert(id, handles);
+		self.stroke.insert(id, stroke);
+	}
+	fn remove(&mut self, id: SegmentId) {
+		self.remove.insert(id);
+		self.add.retain(|&add| add != id);
+		self.start_point.remove(&id);
+		self.end_point.remove(&id);
+		self.handles.remove(&id);
+		self.stroke.remove(&id);
+	}
 }
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -98,9 +132,23 @@ impl RegionModification {
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VectorModification {
-	points: PointMofication,
+	points: PointModification,
 	segments: SegmentModification,
 	regions: RegionModification,
+}
+
+type ManipulatorGroup = bezier_rs::ManipulatorGroup<PointId>;
+
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum VectorModificationType {
+	InsertSegment { start: PointId, end: PointId, handles: bezier_rs::BezierHandles },
+	InsertPoint { id: PointId, pos: DVec2 },
+
+	RemoveSegment { id: SegmentId },
+	RemovePoint { id: PointId },
+
+	SetG1Continous { point: PointId, segments: [SegmentId; 2], enabled: bool },
+	ApplyDelta { point: PointId, delta: DVec2 },
 }
 
 impl VectorModification {
@@ -108,6 +156,23 @@ impl VectorModification {
 		self.points.apply(&mut vector_data.point_domain);
 		self.segments.apply(&mut vector_data.segment_domain);
 		self.regions.apply(&mut vector_data.region_domain);
+	}
+	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
+		match vector_data_modification {
+			VectorModificationType::InsertSegment { start, end, handles } => self.segments.push(SegmentId::generate(), *start, *end, *handles, StrokeId::ZERO),
+			VectorModificationType::InsertPoint { id, pos } => self.points.push(*id, *pos),
+
+			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
+			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
+
+			VectorModificationType::SetG1Continous { point, segments, enabled } => {
+				self.points.g1_continous.entry(*point).or_default().insert(*segments, *enabled);
+			}
+
+			VectorModificationType::ApplyDelta { point, delta } => {
+				*self.points.delta.entry(*point).or_default() += *delta;
+			}
+		}
 	}
 }
 

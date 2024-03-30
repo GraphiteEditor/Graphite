@@ -93,7 +93,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
-			GraphOperationMessage::Vector { layer, modification } => {
+			GraphOperationMessage::Vector {
+				layer,
+				modification_type: modification,
+			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}

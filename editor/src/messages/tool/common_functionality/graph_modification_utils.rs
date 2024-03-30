@@ -1,6 +1,6 @@
-use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
+use graphene_core::vector::VectorModificationType;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
@@ -45,16 +45,6 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 		insert_index,
 	});
 	LayerNodeIdentifier::new_unchecked(id)
-}
-
-/// Batch set all of the manipulator groups to set their colinear handle state on a specific layer
-pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorGroup<PointId>], layer: LayerNodeIdentifier, colinear: bool, responses: &mut VecDeque<Message>) {
-	for manipulator_group in manipulator_groups {
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification: VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator_group.id, colinear },
-		});
-	}
 }
 
 /// Locate the subpaths from the shape nodes of a particular layer

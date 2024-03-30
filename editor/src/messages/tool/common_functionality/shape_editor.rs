@@ -1,7 +1,6 @@
 use super::graph_modification_utils::{self, get_colinear_manipulators};
 use super::snapping::{are_manipulator_handles_colinear, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE};
-use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
 use crate::messages::prelude::*;
@@ -9,7 +8,7 @@ use crate::messages::prelude::*;
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use graph_craft::document::NodeNetwork;
 use graphene_core::transform::Transform;
-use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType};
+use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorModificationType};
 
 use glam::DVec2;
 
@@ -179,11 +178,11 @@ impl ClosestSegment {
 		let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
 
 		// `first.handle_start()` should always be expected
-		let position = first.handle_start().unwrap_or(first.start());
+		let delta = first.handle_start().unwrap_or(first.start());
 
 		let out_handle = GraphOperationMessage::Vector {
 			layer: self.layer,
-			modification: VectorDataModification::SetManipulatorPosition { point, position },
+			modification_type: VectorModificationType::ApplyDelta { point, delta },
 		};
 		responses.add(out_handle);
 	}
@@ -198,11 +197,11 @@ impl ClosestSegment {
 
 		// `second.handle_end()` should not be expected in the quadratic case
 		let position = if second.handles.is_cubic() { second.handle_end() } else { second.handle_start() };
-		let position = position.unwrap_or(second.end());
+		let delta = position.unwrap_or(second.end());
 
 		let in_handle = GraphOperationMessage::Vector {
 			layer: self.layer,
-			modification: VectorDataModification::SetManipulatorPosition { point, position },
+			modification_type: VectorModificationType::ApplyDelta { point, delta },
 		};
 		responses.add(in_handle);
 	}
@@ -225,11 +224,14 @@ impl ClosestSegment {
 		};
 
 		let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
-		let modification = VectorDataModification::AddManipulatorGroup {
+		let modification = VectorModificationType::InsertPoint { id: (), pos: () } {
 			manipulator_group,
 			after_id: self.start,
 		};
-		let insert = GraphOperationMessage::Vector { layer, modification };
+		let insert = GraphOperationMessage::Vector {
+			layer,
+			modification_type: modification,
+		};
 		responses.add(insert);
 
 		manipulator_group.id
@@ -464,7 +466,7 @@ impl ShapeState {
 		if point.manipulator_type.is_handle() {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
+				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
 			});
 		}
 
@@ -474,7 +476,7 @@ impl ShapeState {
 			};
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: (position + delta) },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: (position + delta) },
 			});
 		};
 
@@ -542,7 +544,7 @@ impl ShapeState {
 		// Set the manipulator to have colinear handles
 		responses.add(GraphOperationMessage::Vector {
 			layer,
-			modification: VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
+			modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
 		});
 
 		let (sin, cos) = handle_direction.sin_cos();
@@ -561,14 +563,14 @@ impl ShapeState {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: in_handle },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: in_handle },
 			});
 		}
 		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
 			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::SetManipulatorPosition { point, position: out_handle },
+				modification_type: VectorModificationType::SetManipulatorPosition { point, position: out_handle },
 			});
 		}
 	}
@@ -607,7 +609,7 @@ impl ShapeState {
 						if let Some(position) = group.out_handle {
 							responses.add(GraphOperationMessage::Vector {
 								layer,
-								modification: VectorDataModification::SetManipulatorPosition { point: out_handle, position },
+								modification_type: VectorModificationType::SetManipulatorPosition { point: out_handle, position },
 							});
 						}
 					}
@@ -617,7 +619,7 @@ impl ShapeState {
 						if let Some(position) = group.in_handle {
 							responses.add(GraphOperationMessage::Vector {
 								layer,
-								modification: VectorDataModification::SetManipulatorPosition { point: in_handle, position },
+								modification_type: VectorModificationType::SetManipulatorPosition { point: in_handle, position },
 							});
 						}
 					}
@@ -665,7 +667,7 @@ impl ShapeState {
 					let position = previous_position + delta;
 					responses.add(GraphOperationMessage::Vector {
 						layer,
-						modification: VectorDataModification::SetManipulatorPosition { point, position },
+						modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 					});
 				};
 
@@ -683,7 +685,7 @@ impl ShapeState {
 					if !colinear && point.manipulator_type.opposite().get_position(&group).is_none() {
 						responses.add(GraphOperationMessage::Vector {
 							layer,
-							modification: VectorDataModification::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
+							modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
 						});
 						colinear = true;
 					}
@@ -701,7 +703,7 @@ impl ShapeState {
 						let position = group.anchor - (original_handle_position - group.anchor);
 						responses.add(GraphOperationMessage::Vector {
 							layer,
-							modification: VectorDataModification::SetManipulatorPosition { point, position },
+							modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 						});
 					}
 				}
@@ -746,7 +748,7 @@ impl ShapeState {
 				if (anchor_position - point_position).length() < DRAG_THRESHOLD {
 					responses.add(GraphOperationMessage::Vector {
 						layer,
-						modification: VectorDataModification::RemoveManipulatorPoint { point },
+						modification_type: VectorModificationType::RemoveManipulatorPoint { point },
 					});
 
 					// Remove opposing handle if it is not selected and is colinear.
@@ -756,7 +758,7 @@ impl ShapeState {
 							if lengths.contains_key(&point.group) {
 								responses.add(GraphOperationMessage::Vector {
 									layer,
-									modification: VectorDataModification::RemoveManipulatorPoint { point: opposite_point },
+									modification_type: VectorModificationType::RemoveManipulatorPoint { point: opposite_point },
 								});
 							}
 						}
@@ -841,7 +843,7 @@ impl ShapeState {
 				let Some(opposing_handle_length) = opposing_handle_length else {
 					responses.add(GraphOperationMessage::Vector {
 						layer,
-						modification: VectorDataModification::RemoveManipulatorPoint {
+						modification_type: VectorModificationType::RemoveManipulatorPoint {
 							point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
 						},
 					});
@@ -860,7 +862,7 @@ impl ShapeState {
 
 				responses.add(GraphOperationMessage::Vector {
 					layer,
-					modification: VectorDataModification::SetManipulatorPosition { point, position },
+					modification_type: VectorModificationType::SetManipulatorPosition { point, position },
 				});
 			}
 		}
@@ -872,7 +874,7 @@ impl ShapeState {
 			for &point in &state.selected_points {
 				responses.add(GraphOperationMessage::Vector {
 					layer,
-					modification: VectorDataModification::RemoveManipulatorPoint { point },
+					modification_type: VectorModificationType::RemoveManipulatorPoint { point },
 				})
 			}
 		}
@@ -954,7 +956,7 @@ impl ShapeState {
 
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification: VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths },
+				modification_type: VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths },
 			});
 		}
 	}
@@ -1012,8 +1014,11 @@ impl ShapeState {
 				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
 			}
 
-			let modification = VectorDataModification::UpdateSubpaths { subpaths: broken_subpaths };
-			responses.add(GraphOperationMessage::Vector { layer, modification });
+			let modification = VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths };
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: modification,
+			});
 		}
 	}
 
@@ -1021,8 +1026,11 @@ impl ShapeState {
 	pub fn toggle_colinear_handles_state_on_selected(&self, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
-				let modification = VectorDataModification::ToggleManipulatorColinearHandlesState { id: point.group };
-				responses.add(GraphOperationMessage::Vector { layer, modification })
+				let modification = VectorModificationType::ToggleManipulatorColinearHandlesState { id: point.group };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				})
 			}
 		}
 	}
@@ -1031,8 +1039,11 @@ impl ShapeState {
 	pub fn set_colinear_handles_state_on_selected(&self, colinear: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
-				let modification = VectorDataModification::SetManipulatorColinearHandlesState { id: point.group, colinear };
-				responses.add(GraphOperationMessage::Vector { layer, modification });
+				let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: point.group, colinear };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				});
 			}
 		}
 	}
@@ -1192,17 +1203,26 @@ impl ShapeState {
 			} else {
 				// Set in handle position to anchor position
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-				let modification = VectorDataModification::SetManipulatorPosition { point, position: anchor_position };
-				responses.add(GraphOperationMessage::Vector { layer, modification });
+				let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				});
 
 				// Set out handle position to anchor position
 				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-				let modification = VectorDataModification::SetManipulatorPosition { point, position: anchor_position };
-				responses.add(GraphOperationMessage::Vector { layer, modification });
+				let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				});
 
 				// Set the manipulator to have non-colinear handles
-				let modification = VectorDataModification::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
-				responses.add(GraphOperationMessage::Vector { layer, modification });
+				let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				});
 			};
 
 			Some(true)
