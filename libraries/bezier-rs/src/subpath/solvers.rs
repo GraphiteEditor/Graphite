@@ -278,27 +278,20 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		// if we had a segment from the last point back to the first.
 
 		// Position of first and last anchor points.
-		let first = self.manipulator_groups.first().map(|manipulator_group| manipulator_group.anchor);
-		let last = self.manipulator_groups.last().map(|manipulator_group| manipulator_group.anchor);
-		let endpoints = first.zip(last);
+		let first_anchor_point = self.manipulator_groups.first().map(|manipulator_group| manipulator_group.anchor);
+		let last_anchor_point = self.manipulator_groups.last().map(|manipulator_group| manipulator_group.anchor);
+		let endpoints = first_anchor_point.zip(last_anchor_point);
 
 		// Weight interpolating location of first and last anchor points. Reject weights outside of [0, 1].
-		let t = endpoints.map(|(f, l)| (target_point.y - l.y) / (f.y - l.y)).filter(|t| (0.0..=1.0).contains(t));
+		let t = endpoints.map(|(first, last)| (target_point.y - last.y) / (first.y - last.y)).filter(|t| (0.0..=1.).contains(t));
 		// Compute point of intersection.
 		// Reject points that are right of the click location since we compute winding numbers by ray-casting left.
-		let intersection_point = endpoints.zip(t).map(|((f, l), t)| t * f + (1.0 - t) * l).filter(|p| p.x <= target_point.x);
-		let winding_modification = first.zip(intersection_point).map_or_else(
-			// None variant implies no modification to winding number.
+		let intersection_point = endpoints.zip(t).map(|((first, last), t)| t * first + (1. - t) * last).filter(|p| p.x <= target_point.x);
+		let winding_modification = first_anchor_point.zip(intersection_point).map_or_else(
+			// None variant implies no intersection and no modification to winding number.
 			|| 0,
-			|(f, p)| {
-				if f.y >= p.y {
-					// This is a clockwise intersection, so subtract from the winding number.
-					-1
-				} else {
-					// This is a counterclockwise intersection, so add to the winding number.
-					1
-				}
-			},
+			// Clockwise (decrement winding number) and counterclockwise (increment winding number) intersection respectively.
+			|(f, p)| if f.y >= p.y { -1 } else { 1 },
 		);
 
 		// Add the winding modification to the winding number of the rest of the curve.
