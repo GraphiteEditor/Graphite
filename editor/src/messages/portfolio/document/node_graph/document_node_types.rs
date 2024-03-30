@@ -262,15 +262,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							inputs: vec![
 								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
 								//DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
-								NodeInput::Network(concrete!(DocumentInputType::value("IVec2", TaggedValue::IVec2, false))),
+								NodeInput::Network(concrete!(TaggedValue)),
 								//DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
-								NodeInput::Network(concrete!(DocumentInputType::value("IVec2", TaggedValue::IVec2, false))),
+								NodeInput::Network(concrete!(TaggedValue)),
 								//DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
-								NodeInput::Network(concrete!(DocumentInputType::value("Color", TaggedValue::Color, false))),
+								NodeInput::Network(concrete!(TaggedValue)),
 								//DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
-								NodeInput::Network(concrete!(DocumentInputType::value("Bool", TaggedValue::Bool, false))),
+								NodeInput::Network(concrete!(TaggedValue)),
 							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"), // output: FrontendGraphDataType::Artboard
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
 							..Default::default()
 						},
 					),
@@ -288,7 +288,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "Add to Artboards".to_string(),
 							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(Artboards))],
-							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _,>"), // output: FrontendGraphDataType::Artboard
+							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_,>"),
 							..Default::default()
 						},
 					),
@@ -298,7 +298,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 
 			inputs: vec![
-				DocumentInputType::value("Artboards", TaggedValue::Artboards, true),
+				DocumentInputType::value("Artboards", TaggedValue::Artboards(Artboards::new()), true),
 				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),

@@ -173,12 +173,11 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 		clip,
 	}
 }
-pub struct AddArtboardNode<Artboard, Artboards> {
+pub struct AddArtboardNode<Artboard> {
 	artboard: Artboard,
-	artboards: Artboards,
 }
 #[node_fn(AddArtboardNode)]
-async fn add_artboard(artboard: Artboard, mut artboards: Artboards) -> Artboards {
+fn add_artboard(mut artboards: Artboards, artboard: Artboard) -> Artboards {
 	artboards.add_artboard(artboard);
 	artboards
 }

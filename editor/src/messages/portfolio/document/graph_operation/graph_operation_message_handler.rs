@@ -106,9 +106,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				//currently creates a layer with output node connected to output, and previous connection to output feeds into Layer.
+				/*
 				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0) {
 					modify_inputs.insert_artboard(artboard, layer);
 				}
+				*/
 				//Instead, create_artboard should be called which should create the artboard node and adds it to the graph in a similar way as create_layer
 				//modify_inputs.create_artboard(id, artboard, modify_inputs.document_network.original_outputs()[0].node_id);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
