@@ -227,7 +227,7 @@ impl LayerSnapper {
 					target: candidate.target,
 					distance,
 					tolerance,
-					contrained: true,
+					constrained: true,
 					target_bounds: candidate.quad,
 					..Default::default()
 				});
@@ -242,7 +242,7 @@ impl LayerSnapper {
 		self.free_snap_paths(snap_data, point, snap_results);
 	}
 
-	pub fn contrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		self.snap_anchors(snap_data, point, snap_results, constraint, constraint.projection(point.document_point));
 		self.snap_paths_constrained(snap_data, point, snap_results, constraint);
 	}
@@ -264,7 +264,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 					tolerance,
 					curves: [Some(path.document_curve), None],
 					source: point.source,
-					contrained: true,
+					constrained: true,
 					..Default::default()
 				});
 			}
@@ -285,7 +285,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 					tolerance,
 					curves: [Some(path.document_curve), None],
 					source: point.source,
-					contrained: true,
+					constrained: true,
 					..Default::default()
 				});
 			}
