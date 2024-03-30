@@ -246,15 +246,66 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Artboard",
 			category: "General",
-			implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+			is_layer: true,
+			//1. graphic group gets converted to an artboard
+			//2. artboard gets added to artboards
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				// 1st parameter: Artboards(top/bottom input) : FrontendGraphDataType::Artboards, 2-5th parameters: Over(bottom/left side input): FrontendGraphDataType::GraphicGroup
+				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(1), 0)], //export must be FrontendGraphDataType::Artboard
+				nodes: [
+					//create artboard from graphic group and other inputs
+					(
+						NodeId(0),
+						DocumentNode {
+							name: "To Artboard".to_string(),
+							inputs: vec![
+								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
+								//DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
+								NodeInput::Network(concrete!(DocumentInputType::value("IVec2", TaggedValue::IVec2, false))),
+								//DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
+								NodeInput::Network(concrete!(DocumentInputType::value("IVec2", TaggedValue::IVec2, false))),
+								//DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
+								NodeInput::Network(concrete!(DocumentInputType::value("Color", TaggedValue::Color, false))),
+								//DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
+								NodeInput::Network(concrete!(DocumentInputType::value("Bool", TaggedValue::Bool, false))),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"), // output: FrontendGraphDataType::Artboard
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI.
+					// TODO: Check if thumbnail is reversed
+					(
+						NodeId(1),
+						DocumentNode {
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							..monitor_node()
+						},
+					),
+					(
+						NodeId(2),
+						DocumentNode {
+							name: "Add to Artboards".to_string(),
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(Artboards))],
+							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _,>"), // output: FrontendGraphDataType::Artboard
+							..Default::default()
+						},
+					),
+				]
+				.into(),
+				..Default::default()
+			}),
+
 			inputs: vec![
-				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Artboards", TaggedValue::Artboards, true),
+				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 				DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
 			],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboards)],
 			properties: node_properties::artboard_properties,
 			manual_composition: Some(concrete!(Footprint)),
 			..Default::default()

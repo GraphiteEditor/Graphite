@@ -106,6 +106,22 @@ impl Artboard {
 	}
 }
 
+/// Contains multiple artboards
+#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Artboards {
+	pub artboards: Vec<Artboard>,
+}
+
+impl Artboards {
+	pub fn new() -> Self {
+		Artboards { artboards: Vec::new() }
+	}
+	fn add_artboard(&mut self, artboard: Artboard) {
+		self.artboards.push(artboard);
+	}
+}
+
 pub struct ConstructLayerNode<GraphicElement, Stack> {
 	graphic_element: GraphicElement,
 	stack: Stack,
@@ -156,6 +172,15 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 		background,
 		clip,
 	}
+}
+pub struct AddArtboardNode<Artboard, Artboards> {
+	artboard: Artboard,
+	artboards: Artboards,
+}
+#[node_fn(AddArtboardNode)]
+async fn add_artboard(artboard: Artboard, mut artboards: Artboards) -> Artboards {
+	artboards.add_artboard(artboard);
+	artboards
 }
 
 impl From<ImageFrame<Color>> for GraphicElement {

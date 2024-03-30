@@ -201,6 +201,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
+		info!("inserting artboard before node: {}", layer);
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
 				None,
@@ -214,7 +215,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.insert_node_before(NodeId(generate_uuid()), layer, 1, artboard_node, IVec2::new(-8, 0))
 	}
-
+	//creates an artboard that outputs to the output node. Uses logic from create_layer
+	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard, output_node_id: NodeId) -> Option<NodeId> {
+		None
+	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
 			let node_type = resolve_document_node_type("Shape").expect("Shape node does not exist");
