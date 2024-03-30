@@ -269,45 +269,37 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Does a path contain a point? Based on the non zero winding
 	pub fn contains_point(&self, target_point: DVec2) -> bool {
-		let mut winding_modification = 0;
-
-		if !self.closed() {
-			// Fix winding number as if there were an edge from the last to first
-			// anchor point
-			let first = self.manipulator_groups.first();
-			let last = self.manipulator_groups.last();
-
-			if let (Some(first_manipulator_group), Some(last_manipulator_group)) = (first, last) {
-				let f = first_manipulator_group.anchor;
-				let l = last_manipulator_group.anchor;
-
-				// Set winding numbers based on the non-zero rule assuming leftward (-x) raycasts.
-				winding_modification = if (f.y - l.y).abs() <= f64::EPSILON {
-					0
-				} else {
-					// Interpolates between f and l
-					let t = (target_point.y - l.y) / (f.y - l.y);
-					// Intersection point lies between f and l
-					if (0.0..=1.0).contains(&t) {
-						let intersection_point = t * f + (1.0 - t) * l;
-						// Intersection point is right of the target point.
-						if intersection_point.x > target_point.x {
-							0
-						}
-						// This is a clockwise intersection, so subtract from the winding number.
-						else if f.y >= intersection_point.y {
-							-1
-						// This is a counterclockwise intersection, so add to the winding number.
-						} else {
-							1
-						}
-					// Intersection point lies outside of f and l
-					} else {
-						0
-					}
-				}
-			}
+		if self.closed() {
+			// Winding number for a closed curve.
+			return self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0;
 		}
+
+		// The curve is not closed. Pretend that it is and compute the winding number change
+		// if we had a segment from the last point back to the first.
+
+		// Position of first and last anchor points.
+		let first = self.manipulator_groups.first().map(|manipulator_group| manipulator_group.anchor);
+		let last = self.manipulator_groups.last().map(|manipulator_group| manipulator_group.anchor);
+		let endpoints = first.zip(last);
+
+		// Weight interpolating location of first and last anchor points. Reject weights outside of [0, 1].
+		let t = endpoints.map(|(f, l)| (target_point.y - l.y) / (f.y - l.y)).filter(|t| (0.0..=1.0).contains(t));
+		// Compute point of intersection.
+		// Reject points that are right of the click location since we compute winding numbers by ray-casting left.
+		let intersection_point = endpoints.zip(t).map(|((f, l), t)| t * f + (1.0 - t) * l).filter(|p| p.x <= target_point.x);
+		let winding_modification = first.zip(intersection_point).map_or_else(
+			// None variant implies no modification to winding number.
+			|| 0,
+			|(f, p)| {
+				if f.y >= p.y {
+					// This is a clockwise intersection, so subtract from the winding number.
+					-1
+				} else {
+					// This is a counterclockwise intersection, so add to the winding number.
+					1
+				}
+			},
+		);
 
 		// Add the winding modification to the winding number of the rest of the curve.
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() + winding_modification != 0
