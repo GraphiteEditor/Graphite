@@ -459,6 +459,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::ToggleVisibility { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
 				let visible = document_metadata.node_is_visible(node_id);
 				let visible = !visible;
 
