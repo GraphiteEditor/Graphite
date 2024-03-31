@@ -155,6 +155,7 @@
 	// HELPER FUNCTIONS
 	// ================
 
+	// Calculates the string to display when the field is not being edited.
 	function displayText(displayValue: number | undefined): string {
 		if (displayValue === undefined) return "-";
 
@@ -164,6 +165,7 @@
 		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
 	}
 
+	// Removes the trailing "s" from a unit if the quantity is 1.
 	function unPluralize(unit: string, quantity: number): string {
 		if (quantity !== 1 || !unit.endsWith("s")) return unit;
 		return unit.slice(0, -1);
@@ -174,9 +176,13 @@
 	// ===========================
 
 	function onTextFocused() {
+		// The degree of precision allowed in the number that's shown when editing the number field, where additional precision is removed to round out floating point errors.
+		const MAX_PRECISION = 12;
+		const noFloatingImprecisionValue = value === undefined ? undefined : Number(value.toPrecision(MAX_PRECISION));
+
 		if (value === undefined) text = "";
-		else if (unitIsHiddenWhenEditing) text = String(value);
-		else text = `${value}${unPluralize(unit, value)}`;
+		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionValue}`;
+		else text = `${noFloatingImprecisionValue}${unPluralize(unit, value)}`;
 
 		editing = true;
 
@@ -253,7 +259,7 @@
 
 	function onDragPointerDown(e: PointerEvent) {
 		// Only drag the number with left click (and when it's valid to do so)
-		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled) return;
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled || editing) return;
 
 		// Don't drag the text value from is input element
 		e.preventDefault();
