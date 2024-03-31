@@ -487,6 +487,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				})();
+				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
@@ -519,6 +520,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
+				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
