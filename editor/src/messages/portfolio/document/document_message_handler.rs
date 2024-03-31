@@ -463,7 +463,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
@@ -498,7 +498,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
@@ -622,11 +622,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
-				let all_layers_except_artboards_and_invisible = metadata
+				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
 					.filter(move |&layer| !metadata.is_artboard(layer))
-					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata));
-				let nodes = all_layers_except_artboards_and_invisible.map(|layer| layer.to_node()).collect();
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata) && !self.selected_nodes.layer_locked(layer, metadata));
+				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			DocumentMessage::SelectedLayersLower => {
