@@ -185,13 +185,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					for layer in ordered_last_elements {
 						let node = layer.to_node();
 						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
+						let mut nodes_collection = HashMap::new();
 
-						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
-							continue;
-						};
-
-						buffer.push(CopyBufferEntry {
-							nodes: NodeGraphMessageHandler::copy_nodes(
+						//If layer (e.g. empty folder) doesn't have child, do nothing here and simply leave nodes_collection empty.
+						if let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) {
+							nodes_collection = NodeGraphMessageHandler::copy_nodes(
 								active_document.network(),
 								&active_document
 									.network()
@@ -200,7 +198,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 									.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 									.collect(),
 							)
-							.collect(),
+							.collect();
+						}
+
+						buffer.push(CopyBufferEntry {
+							nodes: nodes_collection,
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							collapsed: false,
