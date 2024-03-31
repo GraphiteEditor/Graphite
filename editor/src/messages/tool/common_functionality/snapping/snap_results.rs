@@ -17,7 +17,7 @@ pub struct SnappedPoint {
 	pub source: SnapSource,
 	pub target: SnapTarget,
 	pub at_intersection: bool,
-	pub contrained: bool, // Found when looking for contrained
+	pub constrained: bool, // Found when looking for constrained
 	pub target_bounds: Option<Quad>,
 	pub source_bounds: Option<Quad>,
 	pub curves: [Option<Bezier>; 2],
@@ -56,16 +56,16 @@ impl SnappedPoint {
 		// Prefer closest
 		let other_closer = other_dist < my_dist + bias;
 
-		// We should prefer the most contrained option (e.g. intersection > path)
-		let other_more_contrained = other.contrained && !self.contrained;
-		let self_more_contrained = self.contrained && !other.contrained;
+		// We should prefer the most constrained option (e.g. intersection > path)
+		let other_more_constrained = other.constrained && !self.constrained;
+		let self_more_constrained = self.constrained && !other.constrained;
 
 		// Prefer nodes to intersections if both are at the same position
-		let contrained_at_same_pos = other.contrained && self.contrained && self.snapped_point_document.abs_diff_eq(other.snapped_point_document, 1.);
-		let other_better_constraint = contrained_at_same_pos && self.at_intersection && !other.at_intersection;
-		let self_better_constraint = contrained_at_same_pos && other.at_intersection && !self.at_intersection;
+		let constrained_at_same_pos = other.constrained && self.constrained && self.snapped_point_document.abs_diff_eq(other.snapped_point_document, 1.);
+		let other_better_constraint = constrained_at_same_pos && self.at_intersection && !other.at_intersection;
+		let self_better_constraint = constrained_at_same_pos && other.at_intersection && !self.at_intersection;
 
-		(other_closer || other_more_contrained || other_better_constraint) && !self_more_contrained && !self_better_constraint
+		(other_closer || other_more_constrained || other_better_constraint) && !self_more_constrained && !self_better_constraint
 	}
 	pub fn is_snapped(&self) -> bool {
 		self.distance.is_finite()
