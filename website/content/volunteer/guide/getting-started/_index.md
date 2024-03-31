@@ -12,22 +12,31 @@ Graphite is built with Rust and web technologies. Install the latest LTS version
 ## Installing
 
 Clone the project:
+
 ```sh
 git clone https://github.com/GraphiteEditor/Graphite.git
 ```
 
-On Debian-based Linux distributions, you may need to install the following packages:
+On Debian-based(Ubuntu, Linux Mint, etc.) Linux distributions, you may need to install the following packages:
+
 ```sh
 sudo apt install libgtk-3-dev libsoup2.4-dev libjavascriptcoregtk-4.0-dev libwebkit2gtk-4.0-dev
 ```
 
+On Fedora-based(RHEL, CentOS, etc) Linux distributions, you may need to install the following packages:
+
+```sh
+sudo dnf install libsoup-devel gtk3-devel javascriptcoregtk4.0-devel webkit2gtk4.0-devel
+```
+
 Then install the required Node.js packages:
+
 ```sh
 cd frontend
 npm install
 ```
 
-You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. (If you prefer to install this manually, get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --no-optional` instead.)
+You only need to explicitly install Node.js dependencies. Rust's cargo dependencies will be installed automatically on your first build. One dependency in the build chain, `wasm-pack`, will be installed automatically on your system when the Node.js packages are installing. (If you prefer to install this manually, get it from the [wasm-pack website](https://rustwasm.github.io/wasm-pack/), then install your npm dependencies with `npm install --omit=optional` instead.)
 
 One tool in the Rust ecosystem does need to be installed:
 
@@ -36,6 +45,7 @@ cargo install cargo-watch
 ```
 
 That's it! Now, to run the project while developing, just execute:
+
 ```sh
 npm start
 ```
@@ -45,6 +55,7 @@ This spins up the dev server at <http://localhost:8080> with a file watcher that
 ## Production builds
 
 You'll rarely ever need to do this, but to compile a production build with full optimizations:
+
 ```sh
 cargo install cargo-about
 npm run build
