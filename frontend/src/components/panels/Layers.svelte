@@ -428,7 +428,7 @@
 						<IconButton
 							class={"status-toggle"}
 							classes={{ inactive: !listing.entry.parentsUnlocked }}
-							action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
 							icon={listing.entry.parentsUnlocked ? "PadlockLocked" : "PadlockUnlocked"}
 							hoverIcon={listing.entry.parentsUnlocked ? "PadlockUnlocked" : "PadlockLocked"}
@@ -443,13 +443,6 @@
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
 						tooltip={listing.entry.visible ? "Hide" : "Show"}
-					/>
-					<IconButton
-						class={"visibility"}
-						action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
-						size={24}
-						icon={listing.entry.locked ? "Lock" : "Unlock"}
-						tooltip={listing.entry.locked ? "Locked" : "Unlocked"}
 					/>
 				</LayoutRow>
 			{/each}

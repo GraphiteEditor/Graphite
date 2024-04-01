@@ -1363,7 +1363,7 @@ impl DocumentMessageHandler {
 
 		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
 		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_visible(layer.to_node()));
-		let selection_all_locked = false; // TODO: Implement
+		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_locked(layer.to_node()));
 
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -1417,8 +1417,8 @@ impl DocumentMessageHandler {
 				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestComingSoonDialog))
-					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1127) }.into())
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)

@@ -126,7 +126,7 @@ export class FrontendNode {
 
 	readonly visible!: boolean;
 
-	readonly locked!: boolean;
+	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
 }

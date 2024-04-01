@@ -830,6 +830,11 @@ impl NodeGraphMessageHandler {
 					.filter(|&ancestor| ancestor != layer)
 					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default());
 
+				let parents_unlocked = layer
+					.ancestors(metadata)
+					.filter(|&ancestor| ancestor != layer)
+					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default());
+
 				let data = LayerPanelEntry {
 					id: node_id,
 					layer_classification,
@@ -841,8 +846,8 @@ impl NodeGraphMessageHandler {
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
 					parents_visible,
-					unlocked: true,
-					parents_unlocked: true,
+					unlocked: !node.locked,
+					parents_unlocked,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
