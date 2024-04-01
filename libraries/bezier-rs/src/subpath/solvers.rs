@@ -282,7 +282,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let last_anchor_point = self.manipulator_groups.last().map(|manipulator_group| manipulator_group.anchor);
 		let endpoints = first_anchor_point.zip(last_anchor_point);
 
-		// Weight interpolating location of first and last anchor points. Reject weights outside of [0, 1].
+		// Weight interpolating intersection location from last to first anchor point. Reject weights outside of [0, 1].
 		let t = endpoints.map(|(first, last)| (target_point.y - last.y) / (first.y - last.y)).filter(|t| (0.0..=1.).contains(t));
 		// Compute point of intersection.
 		// Reject points that are right of the click location since we compute winding numbers by ray-casting left.
@@ -291,7 +291,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			// None variant implies no intersection and no modification to winding number.
 			|| 0,
 			// Clockwise (decrement winding number) and counterclockwise (increment winding number) intersection respectively.
-			|(f, p)| if f.y >= p.y { -1 } else { 1 },
+			|(first, intersection)| if first.y >= intersection.y { -1 } else { 1 },
 		);
 
 		// Add the winding modification to the winding number of the rest of the curve.
