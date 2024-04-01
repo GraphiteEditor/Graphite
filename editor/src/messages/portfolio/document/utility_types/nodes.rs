@@ -46,8 +46,14 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "layerClassification")]
 	pub layer_classification: LayerClassification,
 	pub expanded: bool,
+	#[serde(rename = "hasChildren")]
+	pub has_children: bool,
 	pub visible: bool,
-	pub locked: bool,
+	#[serde(rename = "parentsVisible")]
+	pub parents_visible: bool,
+	pub unlocked: bool,
+	#[serde(rename = "parentsUnlocked")]
+	pub parents_unlocked: bool,
 	#[serde(rename = "parentId")]
 	pub parent_id: Option<NodeId>,
 	pub depth: usize,

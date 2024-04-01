@@ -578,14 +578,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+		unimplemented!("Must use `actions_with_node_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
 	}
 }
 
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; DeleteSelectedNodes, Cut, Copy, DuplicateSelectedNodes, ToggleSelectedVisibility)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
+		} else if self.has_selection {
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
@@ -823,16 +825,24 @@ impl NodeGraphMessageHandler {
 					}
 				};
 
+				let parents_visible = layer
+					.ancestors(metadata)
+					.filter(|&ancestor| ancestor != layer)
+					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default());
+
 				let data = LayerPanelEntry {
 					id: node_id,
 					layer_classification,
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
+					has_children: layer.has_children(metadata),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
 					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
-					locked: node.locked,
+					parents_visible,
+					unlocked: true,
+					parents_unlocked: true,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
@@ -965,6 +975,7 @@ impl Default for NodeGraphMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
 				.icon(Some("GraphViewOpen".into()))
+				.hover_icon(Some("GraphViewClosed".into()))
 				.tooltip("Hide Node Graph")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())

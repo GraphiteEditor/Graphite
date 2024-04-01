@@ -615,9 +615,15 @@ export class LayerPanelEntry {
 
 	expanded!: boolean;
 
+	hasChildren!: boolean;
+
 	visible!: boolean;
 
-	locked!: boolean;
+	parentsVisible!: boolean;
+
+	unlocked!: boolean;
+
+	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
 
@@ -772,6 +778,8 @@ export class FontInput extends WidgetProps {
 
 export class IconButton extends WidgetProps {
 	icon!: IconName;
+
+	hoverIcon!: IconName | undefined;
 
 	size!: IconSize;
 
@@ -937,6 +945,8 @@ export class TextButton extends WidgetProps {
 	label!: string;
 
 	icon!: IconName | undefined;
+
+	hoverIcon!: IconName | undefined;
 
 	emphasized!: boolean;
 

@@ -4,6 +4,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	export let icon: IconName;
+	export let hoverIcon: IconName | undefined = undefined;
 	export let size: IconSize;
 	export let disabled = false;
 	export let active = false;
@@ -20,8 +21,21 @@
 		.join(" ");
 </script>
 
-<button class={`icon-button size-${size} ${className} ${extraClasses}`.trim()} class:disabled class:active on:click={action} {disabled} title={tooltip} tabindex={active ? -1 : 0} {...$$restProps}>
+<button
+	class={`icon-button size-${size} ${className} ${extraClasses}`.trim()}
+	class:hover-icon={hoverIcon && !disabled}
+	class:disabled
+	class:active
+	on:click={action}
+	{disabled}
+	title={tooltip}
+	tabindex={active ? -1 : 0}
+	{...$$restProps}
+>
 	<IconLabel {icon} />
+	{#if hoverIcon && !disabled}
+		<IconLabel icon={hoverIcon} />
+	{/if}
 </button>
 
 <style lang="scss" global>
@@ -47,6 +61,16 @@
 
 		&:hover {
 			background: var(--color-5-dullgray);
+		}
+
+		&.hover-icon {
+			&:not(:hover) .icon-label:nth-of-type(2) {
+				display: none;
+			}
+
+			&:hover .icon-label:nth-of-type(1) {
+				display: none;
+			}
 		}
 
 		&.disabled {

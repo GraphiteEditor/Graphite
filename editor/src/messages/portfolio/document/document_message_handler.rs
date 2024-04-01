@@ -1298,7 +1298,8 @@ impl DocumentMessageHandler {
 		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
-				.icon(Some(if self.graph_view_overlay_open { "GraphViewOpen".into() } else { "GraphViewClosed".into() }))
+				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
+				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
 				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
@@ -1360,6 +1361,10 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
+		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
+		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_visible(layer.to_node()));
+		let selection_all_locked = false; // TODO: Implement
+
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
@@ -1386,16 +1391,42 @@ impl DocumentMessageHandler {
 						}
 					})
 					.widget_holder(),
+				//
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				IconButton::new("Folder", 24)
-					.tooltip("New Folder")
+				//
+				IconButton::new("NewLayer", 24)
+					.tooltip("New Folder/Layer")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+					.widget_holder(),
+				IconButton::new("Folder", 24)
+					.tooltip("Group Selected")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+					.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+					.disabled(!has_selection)
+					.widget_holder(),
+				//
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				//
+				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+					.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestComingSoonDialog))
+					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1127) }.into())
+					.disabled(!has_selection)
+					.widget_holder(),
+				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
+					.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+					.disabled(!has_selection)
 					.widget_holder(),
 			],
 		}]);
