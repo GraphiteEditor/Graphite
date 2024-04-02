@@ -513,8 +513,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else {
 						return;
 					};
+					let current_layer = LayerNodeIdentifier::new_unchecked(node_id);
+					// check if the parent is locked
+					let is_parent_locked = current_layer.parent(&document_metadata).map_or(false, |parent| document_metadata.node_is_locked(parent.to_node()));
+					if is_parent_locked {
+						return;
+					}
+					// get document node
 					let Some(node) = network.nodes.get_mut(&node_id) else { return };
 					node.locked = is_locked;
+					// change the locked status of all children
+					let selected_nodes = current_layer.children(&document_metadata).enumerate();
+					for (_, node_id) in selected_nodes {
+						debug!("Setting node {:?} to locked: {:?}", node_id.to_node(), is_locked);
+						if let Some(node) = network.nodes.get_mut(&node_id.to_node()) {
+							node.locked = is_locked;
+						}
+					}
 
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -585,9 +600,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
 		} else if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
@@ -629,7 +644,7 @@ impl NodeGraphMessageHandler {
 
 				// Check if any of the selected nodes are locked
 				let is_locked = selected_nodes.selected_nodes().all(|&id| document_metadata.node_is_locked(id));
-				let (lock_unlock_label, lock_unlock_icon) = if is_locked { ("Make Unlock", "Lock") } else { ("Make Lock", "Unlock") };
+				let (lock_unlock_label, lock_unlock_icon) = if is_locked { ("Make Unlock", "PadlockLocked") } else { ("Make Lock", "PadlockUnlocked") };
 				let lock_button = TextButton::new(lock_unlock_label)
 					.icon(Some(lock_unlock_icon.to_string()))
 					.tooltip(if is_locked { "Unlock selected nodes/layers" } else { "Lock selected nodes/layers" }.to_string() + if multiple_nodes { "s" } else { "" })
