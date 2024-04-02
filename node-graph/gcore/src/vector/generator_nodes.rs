@@ -1,5 +1,3 @@
-use core::any::Any;
-
 use crate::uuid::ManipulatorGroupId;
 use crate::vector::VectorData;
 use crate::Node;
@@ -42,26 +40,25 @@ pub struct RectangleGenerator<SizeX, SizeY, IsIndividual, CornerRadius, Clamped>
 	clamped: Clamped,
 }
 
-#[node_macro::node_fn(RectangleGenerator)]
-fn square_generator<T: Any>(_input: (), size_x: f64, size_y: f64, is_individual: bool, corner_radius: T, clamped: bool) -> VectorData {
-	let size = DVec2::new(size_x, size_y);
-	let corner1 = -size / 2.;
-	let corner2 = size / 2.;
-
-	let corner_radius = &corner_radius as &dyn Any;
-	if let Some(&corner_radius) = corner_radius.downcast_ref::<f64>() {
-		let clamped_radius = if clamped { corner_radius.clamp(0., size_x.min(size_y).max(0.) / 2.) } else { corner_radius };
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, [clamped_radius; 4])])
-	} else if let Some(&corner_radius) = corner_radius.downcast_ref::<[f64; 4]>() {
-		let clamped_radius = if clamped {
-			corner_radius.map(|x| x.clamp(0., size_x.min(size_y).max(0.) / 2.))
-		} else {
-			corner_radius
-		};
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(corner1, corner2, clamped_radius)])
-	} else {
-		unreachable!()
+trait CornerRadius {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData;
+}
+impl CornerRadius for f64 {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
+		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])])
 	}
+}
+impl CornerRadius for [f64; 4] {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
+		let clamped_radius = if clamped { self.map(|x| x.clamp(0., size.x.min(size.y).max(0.) / 2.)) } else { self };
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)])
+	}
+}
+
+#[node_macro::node_fn(RectangleGenerator)]
+fn square_generator<T: CornerRadius>(_input: (), size_x: f64, size_y: f64, is_individual: bool, corner_radius: T, clamped: bool) -> VectorData {
+	corner_radius.generate(DVec2::new(size_x, size_y), clamped)
 }
 
 #[derive(Debug, Clone, Copy)]
