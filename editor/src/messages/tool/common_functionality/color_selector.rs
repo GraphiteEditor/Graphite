@@ -1,5 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::prelude::Message;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::*;
 
 use graphene_core::Color;
 
@@ -54,6 +55,19 @@ impl ToolColorOptions {
 			ToolColorType::Custom => self.custom_color,
 			ToolColorType::Primary => self.primary_working_color,
 			ToolColorType::Secondary => self.secondary_working_color,
+		}
+	}
+
+	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		if let Some(colour) = self.active_color() {
+			let fill = graphene_core::vector::style::Fill::solid(colour);
+			responses.add(GraphOperationMessage::FillSet { layer, fill });
+		}
+	}
+	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		if let Some(colour) = self.active_color() {
+			let stroke = graphene_core::vector::style::Stroke::new(Some(colour), weight);
+			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}
 

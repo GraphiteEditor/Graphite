@@ -222,7 +222,6 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let layer = NodeId(generate_uuid());
 				let insert_index = -1;
 				let nodes = {
 					let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
@@ -230,24 +229,9 @@ impl Fsm for SplineToolFsmState {
 
 					HashMap::from([(NodeId(0), node)])
 				};
-				responses.add(GraphOperationMessage::NewCustomLayer {
-					id: layer,
-					nodes,
-					parent,
-					insert_index,
-					alias: String::new(),
-				});
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] });
-
-				responses.add(GraphOperationMessage::FillSet {
-					layer,
-					fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
-				});
-
-				responses.add(GraphOperationMessage::StrokeSet {
-					layer,
-					stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
-				});
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
+				tool_options.fill.apply_fill(layer, responses);
+				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.layer = Some(layer);
 
 				SplineToolFsmState::Drawing

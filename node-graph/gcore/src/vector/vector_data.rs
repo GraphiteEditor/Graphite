@@ -161,7 +161,7 @@ impl Default for VectorData {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ManipulatorPointId {
 	Anchor(PointId),
-	StartHandle(SegmentId),
+	PrimaryHandle(SegmentId),
 	EndHandle(SegmentId),
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]

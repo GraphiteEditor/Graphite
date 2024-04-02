@@ -1,6 +1,8 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -205,11 +207,8 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Ready, RectangleToolMessage::DragStart) => {
 				shape_data.start(document, input);
 
-				let subpath = bezier_rs::Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
-
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = NodeId(generate_uuid());
 				let insert_index = -1;
 				let nodes = {
 					let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
@@ -220,31 +219,24 @@ impl Fsm for RectangleToolFsmState {
 
 					HashMap::from([(NodeId(0), node)])
 				};
-				responses.add(GraphOperationMessage::NewCustomLayer {
-					id: layer,
-					nodes,
-					parent: document.new_layer_parent(),
-					insert_index,
-					alias: String::new(),
-				});
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(), responses);
+				tool_options.fill.apply_fill(layer, responses);
+				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				shape_data.layer = Some(layer);
-
-				let fill_color = tool_options.fill.active_color();
-				responses.add(GraphOperationMessage::FillSet {
-					layer,
-					fill: if let Some(color) = fill_color { Fill::Solid(color) } else { Fill::None },
-				});
-
-				responses.add(GraphOperationMessage::StrokeSet {
-					layer,
-					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
-				});
 
 				RectangleToolFsmState::Drawing
 			}
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = shape_data.calculate_transform(document, input, center, lock_ratio, false) {
-					responses.add(message);
+				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
+					if let Some(layer) = shape_data.layer {
+						// todo: make the scale impact the rect node
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				// Auto-panning

@@ -29,10 +29,8 @@ impl Resize {
 		root_transform.transform_point2(self.drag_start)
 	}
 
-	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
-		let Some(layer) = self.layer else {
-			return None;
-		};
+	pub fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
+		let layer = self.layer?;
 		if !document.network().nodes.contains_key(&layer.to_node()) {
 			self.layer.take();
 			return None;
@@ -82,9 +80,13 @@ impl Resize {
 			self.snap_manager.update_indicator(snapped);
 		}
 
+		Some(points_viewport)
+	}
+	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
+		let points_viewport = self.calculate_points(document, input, center, lock_ratio)?;
 		Some(
 			GraphOperationMessage::TransformSet {
-				layer,
+				layer: self.layer?,
 				transform: DAffine2::from_scale_angle_translation(points_viewport[1] - points_viewport[0], 0., points_viewport[0]),
 				transform_in: TransformIn::Viewport,
 				skip_rerender,

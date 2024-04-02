@@ -64,24 +64,24 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 				typing.clear();
 			}
 
-			if using_path_tool {
-				if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.network)) {
-					*selected.original_transforms = OriginalTransforms::default();
-					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
+			// if using_path_tool {
+			// 	if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.network)) {
+			// 		*selected.original_transforms = OriginalTransforms::default();
+			// 		let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
-					let mut point_count: usize = 0;
-					let get_location = |point: &ManipulatorPointId| {
-						graph_modification_utils::get_manipulator_from_id(subpaths, point.group)
-							.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
-							.map(|position| viewspace.transform_point2(position))
-					};
-					let points = shape_editor.selected_points();
+			// 		let mut point_count: usize = 0;
+			// 		let get_location = |point: &ManipulatorPointId| {
+			// 			graph_modification_utils::get_manipulator_from_id(subpaths, point.group)
+			// 				.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
+			// 				.map(|position| viewspace.transform_point2(position))
+			// 		};
+			// 		let points = shape_editor.selected_points();
 
-					*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
-				}
-			} else {
-				*selected.pivot = selected.mean_average_of_pivots();
-			}
+			// 		*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;
+			// 	}
+			// } else {
+			// 	*selected.pivot = selected.mean_average_of_pivots();
+			// }
 
 			*mouse_position = input.mouse.position;
 			*start_mouse = input.mouse.position;

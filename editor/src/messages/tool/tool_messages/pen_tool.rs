@@ -211,18 +211,18 @@ impl PenToolData {
 		self.from_start = from_start;
 		self.subpath_index = subpath_index;
 
-		let Some(subpaths) = get_subpaths(layer, &document.network) else { return };
-		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
-		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
-		let Some(last_handle) = first_or_last else { return };
-		let id = last_handle.id;
-		let modification = VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false };
+		// let Some(subpaths) = get_subpaths(layer, &document.network) else { return };
+		// let manipulator_groups = subpaths[subpath_index].manipulator_groups();
+		// let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
+		// let Some(last_handle) = first_or_last else { return };
+		// let id = last_handle.id;
+		// let modification = VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false };
 
-		// Stop the handles on the first point from being colinear
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: modification,
-		});
+		// // Stop the handles on the first point from being colinear
+		// responses.add(GraphOperationMessage::Vector {
+		// 	layer,
+		// 	modification_type: modification,
+		// });
 	}
 
 	fn create_new_path(
@@ -292,24 +292,24 @@ impl PenToolData {
 			}
 
 			// Remove the point that has just been placed
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
-			});
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
+			// });
 
 			// Move the in handle of the previous anchor to on top of the previous position
-			let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: previous_anchor },
-			});
+			// let point = ManipulatorPointId::new(previous_manipulator_group.id, outwards_handle);
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position: previous_anchor },
+			// });
 
 			// Stop the handles on the last point from being colinear
-			let id = previous_manipulator_group.id;
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
-			});
+			// let id = previous_manipulator_group.id;
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
+			// });
 
 			self.colinear_handles = false;
 
@@ -349,32 +349,32 @@ impl PenToolData {
 		let should_close_path = transformed_distance_between_squared < snap_point_tolerance_squared && previous_manipulator_group.is_some();
 		if should_close_path {
 			// Move the in handle of the first point to where the user has placed it
-			let point = ManipulatorPointId::new(first_manipulator_group.id, inwards_handle);
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: last_in },
-			});
+			// let point = ManipulatorPointId::new(first_manipulator_group.id, inwards_handle);
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position: last_in },
+			// });
 
-			// Stop the handles on the first point from being colinear
-			let id = first_manipulator_group.id;
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
-			});
+			// // Stop the handles on the first point from being colinear
+			// let id = first_manipulator_group.id;
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear: false },
+			// });
 
-			// Remove the point that has just been placed
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
-			});
+			// // Remove the point that has just been placed
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
+			// });
 
-			// Push a close path node
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetClosed { index: 0, closed: true },
-			});
+			// // Push a close path node
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer,
+			// 	modification_type: VectorModificationType::SetClosed { index: 0, closed: true },
+			// });
 
-			responses.add(DocumentMessage::CommitTransaction);
+			// responses.add(DocumentMessage::CommitTransaction);
 
 			// Clean up tool data
 			self.layer = None;
@@ -385,60 +385,60 @@ impl PenToolData {
 		}
 		// Add a new manipulator for the next anchor that we will place
 		if let Some(out_handle) = outwards_handle.get_position(last_manipulator_group) {
-			responses.add(add_manipulator_group(self.layer, self.from_start, bezier_rs::ManipulatorGroup::new_anchor(out_handle)));
+			add_manipulator_group(self.layer, self.from_start, out_handle, responses);
 		}
 
 		Some(PenToolFsmState::PlacingAnchor)
 	}
 
 	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let document = snap_data.document;
-		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
+		// let document = snap_data.document;
+		// // Get subpath
+		// let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
 
-		// Get the last manipulator group
-		let manipulator_groups = subpath.manipulator_groups();
-		let last_manipulator_group = if self.from_start { manipulator_groups.first()? } else { manipulator_groups.last()? };
+		// // Get the last manipulator group
+		// let manipulator_groups = subpath.manipulator_groups();
+		// let last_manipulator_group = if self.from_start { manipulator_groups.first()? } else { manipulator_groups.last()? };
 
-		// Get correct handle types
-		let inwards_handle = if self.from_start { SelectedType::OutHandle } else { SelectedType::InHandle };
-		let outwards_handle = if self.from_start { SelectedType::InHandle } else { SelectedType::OutHandle };
+		// // Get correct handle types
+		// let inwards_handle = if self.from_start { SelectedType::OutHandle } else { SelectedType::InHandle };
+		// let outwards_handle = if self.from_start { SelectedType::InHandle } else { SelectedType::OutHandle };
 
-		// Get manipulator points
-		let last_anchor = last_manipulator_group.anchor;
+		// // Get manipulator points
+		// let last_anchor = last_manipulator_group.anchor;
 
-		let colinear = !modifiers.break_handle && self.colinear_handles;
+		// let colinear = !modifiers.break_handle && self.colinear_handles;
 
-		snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
-		let position = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(last_anchor), false);
-		if !position.is_finite() {
-			return Some(PenToolFsmState::DraggingHandle);
-		}
+		// snap_data.manipulators = vec![(self.layer?, last_manipulator_group.id)];
+		// let position = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(last_anchor), false);
+		// if !position.is_finite() {
+		// 	return Some(PenToolFsmState::DraggingHandle);
+		// }
 
-		// Update points on current segment (to show preview of new handle)
-		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
-		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?,
-			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-		});
+		// // Update points on current segment (to show preview of new handle)
+		// let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
+		// responses.add(GraphOperationMessage::Vector {
+		// 	layer: self.layer?,
+		// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// });
 
-		// Place the previous anchor's in handle at the opposing position
-		if colinear {
-			// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
-			let position = last_anchor - (position - last_anchor);
-			let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
-			responses.add(GraphOperationMessage::Vector {
-				layer: self.layer?,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-			});
-		}
+		// // Place the previous anchor's in handle at the opposing position
+		// if colinear {
+		// 	// Could also be written as `last_anchor.position * 2 - pos` but this way avoids overflow/underflow better
+		// 	let position = last_anchor - (position - last_anchor);
+		// 	let point = ManipulatorPointId::new(last_manipulator_group.id, inwards_handle);
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer: self.layer?,
+		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// 	});
+		// }
 
-		// Update the colinear handles status of the currently modifying point
-		let id = last_manipulator_group.id;
-		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?,
-			modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear },
-		});
+		// // Update the colinear handles status of the currently modifying point
+		// let id = last_manipulator_group.id;
+		// responses.add(GraphOperationMessage::Vector {
+		// 	layer: self.layer?,
+		// 	modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id, colinear },
+		// });
 
 		Some(PenToolFsmState::DraggingHandle)
 	}
@@ -474,13 +474,13 @@ impl PenToolData {
 			self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, previous_anchor, true)
 		};
 
-		for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-			let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: pos },
-			});
-		}
+		// for manipulator_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
+		// 	let point = ManipulatorPointId::new(last_manipulator_group.id, manipulator_type);
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position: pos },
+		// 	});
+		// }
 		Some(PenToolFsmState::PlacingAnchor)
 	}
 
@@ -568,20 +568,20 @@ impl PenToolData {
 		// Clean up if there are two or more manipulators
 		// Remove the unplaced anchor if in anchor placing mode
 		if fsm == PenToolFsmState::PlacingAnchor {
-			responses.add(GraphOperationMessage::Vector {
-				layer: self.layer?,
-				modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
-			});
+			// responses.add(GraphOperationMessage::Vector {
+			// 	layer: self.layer?,
+			// 	modification_type: VectorModificationType::RemoveManipulatorGroup { id: last_manipulator_group.id },
+			// });
 			last_manipulator_group = previous_manipulator_group;
 		}
 
 		// Remove the out handle
-		let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
+		// let point = ManipulatorPointId::new(last_manipulator_group.id, outwards_handle);
 		let position = last_manipulator_group.anchor;
-		responses.add(GraphOperationMessage::Vector {
-			layer: self.layer?,
-			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-		});
+		// responses.add(GraphOperationMessage::Vector {
+		// 	layer: self.layer?,
+		// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// });
 
 		Some(DocumentMessage::CommitTransaction)
 	}
@@ -797,18 +797,16 @@ impl Fsm for PenToolFsmState {
 }
 
 /// Pushes a [ManipulatorGroup] to the current layer via a [GraphOperationMessage].
-fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, manipulator_group: bezier_rs::ManipulatorGroup<PointId>) -> Message {
-	let Some(layer) = layer else {
-		return Message::NoOp;
-	};
-	let modification = if from_start {
-		VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
-	} else {
-		VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
-	};
-	GraphOperationMessage::Vector {
-		layer,
-		modification_type: modification,
-	}
-	.into()
+fn add_manipulator_group(layer: Option<LayerNodeIdentifier>, from_start: bool, anchor: DVec2, responses: &mut VecDeque<Message>) {
+	let Some(layer) = layer else { return };
+	// let modification = if from_start {
+	// 	VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
+	// } else {
+	// 	VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
+	// };
+	// GraphOperationMessage::Vector {
+	// 	layer,
+	// 	modification_type: modification,
+	// }
+	// .into()
 }

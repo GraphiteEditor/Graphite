@@ -170,40 +170,40 @@ impl ClosestSegment {
 	}
 
 	pub fn adjust_start_handle(&self, responses: &mut VecDeque<Message>) {
-		if !self.has_start_handle {
-			return;
-		}
+		// if !self.has_start_handle {
+		// 	return;
+		// }
 
-		let [first, _] = self.split();
-		let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
+		// let [first, _] = self.split();
+		// let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
 
-		// `first.handle_start()` should always be expected
-		let delta = first.handle_start().unwrap_or(first.start());
+		// // `first.handle_start()` should always be expected
+		// let delta = first.handle_start().unwrap_or(first.start());
 
-		let out_handle = GraphOperationMessage::Vector {
-			layer: self.layer,
-			modification_type: VectorModificationType::ApplyDelta { point, delta },
-		};
-		responses.add(out_handle);
+		// let out_handle = GraphOperationMessage::Vector {
+		// 	layer: self.layer,
+		// 	modification_type: VectorModificationType::ApplyDelta { point, delta },
+		// };
+		// responses.add(out_handle);
 	}
 
 	pub fn adjust_end_handle(&self, responses: &mut VecDeque<Message>) {
-		if !self.has_end_handle {
-			return;
-		}
+		// if !self.has_end_handle {
+		// 	return;
+		// }
 
-		let [_, second] = self.split();
-		let point = ManipulatorPointId::new(self.end, SelectedType::InHandle);
+		// let [_, second] = self.split();
+		// let point = ManipulatorPointId::new(self.end, SelectedType::InHandle);
 
-		// `second.handle_end()` should not be expected in the quadratic case
-		let position = if second.handles.is_cubic() { second.handle_end() } else { second.handle_start() };
-		let delta = position.unwrap_or(second.end());
+		// // `second.handle_end()` should not be expected in the quadratic case
+		// let position = if second.handles.is_cubic() { second.handle_end() } else { second.handle_start() };
+		// let delta = position.unwrap_or(second.end());
 
-		let in_handle = GraphOperationMessage::Vector {
-			layer: self.layer,
-			modification_type: VectorModificationType::ApplyDelta { point, delta },
-		};
-		responses.add(in_handle);
+		// let in_handle = GraphOperationMessage::Vector {
+		// 	layer: self.layer,
+		// 	modification_type: VectorModificationType::ApplyDelta { point, delta },
+		// };
+		// responses.add(in_handle);
 	}
 
 	/// Inserts the point that this [`ClosestSegment`] currently has. Returns the [`PointId`] of the inserted point.
@@ -223,18 +223,18 @@ impl ClosestSegment {
 			(true, true) => (in_handle, out_handle),
 		};
 
-		let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
-		let modification = VectorModificationType::InsertPoint { id: (), pos: () } {
-			manipulator_group,
-			after_id: self.start,
-		};
-		let insert = GraphOperationMessage::Vector {
-			layer,
-			modification_type: modification,
-		};
-		responses.add(insert);
+		// let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
+		// let modification = VectorModificationType::InsertPoint { id: (), pos: () } {
+		// 	manipulator_group,
+		// 	after_id: self.start,
+		// };
+		// let insert = GraphOperationMessage::Vector {
+		// 	layer,
+		// 	modification_type: modification,
+		// };
+		// responses.add(insert);
 
-		manipulator_group.id
+		PointId::generate()
 	}
 
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> PointId {
@@ -257,7 +257,7 @@ impl ShapeState {
 
 		for (layer, state) in &self.selected_shape_state {
 			for point in &state.selected_points {
-				snap_data.manipulators.push((*layer, point.group));
+				// snap_data.manipulators.push((*layer, point.group));
 			}
 		}
 
@@ -271,50 +271,50 @@ impl ShapeState {
 
 			let to_document = document.metadata.transform_to_document(*layer);
 
-			for subpath in vector_data.stroke_bezier_paths() {
-				for (index, group) in subpath.manipulator_groups().iter().enumerate() {
-					for handle in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-						if !state.is_selected(ManipulatorPointId::new(group.id.into(), handle)) {
-							continue;
-						}
-						let source = if handle.is_handle() {
-							SnapSource::Geometry(GeometrySnapSource::Handle)
-						} else if are_manipulator_handles_colinear(group, to_document, &subpath, index) {
-							SnapSource::Geometry(GeometrySnapSource::HandlesColinear)
-						} else {
-							SnapSource::Geometry(GeometrySnapSource::HandlesFree)
-						};
-						let Some(position) = handle.get_position(group) else { continue };
-						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+			// for subpath in vector_data.stroke_bezier_paths() {
+			// 	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
+			// 		for handle in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
+			// 			if !state.is_selected(ManipulatorPointId::new(group.id.into(), handle)) {
+			// 				continue;
+			// 			}
+			// 			let source = if handle.is_handle() {
+			// 				SnapSource::Geometry(GeometrySnapSource::Handle)
+			// 			} else if are_manipulator_handles_colinear(group, to_document, &subpath, index) {
+			// 				SnapSource::Geometry(GeometrySnapSource::HandlesColinear)
+			// 			} else {
+			// 				SnapSource::Geometry(GeometrySnapSource::HandlesFree)
+			// 			};
+			// 			let Some(position) = handle.get_position(group) else { continue };
+			// 			let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
 
-						let mut push_neighbor = |group: ManipulatorGroup<PointId>| {
-							if !state.is_selected(ManipulatorPointId::new(group.id.into(), SelectedType::Anchor)) {
-								point.neighbors.push(to_document.transform_point2(group.anchor));
-							}
-						};
-						if handle == SelectedType::Anchor {
-							// Previous anchor (looping if closed)
-							if index > 0 {
-								push_neighbor(subpath.manipulator_groups()[index - 1]);
-							} else if subpath.closed() {
-								push_neighbor(subpath.manipulator_groups()[subpath.len() - 1]);
-							}
-							// Next anchor (looping if closed)
-							if index + 1 < subpath.len() {
-								push_neighbor(subpath.manipulator_groups()[index + 1]);
-							} else if subpath.closed() {
-								push_neighbor(subpath.manipulator_groups()[0]);
-							}
-						}
+			// 			let mut push_neighbor = |group: ManipulatorGroup<PointId>| {
+			// 				if !state.is_selected(ManipulatorPointId::new(group.id.into(), SelectedType::Anchor)) {
+			// 					point.neighbors.push(to_document.transform_point2(group.anchor));
+			// 				}
+			// 			};
+			// 			if handle == SelectedType::Anchor {
+			// 				// Previous anchor (looping if closed)
+			// 				if index > 0 {
+			// 					push_neighbor(subpath.manipulator_groups()[index - 1]);
+			// 				} else if subpath.closed() {
+			// 					push_neighbor(subpath.manipulator_groups()[subpath.len() - 1]);
+			// 				}
+			// 				// Next anchor (looping if closed)
+			// 				if index + 1 < subpath.len() {
+			// 					push_neighbor(subpath.manipulator_groups()[index + 1]);
+			// 				} else if subpath.closed() {
+			// 					push_neighbor(subpath.manipulator_groups()[0]);
+			// 				}
+			// 			}
 
-						let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
-						if best_snapped.other_snap_better(&snapped) {
-							offset = snapped.snapped_point_document - point.document_point + mouse_delta;
-							best_snapped = snapped;
-						}
-					}
-				}
-			}
+			// 			let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
+			// 			if best_snapped.other_snap_better(&snapped) {
+			// 				offset = snapped.snapped_point_document - point.document_point + mouse_delta;
+			// 				best_snapped = snapped;
+			// 			}
+			// 		}
+			// 	}
+			// }
 		}
 		snap_manager.update_indicator(best_snapped);
 		document.metadata.document_to_viewport.transform_vector2(offset)
@@ -330,59 +330,59 @@ impl ShapeState {
 		select_threshold: f64,
 		add_to_selection: bool,
 	) -> Option<Option<SelectedPointsInfo>> {
-		if self.selected_shape_state.is_empty() {
-			return None;
-		}
+		// if self.selected_shape_state.is_empty() {
+		// 	return None;
+		// }
 
-		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document_network, document_metadata, mouse_position, select_threshold) {
-			let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-			let manipulator_group = vector_data.manipulator_group_id(manipulator_point_id.group)?;
-			let point_position = manipulator_point_id.manipulator_type.get_position(&manipulator_group)?;
+		// if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document_network, document_metadata, mouse_position, select_threshold) {
+		// 	let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		// 	let manipulator_group = vector_data.manipulator_group_id(manipulator_point_id.group)?;
+		// 	let point_position = manipulator_point_id.manipulator_type.get_position(&manipulator_group)?;
 
-			let selected_shape_state = self.selected_shape_state.get(&layer)?;
-			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
+		// 	let selected_shape_state = self.selected_shape_state.get(&layer)?;
+		// 	let already_selected = selected_shape_state.is_selected(manipulator_point_id);
 
-			// Should we select or deselect the point?
-			let new_selected = if already_selected { !add_to_selection } else { true };
+		// 	// Should we select or deselect the point?
+		// 	let new_selected = if already_selected { !add_to_selection } else { true };
 
-			// Offset to snap the selected point to the cursor
-			let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
+		// 	// Offset to snap the selected point to the cursor
+		// 	let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
 
-			// This is selecting the manipulator only for now, next to generalize to points
-			if new_selected {
-				let retain_existing_selection = add_to_selection || already_selected;
-				if !retain_existing_selection {
-					self.deselect_all_points();
-				}
+		// 	// This is selecting the manipulator only for now, next to generalize to points
+		// 	if new_selected {
+		// 		let retain_existing_selection = add_to_selection || already_selected;
+		// 		if !retain_existing_selection {
+		// 			self.deselect_all_points();
+		// 		}
 
-				// Add to the selected points
-				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-				selected_shape_state.select_point(manipulator_point_id);
+		// 		// Add to the selected points
+		// 		let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
+		// 		selected_shape_state.select_point(manipulator_point_id);
 
-				let points = self
-					.selected_shape_state
-					.iter()
-					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
-					.collect();
+		// 		let points = self
+		// 			.selected_shape_state
+		// 			.iter()
+		// 			.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
+		// 			.collect();
 
-				return Some(Some(SelectedPointsInfo { points, offset }));
-			} else {
-				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-				selected_shape_state.deselect_point(manipulator_point_id);
+		// 		return Some(Some(SelectedPointsInfo { points, offset }));
+		// 	} else {
+		// 		let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
+		// 		selected_shape_state.deselect_point(manipulator_point_id);
 
-				return Some(None);
-			}
-		}
+		// 		return Some(None);
+		// 	}
+		// }
 		None
 	}
 
 	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, add_to_selection: bool) {
-		if !add_to_selection {
-			self.deselect_all_points();
-		}
-		let point = ManipulatorPointId::new(id, SelectedType::Anchor);
-		let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
-		selected_state.select_point(point);
+		// if !add_to_selection {
+		// 	self.deselect_all_points();
+		// }
+		// let point = ManipulatorPointId::new(id, SelectedType::Anchor);
+		// let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
+		// selected_state.select_point(point);
 	}
 
 	/// Selects all anchors, and deselects all handles, for the given layer.
@@ -403,10 +403,9 @@ impl ShapeState {
 		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
 			return;
 		};
-		for manipulator in vector_data.manipulator_groups() {
-			state.select_point(ManipulatorPointId::new(manipulator.id.into(), SelectedType::Anchor));
-			state.deselect_point(ManipulatorPointId::new(manipulator.id.into(), SelectedType::InHandle));
-			state.deselect_point(ManipulatorPointId::new(manipulator.id.into(), SelectedType::OutHandle));
+		state.clear_points();
+		for &point in vector_data.point_domain.ids() {
+			state.select_point(ManipulatorPointId::Anchor(point))
 		}
 	}
 
@@ -457,34 +456,34 @@ impl ShapeState {
 		new_position: DVec2,
 		layer: LayerNodeIdentifier,
 	) -> Option<()> {
-		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		let transform = document_metadata.transform_to_document(layer).inverse();
-		let position = transform.transform_point2(new_position);
-		let group = vector_data.manipulator_group_id(point.group)?;
-		let delta = position - point.manipulator_type.get_position(&group)?;
+		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		// let transform = document_metadata.transform_to_document(layer).inverse();
+		// let position = transform.transform_point2(new_position);
+		// let group = vector_data.manipulator_group_id(point.group)?;
+		// let delta = position - point.manipulator_type.get_position(&group)?;
 
-		if point.manipulator_type.is_handle() {
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
-			});
-		}
+		// if point.manipulator_type.is_handle() {
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
+		// 	});
+		// }
 
-		let mut move_point = |point: ManipulatorPointId| {
-			let Some(position) = point.manipulator_type.get_position(&group) else {
-				return;
-			};
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: (position + delta) },
-			});
-		};
+		// let mut move_point = |point: ManipulatorPointId| {
+		// 	// let Some(position) = point.manipulator_type.get_position(&group) else {
+		// 	// 	return;
+		// 	// };
+		// 	// responses.add(GraphOperationMessage::Vector {
+		// 	// 	layer,
+		// 	// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position: (position + delta) },
+		// 	// });
+		// };
 
-		move_point(*point);
-		if !point.manipulator_type.is_handle() {
-			move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-			move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-		}
+		// move_point(*point);
+		// // if !point.manipulator_type.is_handle() {
+		// // 	move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+		// // 	move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		// // }
 
 		Some(())
 	}
@@ -493,17 +492,17 @@ impl ShapeState {
 	/// If there are no points selected this function returns mixed.
 	pub fn selected_manipulator_angles(&self, document_network: &NodeNetwork) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
-		let mut points_colinear_status = self
-			.selected_shape_state
-			.iter()
-			.map(|(&layer, selection_state)| (graph_modification_utils::get_colinear_manipulators(layer, document_network), selection_state))
-			.flat_map(|(colinear_manipulators, selection_state)| selection_state.selected_points.iter().map(|selected_point| colinear_manipulators.contains(&selected_point.group)));
+		// let mut points_colinear_status = self
+		// 	.selected_shape_state
+		// 	.iter()
+		// 	.map(|(&layer, selection_state)| (graph_modification_utils::get_colinear_manipulators(layer, document_network), selection_state))
+		// 	.flat_map(|(colinear_manipulators, selection_state)| selection_state.selected_points.iter().map(|selected_point| colinear_manipulators.contains(&selected_point.group)));
 
-		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
-		if points_colinear_status.any(|point| first_is_colinear != point) {
-			return ManipulatorAngle::Mixed;
-		}
-
+		// let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
+		// if points_colinear_status.any(|point| first_is_colinear != point) {
+		// 	return ManipulatorAngle::Mixed;
+		// }
+		let first_is_colinear = false;
 		match first_is_colinear {
 			false => ManipulatorAngle::Free,
 			true => ManipulatorAngle::Colinear,
@@ -542,10 +541,10 @@ impl ShapeState {
 		};
 
 		// Set the manipulator to have colinear handles
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
-		});
+		// responses.add(GraphOperationMessage::Vector {
+		// 	layer,
+		// 	modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
+		// });
 
 		let (sin, cos) = handle_direction.sin_cos();
 		let mut handle_vector = DVec2::new(cos, sin);
@@ -559,20 +558,20 @@ impl ShapeState {
 		}
 
 		// Push both in and out handles into the correct position
-		if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
-			let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: in_handle },
-			});
-		}
-		if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
-			let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::SetManipulatorPosition { point, position: out_handle },
-			});
-		}
+		// if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
+		// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position: in_handle },
+		// 	});
+		// }
+		// if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
+		// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position: out_handle },
+		// 	});
+		// }
 	}
 
 	/// Converts all selected points to colinear while moving the handles to ensure their 180° angle separation.
@@ -580,135 +579,135 @@ impl ShapeState {
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
 	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler) -> Option<()> {
-		let mut skip_set = HashSet::new();
+		// let mut skip_set = HashSet::new();
 
-		for (&layer, layer_state) in self.selected_shape_state.iter() {
-			let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+		// for (&layer, layer_state) in self.selected_shape_state.iter() {
+		// 	let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
 
-			for point in layer_state.selected_points.iter() {
-				if skip_set.contains(&point.group) {
-					continue;
-				};
+		// 	for point in layer_state.selected_points.iter() {
+		// 		if skip_set.contains(&point.group) {
+		// 			continue;
+		// 		};
 
-				skip_set.insert(point.group);
+		// 		skip_set.insert(point.group);
 
-				let out_selected = layer_state.selected_points.contains(&ManipulatorPointId {
-					group: point.group,
-					manipulator_type: SelectedType::OutHandle,
-				});
-				let in_selected = layer_state.selected_points.contains(&ManipulatorPointId {
-					group: point.group,
-					manipulator_type: SelectedType::InHandle,
-				});
-				let group = vector_data.manipulator_group_id(point.group)?;
+		// 		let out_selected = layer_state.selected_points.contains(&ManipulatorPointId {
+		// 			group: point.group,
+		// 			manipulator_type: SelectedType::OutHandle,
+		// 		});
+		// 		let in_selected = layer_state.selected_points.contains(&ManipulatorPointId {
+		// 			group: point.group,
+		// 			manipulator_type: SelectedType::InHandle,
+		// 		});
+		// 		// let group = vector_data.manipulator_group_id(point.group)?;
 
-				match (out_selected, in_selected) {
-					// If the out handle is selected, only move the angle of the in handle
-					(true, false) => {
-						let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
-						if let Some(position) = group.out_handle {
-							responses.add(GraphOperationMessage::Vector {
-								layer,
-								modification_type: VectorModificationType::SetManipulatorPosition { point: out_handle, position },
-							});
-						}
-					}
-					// If the in handle is selected, only move the angle of the out handle
-					(false, true) => {
-						let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
-						if let Some(position) = group.in_handle {
-							responses.add(GraphOperationMessage::Vector {
-								layer,
-								modification_type: VectorModificationType::SetManipulatorPosition { point: in_handle, position },
-							});
-						}
-					}
-					// If both or neither handles are selected, average the angles of the handles weighted proportional to their lengths
-					// TODO: This is bugged, it doesn't successfully average the angles
-					(_, _) => {
-						let found = vector_data.stroke_bezier_paths().find_map(|subpath| {
-							let group_slice = subpath.manipulator_groups();
-							let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
-							// TODO: try subpath closed? wrapping
-							Some((subpath, index))
-						});
+		// 		// match (out_selected, in_selected) {
+		// 		// 	// If the out handle is selected, only move the angle of the in handle
+		// 		// 	(true, false) => {
+		// 		// 		let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
+		// 		// 		if let Some(position) = group.out_handle {
+		// 		// 			responses.add(GraphOperationMessage::Vector {
+		// 		// 				layer,
+		// 		// 				modification_type: VectorModificationType::SetManipulatorPosition { point: out_handle, position },
+		// 		// 			});
+		// 		// 		}
+		// 		// 	}
+		// 		// 	// If the in handle is selected, only move the angle of the out handle
+		// 		// 	(false, true) => {
+		// 		// 		let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
+		// 		// 		if let Some(position) = group.in_handle {
+		// 		// 			responses.add(GraphOperationMessage::Vector {
+		// 		// 				layer,
+		// 		// 				modification_type: VectorModificationType::SetManipulatorPosition { point: in_handle, position },
+		// 		// 			});
+		// 		// 		}
+		// 		// 	}
+		// 		// 	// If both or neither handles are selected, average the angles of the handles weighted proportional to their lengths
+		// 		// 	// TODO: This is bugged, it doesn't successfully average the angles
+		// 		// 	(_, _) => {
+		// 		// 		let found = vector_data.stroke_bezier_paths().find_map(|subpath| {
+		// 		// 			let group_slice = subpath.manipulator_groups();
+		// 		// 			let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
+		// 		// 			// TODO: try subpath closed? wrapping
+		// 		// 			Some((subpath, index))
+		// 		// 		});
 
-						if let Some((subpath, index)) = found {
-							self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
-						}
-					}
-				}
-			}
-		}
+		// 		// 		if let Some((subpath, index)) = found {
+		// 		// 			self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
+		// 		// 		}
+		// 		// 	}
+		// 		// }
+		// 	}
+		// }
 
 		Some(())
 	}
 
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
-				continue;
-			};
-			let colinear_manipulators = get_colinear_manipulators(layer, document_network);
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+		// 		continue;
+		// 	};
+		// 	let colinear_manipulators = get_colinear_manipulators(layer, document_network);
 
-			let transform = document_metadata.transform_to_viewport(layer);
-			let delta = transform.inverse().transform_vector2(delta);
+		// 	let transform = document_metadata.transform_to_viewport(layer);
+		// 	let delta = transform.inverse().transform_vector2(delta);
 
-			for &point in state.selected_points.iter() {
-				if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
-					continue;
-				}
+		// 	for &point in state.selected_points.iter() {
+		// 		if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
+		// 			continue;
+		// 		}
 
-				let Some(group) = vector_data.manipulator_group_id(point.group) else { continue };
+		// 		let Some(group) = vector_data.manipulator_group_id(point.group) else { continue };
 
-				let mut move_point = |point: ManipulatorPointId| {
-					let Some(previous_position) = point.manipulator_type.get_position(&group) else { return };
-					let position = previous_position + delta;
-					responses.add(GraphOperationMessage::Vector {
-						layer,
-						modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-					});
-				};
+		// 		let mut move_point = |point: ManipulatorPointId| {
+		// 			// let Some(previous_position) = point.manipulator_type.get_position(&group) else { return };
+		// 			// let position = previous_position + delta;
+		// 			// responses.add(GraphOperationMessage::Vector {
+		// 			// 	layer,
+		// 			// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// 			// });
+		// 		};
 
-				move_point(point);
+		// 		move_point(point);
 
-				if point.manipulator_type == SelectedType::Anchor {
-					move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-					move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-				}
+		// 		// if point.manipulator_type == SelectedType::Anchor {
+		// 		// 	move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
+		// 		// 	move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
+		// 		// }
 
-				if equidistant && point.manipulator_type != SelectedType::Anchor {
-					let mut colinear = colinear_manipulators.contains(&point.group);
+		// 		if equidistant && point.manipulator_type != SelectedType::Anchor {
+		// 			let mut colinear = colinear_manipulators.contains(&point.group);
 
-					// If there is no opposing handle, we consider it colinear
-					if !colinear && point.manipulator_type.opposite().get_position(&group).is_none() {
-						responses.add(GraphOperationMessage::Vector {
-							layer,
-							modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
-						});
-						colinear = true;
-					}
+		// 			// If there is no opposing handle, we consider it colinear
+		// 			// if !colinear && point.manipulator_type.opposite().get_position(&group).is_none() {
+		// 			// 	responses.add(GraphOperationMessage::Vector {
+		// 			// 		layer,
+		// 			// 		modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
+		// 			// 	});
+		// 			// 	colinear = true;
+		// 			// }
 
-					if colinear {
-						let Some(mut original_handle_position) = point.manipulator_type.get_position(&group) else {
-							continue;
-						};
-						original_handle_position += delta;
+		// 			// if colinear {
+		// 			// 	let Some(mut original_handle_position) = point.manipulator_type.get_position(&group) else {
+		// 			// 		continue;
+		// 			// 	};
+		// 			// 	original_handle_position += delta;
 
-						let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-						if state.is_selected(point) {
-							continue;
-						}
-						let position = group.anchor - (original_handle_position - group.anchor);
-						responses.add(GraphOperationMessage::Vector {
-							layer,
-							modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-						});
-					}
-				}
-			}
-		}
+		// 			// 	let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
+		// 			// 	if state.is_selected(point) {
+		// 			// 		continue;
+		// 			// 	}
+		// 			// 	let position = group.anchor - (original_handle_position - group.anchor);
+		// 			// 	responses.add(GraphOperationMessage::Vector {
+		// 			// 		layer,
+		// 			// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// 			// 	});
+		// 			// }
+		// 		}
+		// 	}
+		// }
 	}
 
 	/// Delete selected and colinear handles with zero length when the drag stops.
@@ -719,333 +718,334 @@ impl ShapeState {
 		opposing_handle_lengths: &Option<OpposingHandleLengths>,
 		responses: &mut VecDeque<Message>,
 	) {
-		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
-				continue;
-			};
-			let colinear_manipulators = get_colinear_manipulators(layer, document_network);
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+		// 		continue;
+		// 	};
+		// 	let colinear_manipulators = get_colinear_manipulators(layer, document_network);
 
-			let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
+		// 	let opposing_handle_lengths = opposing_handle_lengths.as_ref().and_then(|lengths| lengths.get(&layer));
 
-			let transform = document_metadata.transform_to_viewport(layer);
+		// 	let transform = document_metadata.transform_to_viewport(layer);
 
-			for &point in state.selected_points.iter() {
-				let anchor = ManipulatorPointId::new(point.group, SelectedType::Anchor);
-				if !point.manipulator_type.is_handle() || state.is_selected(anchor) {
-					continue;
-				}
+		// 	for &point in state.selected_points.iter() {
+		// 		let anchor = ManipulatorPointId::new(point.group, SelectedType::Anchor);
+		// 		if !point.manipulator_type.is_handle() || state.is_selected(anchor) {
+		// 			continue;
+		// 		}
 
-				let Some(group) = vector_data.manipulator_group_id(point.group) else { continue };
+		// 		let Some(group) = vector_data.manipulator_group_id(point.group) else { continue };
 
-				let anchor_position = transform.transform_point2(group.anchor);
+		// 		let anchor_position = transform.transform_point2(group.anchor);
 
-				let point_position = if let Some(position) = point.manipulator_type.get_position(&group) {
-					transform.transform_point2(position)
-				} else {
-					continue;
-				};
+		// 		let point_position = if let Some(position) = point.manipulator_type.get_position(&group) {
+		// 			transform.transform_point2(position)
+		// 		} else {
+		// 			continue;
+		// 		};
 
-				if (anchor_position - point_position).length() < DRAG_THRESHOLD {
-					responses.add(GraphOperationMessage::Vector {
-						layer,
-						modification_type: VectorModificationType::RemoveManipulatorPoint { point },
-					});
+		// 		if (anchor_position - point_position).length() < DRAG_THRESHOLD {
+		// 			responses.add(GraphOperationMessage::Vector {
+		// 				layer,
+		// 				modification_type: VectorModificationType::RemoveManipulatorPoint { point },
+		// 			});
 
-					// Remove opposing handle if it is not selected and is colinear.
-					let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-					if !state.is_selected(opposite_point) && colinear_manipulators.contains(&point.group) {
-						if let Some(lengths) = opposing_handle_lengths {
-							if lengths.contains_key(&point.group) {
-								responses.add(GraphOperationMessage::Vector {
-									layer,
-									modification_type: VectorModificationType::RemoveManipulatorPoint { point: opposite_point },
-								});
-							}
-						}
-					}
-				}
-			}
-		}
+		// 			// Remove opposing handle if it is not selected and is colinear.
+		// 			let opposite_point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
+		// 			if !state.is_selected(opposite_point) && colinear_manipulators.contains(&point.group) {
+		// 				if let Some(lengths) = opposing_handle_lengths {
+		// 					if lengths.contains_key(&point.group) {
+		// 						responses.add(GraphOperationMessage::Vector {
+		// 							layer,
+		// 							modification_type: VectorModificationType::RemoveManipulatorPoint { point: opposite_point },
+		// 						});
+		// 					}
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
 	}
 
 	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &DocumentMessageHandler) -> OpposingHandleLengths {
-		self.selected_shape_state
-			.iter()
-			.filter_map(|(&layer, state)| {
-				let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
-				let opposing_handle_lengths = vector_data
-					.manipulator_groups()
-					.filter_map(|manipulator_group| {
-						// We will keep track of the opposing handle length when:
-						// i) Exactly one handle is selected.
-						// ii) The anchor is not selected.
+		// self.selected_shape_state
+		// 	.iter()
+		// 	.filter_map(|(&layer, state)| {
+		// 		let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+		// 		let opposing_handle_lengths = vector_data
+		// 			.manipulator_groups()
+		// 			.filter_map(|manipulator_group| {
+		// 				// We will keep track of the opposing handle length when:
+		// 				// i) Exactly one handle is selected.
+		// 				// ii) The anchor is not selected.
 
-						let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
-						let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
-						let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
+		// 				let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
+		// 				let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
+		// 				let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
 
-						if anchor_selected {
-							return None;
-						}
+		// 				if anchor_selected {
+		// 					return None;
+		// 				}
 
-						let single_selected_handle = match (in_handle_selected, out_handle_selected) {
-							(true, false) => SelectedType::InHandle,
-							(false, true) => SelectedType::OutHandle,
-							_ => return None,
-						};
+		// 				let single_selected_handle = match (in_handle_selected, out_handle_selected) {
+		// 					(true, false) => SelectedType::InHandle,
+		// 					(false, true) => SelectedType::OutHandle,
+		// 					_ => return None,
+		// 				};
 
-						let Some(opposing_handle_position) = single_selected_handle.opposite().get_position(&manipulator_group) else {
-							return Some((manipulator_group.id, None));
-						};
+		// 				let Some(opposing_handle_position) = single_selected_handle.opposite().get_position(&manipulator_group) else {
+		// 					return Some((manipulator_group.id, None));
+		// 				};
 
-						let opposing_handle_length = opposing_handle_position.distance(manipulator_group.anchor);
-						Some((manipulator_group.id, Some(opposing_handle_length)))
-					})
-					.collect::<HashMap<_, _>>();
-				Some((layer, opposing_handle_lengths))
-			})
-			.collect::<HashMap<_, _>>()
+		// 				let opposing_handle_length = opposing_handle_position.distance(manipulator_group.anchor);
+		// 				Some((manipulator_group.id, Some(opposing_handle_length)))
+		// 			})
+		// 			.collect::<HashMap<_, _>>();
+		// 		Some((layer, opposing_handle_lengths))
+		// 	})
+		// 	.collect::<HashMap<_, _>>()
+		HashMap::new()
 	}
 
 	/// Reset the opposing handle lengths.
 	pub fn reset_opposing_handle_lengths(&self, document: &DocumentMessageHandler, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-				continue;
-			};
-			let colinear_manipulators = get_colinear_manipulators(layer, &document.network);
-			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+		// 		continue;
+		// 	};
+		// 	let colinear_manipulators = get_colinear_manipulators(layer, &document.network);
+		// 	let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
 
-			for manipulator_group in vector_data.manipulator_groups() {
-				if !colinear_manipulators.contains(&manipulator_group.id) {
-					continue;
-				}
+		// 	for manipulator_group in vector_data.manipulator_groups() {
+		// 		if !colinear_manipulators.contains(&manipulator_group.id) {
+		// 			continue;
+		// 		}
 
-				let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else {
-					continue;
-				};
+		// 		let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else {
+		// 			continue;
+		// 		};
 
-				let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
-				let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
-				let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
+		// 		let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
+		// 		let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
+		// 		let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
 
-				if anchor_selected {
-					continue;
-				}
+		// 		if anchor_selected {
+		// 			continue;
+		// 		}
 
-				let single_selected_handle = match (in_handle_selected, out_handle_selected) {
-					(true, false) => SelectedType::InHandle,
-					(false, true) => SelectedType::OutHandle,
-					_ => continue,
-				};
+		// 		let single_selected_handle = match (in_handle_selected, out_handle_selected) {
+		// 			(true, false) => SelectedType::InHandle,
+		// 			(false, true) => SelectedType::OutHandle,
+		// 			_ => continue,
+		// 		};
 
-				let Some(opposing_handle_length) = opposing_handle_length else {
-					responses.add(GraphOperationMessage::Vector {
-						layer,
-						modification_type: VectorModificationType::RemoveManipulatorPoint {
-							point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
-						},
-					});
-					continue;
-				};
+		// 		let Some(opposing_handle_length) = opposing_handle_length else {
+		// 			responses.add(GraphOperationMessage::Vector {
+		// 				layer,
+		// 				modification_type: VectorModificationType::RemoveManipulatorPoint {
+		// 					point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
+		// 				},
+		// 			});
+		// 			continue;
+		// 		};
 
-				let Some(opposing_handle) = single_selected_handle.opposite().get_position(&manipulator_group) else {
-					continue;
-				};
+		// 		let Some(opposing_handle) = single_selected_handle.opposite().get_position(&manipulator_group) else {
+		// 			continue;
+		// 		};
 
-				let Some(offset) = (opposing_handle - manipulator_group.anchor).try_normalize() else { continue };
+		// 		let Some(offset) = (opposing_handle - manipulator_group.anchor).try_normalize() else { continue };
 
-				let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
-				let position = manipulator_group.anchor + offset * (*opposing_handle_length);
-				assert!(position.is_finite(), "Opposing handle not finite!");
+		// 		let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
+		// 		let position = manipulator_group.anchor + offset * (*opposing_handle_length);
+		// 		assert!(position.is_finite(), "Opposing handle not finite!");
 
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-				});
-			}
-		}
+		// 		responses.add(GraphOperationMessage::Vector {
+		// 			layer,
+		// 			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
+		// 		});
+		// 	}
+		// }
 	}
 
 	/// Dissolve the selected points.
 	pub fn delete_selected_points(&self, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			for &point in &state.selected_points {
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: VectorModificationType::RemoveManipulatorPoint { point },
-				})
-			}
-		}
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	for &point in &state.selected_points {
+		// 		responses.add(GraphOperationMessage::Vector {
+		// 			layer,
+		// 			modification_type: VectorModificationType::RemoveManipulatorPoint { point },
+		// 		})
+		// 	}
+		// }
 	}
 
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-				continue;
-			};
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+		// 		continue;
+		// 	};
 
-			let mut broken_subpaths = Vec::new();
+		// 	let mut broken_subpaths = Vec::new();
 
-			for subpath in vector_data.stroke_bezier_paths() {
-				let mut points: Vec<_> = state
-					.selected_points
-					.iter()
-					.filter_map(|&point| {
-						let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
-							return None;
-						};
-						let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
-							return None;
-						};
-						Some((manipulator_index, manipulator))
-					})
-					.collect();
+		// 	for subpath in vector_data.stroke_bezier_paths() {
+		// 		let mut points: Vec<_> = state
+		// 			.selected_points
+		// 			.iter()
+		// 			.filter_map(|&point| {
+		// 				let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
+		// 					return None;
+		// 				};
+		// 				let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
+		// 					return None;
+		// 				};
+		// 				Some((manipulator_index, manipulator))
+		// 			})
+		// 			.collect();
 
-				if points.is_empty() {
-					broken_subpaths.push(subpath.clone());
-					continue;
-				}
+		// 		if points.is_empty() {
+		// 			broken_subpaths.push(subpath.clone());
+		// 			continue;
+		// 		}
 
-				points.sort_by(|&a, &b| match a.0 > b.0 {
-					true => std::cmp::Ordering::Greater,
-					false => std::cmp::Ordering::Less,
-				});
+		// 		points.sort_by(|&a, &b| match a.0 > b.0 {
+		// 			true => std::cmp::Ordering::Greater,
+		// 			false => std::cmp::Ordering::Less,
+		// 		});
 
-				let mut last_manipulator_index = 0;
-				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
-				let mut last_manipulator_group: Option<&ManipulatorGroup<PointId>> = None;
-				for (i, &(manipulator_index, group)) in points.iter().enumerate() {
-					if manipulator_index == 0 && !subpath.closed {
-						last_manipulator_index = manipulator_index + 1;
-						last_manipulator_group = Some(group);
-						continue;
-					}
+		// 		let mut last_manipulator_index = 0;
+		// 		let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
+		// 		let mut last_manipulator_group: Option<&ManipulatorGroup<PointId>> = None;
+		// 		for (i, &(manipulator_index, group)) in points.iter().enumerate() {
+		// 			if manipulator_index == 0 && !subpath.closed {
+		// 				last_manipulator_index = manipulator_index + 1;
+		// 				last_manipulator_group = Some(group);
+		// 				continue;
+		// 			}
 
-					let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-					if i != 0 {
-						segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
-					}
+		// 			let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+		// 			if i != 0 {
+		// 				segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
+		// 			}
 
-					segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
+		// 			segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
 
-					if subpath.closed && i == 0 {
-						to_extend_with_last_group = Some(segment);
-					} else {
-						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-					}
+		// 			if subpath.closed && i == 0 {
+		// 				to_extend_with_last_group = Some(segment);
+		// 			} else {
+		// 				broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+		// 			}
 
-					last_manipulator_index = manipulator_index + 1;
-					last_manipulator_group = Some(group);
-				}
+		// 			last_manipulator_index = manipulator_index + 1;
+		// 			last_manipulator_group = Some(group);
+		// 		}
 
-				if last_manipulator_index == subpath.len() && !subpath.closed {
-					continue;
-				}
+		// 		if last_manipulator_index == subpath.len() && !subpath.closed {
+		// 			continue;
+		// 		}
 
-				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-				final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
+		// 		let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+		// 		final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
 
-				if let Some(group) = to_extend_with_last_group {
-					final_segment.extend(group);
-				}
+		// 		if let Some(group) = to_extend_with_last_group {
+		// 			final_segment.extend(group);
+		// 		}
 
-				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
-			}
+		// 		broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+		// 	}
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths },
-			});
-		}
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths },
+		// 	});
+		// }
 	}
 
 	/// Delete point(s) and adjacent segments, which breaks a closed path as open, or an open path into multiple.
 	pub fn delete_point_and_break_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-				continue;
-			};
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+		// 		continue;
+		// 	};
 
-			let mut broken_subpaths = Vec::new();
+		// 	let mut broken_subpaths = Vec::new();
 
-			for subpath in vector_data.stroke_bezier_paths() {
-				let mut selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| subpath.manipulator_index_from_id(point.group)).collect();
+		// 	for subpath in vector_data.stroke_bezier_paths() {
+		// 		let mut selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| subpath.manipulator_index_from_id(point.group)).collect();
 
-				if selected_points.is_empty() {
-					broken_subpaths.push(subpath.clone());
-					continue;
-				}
+		// 		if selected_points.is_empty() {
+		// 			broken_subpaths.push(subpath.clone());
+		// 			continue;
+		// 		}
 
-				selected_points.sort_by(|&a, &b| match a > b {
-					true => std::cmp::Ordering::Greater,
-					false => std::cmp::Ordering::Less,
-				});
+		// 		selected_points.sort_by(|&a, &b| match a > b {
+		// 			true => std::cmp::Ordering::Greater,
+		// 			false => std::cmp::Ordering::Less,
+		// 		});
 
-				let mut last_manipulator_index = 0;
-				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
-				for (i, &manipulator_index) in selected_points.iter().enumerate() {
-					if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
-						last_manipulator_index = manipulator_index + 1;
-						continue;
-					}
+		// 		let mut last_manipulator_index = 0;
+		// 		let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
+		// 		for (i, &manipulator_index) in selected_points.iter().enumerate() {
+		// 			if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
+		// 				last_manipulator_index = manipulator_index + 1;
+		// 				continue;
+		// 			}
 
-					let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-					if subpath.closed && i == 0 {
-						to_extend_with_last_group = Some(segment);
-					} else {
-						broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-					}
+		// 			let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
+		// 			if subpath.closed && i == 0 {
+		// 				to_extend_with_last_group = Some(segment);
+		// 			} else {
+		// 				broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
+		// 			}
 
-					last_manipulator_index = manipulator_index + 1;
-				}
+		// 			last_manipulator_index = manipulator_index + 1;
+		// 		}
 
-				if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
-					continue;
-				}
+		// 		if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
+		// 			continue;
+		// 		}
 
-				let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
+		// 		let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
 
-				if let Some(group) = to_extend_with_last_group {
-					final_segment.extend(group);
-				}
+		// 		if let Some(group) = to_extend_with_last_group {
+		// 			final_segment.extend(group);
+		// 		}
 
-				broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
-			}
+		// 		broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
+		// 	}
 
-			let modification = VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths };
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: modification,
-			});
-		}
+		// 	let modification = VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths };
+		// 	responses.add(GraphOperationMessage::Vector {
+		// 		layer,
+		// 		modification_type: modification,
+		// 	});
+		// }
 	}
 
 	/// Toggle if the handles of the selected points should be colinear.
 	pub fn toggle_colinear_handles_state_on_selected(&self, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			for point in &state.selected_points {
-				let modification = VectorModificationType::ToggleManipulatorColinearHandlesState { id: point.group };
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: modification,
-				})
-			}
-		}
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	for point in &state.selected_points {
+		// 		let modification = VectorModificationType::ToggleManipulatorColinearHandlesState { id: point.group };
+		// 		responses.add(GraphOperationMessage::Vector {
+		// 			layer,
+		// 			modification_type: modification,
+		// 		})
+		// 	}
+		// }
 	}
 
 	/// Set whether the handles of the selected points should be colinear.
 	pub fn set_colinear_handles_state_on_selected(&self, colinear: bool, responses: &mut VecDeque<Message>) {
-		for (&layer, state) in &self.selected_shape_state {
-			for point in &state.selected_points {
-				let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: point.group, colinear };
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: modification,
-				});
-			}
-		}
+		// for (&layer, state) in &self.selected_shape_state {
+		// 	for point in &state.selected_points {
+		// 		let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: point.group, colinear };
+		// 		responses.add(GraphOperationMessage::Vector {
+		// 			layer,
+		// 			modification_type: modification,
+		// 		});
+		// 	}
+		// }
 	}
 
 	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
@@ -1062,15 +1062,15 @@ impl ShapeState {
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		for &layer in self.selected_shape_state.keys() {
-			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document_network, document_metadata, layer, mouse_position) {
-				// Choose the first point under the threshold
-				if distance_squared < select_threshold_squared {
-					trace!("Selecting... manipulator point: {manipulator_point_id:?}");
-					return Some((layer, manipulator_point_id));
-				}
-			}
-		}
+		// for &layer in self.selected_shape_state.keys() {
+		// 	if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document_network, document_metadata, layer, mouse_position) {
+		// 		// Choose the first point under the threshold
+		// 		if distance_squared < select_threshold_squared {
+		// 			trace!("Selecting... manipulator point: {manipulator_point_id:?}");
+		// 			return Some((layer, manipulator_point_id));
+		// 		}
+		// 	}
+		// }
 
 		None
 	}
@@ -1083,16 +1083,16 @@ impl ShapeState {
 		let mut closest_distance_squared: f64 = f64::MAX;
 		let mut result = None;
 
-		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		let viewspace = document_metadata.transform_to_viewport(layer);
-		for manipulator in vector_data.manipulator_groups() {
-			let (selected, distance_squared) = SelectedType::closest_widget(&manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
+		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		// let viewspace = document_metadata.transform_to_viewport(layer);
+		// for manipulator in vector_data.manipulator_groups() {
+		// 	let (selected, distance_squared) = SelectedType::closest_widget(&manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
 
-			if distance_squared < closest_distance_squared {
-				closest_distance_squared = distance_squared;
-				result = Some((ManipulatorPointId::new(manipulator.id, selected), distance_squared));
-			}
-		}
+		// 	if distance_squared < closest_distance_squared {
+		// 		closest_distance_squared = distance_squared;
+		// 		result = Some((ManipulatorPointId::new(manipulator.id, selected), distance_squared));
+		// 	}
+		// }
 
 		result
 	}
@@ -1106,34 +1106,34 @@ impl ShapeState {
 		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
 
 		let mut closest = None;
-		let mut closest_distance_squared: f64 = tolerance * tolerance;
+		// let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
 
-		for subpath in vector_data.stroke_bezier_paths() {
-			for (manipulator_index, bezier) in subpath.iter().enumerate() {
-				let t = bezier.project(layer_pos);
-				let layerspace = bezier.evaluate(TValue::Parametric(t));
+		// for subpath in vector_data.stroke_bezier_paths() {
+		// 	for (manipulator_index, bezier) in subpath.iter().enumerate() {
+		// 		let t = bezier.project(layer_pos);
+		// 		let layerspace = bezier.evaluate(TValue::Parametric(t));
 
-				let screenspace = transform.transform_point2(layerspace);
-				let distance_squared = screenspace.distance_squared(position);
+		// 		let screenspace = transform.transform_point2(layerspace);
+		// 		let distance_squared = screenspace.distance_squared(position);
 
-				if distance_squared < closest_distance_squared {
-					closest_distance_squared = distance_squared;
+		// 		if distance_squared < closest_distance_squared {
+		// 			closest_distance_squared = distance_squared;
 
-					let info = ClosestSegmentInfo {
-						bezier,
-						t,
-						// needs for correct length calc when there is non 1x1 layer scale
-						layer_scale: transform.decompose_scale() / scale,
-						bezier_point_to_viewport: screenspace,
-					};
-					let start = subpath.manipulator_groups()[manipulator_index];
-					let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
-					closest = Some(ClosestSegment::new(info, layer, document_network, start, end))
-				}
-			}
-		}
+		// 			let info = ClosestSegmentInfo {
+		// 				bezier,
+		// 				t,
+		// 				// needs for correct length calc when there is non 1x1 layer scale
+		// 				layer_scale: transform.decompose_scale() / scale,
+		// 				bezier_point_to_viewport: screenspace,
+		// 			};
+		// 			let start = subpath.manipulator_groups()[manipulator_index];
+		// 			let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
+		// 			closest = Some(ClosestSegment::new(info, layer, document_network, start, end))
+		// 		}
+		// 	}
+		// }
 
 		closest
 	}
@@ -1198,32 +1198,32 @@ impl ShapeState {
 				(None, None) => true,
 			};
 
-			if already_sharp {
-				self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
-			} else {
-				// Set in handle position to anchor position
-				let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-				let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: modification,
-				});
+			// if already_sharp {
+			// 	self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
+			// } else {
+			// 	// Set in handle position to anchor position
+			// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
+			// 	let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
+			// 	responses.add(GraphOperationMessage::Vector {
+			// 		layer,
+			// 		modification_type: modification,
+			// 	});
 
-				// Set out handle position to anchor position
-				let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-				let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: modification,
-				});
+			// 	// Set out handle position to anchor position
+			// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
+			// 	let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
+			// 	responses.add(GraphOperationMessage::Vector {
+			// 		layer,
+			// 		modification_type: modification,
+			// 	});
 
-				// Set the manipulator to have non-colinear handles
-				let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: modification,
-				});
-			};
+			// 	// Set the manipulator to have non-colinear handles
+			// 	let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
+			// 	responses.add(GraphOperationMessage::Vector {
+			// 		layer,
+			// 		modification_type: modification,
+			// 	});
+			// };
 
 			Some(true)
 		};
@@ -1247,16 +1247,16 @@ impl ShapeState {
 
 			let transform = document_metadata.transform_to_viewport(layer);
 
-			for manipulator_group in vector_data.manipulator_groups() {
-				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-					let Some(position) = selected_type.get_position(&manipulator_group) else { continue };
-					let transformed_position = transform.transform_point2(position);
+			// for manipulator_group in vector_data.manipulator_groups() {
+			// 	for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
+			// 		let Some(position) = selected_type.get_position(&manipulator_group) else { continue };
+			// 		let transformed_position = transform.transform_point2(position);
 
-					if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
-						state.select_point(ManipulatorPointId::new(manipulator_group.id, selected_type));
-					}
-				}
-			}
+			// 		if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
+			// 			state.select_point(ManipulatorPointId::new(manipulator_group.id, selected_type));
+			// 		}
+			// 	}
+			// }
 		}
 	}
 }

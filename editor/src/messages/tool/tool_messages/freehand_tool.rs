@@ -213,22 +213,22 @@ impl Fsm for FreehandToolFsmState {
 				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
-					let manipulator_group = ManipulatorGroup::new_anchor(pos);
-					let modification = if from_start {
-						tool_data.extend_from_start = true;
-						VectorModificationType::AddStartManipulatorGroup { subpath_index, manipulator_group }
-					} else {
-						VectorModificationType::AddEndManipulatorGroup { subpath_index, manipulator_group }
-					};
+				// let manipulator_group = ManipulatorGroup::new_anchor(pos);
+				// let modification = if from_start {
+				// 	tool_data.extend_from_start = true;
+				// 	VectorModificationType::AddStartManipulatorGroup { subpath_index, manipulator_group }
+				// } else {
+				// 	VectorModificationType::AddEndManipulatorGroup { subpath_index, manipulator_group }
+				// };
 
-					tool_data.dragged = true;
-					tool_data.last_point = pos;
-					tool_data.layer = Some(layer);
+				// tool_data.dragged = true;
+				// tool_data.last_point = pos;
+				// tool_data.layer = Some(layer);
 
-					responses.add(GraphOperationMessage::Vector {
-						layer,
-						modification_type: modification,
-					});
+				// responses.add(GraphOperationMessage::Vector {
+				// 	layer,
+				// 	modification_type: modification,
+				// });
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
@@ -238,43 +238,34 @@ impl Fsm for FreehandToolFsmState {
 					let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
 					let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
-
+					tool_options.fill.apply_fill(layer, responses);
+					tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 					tool_data.last_point = pos;
 					tool_data.layer = Some(layer);
-
-					responses.add(GraphOperationMessage::FillSet {
-						layer,
-						fill: if let Some(color) = tool_options.fill.active_color() { Fill::Solid(color) } else { Fill::None },
-					});
-
-					responses.add(GraphOperationMessage::StrokeSet {
-						layer,
-						stroke: Stroke::new(tool_options.stroke.active_color(), tool_data.weight),
-					});
 				}
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
-					let pos = transform.inverse().transform_point2(input.mouse.position);
+				// if let Some(layer) = tool_data.layer {
+				// 	let transform = document.metadata().transform_to_viewport(layer);
+				// 	let pos = transform.inverse().transform_point2(input.mouse.position);
 
-					if tool_data.last_point != pos {
-						let manipulator_group = ManipulatorGroup::new_anchor(pos);
-						let modification = if tool_data.extend_from_start {
-							VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
-						} else {
-							VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
-						};
-						responses.add(GraphOperationMessage::Vector {
-							layer,
-							modification_type: modification,
-						});
-						tool_data.dragged = true;
-						tool_data.last_point = pos;
-					}
-				}
+				// 	if tool_data.last_point != pos {
+				// 		let manipulator_group = ManipulatorGroup::new_anchor(pos);
+				// 		let modification = if tool_data.extend_from_start {
+				// 			VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
+				// 		} else {
+				// 			VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
+				// 		};
+				// 		responses.add(GraphOperationMessage::Vector {
+				// 			layer,
+				// 			modification_type: modification,
+				// 		});
+				// 		tool_data.dragged = true;
+				// 		tool_data.last_point = pos;
+				// 	}
+				// }
 
 				FreehandToolFsmState::Drawing
 			}

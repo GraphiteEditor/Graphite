@@ -43,35 +43,35 @@ impl OriginalTransforms {
 			}
 			OriginalTransforms::Path(path_map) => {
 				for &layer in selected {
-					let Some(shape_editor) = shape_editor else {
-						warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
-						continue;
-					};
-					// Anchors also move their handles
-					let expand_anchors = |&point: &ManipulatorPointId| {
-						if point.manipulator_type.is_handle() {
-							[Some(point), None, None]
-						} else {
-							[
-								Some(point),
-								Some(ManipulatorPointId::new(point.group, SelectedType::InHandle)),
-								Some(ManipulatorPointId::new(point.group, SelectedType::OutHandle)),
-							]
-						}
-					};
-					let points = shape_editor.selected_points().flat_map(expand_anchors).flatten();
-					if path_map.contains_key(&layer) {
-						continue;
-					}
-					let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document_network) else {
-						continue;
-					};
-					let get_manipulator_point_position = |point_id: ManipulatorPointId| {
-						graph_modification_utils::get_manipulator_from_id(vector_data, point_id.group)
-							.and_then(|manipulator_group| point_id.manipulator_type.get_position(manipulator_group))
-							.map(|position| (point_id, position))
-					};
-					path_map.insert(layer, points.filter_map(get_manipulator_point_position).collect());
+					// let Some(shape_editor) = shape_editor else {
+					// 	warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
+					// 	continue;
+					// };
+					// // Anchors also move their handles
+					// let expand_anchors = |&point: &ManipulatorPointId| {
+					// 	if point.manipulator_type.is_handle() {
+					// 		[Some(point), None, None]
+					// 	} else {
+					// 		[
+					// 			Some(point),
+					// 			Some(ManipulatorPointId::new(point.group, SelectedType::InHandle)),
+					// 			Some(ManipulatorPointId::new(point.group, SelectedType::OutHandle)),
+					// 		]
+					// 	}
+					// };
+					// let points = shape_editor.selected_points().flat_map(expand_anchors).flatten();
+					// if path_map.contains_key(&layer) {
+					// 	continue;
+					// }
+					// let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document_network) else {
+					// 	continue;
+					// };
+					// let get_manipulator_point_position = |point_id: ManipulatorPointId| {
+					// 	graph_modification_utils::get_manipulator_from_id(vector_data, point_id.group)
+					// 		.and_then(|manipulator_group| point_id.manipulator_type.get_position(manipulator_group))
+					// 		.map(|position| (point_id, position))
+					// };
+					// path_map.insert(layer, points.filter_map(get_manipulator_point_position).collect());
 				}
 			}
 		}

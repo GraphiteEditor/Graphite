@@ -406,8 +406,7 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
-			let transform = pivot.inverse() * to.inverse() * transform * to * pivot * layer_transform;
+			let transform = to.inverse() * transform * to * layer_transform;
 			transform_utils::update_transform(inputs, transform);
 		});
 	}
@@ -421,7 +420,6 @@ impl<'a> ModifyInputsContext<'a> {
 				TransformIn::Scope { scope } => scope * parent_transform,
 				TransformIn::Viewport => parent_transform,
 			};
-			let pivot = DAffine2::from_translation(upstream_transform.transform_point2(bounds.layerspace_pivot(transform_utils::get_current_normalized_pivot(inputs))));
 
 			if current_transform
 				.filter(|transform| transform.matrix2.determinant() != 0. && upstream_transform.matrix2.determinant() != 0.)
@@ -429,7 +427,7 @@ impl<'a> ModifyInputsContext<'a> {
 			{
 				transform *= upstream_transform.inverse();
 			}
-			let final_transform = pivot.inverse() * to.inverse() * transform * pivot;
+			let final_transform = to.inverse() * transform;
 			transform_utils::update_transform(inputs, final_transform);
 		});
 	}

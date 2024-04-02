@@ -152,6 +152,7 @@ pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, P
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
 	pub(crate) shear: Shear,
+	#[deprecated]
 	pub(crate) pivot: Pivot,
 }
 
@@ -244,18 +245,15 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 where
 	Fut::Output: TransformMut,
 {
-	// TODO: This is hack and might break for Vector data because the pivot may be incorrect
 	let transform = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
-		let pivot_transform = DAffine2::from_translation(pivot);
-		let modification = pivot_transform * transform * pivot_transform.inverse();
+		let modification = transform;
 		*footprint.transform_mut() = footprint.transform() * modification;
 	}
 
 	let mut data = self.transform_target.eval(footprint).await;
-	let pivot_transform = DAffine2::from_translation(data.local_pivot(pivot));
 
-	let modification = pivot_transform * transform * pivot_transform.inverse();
+	let modification = transform;
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 

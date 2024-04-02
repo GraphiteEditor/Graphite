@@ -46,6 +46,18 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 	});
 	LayerNodeIdentifier::new_unchecked(id)
 }
+pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, DocumentNode>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	let insert_index = -1;
+	responses.add(GraphOperationMessage::NewCustomLayer {
+		id,
+		nodes,
+		parent,
+		insert_index: -1,
+		alias: String::new(),
+	});
+	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
+	LayerNodeIdentifier::new_unchecked(id)
+}
 
 /// Locate the subpaths from the shape nodes of a particular layer
 pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<PointId>>> {
