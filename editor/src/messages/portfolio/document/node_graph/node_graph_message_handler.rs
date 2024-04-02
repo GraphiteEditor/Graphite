@@ -585,9 +585,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
 		} else if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
