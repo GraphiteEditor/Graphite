@@ -430,9 +430,9 @@
 							classes={{ inactive: !listing.entry.parentsUnlocked }}
 							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
-							icon={(listing.entry.parentId && listing.entry.parentsUnlocked) || !listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							hoverIcon={(listing.entry.parentId && listing.entry.parentsUnlocked) || !listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
-							tooltip={listing.entry.parentsUnlocked ? "Unlock" : "Lock"}
+							icon={!listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
+							hoverIcon={!listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
+							tooltip={!listing.entry.unlocked ? "Unlock" : "Lock"}
 						/>
 					{/if}
 					<IconButton
