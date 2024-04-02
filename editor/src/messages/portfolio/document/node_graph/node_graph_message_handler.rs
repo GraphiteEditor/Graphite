@@ -627,17 +627,6 @@ impl NodeGraphMessageHandler {
 					.widget_holder();
 				widgets.push(hide_button);
 
-				// Check if any of the selected nodes are locked
-				let is_locked = selected_nodes.selected_nodes().all(|&id| document_metadata.node_is_locked(id));
-				let (lock_unlock_label, lock_unlock_icon) = if is_locked { ("Make Unlock", "Lock") } else { ("Make Lock", "Unlock") };
-				let lock_button = TextButton::new(lock_unlock_label)
-					.icon(Some(lock_unlock_icon.to_string()))
-					.tooltip(if is_locked { "Unlock selected nodes/layers" } else { "Lock selected nodes/layers" }.to_string() + if multiple_nodes { "s" } else { "" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleLocked))
-					.on_update(move |_| NodeGraphMessage::ToggleSelectedLocked.into())
-					.widget_holder();
-				widgets.push(lock_button);
-
 				widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 			}
 
