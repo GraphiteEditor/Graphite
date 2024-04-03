@@ -93,7 +93,6 @@ impl GridSnapper {
 		match snap_data.document.snapping_state.grid.grid_type {
 			GridType::Rectangle { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
 			GridType::Isometric { y_axis_spacing, angle_a, angle_b } => self.get_snap_lines_isometric(document_point, snap_data, y_axis_spacing, angle_a, angle_b),
-			GridType::Dot { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
 		}
 	}
 

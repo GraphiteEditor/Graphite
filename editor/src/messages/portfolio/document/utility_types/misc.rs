@@ -1,7 +1,7 @@
-use glam::DVec2;
-use std::fmt;
 use crate::consts::COLOR_OVERLAY_GRAY;
+use glam::DVec2;
 use graphene_core::raster::Color;
+use std::{fmt, path::Display};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -87,7 +87,11 @@ impl Default for SnappingState {
 			grid: GridSnapping {
 				origin: DVec2::ZERO,
 				grid_type: GridType::RECTANGLE,
-				grid_color: Color::from_rgb_str_prefixed(COLOR_OVERLAY_GRAY.to_uppercase().as_str()).expect("color"),
+				grid_color: COLOR_OVERLAY_GRAY
+					.strip_prefix("#")
+					.and_then(|value| Color::from_rgb_str(value))
+					.expect("Should create Color from prefixed hex string"),
+				dot_display: false,
 			},
 			tolerance: 8.,
 			artboards: true,
@@ -157,7 +161,6 @@ pub struct OptionPointSnapping {
 pub enum GridType {
 	Rectangle { spacing: DVec2 },
 	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
-	Dot { spacing: DVec2 },
 }
 impl GridType {
 	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
@@ -166,7 +169,6 @@ impl GridType {
 		angle_a: 30.,
 		angle_b: 30.,
 	};
-	pub const DOT: Self = GridType::Dot { spacing: DVec2::ONE };
 	pub fn rect_spacing(&mut self) -> Option<&mut DVec2> {
 		match self {
 			Self::Rectangle { spacing } => Some(spacing),
@@ -191,18 +193,13 @@ impl GridType {
 			_ => None,
 		}
 	}
-	pub fn dot_spacing(&mut self) -> Option<&mut DVec2> {
-		match self {
-			Self::Dot { spacing } => Some(spacing),
-			_ => None,
-		}
-	}
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
 	pub grid_color: Color,
+	pub dot_display: bool,
 }
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
