@@ -626,7 +626,7 @@ impl Fsm for SelectToolFsmState {
 					let snapped = if axis_align {
 						let constraint = SnapConstraint::Line {
 							origin: point.document_point,
-							direction: total_mouse_delta_document.normalize(),
+							direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
 						};
 						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
 					} else {
