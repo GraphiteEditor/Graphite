@@ -173,12 +173,14 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 		clip,
 	}
 }
-pub struct AddArtboardNode<Artboard> {
+pub struct AddArtboardNode<Artboard, Artboards> {
 	artboard: Artboard,
+	artboards: Artboards,
 }
 #[node_fn(AddArtboardNode)]
-fn add_artboard(mut artboards: Artboards, artboard: Artboard) -> Artboards {
-	artboards.add_artboard(artboard);
+async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>>(footprint: Footprint, artboard: impl Node<Footprint, Output = Fut1>, mut artboards: Artboards) -> Artboards {
+	let artboard = self.artboard.eval(footprint).await;
+	artboards.add_artboard(artboard.into());
 	artboards
 }
 

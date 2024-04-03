@@ -288,8 +288,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeId(2),
 						DocumentNode {
 							name: "Add to Artboards".to_string(),
-							inputs: vec![NodeInput::Network(concrete!(Artboards)), NodeInput::node(NodeId(0), 0)],
-							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_>"),
+							manual_composition: Some(concrete!(Footprint)),
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(Artboards))],
+							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
 							..Default::default()
 						},
 					),

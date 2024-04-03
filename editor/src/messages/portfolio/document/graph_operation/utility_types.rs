@@ -200,7 +200,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.create_layer(new_id, output_node_id, skip_layer_nodes)
 	}
 
-	//creates an artboard that outputs to the output node. Uses logic from create_layer
+	// Creates an artboard that outputs to the output node.
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
 		let output_node_id = self.document_network.original_outputs()[0].node_id;
 		let mut shift = IVec2::new(0, 3);
@@ -215,7 +215,7 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		// Get node that feeds into output. If it exists, connect the new artboard in between. Else connect the new artboard directly to output
+		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
 		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
 			let primary_input_node = self.document_network.nodes.get(node_id)?;
