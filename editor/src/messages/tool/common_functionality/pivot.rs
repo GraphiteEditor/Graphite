@@ -45,7 +45,7 @@ impl Pivot {
 
 	/// Recomputes the pivot position and transform.
 	fn recalculate_pivot(&mut self, document: &DocumentMessageHandler) {
-		let mut layers = document.selected_nodes.selected_visible_layers(document.metadata());
+		let mut layers = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata());
 		let Some(first) = layers.next() else {
 			// If no layers are selected then we revert things back to default
 			self.normalized_pivot = DVec2::splat(0.5);
@@ -66,14 +66,14 @@ impl Pivot {
 			// If more than one layer is selected we use the AABB with the mean of the pivots
 			let xy_summation = document
 				.selected_nodes
-				.selected_visible_layers(document.metadata())
+				.selected_visible_and_unlocked_layers(document.metadata())
 				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network, &document.metadata))
 				.reduce(|a, b| a + b)
 				.unwrap_or_default();
 
 			let pivot = xy_summation / selected_layers_count as f64;
 			self.pivot = Some(pivot);
-			let [min, max] = document.selected_visible_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			let [min, max] = document.selected_visible_and_unlock_layers_bounding_box_viewport().unwrap_or([DVec2::ZERO, DVec2::ONE]);
 			self.normalized_pivot = (pivot - min) / (max - min);
 
 			self.transform_from_normalized = DAffine2::from_translation(min) * DAffine2::from_scale(max - min);
@@ -101,7 +101,7 @@ impl Pivot {
 
 	/// Sets the viewport position of the pivot for all selected layers.
 	pub fn set_viewport_position(&self, position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+		for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
 			let transform = Self::get_layer_pivot_transform(layer, document);
 			let pivot = transform.inverse().transform_point2(position);
 			// Only update the pivot when computed position is finite. Infinite can happen when scale is 0.
