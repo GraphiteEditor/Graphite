@@ -102,7 +102,9 @@ impl Dispatcher {
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
-
+				Message::Batched(messages) => {
+					messages.iter().for_each(|m| self.handle_message(m.to_owned()));
+				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
