@@ -129,7 +129,7 @@ impl<'a> ModifyInputsContext<'a> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
 		let mut output = output_node_id;
-		let mut output_in_index = 0;
+		let mut output_in_index;
 		let mut sibling_layer = None;
 		let mut shift = IVec2::new(0, 3);
 		// Locate the node output of the first sibling layer to the new layer
@@ -200,11 +200,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.create_layer(new_id, output_node_id, skip_layer_nodes)
 	}
 
-	pub fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
-		info!("inserting artboard before node: {}", layer);
+	//creates an artboard that outputs to the output node. Uses logic from create_layer
+	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
+		let output_node_id = self.document_network.original_outputs()[0].node_id;
+		let mut shift = IVec2::new(0, 3);
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
-				None,
+				Some(NodeInput::value(TaggedValue::Artboards(graphene_std::Artboards::new()), true)),
+				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -212,12 +215,20 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		self.insert_node_before(NodeId(generate_uuid()), layer, 1, artboard_node, IVec2::new(-8, 0))
-	}
-	//creates an artboard that outputs to the output node. Uses logic from create_layer
-	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard, output_node_id: NodeId) -> Option<NodeId> {
-		None
+		// Get node that feeds into output. If it exists, connect the new artboard in between. Else connect the new artboard directly to output
+		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
+		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
+			let primary_input_node = self.document_network.nodes.get(node_id)?;
+			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
+			let artboard_input_index = if primary_input_node.name == "Artboard" { 0 } else { 1 };
+			let primary_input_node_output = NodeOutput::new(*node_id, 0);
+
+			self.insert_between(new_id, primary_input_node_output, NodeOutput::new(output_node_id, 0), artboard_node, artboard_input_index, 0, shift)
+		} else {
+			shift = IVec2::new(-8, 3);
+			self.insert_node_before(new_id, output_node_id, 0, artboard_node, shift)
+		};
+		created_node_id
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {

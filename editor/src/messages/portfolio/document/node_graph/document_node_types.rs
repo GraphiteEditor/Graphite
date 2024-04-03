@@ -252,13 +252,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				// 1st parameter: Artboards(top/bottom input) : FrontendGraphDataType::Artboards, 2-5th parameters: Over(bottom/left side input): FrontendGraphDataType::GraphicGroup
 				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)], //export must be FrontendGraphDataType::Artboard
+				exports: vec![NodeOutput::new(NodeId(2), 0)], //export must be FrontendGraphDataType::Artboards
 				nodes: [
 					//create artboard from graphic group and other inputs
 					(
 						NodeId(0),
 						DocumentNode {
 							name: "To Artboard".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
 								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
 								//DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
@@ -287,8 +288,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeId(2),
 						DocumentNode {
 							name: "Add to Artboards".to_string(),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::Network(concrete!(Artboards))],
-							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_,>"),
+							inputs: vec![NodeInput::Network(concrete!(Artboards)), NodeInput::node(NodeId(0), 0)],
+							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_>"),
 							..Default::default()
 						},
 					),
@@ -307,7 +308,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboards)],
 			properties: node_properties::artboard_properties,
-			manual_composition: Some(concrete!(Footprint)),
 			..Default::default()
 		},
 		// TODO: Does this need an internal Cull node to be added to its implementation?
