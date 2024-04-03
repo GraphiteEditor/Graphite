@@ -1,14 +1,14 @@
 use super::tool_prelude::*;
 use crate::consts::LINE_ROTATE_SNAP_ANGLE;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
-
-use graph_craft::document::NodeId;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::Stroke;
 use graphene_core::Color;
@@ -177,11 +177,22 @@ impl Fsm for LineToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 				tool_data.drag_start = snapped.snapped_point_document;
 
-				let subpath = bezier_rs::Subpath::new_line(DVec2::ZERO, DVec2::X);
-
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
+				let nodes = {
+					let node_type = resolve_document_node_type("Line").expect("Line node does not exist");
+					let node = node_type.to_document_node_default_inputs(
+						[
+							None,
+							Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+							Some(NodeInput::value(TaggedValue::DVec2(DVec2::X), false)),
+						],
+						Default::default(),
+					);
+
+					HashMap::from([(NodeId(0), node)])
+				};
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(), responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				tool_data.layer = Some(layer);
 
