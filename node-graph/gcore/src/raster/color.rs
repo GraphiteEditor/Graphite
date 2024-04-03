@@ -749,24 +749,6 @@ impl Color {
 			(self.a() * 255.) as u8,
 		)
 	}
-	/// Return an 8-character RGBA hex string (with a # prefix).
-	///
-	/// # Examples
-	/// ```
-	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("#3240A261", color.rgba_hex_prefixed())
-	/// ```
-	#[cfg(feature = "std")]
-	pub fn rgba_hex_prefixed(&self) -> String {
-		format!(
-			"#{:02X?}{:02X?}{:02X?}{:02X?}",
-			(self.r() * 255.) as u8,
-			(self.g() * 255.) as u8,
-			(self.b() * 255.) as u8,
-			(self.a() * 255.) as u8,
-		)
-	}
 
 	/// Return a 6-character RGB hex string (without a # prefix).
 	/// ```
@@ -777,17 +759,6 @@ impl Color {
 	#[cfg(feature = "std")]
 	pub fn rgb_hex(&self) -> String {
 		format!("{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
-	}
-
-	/// Return a 6-character RGB hex string (with a # prefix).
-	/// ```
-	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba8_srgb(0x52, 0x67, 0xFA, 0x61).to_gamma_srgb();
-	/// assert_eq!("#3240A2", color.rgb_hex_prefixed())
-	/// ```
-	#[cfg(feature = "std")]
-	pub fn rgb_hex_prefixed(&self) -> String {
-		format!("#{:02X?}{:02X?}{:02X?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha.
@@ -860,26 +831,6 @@ impl Color {
 		Some(Color::from_rgba8_srgb(r, g, b, a))
 	}
 
-	/// Creates a color from a 8-character RGBA hex string (with a # prefix).
-	///
-	/// # Examples
-	/// ```
-	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgba_str_prefixed("#7C67FA61").unwrap();
-	/// ```
-	pub fn from_rgba_str_prefixed(color_str: &str) -> Option<Color> {
-		if color_str.len() != 9 {
-			return None;
-		}
-   		let color_str = &color_str[1..];
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
-
-		Some(Color::from_rgba8_srgb(r, g, b, a))
-	}
-
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
 	/// ```
 	/// use graphene_core::raster::color::Color;
@@ -896,23 +847,6 @@ impl Color {
 		Some(Color::from_rgb8_srgb(r, g, b))
 	}
 
-	/// Creates a color from a 6-character RGB hex string (with a # prefix).
-	/// ```
-	/// use graphene_core::raster::color::Color;
-	/// let color = Color::from_rgb_str_prefixed("7C67FA").unwrap();
-	/// ```
-	pub fn from_rgb_str_prefixed(color_str: &str) -> Option<Color> {
-		if color_str.len() != 7 {
-			return None;
-		}
-		let color_str = &color_str[1..];
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-
-		Some(Color::from_rgb8_srgb(r, g, b))
-	}
-	
 	/// Linearly interpolates between two colors based on t.
 	///
 	/// T must be between 0 and 1.
