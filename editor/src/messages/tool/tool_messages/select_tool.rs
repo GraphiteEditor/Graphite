@@ -386,12 +386,12 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				let selected_layers_count = document.selected_nodes.selected_layers(document.metadata()).count();
+				let selected_layers_count = document.selected_nodes.selected_unlocked_layers(document.metadata()).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
@@ -405,13 +405,13 @@ impl Fsm for SelectToolFsmState {
 				// Update bounds
 				let transform = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.filter_map(|layer| {
 						document
 							.metadata()
@@ -472,7 +472,7 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document.selected_nodes.selected_visible_layers(document.metadata()).collect();
+				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
 				let intersection = document.click(input.mouse.position, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
@@ -626,7 +626,7 @@ impl Fsm for SelectToolFsmState {
 					let snapped = if axis_align {
 						let constraint = SnapConstraint::Line {
 							origin: point.document_point,
-							direction: total_mouse_delta_document.normalize(),
+							direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
 						};
 						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
 					} else {

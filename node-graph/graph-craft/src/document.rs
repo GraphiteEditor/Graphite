@@ -162,6 +162,9 @@ pub struct DocumentNode {
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
+	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
+	#[serde(default)]
+	pub locked: bool,
 	/// Metadata about the node including its position in the graph UI.
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
@@ -210,6 +213,7 @@ impl Default for DocumentNode {
 			has_primary_output: true,
 			implementation: Default::default(),
 			visible: true,
+			locked: Default::default(),
 			metadata: Default::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),

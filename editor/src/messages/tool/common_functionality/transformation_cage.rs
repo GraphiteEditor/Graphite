@@ -206,7 +206,11 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 		let angle = -mouse_position.angle_between(DVec2::X);
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
-		DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length() + start
+		if snapped_angle.is_finite() {
+			start + DVec2::new(snapped_angle.cos(), snapped_angle.sin()) * mouse_position.length()
+		} else {
+			start
+		}
 	} else {
 		position
 	}

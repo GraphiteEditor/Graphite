@@ -133,6 +133,10 @@
 		editor.instance.toggleLayerVisibility(id);
 	}
 
+	function toggleLayerLock(id: bigint) {
+		editor.instance.toggleLayerLock(id);
+	}
+
 	function handleExpandArrowClick(id: bigint) {
 		editor.instance.toggleLayerExpansion(id);
 	}
@@ -424,11 +428,11 @@
 						<IconButton
 							class={"status-toggle"}
 							classes={{ inactive: !listing.entry.parentsUnlocked }}
-							action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
 							size={24}
-							icon={listing.entry.parentsUnlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							hoverIcon={listing.entry.parentsUnlocked ? "PadlockUnlocked" : "PadlockLocked"}
-							tooltip={listing.entry.parentsUnlocked ? "Unlock" : "Lock"}
+							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
+							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
+							tooltip={listing.entry.unlocked ? "Lock" : "Unlock"}
 						/>
 					{/if}
 					<IconButton

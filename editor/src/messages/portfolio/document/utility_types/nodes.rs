@@ -71,6 +71,19 @@ impl SelectedNodes {
 		self.selected_layers(metadata).filter(move |&layer| self.layer_visible(layer, metadata))
 	}
 
+	pub fn layer_locked(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
+		layer.ancestors(metadata).any(|layer| metadata.node_is_locked(layer.to_node()))
+	}
+
+	pub fn selected_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(metadata).filter(move |&layer| !self.layer_locked(layer, metadata))
+	}
+
+	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(metadata)
+			.filter(move |&layer| self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata))
+	}
+
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		metadata.all_layers().filter(|layer| self.0.contains(&layer.to_node()))
 	}

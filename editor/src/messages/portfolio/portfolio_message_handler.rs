@@ -203,6 +203,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
+							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
 							collapsed: false,
 							alias: previous_alias,
 						});
@@ -390,6 +391,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 						if !entry.visible {
 							responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
+						}
+						if entry.locked {
+							responses.add(NodeGraphMessage::SetLocked { node_id: id, locked: true });
 						}
 					}
 				};

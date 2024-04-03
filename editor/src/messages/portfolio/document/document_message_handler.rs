@@ -190,7 +190,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Max => combined_box[1],
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
-				for layer in self.selected_nodes.selected_layers(self.metadata()) {
+				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -313,10 +313,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.selected_visible_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
-					for layer in self.selected_nodes.selected_layers(self.metadata()) {
+					for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
 						responses.add(GraphOperationMessage::TransformChange {
 							layer,
 							transform: DAffine2::from_scale(scale),
@@ -463,7 +463,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
@@ -498,7 +498,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
@@ -622,11 +622,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
-				let all_layers_except_artboards_and_invisible = metadata
+				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
 					.filter(move |&layer| !metadata.is_artboard(layer))
-					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata));
-				let nodes = all_layers_except_artboards_and_invisible.map(|layer| layer.to_node()).collect();
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata) && !self.selected_nodes.layer_locked(layer, metadata));
+				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			DocumentMessage::SelectedLayersLower => {
@@ -834,6 +834,7 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -847,6 +848,7 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -861,6 +863,13 @@ impl DocumentMessageHandler {
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
 			.selected_visible_layers(self.metadata())
+			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.reduce(graphene_core::renderer::Quad::combine_bounds)
+	}
+
+	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_nodes
+			.selected_visible_and_unlocked_layers(self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1361,7 +1370,7 @@ impl DocumentMessageHandler {
 
 		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
 		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_visible(layer.to_node()));
-		let selection_all_locked = false; // TODO: Implement
+		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_locked(layer.to_node()));
 
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
@@ -1415,8 +1424,8 @@ impl DocumentMessageHandler {
 				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestComingSoonDialog))
-					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1127) }.into())
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)

@@ -487,6 +487,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				})();
+				document_metadata.load_structure(document_network, selected_nodes);
+				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
+			}
+			NodeGraphMessage::ToggleSelectedLocked => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				let is_locked = !selected_nodes.selected_nodes().any(|&id| document_metadata.node_is_locked(id));
+
+				for &node_id in selected_nodes.selected_nodes() {
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
+				}
+			}
+			NodeGraphMessage::ToggleLocked { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+				let is_locked = !document_metadata.node_is_locked(node_id);
+				responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
+			}
+			NodeGraphMessage::SetLocked { node_id, locked } => {
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
+					let is_locked = if !locked {
+						false
+					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
+						true
+					} else {
+						return;
+					};
+					let Some(node) = network.nodes.get_mut(&node_id) else { return };
+					node.locked = is_locked;
+
+					if network.connected_to_output(node_id) {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
@@ -551,9 +585,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
 		} else if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}
@@ -567,7 +601,7 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	/// Updates the buttons for visibility and preview
+	/// Updates the buttons for visibility, locked, and preview
 	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		if let Some(network) = document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();
@@ -759,6 +793,7 @@ impl NodeGraphMessageHandler {
 				position: node.metadata.position.into(),
 				previewed: network.outputs_contain(node_id),
 				visible: node.visible,
+				locked: node.locked,
 				errors: errors.map(|e| format!("{e:?}")),
 			});
 		}
@@ -784,6 +819,11 @@ impl NodeGraphMessageHandler {
 					.filter(|&ancestor| ancestor != layer)
 					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default());
 
+				let parents_unlocked = layer
+					.ancestors(metadata)
+					.filter(|&ancestor| ancestor != layer)
+					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default());
+
 				let data = LayerPanelEntry {
 					id: node_id,
 					layer_classification,
@@ -795,8 +835,8 @@ impl NodeGraphMessageHandler {
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
 					parents_visible,
-					unlocked: true,
-					parents_unlocked: true,
+					unlocked: !node.locked,
+					parents_unlocked,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
 			}
