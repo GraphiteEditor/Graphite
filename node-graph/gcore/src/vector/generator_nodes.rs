@@ -52,24 +52,16 @@ impl CornerRadius for f64 {
 impl CornerRadius for [f64; 4] {
 	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
 		let clamped_radius = if clamped {
-			// no corner's radius can be larger than the smallest side
-			let mut radius = self.map(|x| x.clamp(0., size.x.min(size.y).max(0.)));
-			// find the corner with the largest radius
-			let (mut max, mut index) = (0., 0);
-			(0..4).for_each(|i| {
-				if radius[i] > max {
-					(max, index) = (radius[i], i);
+			// https://drafts.csswg.org/css-backgrounds/#corner-overlap
+			let mut f: f64 = 1.;
+			for i in 0..4 {
+				let l = if i % 2 == 0 { size.x } else { size.y };
+				let s = self[i] + self[(i + 1) % 4];
+				if l < s {
+					f = f.min(l / s);
 				}
-			});
-			// clamp the two corners adjacent to the largest corner
-			radius[(index + 1) % 4] = radius[(index + 1) % 4].min(if index % 2 == 0 { size.x } else { size.y } - max).max(0.);
-			radius[(index + 3) % 4] = radius[(index + 3) % 4].min(if index % 2 == 0 { size.y } else { size.x } - max).max(0.);
-			// clamp the corner diagonally opposite to the largest corner
-			radius[(index + 2) % 4] = radius[(index + 2) % 4]
-				.min(if index % 2 == 0 { size.y } else { size.x } - radius[(index + 1) % 4])
-				.min(if index % 2 == 0 { size.x } else { size.y } - radius[(index + 3) % 4])
-				.max(0.);
-			radius
+			}
+			self.map(|x| x * f)
 		} else {
 			self
 		};
