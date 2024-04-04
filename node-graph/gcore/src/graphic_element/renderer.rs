@@ -456,7 +456,7 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
-impl GraphicElementRendered for crate::Artboards {
+impl GraphicElementRendered for crate::ArtboardGroup {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		self.get_graphic_group().render_svg(render, render_params);
 	}

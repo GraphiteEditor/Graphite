@@ -207,7 +207,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
-				Some(NodeInput::value(TaggedValue::Artboards(graphene_std::Artboards::EMPTY), true)),
+				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),

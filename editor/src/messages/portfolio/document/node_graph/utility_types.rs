@@ -41,7 +41,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
-			TaggedValue::Artboard(_) | TaggedValue::Artboards(_) => Self::Artboard,
+			TaggedValue::Artboard(_) | TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			TaggedValue::Palette(_) => Self::Palette,
 			_ => Self::General,
 		}

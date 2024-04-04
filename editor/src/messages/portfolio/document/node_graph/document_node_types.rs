@@ -283,7 +283,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
 								NodeInput::node(NodeId(1), 0),
-								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(Artboards)))),
+								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup)))),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
 							..Default::default()
@@ -295,7 +295,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 
 			inputs: vec![
-				DocumentInputType::value("Artboards", TaggedValue::Artboards(Artboards::EMPTY), true),
+				DocumentInputType::value("Artboards", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
 				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),

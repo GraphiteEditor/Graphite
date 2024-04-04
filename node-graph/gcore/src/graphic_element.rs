@@ -109,14 +109,14 @@ impl Artboard {
 /// Contains multiple artboards
 #[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Artboards {
+pub struct ArtboardGroup {
 	pub artboards: Vec<Artboard>,
 }
 
-impl Artboards {
+impl ArtboardGroup {
 	pub const EMPTY: Self = Self { artboards: Vec::new() };
 	pub fn new() -> Self {
-		Artboards { artboards: Vec::new() }
+		ArtboardGroup { artboards: Vec::new() }
 	}
 	fn add_artboard(&mut self, artboard: Artboard) {
 		self.artboards.push(artboard);
@@ -182,19 +182,18 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 		clip,
 	}
 }
-pub struct AddArtboardNode<Artboard, Artboards> {
+pub struct AddArtboardNode<Artboard, ArtboardGroup> {
 	artboard: Artboard,
-	artboards: Artboards,
+	artboards: ArtboardGroup,
 }
 #[node_fn(AddArtboardNode)]
-async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: Future<Output = Artboards>>(
+async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: Future<Output = ArtboardGroup>>(
 	footprint: Footprint,
 	artboard: impl Node<Footprint, Output = Fut1>,
 	mut artboards: impl Node<Footprint, Output = Fut2>,
-) -> Artboards {
+) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
-	log::debug!("artboards in node: {:?}", artboards);
 	artboards.add_artboard(artboard.into());
 	artboards
 }
