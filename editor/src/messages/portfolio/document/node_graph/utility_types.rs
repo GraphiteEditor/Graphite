@@ -25,8 +25,6 @@ pub enum FrontendGraphDataType {
 	GraphicGroup,
 	#[serde(rename = "artboard")]
 	Artboard,
-	#[serde(rename = "artboards")]
-	Artboards,
 	#[serde(rename = "color")]
 	Palette,
 }
@@ -43,8 +41,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
-			TaggedValue::Artboard(_) => Self::Artboard,
-			TaggedValue::Artboards(_) => Self::Artboards,
+			TaggedValue::Artboard(_) | TaggedValue::Artboards(_) => Self::Artboard,
 			TaggedValue::Palette(_) => Self::Palette,
 			_ => Self::General,
 		}

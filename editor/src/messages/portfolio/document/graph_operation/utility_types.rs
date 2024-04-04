@@ -200,13 +200,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.create_layer(new_id, output_node_id, skip_layer_nodes)
 	}
 
-	// Creates an artboard that outputs to the output node.
+	/// Creates an artboard that outputs to the output node.
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
 		let output_node_id = self.document_network.original_outputs()[0].node_id;
 		let mut shift = IVec2::new(0, 3);
+
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
-				Some(NodeInput::value(TaggedValue::Artboards(graphene_std::Artboards::new()), true)),
+				Some(NodeInput::value(TaggedValue::Artboards(graphene_std::Artboards::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
@@ -215,6 +216,13 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
+
+		// Doesn't work
+		// let artboard_node = resolve_document_node_type("Artboard").expect("Artboard node").default_document_node();
+
+		// Works
+		// let artboard_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+
 		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
 		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
@@ -228,6 +236,7 @@ impl<'a> ModifyInputsContext<'a> {
 			shift = IVec2::new(-8, 3);
 			self.insert_node_before(new_id, output_node_id, 0, artboard_node, shift)
 		};
+		//self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		created_node_id
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {

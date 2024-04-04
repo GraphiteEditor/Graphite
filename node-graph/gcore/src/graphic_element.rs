@@ -114,11 +114,20 @@ pub struct Artboards {
 }
 
 impl Artboards {
+	pub const EMPTY: Self = Self { artboards: Vec::new() };
 	pub fn new() -> Self {
 		Artboards { artboards: Vec::new() }
 	}
 	fn add_artboard(&mut self, artboard: Artboard) {
 		self.artboards.push(artboard);
+	}
+	pub fn get_graphic_group(&self) -> GraphicGroup {
+		let mut graphic_group = GraphicGroup::EMPTY;
+		for artboard in self.artboards.clone() {
+			let graphic_element: GraphicElement = artboard.into();
+			graphic_group.push(graphic_element);
+		}
+		graphic_group
 	}
 }
 
@@ -178,8 +187,14 @@ pub struct AddArtboardNode<Artboard, Artboards> {
 	artboards: Artboards,
 }
 #[node_fn(AddArtboardNode)]
-async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>>(footprint: Footprint, artboard: impl Node<Footprint, Output = Fut1>, mut artboards: Artboards) -> Artboards {
+async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: Future<Output = Artboards>>(
+	footprint: Footprint,
+	artboard: impl Node<Footprint, Output = Fut1>,
+	mut artboards: impl Node<Footprint, Output = Fut2>,
+) -> Artboards {
 	let artboard = self.artboard.eval(footprint).await;
+	let mut artboards = self.artboards.eval(footprint).await;
+	log::debug!("artboards in node: {:?}", artboards);
 	artboards.add_artboard(artboard.into());
 	artboards
 }

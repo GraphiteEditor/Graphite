@@ -2423,11 +2423,11 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 3, "Background", ColorButton::default().allow_none(false), true);
+	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
+	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
 	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
+		widgets: bool_widget(document_node, node_id, 5, "Clip", true),
 	};
 	vec![location, dimensions, background, clip]
 }

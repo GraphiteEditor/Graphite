@@ -76,8 +76,8 @@ pub struct DocumentNode {
 	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
 	///
 	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(G ∘ F)(x)`.
-	/// For flexability, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
+	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
+	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
 	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
 	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
 	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
