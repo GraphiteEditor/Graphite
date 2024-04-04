@@ -1512,10 +1512,12 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let corner_rounding_type_index = 3;
 	let corner_radius_index = 4;
 
-	let mut corner_rounding_type = vec![TextLabel::new("Corner Rounding").widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-	add_blank_assist(&mut corner_rounding_type);
+	let mut corner_radius_row_1 = start_widgets(document_node, node_id, corner_radius_index, "Corner Radius", FrontendGraphDataType::Number, true);
+	corner_radius_row_1.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
-	let mut corner_radius = start_widgets(document_node, node_id, corner_radius_index, "Corner Radius", FrontendGraphDataType::Number, true);
+	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_holder()];
+	corner_radius_row_2.push(TextLabel::new("").widget_holder());
+	add_blank_assist(&mut corner_radius_row_2);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::Bool(is_individual),
@@ -1533,7 +1535,6 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			} => [x; 4],
 			_ => [0.; 4],
 		};
-
 		let uniform_val = match document_node.inputs[corner_radius_index] {
 			NodeInput::Value {
 				tagged_value: TaggedValue::F64(x),
@@ -1551,49 +1552,50 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 			exposed: false,
 		} = &document_node.inputs[corner_rounding_type_index]
 		{
-			let entries = vec![
-				RadioEntryData::new("Uniform")
-					.label("Uniform")
-					.on_update(move |_| {
-						Message::Batched(Box::new([
-							NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: corner_rounding_type_index,
-								value: TaggedValue::Bool(false),
-							}
-							.into(),
-							NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: corner_radius_index,
-								value: TaggedValue::F64(uniform_val),
-							}
-							.into(),
-						]))
-					})
-					.on_commit(commit_value),
-				RadioEntryData::new("Individual")
-					.label("Individual")
-					.on_update(move |_| {
-						Message::Batched(Box::new([
-							NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: corner_rounding_type_index,
-								value: TaggedValue::Bool(true),
-							}
-							.into(),
-							NodeGraphMessage::SetInputValue {
-								node_id,
-								input_index: corner_radius_index,
-								value: TaggedValue::F64Array4(individual_val),
-							}
-							.into(),
-						]))
-					})
-					.on_commit(commit_value),
-			];
-			corner_rounding_type.extend([RadioInput::new(entries).selected_index(Some(choice as u32)).widget_holder()]);
+			let uniform = RadioEntryData::new("Uniform")
+				.label("Uniform")
+				.on_update(move |_| {
+					Message::Batched(Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: corner_rounding_type_index,
+							value: TaggedValue::Bool(false),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: corner_radius_index,
+							value: TaggedValue::F64(uniform_val),
+						}
+						.into(),
+					]))
+				})
+				.on_commit(commit_value);
+			let individual = RadioEntryData::new("Individual")
+				.label("Individual")
+				.on_update(move |_| {
+					Message::Batched(Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: corner_rounding_type_index,
+							value: TaggedValue::Bool(true),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: corner_radius_index,
+							value: TaggedValue::F64Array4(individual_val),
+						}
+						.into(),
+					]))
+				})
+				.on_commit(commit_value);
+
+			let radio_input = RadioInput::new(vec![uniform, individual]).selected_index(Some(choice as u32)).widget_holder();
+			corner_radius_row_1.push(radio_input);
 		};
-		if *is_individual {
+
+		let input_widget = if *is_individual {
 			let from_string = |string: &str| {
 				string
 					.split(&[',', ' '])
@@ -1607,23 +1609,18 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 					})
 					.map(TaggedValue::F64Array4)
 			};
-			corner_radius.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				TextInput::default()
-					.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
-					.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, corner_radius_index))
-					.widget_holder(),
-			])
+			TextInput::default()
+				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, corner_radius_index))
+				.widget_holder()
 		} else {
-			corner_radius.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::default()
-					.value(Some(uniform_val))
-					.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, corner_radius_index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			])
-		}
+			NumberInput::default()
+				.value(Some(uniform_val))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, corner_radius_index))
+				.on_commit(commit_value)
+				.widget_holder()
+		};
+		corner_radius_row_2.push(input_widget);
 	};
 
 	let clamped = bool_widget(document_node, node_id, 5, "Clamped", true);
@@ -1631,8 +1628,8 @@ pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	vec![
 		operand("Size X", 1),
 		operand("Size Y", 2),
-		LayoutGroup::Row { widgets: corner_rounding_type },
-		LayoutGroup::Row { widgets: corner_radius },
+		LayoutGroup::Row { widgets: corner_radius_row_1 },
+		LayoutGroup::Row { widgets: corner_radius_row_2 },
 		LayoutGroup::Row { widgets: clamped },
 	]
 }
