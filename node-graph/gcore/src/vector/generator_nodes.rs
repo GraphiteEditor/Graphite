@@ -53,15 +53,15 @@ impl CornerRadius for [f64; 4] {
 	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
 		let clamped_radius = if clamped {
 			// https://drafts.csswg.org/css-backgrounds/#corner-overlap
-			let mut f: f64 = 1.;
+			let mut scale_factor: f64 = 1.;
 			for i in 0..4 {
-				let l = if i % 2 == 0 { size.x } else { size.y };
-				let s = self[i] + self[(i + 1) % 4];
-				if l < s {
-					f = f.min(l / s);
+				let side_length = if i % 2 == 0 { size.x } else { size.y };
+				let adj_radius_sum = self[i] + self[(i + 1) % 4];
+				if side_length < adj_radius_sum {
+					scale_factor = scale_factor.min(side_length / adj_radius_sum);
 				}
 			}
-			self.map(|x| x * f)
+			self.map(|x| x * scale_factor)
 		} else {
 			self
 		};
