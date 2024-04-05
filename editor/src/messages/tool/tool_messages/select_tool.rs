@@ -155,6 +155,16 @@ impl SelectTool {
 				.widget_holder()
 		})
 	}
+
+	fn should_refresh_to_artboard_changed(&mut self) -> bool {
+		let to_artboard_changed = self.tool_data.to_artboard_changed;
+		self.tool_data.to_artboard_changed = false;
+		to_artboard_changed
+	}
+
+	pub fn should_update_widgets(&mut self) -> bool {
+		self.tool_data.pivot.should_refresh_pivot_position() || self.should_refresh_to_artboard_changed()
+	}
 }
 
 impl LayoutHolder for SelectTool {
@@ -170,7 +180,7 @@ impl LayoutHolder for SelectTool {
 
 		// Align
 		let to_artboard = self.tool_data.align_to_artboard;
-		let disabled = to_artboard || self.tool_data.selected_layers_count < 2;
+		let disabled = self.tool_data.selected_layers_count == 0 || (!to_artboard && self.tool_data.selected_layers_count < 2);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
 		widgets.push(
@@ -214,7 +224,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &(), responses, false);
 
-		if self.tool_data.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed {
+		if self.should_update_widgets() || self.tool_data.selected_layers_changed {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
 			self.send_layout(responses, LayoutTarget::ToolOptions);
 			self.tool_data.selected_layers_changed = false;
@@ -283,6 +293,7 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	align_to_artboard: bool,
+	to_artboard_changed: bool,
 }
 
 impl SelectToolData {
@@ -403,6 +414,7 @@ impl Fsm for SelectToolFsmState {
 		match (self, event) {
 			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
 				tool_data.align_to_artboard = to_artboard;
+				tool_data.to_artboard_changed = true;
 				responses.add(DocumentMessage::UpdateAlignedToArtboard(to_artboard));
 				self
 			}
