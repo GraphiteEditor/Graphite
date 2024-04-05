@@ -56,9 +56,9 @@ impl CornerRadius for [f64; 4] {
 			let mut scale_factor: f64 = 1.;
 			for i in 0..4 {
 				let side_length = if i % 2 == 0 { size.x } else { size.y };
-				let adj_radius_sum = self[i] + self[(i + 1) % 4];
-				if side_length < adj_radius_sum {
-					scale_factor = scale_factor.min(side_length / adj_radius_sum);
+				let adjacent_corner_radius_sum = self[i] + self[(i + 1) % 4];
+				if side_length < adjacent_corner_radius_sum {
+					scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
 				}
 			}
 			self.map(|x| x * scale_factor)
