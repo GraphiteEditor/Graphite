@@ -70,6 +70,7 @@ pub enum SelectToolMessage {
 
 	// Tool-specific messages
 	SetAlignedToArtboard(bool),
+	SetAlignLinkSelected(bool),
 	DragStart { add_to_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
@@ -116,7 +117,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, link_selected: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, align_link_selected: bool) -> impl Iterator<Item = WidgetHolder> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -136,7 +137,7 @@ impl SelectTool {
 							axis,
 							aggregate,
 							align_to_artboard,
-							link_selected,
+							align_link_selected,
 						}
 						.into()
 					})
@@ -188,24 +189,34 @@ impl LayoutHolder for SelectTool {
 
 		// Align
 		let align_to_artboard = self.tool_data.align_to_artboard;
-		let link_selected = false; // TODO: this
+		let align_link_selected = self.tool_data.align_link_selected;
 		let disabled = self.tool_data.selected_layers_count == 0 || (!align_to_artboard && self.tool_data.selected_layers_count < 2);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.alignment_widgets(disabled, align_to_artboard, link_selected));
+		widgets.extend(self.alignment_widgets(disabled, align_to_artboard, align_link_selected));
 		widgets.push(
+			// TODO: This button should be hidden when the canvas is infinite.
 			PopoverButton::new("Align", "Change alignment properties")
-				.options_widget(vec![LayoutGroup::Row {
-					widgets: vec![
-						CheckboxInput::new(align_to_artboard)
-							.tooltip("Align selection relative to artboard.")
-							.on_update(move |input: &CheckboxInput| {
-								debug!("It's alive!");
-								SelectToolMessage::SetAlignedToArtboard(input.checked).into()
-							})
-							.widget_holder(),
-						TextLabel::new("To Artboard").widget_holder(),
-					],
-				}])
+				.options_widget(vec![
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(false)
+								.tooltip("Align selection relative to artboard.")
+								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignedToArtboard(input.checked).into())
+								.widget_holder(),
+							TextLabel::new("To Artboard").widget_holder(),
+						],
+					},
+					LayoutGroup::Row {
+						widgets: vec![
+							CheckboxInput::new(true)
+								.disabled(!align_to_artboard)
+								.tooltip("Align combined bounding box.")
+								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignLinkSelected(input.checked).into())
+								.widget_holder(),
+							TextLabel::new("Link selected objects").widget_holder(),
+						],
+					},
+				])
 				.widget_holder(),
 		);
 
@@ -302,6 +313,7 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	align_to_artboard: bool,
+	align_link_selected: bool,
 	align_checkbox_changed: bool,
 }
 
@@ -423,6 +435,11 @@ impl Fsm for SelectToolFsmState {
 		match (self, event) {
 			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
 				tool_data.align_to_artboard = to_artboard;
+				tool_data.align_checkbox_changed = true;
+				self
+			}
+			(_, SelectToolMessage::SetAlignLinkSelected(align_link_selected)) => {
+				tool_data.align_link_selected = align_link_selected;
 				tool_data.align_checkbox_changed = true;
 				self
 			}

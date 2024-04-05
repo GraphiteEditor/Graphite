@@ -178,7 +178,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				axis,
 				aggregate,
 				align_to_artboard,
-				link_selected,
+				align_link_selected,
 			} => {
 				self.backup(responses);
 
@@ -187,20 +187,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAxis::Y => DVec2::Y,
 				};
 
-				debug!("checkbox: {}", align_to_artboard);
-
 				let combined_box = if align_to_artboard {
-					debug!("over here!");
 					self.metadata().bounding_box_viewport(self.metadata().active_artboard())
 				} else {
-					debug!("no, here!");
 					self.selected_visible_layers_bounding_box_viewport()
 				};
 				let Some(combined_box) = combined_box else {
 					return;
 				};
-
-				debug!("comb: 0:{} 1:{}", combined_box[0], combined_box[1]);
 
 				let aggregated = match aggregate {
 					AlignAggregate::Min => combined_box[0],
@@ -208,21 +202,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
 				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
-					let bbox = if align_to_artboard {
-						self.metadata().bounding_box_viewport(layer)
+					let bbox = if align_link_selected && align_to_artboard {
+						self.selected_visible_layers_bounding_box_viewport()
 					} else {
 						self.metadata().bounding_box_viewport(layer)
 					};
 					let Some(bbox) = bbox else {
 						continue;
 					};
+
 					let center = match aggregate {
 						AlignAggregate::Min => bbox[0],
 						AlignAggregate::Max => bbox[1],
 						_ => (bbox[0] + bbox[1]) / 2.,
 					};
 					let translation = (aggregated - center) * axis;
-					debug!("trans: {}", translation);
+
 					responses.add(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(translation),

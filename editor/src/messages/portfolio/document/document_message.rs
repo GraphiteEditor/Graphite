@@ -34,7 +34,7 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 		align_to_artboard: bool,
-		link_selected: bool,
+		align_link_selected: bool,
 	},
 	BackupDocument {
 		network: NodeNetwork,
