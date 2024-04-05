@@ -80,6 +80,8 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	#[serde(skip)]
+	align_to_artboard: bool,
+	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetwork>,
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetwork>,
@@ -174,6 +176,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
+			DocumentMessage::UpdateAlignedToArtboard(align_to_artboard) => {
+				self.align_to_artboard = align_to_artboard;
+			}
 			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
 				self.backup(responses);
 
@@ -181,9 +186,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.selected_visible_layers_bounding_box_viewport() else {
+
+				debug!("checkbox: {}", self.align_to_artboard);
+
+				let combined_box = if self.align_to_artboard {
+					debug!("over here!");
+					self.metadata().bounding_box_viewport(self.metadata().active_artboard())
+				} else {
+					debug!("no, here!");
+					self.selected_visible_layers_bounding_box_viewport()
+				};
+				let Some(combined_box) = combined_box else {
 					return;
 				};
+
+				debug!("comb: 0:{} 1:{}", combined_box[0], combined_box[1]);
 
 				let aggregated = match aggregate {
 					AlignAggregate::Min => combined_box[0],
@@ -191,7 +208,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
 				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
-					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
+					let bbox = if self.align_to_artboard {
+						self.metadata().bounding_box_viewport(layer)
+					} else {
+						self.metadata().bounding_box_viewport(layer)
+					};
+					let Some(bbox) = bbox else {
 						continue;
 					};
 					let center = match aggregate {
@@ -200,6 +222,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						_ => (bbox[0] + bbox[1]) / 2.,
 					};
 					let translation = (aggregated - center) * axis;
+					debug!("trans: {}", translation);
 					responses.add(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(translation),
@@ -1560,6 +1583,7 @@ impl Default for DocumentMessageHandler {
 			snapping_state: SnappingState::default(),
 			layer_range_selection_reference: None,
 			metadata: Default::default(),
+			align_to_artboard: false,
 		}
 	}
 }

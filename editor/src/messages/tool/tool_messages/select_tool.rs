@@ -69,6 +69,7 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	SetAlignedToArtboard(bool),
 	DragStart { add_to_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
@@ -168,10 +169,26 @@ impl LayoutHolder for SelectTool {
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
-		let disabled = self.tool_data.selected_layers_count < 2;
+		let to_artboard = self.tool_data.align_to_artboard;
+		let disabled = to_artboard || self.tool_data.selected_layers_count < 2;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
-		widgets.push(PopoverButton::new("Align", "Coming soon").disabled(disabled).widget_holder());
+		widgets.push(
+			PopoverButton::new("Align", "Change alignment properties")
+				.options_widget(vec![LayoutGroup::Row {
+					widgets: vec![
+						CheckboxInput::new(to_artboard)
+							.tooltip("Align selection relative to artboard.")
+							.on_update(move |input: &CheckboxInput| {
+								debug!("It's alive!");
+								SelectToolMessage::SetAlignedToArtboard(input.checked).into()
+							})
+							.widget_holder(),
+						TextLabel::new("To Artboard").widget_holder(),
+					],
+				}])
+				.widget_holder(),
+		);
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
@@ -265,6 +282,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	align_to_artboard: bool,
 }
 
 impl SelectToolData {
@@ -383,6 +401,11 @@ impl Fsm for SelectToolFsmState {
 			return self;
 		};
 		match (self, event) {
+			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
+				tool_data.align_to_artboard = to_artboard;
+				responses.add(DocumentMessage::UpdateAlignedToArtboard(to_artboard));
+				self
+			}
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 

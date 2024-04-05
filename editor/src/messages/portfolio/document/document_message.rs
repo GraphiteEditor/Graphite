@@ -34,6 +34,7 @@ pub enum DocumentMessage {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
+	UpdateAlignedToArtboard(bool),
 	BackupDocument {
 		network: NodeNetwork,
 	},
