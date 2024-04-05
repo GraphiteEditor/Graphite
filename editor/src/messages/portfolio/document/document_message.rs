@@ -33,8 +33,9 @@ pub enum DocumentMessage {
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
+		align_to_artboard: bool,
+		link_selected: bool,
 	},
-	UpdateAlignedToArtboard(bool),
 	BackupDocument {
 		network: NodeNetwork,
 	},

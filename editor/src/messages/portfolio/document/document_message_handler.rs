@@ -80,8 +80,6 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	#[serde(skip)]
-	align_to_artboard: bool,
-	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetwork>,
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetwork>,
@@ -176,10 +174,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
-			DocumentMessage::UpdateAlignedToArtboard(align_to_artboard) => {
-				self.align_to_artboard = align_to_artboard;
-			}
-			DocumentMessage::AlignSelectedLayers { axis, aggregate } => {
+			DocumentMessage::AlignSelectedLayers {
+				axis,
+				aggregate,
+				align_to_artboard,
+				link_selected,
+			} => {
 				self.backup(responses);
 
 				let axis = match axis {
@@ -187,9 +187,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAxis::Y => DVec2::Y,
 				};
 
-				debug!("checkbox: {}", self.align_to_artboard);
+				debug!("checkbox: {}", align_to_artboard);
 
-				let combined_box = if self.align_to_artboard {
+				let combined_box = if align_to_artboard {
 					debug!("over here!");
 					self.metadata().bounding_box_viewport(self.metadata().active_artboard())
 				} else {
@@ -208,7 +208,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
 				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
-					let bbox = if self.align_to_artboard {
+					let bbox = if align_to_artboard {
 						self.metadata().bounding_box_viewport(layer)
 					} else {
 						self.metadata().bounding_box_viewport(layer)
@@ -1583,7 +1583,6 @@ impl Default for DocumentMessageHandler {
 			snapping_state: SnappingState::default(),
 			layer_range_selection_reference: None,
 			metadata: Default::default(),
-			align_to_artboard: false,
 		}
 	}
 }

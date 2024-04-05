@@ -116,7 +116,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, link_selected: bool) -> impl Iterator<Item = WidgetHolder> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -131,7 +131,15 @@ impl SelectTool {
 				};
 				IconButton::new(icon, 24)
 					.tooltip(tooltip)
-					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
+					.on_update(move |_| {
+						DocumentMessage::AlignSelectedLayers {
+							axis,
+							aggregate,
+							align_to_artboard,
+							link_selected,
+						}
+						.into()
+					})
 					.disabled(disabled)
 					.widget_holder()
 			})
@@ -156,14 +164,14 @@ impl SelectTool {
 		})
 	}
 
-	fn should_refresh_to_artboard_changed(&mut self) -> bool {
-		let to_artboard_changed = self.tool_data.to_artboard_changed;
-		self.tool_data.to_artboard_changed = false;
-		to_artboard_changed
+	fn should_refresh_align_checkboxes(&mut self) -> bool {
+		let checkbox_changed = self.tool_data.align_checkbox_changed;
+		self.tool_data.align_checkbox_changed = false;
+		checkbox_changed
 	}
 
 	pub fn should_update_widgets(&mut self) -> bool {
-		self.tool_data.pivot.should_refresh_pivot_position() || self.should_refresh_to_artboard_changed()
+		self.tool_data.pivot.should_refresh_pivot_position() || self.should_refresh_align_checkboxes()
 	}
 }
 
@@ -179,15 +187,16 @@ impl LayoutHolder for SelectTool {
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
-		let to_artboard = self.tool_data.align_to_artboard;
-		let disabled = self.tool_data.selected_layers_count == 0 || (!to_artboard && self.tool_data.selected_layers_count < 2);
+		let align_to_artboard = self.tool_data.align_to_artboard;
+		let link_selected = false; // TODO: this
+		let disabled = self.tool_data.selected_layers_count == 0 || (!align_to_artboard && self.tool_data.selected_layers_count < 2);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.alignment_widgets(disabled));
+		widgets.extend(self.alignment_widgets(disabled, align_to_artboard, link_selected));
 		widgets.push(
 			PopoverButton::new("Align", "Change alignment properties")
 				.options_widget(vec![LayoutGroup::Row {
 					widgets: vec![
-						CheckboxInput::new(to_artboard)
+						CheckboxInput::new(align_to_artboard)
 							.tooltip("Align selection relative to artboard.")
 							.on_update(move |input: &CheckboxInput| {
 								debug!("It's alive!");
@@ -293,7 +302,7 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	align_to_artboard: bool,
-	to_artboard_changed: bool,
+	align_checkbox_changed: bool,
 }
 
 impl SelectToolData {
@@ -414,8 +423,7 @@ impl Fsm for SelectToolFsmState {
 		match (self, event) {
 			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
 				tool_data.align_to_artboard = to_artboard;
-				tool_data.to_artboard_changed = true;
-				responses.add(DocumentMessage::UpdateAlignedToArtboard(to_artboard));
+				tool_data.align_checkbox_changed = true;
 				self
 			}
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
