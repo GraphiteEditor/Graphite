@@ -52,7 +52,8 @@ impl CornerRadius for f64 {
 impl CornerRadius for [f64; 4] {
 	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
 		let clamped_radius = if clamped {
-			// https://drafts.csswg.org/css-backgrounds/#corner-overlap
+			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
+
 			let mut scale_factor: f64 = 1.;
 			for i in 0..4 {
 				let side_length = if i % 2 == 0 { size.x } else { size.y };

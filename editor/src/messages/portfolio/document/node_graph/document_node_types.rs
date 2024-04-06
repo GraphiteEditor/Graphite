@@ -2260,7 +2260,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Size X", TaggedValue::F64(100.), false),
 				DocumentInputType::value("Size Y", TaggedValue::F64(100.), false),
-				DocumentInputType::value("Individual Corner Rounding", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Individual Corner Radii", TaggedValue::Bool(false), false),
 				DocumentInputType::value("Corner Radius", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Clamped", TaggedValue::Bool(true), false),
 			],
