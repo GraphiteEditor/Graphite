@@ -199,7 +199,7 @@ impl LayoutHolder for SelectTool {
 				.options_widget(vec![
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(false)
+							CheckboxInput::new(align_to_artboard)
 								.tooltip("Align selection relative to artboard.")
 								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignedToArtboard(input.checked).into())
 								.widget_holder(),
@@ -208,7 +208,7 @@ impl LayoutHolder for SelectTool {
 					},
 					LayoutGroup::Row {
 						widgets: vec![
-							CheckboxInput::new(true)
+							CheckboxInput::new(align_link_selected)
 								.disabled(!align_to_artboard)
 								.tooltip("Align combined bounding box.")
 								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignLinkSelected(input.checked).into())
