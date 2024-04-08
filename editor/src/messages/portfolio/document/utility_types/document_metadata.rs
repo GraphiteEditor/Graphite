@@ -224,7 +224,7 @@ impl DocumentMetadata {
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		layer
 			.ancestors(self)
-			.filter_map(|layer| self.upstream_transforms.get(&layer.to_node()))
+			.filter_map(|ancestor_layer| self.upstream_transforms.get(&ancestor_layer.to_node()))
 			.copied()
 			.map(|(footprint, transform)| footprint.transform * transform)
 			.next()

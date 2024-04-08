@@ -293,7 +293,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				.into(),
 				..Default::default()
 			}),
-
 			inputs: vec![
 				DocumentInputType::value("Artboards", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
 				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),

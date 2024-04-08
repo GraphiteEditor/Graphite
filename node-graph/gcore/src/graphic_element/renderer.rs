@@ -447,7 +447,7 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		let subpath = Subpath::new_rect(self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget { stroke_width: 0., subpath });
 	}
 
