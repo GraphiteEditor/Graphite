@@ -737,6 +737,8 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
+			let alias = (!node.alias.is_empty()).then_some(node.alias.clone()).unwrap_or(node.name.clone());
+
 			let node_path = vec![node_id];
 			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
 			let Some(document_node_definition) = document_node_types::resolve_document_node_type(&node.name) else {
@@ -783,8 +785,9 @@ impl NodeGraphMessageHandler {
 
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: node.is_layer,
-				alias: node.alias.clone(),
+				//is_layer: node.is_layer,
+				is_layer: false,
+				alias,
 				name: node.name.clone(),
 				primary_input,
 				exposed_inputs,
@@ -831,7 +834,7 @@ impl NodeGraphMessageHandler {
 					has_children: layer.has_children(metadata),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
-					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or_default(),
+					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or(node.name.clone()),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
 					parents_visible,

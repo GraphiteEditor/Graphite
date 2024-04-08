@@ -148,7 +148,7 @@ impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
 		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-			graph.upstream_flow_back_from_nodes(vec![node.primary_input()?.as_node()?], true).find(|(node, _)| node.is_layer())
+			graph.upstream_flow_back_from_nodes(vec![node.primary_input()?.as_node()?], true).find(|(node, _)| node.is_layer)
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
@@ -157,8 +157,9 @@ impl DocumentMetadata {
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
 
-		let id = graph.exports[0].node_id;
-		let Some(output_node) = graph.nodes.get(&id) else {
+		// Refers to output node: NodeId(0)
+		let output_node_id = graph.exports[0].node_id;
+		let Some(output_node) = graph.nodes.get(&output_node_id) else {
 			return;
 		};
 		let Some((layer_node, node_id)) = first_child_layer(graph, output_node) else {
@@ -351,7 +352,7 @@ impl LayerNodeIdentifier {
 	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
-			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer()),
+			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
@@ -427,6 +428,27 @@ impl LayerNodeIdentifier {
 			back: self.last_child(metadata).and_then(|child| child.last_children(metadata).last()),
 			metadata,
 		}
+	}
+
+	/// TODO: Delete this. Only used for comparing to descendants() functionality in click_xray
+	/// Returns an iterator over all artboards connected to ROOT node (output node, id = 0). Should be replaced
+	pub fn artboard_descendants<'a>(self, metadata: &'a DocumentMetadata, network: &'a NodeNetwork) -> DescendantsIter<'a> {
+		let front = network.nodes.get(&NodeId(0)).and_then(|document_node| {
+			if let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = document_node.inputs.get(0).as_ref() {
+				Some(LayerNodeIdentifier::new_unchecked(*node_id))
+			} else {
+				None
+			}
+		});
+		let back = network.nodes.get(&NodeId(0)).and_then(|document_node| {
+			let mut current_node_id = &NodeId(0);
+			// Loop until current node does not have an input of type Node.
+			while let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = &network.nodes.get(&current_node_id).and_then(|document_node| document_node.inputs.get(0)) {
+				current_node_id = node_id;
+			}
+			Some(LayerNodeIdentifier::new_unchecked(*current_node_id))
+		});
+		DescendantsIter { front, back, metadata }
 	}
 
 	/// Add a child towards the top of the Layers panel

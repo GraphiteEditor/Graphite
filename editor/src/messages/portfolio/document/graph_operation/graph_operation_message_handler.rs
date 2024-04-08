@@ -197,9 +197,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
-					modify_inputs.resize_artboard(location, dimensions);
-				}
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				modify_inputs.resize_artboard(location, dimensions);
 			}
 			GraphOperationMessage::DeleteLayer { id } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
@@ -218,20 +217,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
-				for layer in layer_nodes {
-					let artboards = modify_inputs
-						.document_network
-						.upstream_flow_back_from_nodes(vec![layer], true)
-						.filter_map(|(node, _id)| if node.is_artboard() { Some(_id) } else { None })
-						.collect::<Vec<_>>();
-					if artboards.is_empty() {
-						continue;
-					}
-					for artboard in artboards {
-						modify_inputs.delete_artboard(artboard, selected_nodes);
-					}
-					modify_inputs.delete_layer(layer, selected_nodes, true);
+				let artboard_nodes = modify_inputs
+					.document_network
+					.nodes
+					.iter()
+					.filter(|(_, node)| node.is_artboard())
+					.map(|(id, _)| *id)
+					.collect::<Vec<_>>();
+				for artboard in artboard_nodes {
+					modify_inputs.delete_artboard(artboard, selected_nodes);
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}

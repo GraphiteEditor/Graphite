@@ -2987,6 +2987,7 @@ impl DocumentNodeDefinition {
 
 		DocumentNode {
 			name: self.name.to_string(),
+			is_layer: self.is_layer,
 			inputs,
 			manual_composition: self.manual_composition.clone(),
 			has_primary_output: self.has_primary_output,

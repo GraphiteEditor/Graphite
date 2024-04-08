@@ -883,7 +883,7 @@
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<span title={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
-						{node.alias || "Layer"}
+						{node.alias}
 					</span>
 				</div>
 				<IconButton

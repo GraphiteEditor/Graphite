@@ -177,7 +177,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		// Update the document metadata structure
 		if let Some(new_id) = new_id {
-			let parent = if self.document_network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer()) {
+			let parent = if self.document_network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer) {
 				LayerNodeIdentifier::new(output_node_id, self.document_network)
 			} else {
 				LayerNodeIdentifier::ROOT
@@ -217,12 +217,6 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 
-		// Doesn't work
-		// let artboard_node = resolve_document_node_type("Artboard").expect("Artboard node").default_document_node();
-
-		// Works
-		// let artboard_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-
 		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
 		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
@@ -236,6 +230,11 @@ impl<'a> ModifyInputsContext<'a> {
 			shift = IVec2::new(-8, 3);
 			self.insert_node_before(new_id, output_node_id, 0, artboard_node, shift)
 		};
+
+		if let Some(new_id) = created_node_id {
+			let new_child = LayerNodeIdentifier::new_unchecked(new_id);
+			LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
+		}
 		//self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		created_node_id
 	}
@@ -559,8 +558,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
 		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
-			inputs[1] = NodeInput::value(TaggedValue::IVec2(location), false);
-			inputs[2] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
+			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
 	}
 

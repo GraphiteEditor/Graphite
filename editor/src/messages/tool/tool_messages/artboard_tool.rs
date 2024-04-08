@@ -125,7 +125,7 @@ impl ArtboardToolData {
 
 		let mut intersections = document
 			.click_xray(input.mouse.position)
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Artboard"));
+			.filter(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()));
 
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);

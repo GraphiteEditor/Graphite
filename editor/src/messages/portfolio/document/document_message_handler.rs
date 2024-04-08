@@ -892,6 +892,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.root()
 			.descendants(&self.metadata)
+			//.artboard_descendants(&self.metadata, &self.network)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))

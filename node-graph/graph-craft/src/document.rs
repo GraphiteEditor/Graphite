@@ -815,7 +815,7 @@ impl<'a> Iterator for FlowIter<'a> {
 			let node_id = self.stack.pop()?;
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if document_node.is_layer() { 1 } else { 0 };
+				let skip = if document_node.is_layer { 1 } else { 0 };
 				let take = if self.only_follow_primary { 1 } else { usize::MAX };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
