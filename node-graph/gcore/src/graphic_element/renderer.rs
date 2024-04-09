@@ -21,7 +21,7 @@ pub struct ClickTarget {
 
 impl ClickTarget {
 	/// Does the click target intersect the rectangle
-	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2) -> bool {
+	pub fn intersect_rectangle(&self, document_quad: Quad, layer_transform: DAffine2, filled: bool) -> bool {
 		// Check if the matrix is not invertible
 		if layer_transform.matrix2.determinant().abs() <= std::f64::EPSILON {
 			return false;
@@ -37,7 +37,7 @@ impl ClickTarget {
 			return true;
 		}
 		// Check if selection is entirely within the shape
-		if self.subpath.contains_point(quad.center()) {
+		if filled && self.subpath.contains_point(quad.center()) {
 			return true;
 		}
 
@@ -51,11 +51,11 @@ impl ClickTarget {
 	}
 
 	/// Does the click target intersect the point (accounting for stroke size)
-	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
+	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2, filled: bool) -> bool {
 		// Allows for selecting lines
 		// TODO: actual intersection of stroke
 		let inflated_quad = Quad::from_box([point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)]);
-		self.intersect_rectangle(inflated_quad, layer_transform)
+		self.intersect_rectangle(inflated_quad, layer_transform, filled)
 	}
 }
 

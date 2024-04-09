@@ -532,6 +532,27 @@ impl LayerNodeIdentifier {
 			.last()
 			.expect("There should be a layer before the root")
 	}
+
+	pub fn filled(&self, network: &NodeNetwork) -> bool {
+		use graph_craft::document::value::TaggedValue;
+		use graph_craft::document::NodeInput;
+
+		// TODO: make more concise
+		network.upstream_flow_back_from_nodes(vec![self.to_node()], true).any(|(document_node, _)| {
+			document_node.name == "Fill"
+				&& document_node.inputs.iter().any(|node_input| match node_input {
+					NodeInput::Value { tagged_value, .. } => match tagged_value {
+						TaggedValue::OptionalColor(optional_color) => match optional_color {
+							// TODO: Check if color is not fully transparent
+							Some(_color) => true,
+							_ => false,
+						},
+						_ => false,
+					},
+					_ => false,
+				})
+		})
+	}
 }
 
 // ========

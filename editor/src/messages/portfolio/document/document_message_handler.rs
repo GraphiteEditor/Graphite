@@ -873,6 +873,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
+	/// TODO: properly check if layer is filled
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
 		self.metadata
@@ -882,7 +883,11 @@ impl DocumentMessageHandler {
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
+			.filter(move |(layer, target)| {
+				target
+					.iter()
+					.any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer), true))
+			})
 			.map(|(layer, _)| layer)
 	}
 
@@ -895,7 +900,11 @@ impl DocumentMessageHandler {
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
+			.filter(move |(layer, target)| {
+				target
+					.iter()
+					.any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer), layer.filled(&self.network)))
+			})
 			.map(|(layer, _)| layer)
 	}
 
