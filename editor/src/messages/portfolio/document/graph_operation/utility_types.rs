@@ -185,7 +185,6 @@ impl<'a> ModifyInputsContext<'a> {
 		//       	-> 	Layer (id: random_id)
 		//
 		// If the post node is the output, do the same, but input needs to be the first, not the second
-		//self.document_network.nodes.get(&post_node_id).map_or(false, |post_node| post_node.is_artboard()) {}
 
 		// Post node can be either the Output or an Artboard.
 		// TODO: Should .expect or returning None be used here?
@@ -311,7 +310,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
 			let pre_node = self.document_network.nodes.get(node_id)?;
 			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
-			let artboard_input_index = if pre_node.name == "Artboard" { 0 } else { 1 };
+			let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
 			let primary_input_node_output = NodeOutput::new(*node_id, 0);
 
 			self.insert_between(
@@ -654,8 +653,16 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
+	pub fn resize_artboard(&mut self, mut location: IVec2, mut dimensions: IVec2) {
 		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
+			if dimensions.x < 0 {
+				dimensions.x = -dimensions.x;
+				location.x -= dimensions.x;
+			}
+			if dimensions.y < 0 {
+				dimensions.y = -dimensions.y;
+				location.y -= dimensions.y;
+			}
 			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
 			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
