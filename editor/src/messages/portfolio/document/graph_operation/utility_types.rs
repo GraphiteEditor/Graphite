@@ -87,16 +87,26 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
-	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
+	pub fn insert_between(
+		&mut self,
+		id: NodeId,
+		mut new_node: DocumentNode,
+		new_node_input: NodeInput,
+		new_node_input_index: usize,
+		post_node_id: NodeId,
+		post_node_input: NodeInput,
+		post_node_input_index: usize,
+		shift_upstream: IVec2,
+	) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
-		let pre_node = self.document_network.nodes.get_mut(&pre.node_id)?;
-		node.metadata.position = pre_node.metadata.position;
+		let pre_node = self.document_network.nodes.get_mut(&new_node_input.as_node().expect("Input should reference a node"))?;
+		new_node.metadata.position = pre_node.metadata.position;
 
-		let post_node = self.document_network.nodes.get_mut(&post.node_id)?;
-		node.inputs[input] = NodeInput::node(pre.node_id, pre.node_output_index);
-		post_node.inputs[post.node_output_index] = NodeInput::node(id, output);
+		let post_node = self.document_network.nodes.get_mut(&post_node_id)?;
+		new_node.inputs[new_node_input_index] = new_node_input;
+		post_node.inputs[post_node_input_index] = post_node_input;
 
-		self.document_network.nodes.insert(id, node);
+		self.document_network.nodes.insert(id, new_node);
 
 		self.shift_upstream(id, shift_upstream);
 
@@ -114,10 +124,11 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
+	/// TODO: delete. This always returns None, since the primary input of an Artboard is always an Artboard
 	pub fn skip_artboards(&self, output: &mut NodeId) -> Option<NodeId> {
 		while let NodeInput::Node { node_id, .. } = &self.document_network.nodes.get(output)?.primary_input()? {
 			let sibling_node = self.document_network.nodes.get(node_id)?;
-			if sibling_node.name != "Artboard" {
+			if !sibling_node.is_artboard() {
 				return Some(*node_id);
 			}
 			*output = *node_id;
@@ -129,64 +140,142 @@ impl<'a> ModifyInputsContext<'a> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
 		let mut output = output_node_id;
-		let mut output_in_index;
-		let mut sibling_layer = None;
-		let mut shift = IVec2::new(0, 3);
-		// Locate the node output of the first sibling layer to the new layer
-		let skipped_artboards = self.skip_artboards(&mut output);
-		// Connect to input 1 of the parent layer.
-		output_in_index = self.document_network.nodes.get(&output).map_or(0, |node| if node.is_layer() { 1 } else { 0 });
-		if let Some(node_id) = skipped_artboards {
-			let sibling_node = self.document_network.nodes.get(&node_id)?;
-			if sibling_node.is_layer() {
-				// There is already a layer node
-				sibling_layer = Some(NodeOutput::new(node_id, 0));
-			} else {
-				info!("Insert between");
-				// The user has connected another node to the output. Insert a layer node between the output and the node.
-				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				let index = self.document_network.nodes.get(&output).map_or(0, |node| if node.is_layer() { 1 } else { 0 });
-				let post = NodeOutput::new(output, index);
-				let node_id = self.insert_between(NodeId(generate_uuid()), NodeOutput::new(node_id, 0), post, node, 1, 0, IVec2::new(-8, 0))?;
-				sibling_layer = Some(NodeOutput::new(node_id, 0));
+
+		// Get the node which the new layer will output to (post node). Start at the Output node id, and iterate until the first input is not an artboard, or does not exist.
+		// The post node can either be the Output or an Artboard
+		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
+		let mut post_node_id: NodeId = output_node_id;
+		while let NodeInput::Node { node_id, .. } = &self.document_network.nodes.get(&post_node_id)?.inputs.get(0)? {
+			if !self.document_network.nodes.get(&node_id)?.is_artboard() {
+				break;
 			}
 
-			// Skip some layer nodes
-			for _ in 0..skip_layer_nodes {
-				if let Some(old_sibling) = &sibling_layer {
-					output = old_sibling.node_id;
-					output_in_index = 0;
-					sibling_layer = self.document_network.nodes.get(&old_sibling.node_id)?.inputs[0].as_node().map(|node| NodeOutput::new(node, 0));
-					shift = IVec2::new(0, 3);
+			post_node_id = *node_id;
+		}
+
+		// If the post node is an artboard, get the node that inputs to the Over input.
+		// If it does not exist, add the layer directly.
+		// Before
+		//					-> Artboard/Output
+		// After
+		//					-> Artboard/Output
+		//				⬆️
+		//			-> 	Layer (id: new_id)
+		//
+		// If it is a layer, add the new layer between this layer and the artboard
+		// Before
+		// 				 	-> Artboard/Output
+		//				⬆️
+		//			->	Old Layer
+		// After
+		//					-> Artboard/Output
+		//				⬆️
+		//			->	Layer (id: new_id)
+		//				⬆️
+		//			->	Old Layer
+		//
+		// If it is a non-layer node (NLN), add a layer for this node, and then insert the new layer between that layer and the artboard
+		// Before
+		// 		    	NLN	-> Artboard/Output
+		// After
+		// 		          	-> Artboard/Output
+		//              ⬆️
+		// 			-> 	Layer (id: new_id)
+		//              ⬆️
+		//       	-> 	Layer (id: random_id)
+		//
+		// If the post node is the output, do the same, but input needs to be the first, not the second
+		//self.document_network.nodes.get(&post_node_id).map_or(false, |post_node| post_node.is_artboard()) {}
+
+		// Post node can be either the Output or an Artboard.
+		// TODO: Should .expect or returning None be used here?
+		let mut post_node = self.document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
+		// let post_node = self.document_network.nodes.get(&post_node_id).ok_or_else(|| {
+		// 	log::info!("Error creating layer: post node id should always refer to a node");
+		// 	return None;
+		// })?;
+		let mut post_node_input_index = if post_node.is_artboard() { 1 } else { 0 };
+		//TODO: check if cloning the node_id is ok
+		let mut pre_node_id = post_node
+			.inputs
+			.get(post_node_input_index)
+			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+
+		if let Some(mut pre_node_id) = pre_node_id {
+			let pre_node = self.document_network.nodes.get(&pre_node_id).expect("Pre node id should always refer to a node");
+
+			// Pre_node cannot be an artboard
+			let mut new_layer_input_index = if pre_node.is_layer() {
+				// Add new layer to layer stack. skip_layer_nodes inserts the new layer at a certain index of the layer stack.
+				//			-> Artboard/Output
+				//		⬆️		if skip_layer_nodes == 0, insert new layer here
+				//	->	Layer 	stack_index: 0
+				//      ⬆️		if skip_layer_nodes == 1, insert new layer here
+				//  -> 	Layer	stack_index: 1
+				for _ in 0..skip_layer_nodes {
+					post_node_input_index = 0;
+					post_node_id = pre_node_id;
+					//TODO: check if cloning the node_id is ok
+					if let Some(pre_node_id_value) = post_node
+						.inputs
+						.get(0)
+						.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None })
+					{
+						pre_node_id = pre_node_id_value;
+					} else {
+						log::info!("Error creating layer: skip_layer_nodes index out of bounds");
+						return None;
+					}
 				}
+				0
+			} else if pre_node.is_layer {
+				//Example: Hue/Saturation layer type node into side input for Backdrop Layer
+				1
 			}
+			// Create a layer for the NLN, and then the new layer on top
+			else {
+				let nln_layer_id = NodeId(generate_uuid());
+				let nln_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+				let nln_layer_input = NodeInput::node(pre_node_id, 0);
+				let nln_layer_input_index = 1;
+				let post_node_input = NodeInput::node(nln_layer_id, 0);
+				// Add the NLN layer between the NLN and post_node. The new layer will be added between this layer and the post_node
+				self.insert_between(
+					nln_layer_id,
+					nln_layer_node,
+					nln_layer_input,
+					nln_layer_input_index,
+					post_node_id,
+					post_node_input,
+					post_node_input_index,
+					IVec2::new(-8, 3),
+				);
 
-		// Insert at top of stack
-		} else {
-			shift = IVec2::new(-8, 3);
-		}
-
-		// Create node
-		let layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-
-		let new_id = if let Some(sibling_layer) = sibling_layer {
-			self.insert_between(new_id, sibling_layer, NodeOutput::new(output, output_in_index), layer_node, 0, 0, shift)
-		} else {
-			self.insert_node_before(new_id, output, output_in_index, layer_node, shift)
-		};
-
-		// Update the document metadata structure
-		if let Some(new_id) = new_id {
-			let parent = if self.document_network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer) {
-				LayerNodeIdentifier::new(output_node_id, self.document_network)
-			} else {
-				LayerNodeIdentifier::ROOT
+				pre_node_id = nln_layer_id;
+				0
 			};
-			let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
-			parent.push_front_child(self.document_metadata, new_child);
+			let new_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+			self.insert_between(
+				new_id,
+				new_layer_node,
+				NodeInput::node(pre_node_id, 0),
+				new_layer_input_index,
+				post_node_id,
+				NodeInput::node(new_id, 0),
+				post_node_input_index,
+				IVec2::new(0, 3),
+			);
+		} else {
+			let new_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(-8, 3));
 		}
 
-		new_id
+		//TODO: Is this necessary? When load_structure is called after it resets these changes and builds the structure from scratch
+		let parent = LayerNodeIdentifier::new(post_node_id, self.document_network);
+		let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
+		parent.push_front_child(self.document_metadata, new_child);
+
+		Some(new_id)
 	}
 
 	pub fn create_layer_with_insert_index(&mut self, new_id: NodeId, insert_index: isize, parent: LayerNodeIdentifier) -> Option<NodeId> {
@@ -220,12 +309,21 @@ impl<'a> ModifyInputsContext<'a> {
 		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
 		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
-			let primary_input_node = self.document_network.nodes.get(node_id)?;
+			let pre_node = self.document_network.nodes.get(node_id)?;
 			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
-			let artboard_input_index = if primary_input_node.name == "Artboard" { 0 } else { 1 };
+			let artboard_input_index = if pre_node.name == "Artboard" { 0 } else { 1 };
 			let primary_input_node_output = NodeOutput::new(*node_id, 0);
 
-			self.insert_between(new_id, primary_input_node_output, NodeOutput::new(output_node_id, 0), artboard_node, artboard_input_index, 0, shift)
+			self.insert_between(
+				new_id,
+				artboard_node,
+				NodeInput::node(*node_id, 0),
+				artboard_input_index,
+				output_node_id,
+				NodeInput::node(new_id, 0),
+				0,
+				shift,
+			)
 		} else {
 			shift = IVec2::new(-8, 3);
 			self.insert_node_before(new_id, output_node_id, 0, artboard_node, shift)
