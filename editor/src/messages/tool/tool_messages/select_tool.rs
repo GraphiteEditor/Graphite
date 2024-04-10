@@ -407,13 +407,6 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
-				// Get the layer the user is hovering over
-				let click = document.click(input.mouse.position, &document.network);
-				let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
-				if let Some(layer) = not_selected_click {
-					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-				}
-
 				// Update bounds
 				let transform = document
 					.selected_nodes
@@ -444,9 +437,25 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
-				// Update dragging box
+				// Check if the tool is in Selection Box mode
 				if matches!(self, Self::DrawingBox { .. }) {
-					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
+					// get the updated box bounds
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					// Outline layers to be selected
+					for layer in document.intersect_quad(quad, &document.network) {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
+
+					// Update the selection box
+					overlay_context.quad(quad);
+				} else {
+					// Get the layer the user is hovering over
+					let click = document.click(input.mouse.position, &document.network);
+					let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
+					if let Some(layer) = not_selected_click {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
 				}
 
 				self
