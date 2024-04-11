@@ -643,18 +643,18 @@ impl Fsm for PenToolFsmState {
 				tool_data.colinear_handles = false;
 
 				// Perform extension of an existing path
-				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
-					tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
-				} else {
-					tool_data.create_new_path(
-						document,
-						tool_options.line_weight,
-						tool_options.stroke.active_color(),
-						tool_options.fill.active_color(),
-						input,
-						responses,
-					);
-				}
+				// if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+				// 	tool_data.extend_subpath(layer, subpath_index, from_start, document, responses);
+				// } else {
+				// 	tool_data.create_new_path(
+				// 		document,
+				// 		tool_options.line_weight,
+				// 		tool_options.stroke.active_color(),
+				// 		tool_options.fill.active_color(),
+				// 		input,
+				// 		responses,
+				// 	);
+				// }
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle

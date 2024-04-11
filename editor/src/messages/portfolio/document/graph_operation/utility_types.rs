@@ -465,13 +465,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let mut empty = false;
 
-		self.modify_inputs("Vector Modify", false, |inputs, _node_id, _metadata| {
-			let [NodeInput::Value {
+		self.modify_inputs("Path Modify", false, |inputs, _node_id, _metadata| {
+			let [_, NodeInput::Value {
 				tagged_value: TaggedValue::VectorModification(modification),
 				..
 			}] = inputs.as_mut_slice()
 			else {
-				panic!("Vector Modify does not have modification input");
+				panic!("Path Modify does not have modification input");
 			};
 
 			//[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);

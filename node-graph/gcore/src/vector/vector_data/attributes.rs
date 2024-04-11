@@ -226,6 +226,10 @@ impl SegmentDomain {
 			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
 		}
 	}
+
+	pub fn connected(&self, point: PointId) -> usize {
+		self.start_point.iter().filter(|&&val| val == point).count() + self.end_point.iter().filter(|&&val| val == point).count()
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]

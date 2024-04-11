@@ -1,18 +1,19 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
-use graph_craft::document::NodeId;
+use bezier_rs::ManipulatorGroup;
+use glam::DVec2;
+use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
-
-use bezier_rs::ManipulatorGroup;
-use glam::DVec2;
+use graphene_std::vector::{PointId, SegmentId};
 
 #[derive(Default)]
 pub struct FreehandTool {
@@ -174,11 +175,102 @@ impl ToolTransition for FreehandTool {
 
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
-	extend_from_start: bool,
-	last_point: DVec2,
+	positions: Vec<DVec2>,
 	dragged: bool,
+	required_tangent: DVec2,
+	last_tangent: DVec2,
+
+	start: Option<(PointId, DVec2)>,
+	end: Option<(PointId, DVec2)>,
+	segment: Option<SegmentId>,
+
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
+}
+
+impl FreehandToolData {
+	fn smooth(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		const TOLLERANCE: f64 = 5.;
+		const MAX_POSITIONS: usize = 16;
+
+		let Some(layer) = self.layer else { return };
+
+		let determinant = document.metadata.document_to_viewport.matrix2.determinant().abs();
+		let tolerance_sq = 0.02 * determinant * TOLLERANCE * TOLLERANCE * (0.2 * TOLLERANCE - 2.).exp();
+
+		let fit = if self.positions.len() < MAX_POSITIONS {
+			bezier_rs::Subpath::<PointId>::fit_cubic(&self.positions, 1, self.required_tangent, tolerance_sq)
+		} else {
+			None
+		};
+
+		let Some(bezier) = fit.and_then(|subpath| subpath.iter().next()) else {
+			// Start a new segment
+			if let Some(point) = self.end {
+				self.positions.clear();
+				self.positions.push(point.1);
+				self.start = Some(point);
+				self.end = None;
+				self.required_tangent = self.last_tangent;
+				self.segment = None;
+			}
+			return;
+		};
+
+		let set_point = |point: &mut Option<(PointId, DVec2)>, pos: DVec2, layer, responses: &mut VecDeque<Message>| {
+			if let Some((id, current)) = point {
+				let delta = pos - *current;
+				*current += delta;
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::ApplyDelta { point: *id, delta },
+				});
+				*id
+			} else {
+				let id = PointId::generate();
+				*point = Some((id, pos));
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::InsertPoint { id, pos },
+				});
+				id
+			}
+		};
+
+		let start = set_point(&mut self.start, bezier.start, layer, responses);
+		let end = set_point(&mut self.end, bezier.end, layer, responses);
+
+		let handles = bezier.handles;
+		if let Some(segment) = self.segment {
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::SetHandles { segment, handles },
+			});
+		} else {
+			let id = SegmentId::generate();
+			self.segment = Some(id);
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::InsertSegment { id, start, end, handles },
+			});
+		}
+
+		self.last_tangent = match bezier.handles {
+			bezier_rs::BezierHandles::Linear => bezier.end - bezier.start,
+			bezier_rs::BezierHandles::Quadratic { handle } => bezier.end - handle,
+			bezier_rs::BezierHandles::Cubic { handle_end, .. } => bezier.end - handle_end,
+		}
+		.normalize_or_zero();
+	}
+
+	fn push(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, viewport: DVec2) {
+		let transform = document.metadata().transform_to_viewport(layer);
+		let pos = transform.inverse().transform_point2(viewport);
+
+		if self.positions.last() != Some(&pos) && pos.is_finite() {
+			self.positions.push(pos);
+		}
+	}
 }
 
 impl Fsm for FreehandToolFsmState {
@@ -206,72 +298,58 @@ impl Fsm for FreehandToolFsmState {
 			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				tool_data.dragged = false;
-				tool_data.extend_from_start = false;
 				tool_data.weight = tool_options.line_weight;
+				tool_data.positions.clear();
+				tool_data.required_tangent = DVec2::ZERO;
+				tool_data.last_tangent = DVec2::ZERO;
+				tool_data.start = None;
+				tool_data.end = None;
+				tool_data.segment = None;
+				tool_data.dragged = false;
 
-				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
-					let transform = document.metadata().transform_to_viewport(layer);
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-				// let manipulator_group = ManipulatorGroup::new_anchor(pos);
-				// let modification = if from_start {
-				// 	tool_data.extend_from_start = true;
-				// 	VectorModificationType::AddStartManipulatorGroup { subpath_index, manipulator_group }
-				// } else {
-				// 	VectorModificationType::AddEndManipulatorGroup { subpath_index, manipulator_group }
-				// };
-
-				// tool_data.dragged = true;
-				// tool_data.last_point = pos;
-				// tool_data.layer = Some(layer);
-
-				// responses.add(GraphOperationMessage::Vector {
-				// 	layer,
-				// 	modification_type: modification,
-				// });
+				let layer = if let Some((layer, point, pos)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+					tool_data.positions.push(pos);
+					tool_data.start = Some((point, pos));
+					tool_data.layer = Some(layer);
+					layer
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
 					let parent = document.new_layer_parent();
-					let transform = document.metadata().transform_to_viewport(parent);
-					let pos = transform.inverse().transform_point2(input.mouse.position);
-					let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
-					let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), parent, responses);
+					let nodes = {
+						let node_type = resolve_document_node_type("Path Modify").expect("Path Modify node does not exist");
+						let node = node_type.to_document_node_default_inputs([], Default::default());
+
+						HashMap::from([(NodeId(0), node)])
+					};
+
+					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
 					tool_options.fill.apply_fill(layer, responses);
 					tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
-					tool_data.last_point = pos;
+
 					tool_data.layer = Some(layer);
-				}
+					parent
+				};
+				tool_data.push(&document, layer, input.mouse.position);
+				tool_data.smooth(document, responses);
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
-				// if let Some(layer) = tool_data.layer {
-				// 	let transform = document.metadata().transform_to_viewport(layer);
-				// 	let pos = transform.inverse().transform_point2(input.mouse.position);
-
-				// 	if tool_data.last_point != pos {
-				// 		let manipulator_group = ManipulatorGroup::new_anchor(pos);
-				// 		let modification = if tool_data.extend_from_start {
-				// 			VectorModificationType::AddStartManipulatorGroup { subpath_index: 0, manipulator_group }
-				// 		} else {
-				// 			VectorModificationType::AddEndManipulatorGroup { subpath_index: 0, manipulator_group }
-				// 		};
-				// 		responses.add(GraphOperationMessage::Vector {
-				// 			layer,
-				// 			modification_type: modification,
-				// 		});
-				// 		tool_data.dragged = true;
-				// 		tool_data.last_point = pos;
-				// 	}
-				// }
+				if let Some(layer) = tool_data.layer {
+					tool_data.push(&document, layer, input.mouse.position);
+					tool_data.smooth(document, responses);
+					tool_data.dragged = true;
+				}
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop) => {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
+				} else {
+					responses.add(DocumentMessage::DocumentHistoryBackward);
 				}
 
 				tool_data.layer = None;

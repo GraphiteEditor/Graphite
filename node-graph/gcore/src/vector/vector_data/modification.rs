@@ -1,5 +1,6 @@
 use super::*;
 use crate::Node;
+use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 use std::collections::{HashMap, HashSet};
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -137,11 +138,9 @@ pub struct VectorModification {
 	regions: RegionModification,
 }
 
-type ManipulatorGroup = bezier_rs::ManipulatorGroup<PointId>;
-
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorModificationType {
-	InsertSegment { start: PointId, end: PointId, handles: bezier_rs::BezierHandles },
+	InsertSegment { id: SegmentId, start: PointId, end: PointId, handles: BezierHandles },
 	InsertPoint { id: PointId, pos: DVec2 },
 
 	RemoveSegment { id: SegmentId },
@@ -149,6 +148,7 @@ pub enum VectorModificationType {
 
 	SetG1Continous { point: PointId, segments: [SegmentId; 2], enabled: bool },
 	ApplyDelta { point: PointId, delta: DVec2 },
+	SetHandles { segment: SegmentId, handles: BezierHandles },
 }
 
 impl VectorModification {
@@ -159,7 +159,7 @@ impl VectorModification {
 	}
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
 		match vector_data_modification {
-			VectorModificationType::InsertSegment { start, end, handles } => self.segments.push(SegmentId::generate(), *start, *end, *handles, StrokeId::ZERO),
+			VectorModificationType::InsertSegment { id, start, end, handles } => self.segments.push(*id, *start, *end, *handles, StrokeId::ZERO),
 			VectorModificationType::InsertPoint { id, pos } => self.points.push(*id, *pos),
 
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
@@ -171,6 +171,9 @@ impl VectorModification {
 
 			VectorModificationType::ApplyDelta { point, delta } => {
 				*self.points.delta.entry(*point).or_default() += *delta;
+			}
+			VectorModificationType::SetHandles { segment, handles } => {
+				self.segments.handles.insert(*segment, *handles);
 			}
 		}
 	}

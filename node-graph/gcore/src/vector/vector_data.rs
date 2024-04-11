@@ -149,6 +149,11 @@ impl VectorData {
 	pub fn local_pivot(&self, normalized_pivot: DVec2) -> DVec2 {
 		self.transform.transform_point2(self.layerspace_pivot(normalized_pivot))
 	}
+
+	/// Points connected to a single segment
+	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.point_domain.ids().iter().copied().filter(|&point| self.segment_domain.connected(point) == 1)
+	}
 }
 
 impl Default for VectorData {
