@@ -196,7 +196,7 @@ impl DocumentMetadata {
 
 				// Get the sibling below
 				let construct_layer_node = &current_node.inputs[0];
-				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)));
+				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer).map(|node| (node, id)));
 			}
 		}
 

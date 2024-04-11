@@ -274,7 +274,7 @@ impl DocumentNode {
 	}
 
 	pub fn primary_input(&self) -> Option<&NodeInput> {
-		if self.is_layer() {
+		if self.is_layer {
 			self.inputs.get(1)
 		} else {
 			self.inputs.first()

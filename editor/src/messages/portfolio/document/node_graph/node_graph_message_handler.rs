@@ -805,7 +805,7 @@ impl NodeGraphMessageHandler {
 
 	fn update_layer_panel(network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		for (&node_id, node) in &network.nodes {
-			if node.is_layer() {
+			if node.is_layer {
 				let layer = LayerNodeIdentifier::new(node_id, network);
 				let layer_classification = {
 					if metadata.is_artboard(layer) {
