@@ -71,6 +71,7 @@ pub enum SelectToolMessage {
 	// Tool-specific messages
 	SetAlignedToArtboard(bool),
 	SetAlignLinkSelected(bool),
+	SetAlignReferenceLayer(NodeId),
 	DragStart { add_to_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
@@ -117,7 +118,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, align_link_selected: bool) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, align_link_selected: bool, align_reference_layer: Option<LayerNodeIdentifier>) -> impl Iterator<Item = WidgetHolder> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -138,6 +139,7 @@ impl SelectTool {
 							aggregate,
 							align_to_artboard,
 							align_link_selected,
+							align_reference_layer,
 						}
 						.into()
 					})
@@ -165,19 +167,88 @@ impl SelectTool {
 		})
 	}
 
-	fn should_refresh_align_checkboxes(&mut self) -> bool {
-		let checkbox_changed = self.tool_data.align_checkbox_changed;
-		self.tool_data.align_checkbox_changed = false;
+	fn align_popover_menu_widgets(&self, document: &DocumentMessageHandler) -> WidgetHolder {
+		let selected_layers_ids = &self.tool_data.layers_dragging;
+		let selected_layers_names: Vec<String> = selected_layers_ids
+			.iter()
+			.map(|layer| {
+				let node = document.network().nodes.get(&layer.to_node()).unwrap();
+				if node.alias.is_empty() {
+					format!("{}", node.name.clone())
+				} else {
+					node.alias.clone()
+				}
+			})
+			.collect();
+
+		let mut entries = Vec::with_capacity(selected_layers_ids.len());
+		for (layer, name) in selected_layers_ids.iter().zip(selected_layers_names) {
+			let NodeId(node_id_value) = layer.to_node();
+			entries.push(
+				MenuListEntry::new(node_id_value.to_string())
+					.label(name)
+					.on_update(move |_| SelectToolMessage::SetAlignReferenceLayer(NodeId(node_id_value)).into()),
+			);
+		}
+		let selected_layer_idx = entries
+			.iter()
+			.position(|entry| {
+				let align_to_layer = self.tool_data.align_reference_layer;
+				if let Some(align_to_layer) = align_to_layer {
+					return align_to_layer.to_node().0.to_string() == entry.value;
+				}
+				false
+			})
+			.map(|i| i as u32);
+		let entries = vec![entries];
+
+		let align_to_artboard = self.tool_data.align_to_artboard;
+		let align_link_selected = self.tool_data.align_link_selected;
+		let infinite_canvas = document.metadata().bounding_box_viewport(document.metadata().active_artboard()).is_none();
+
+		PopoverButton::new("Align", "Change alignment properties")
+			.options_widget(vec![
+				LayoutGroup::Row {
+					widgets: vec![
+						CheckboxInput::new(align_to_artboard)
+							.tooltip("Align selection relative to artboard.")
+							.disabled(infinite_canvas)
+							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignedToArtboard(input.checked).into())
+							.widget_holder(),
+						TextLabel::new("To Artboard").widget_holder(),
+					],
+				},
+				LayoutGroup::Row {
+					widgets: vec![
+						CheckboxInput::new(align_link_selected)
+							.disabled(!align_to_artboard)
+							.tooltip("Align combined bounding box.")
+							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignLinkSelected(input.checked).into())
+							.widget_holder(),
+						TextLabel::new("Link selected objects").widget_holder(),
+					],
+				},
+				LayoutGroup::Row {
+					widgets: vec![TextLabel::new("Select a reference layer:").widget_holder()],
+				},
+				LayoutGroup::Row {
+					widgets: vec![DropdownInput::new(entries).selected_index(selected_layer_idx).disabled(align_to_artboard).widget_holder()],
+				},
+			])
+			.widget_holder()
+	}
+
+	fn should_refresh_align_popover(&mut self) -> bool {
+		let checkbox_changed = self.tool_data.align_popover_changed;
+		self.tool_data.align_popover_changed = false;
 		checkbox_changed
 	}
 
 	pub fn should_update_widgets(&mut self) -> bool {
-		self.tool_data.pivot.should_refresh_pivot_position() || self.should_refresh_align_checkboxes()
+		self.tool_data.pivot.should_refresh_pivot_position() || self.should_refresh_align_popover()
 	}
-}
 
-impl LayoutHolder for SelectTool {
-	fn layout(&self) -> Layout {
+	fn layout(&self, document: &DocumentMessageHandler) -> Layout {
 		let mut widgets = Vec::new();
 
 		// Select mode (Deep/Shallow)
@@ -188,37 +259,10 @@ impl LayoutHolder for SelectTool {
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
-		let align_to_artboard = self.tool_data.align_to_artboard;
-		let align_link_selected = self.tool_data.align_link_selected;
-		let disabled = self.tool_data.selected_layers_count == 0 || (!align_to_artboard && self.tool_data.selected_layers_count < 2);
+		let disabled = self.tool_data.selected_layers_count == 0 || (!self.tool_data.align_to_artboard && self.tool_data.selected_layers_count < 2);
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.alignment_widgets(disabled, align_to_artboard, align_link_selected));
-		widgets.push(
-			// TODO: This button should be hidden when the canvas is infinite.
-			PopoverButton::new("Align", "Change alignment properties")
-				.options_widget(vec![
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(align_to_artboard)
-								.tooltip("Align selection relative to artboard.")
-								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignedToArtboard(input.checked).into())
-								.widget_holder(),
-							TextLabel::new("To Artboard").widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(align_link_selected)
-								.disabled(!align_to_artboard)
-								.tooltip("Align combined bounding box.")
-								.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignLinkSelected(input.checked).into())
-								.widget_holder(),
-							TextLabel::new("Link selected objects").widget_holder(),
-						],
-					},
-				])
-				.widget_holder(),
-		);
+		widgets.extend(self.alignment_widgets(disabled, self.tool_data.align_to_artboard, self.tool_data.align_link_selected, self.tool_data.align_reference_layer));
+		widgets.push(self.align_popover_menu_widgets(document));
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
@@ -233,6 +277,19 @@ impl LayoutHolder for SelectTool {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
+
+	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, document: &DocumentMessageHandler) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout(document),
+			layout_target,
+		});
+	}
+}
+
+impl LayoutHolder for SelectTool {
+	fn layout(&self) -> Layout {
+		Layout::WidgetLayout(WidgetLayout::default())
+	}
 }
 
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectTool {
@@ -246,7 +303,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SelectT
 
 		if self.should_update_widgets() || self.tool_data.selected_layers_changed {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
-			self.send_layout(responses, LayoutTarget::ToolOptions);
+			self.send_layout(responses, LayoutTarget::ToolOptions, &tool_data.document);
 			self.tool_data.selected_layers_changed = false;
 		}
 	}
@@ -312,9 +369,10 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	align_reference_layer: Option<LayerNodeIdentifier>,
 	align_to_artboard: bool,
 	align_link_selected: bool,
-	align_checkbox_changed: bool,
+	align_popover_changed: bool,
 }
 
 impl SelectToolData {
@@ -433,14 +491,20 @@ impl Fsm for SelectToolFsmState {
 			return self;
 		};
 		match (self, event) {
+			(_, SelectToolMessage::SetAlignReferenceLayer(layer_node_id)) => {
+				tool_data.align_reference_layer = Some(LayerNodeIdentifier::new_unchecked(layer_node_id));
+				tool_data.align_popover_changed = true;
+				self
+			}
 			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
 				tool_data.align_to_artboard = to_artboard;
-				tool_data.align_checkbox_changed = true;
+				tool_data.align_popover_changed = true;
+				tool_data.align_reference_layer = None;
 				self
 			}
 			(_, SelectToolMessage::SetAlignLinkSelected(align_link_selected)) => {
 				tool_data.align_link_selected = align_link_selected;
-				tool_data.align_checkbox_changed = true;
+				tool_data.align_popover_changed = true;
 				self
 			}
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {

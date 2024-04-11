@@ -415,7 +415,7 @@
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
-					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
+					classes={{ open: isEntryOpen(entry), active: entry.value === highlighted?.value && entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltip}
 					on:click={() => !entry.disabled && onEntryClick(entry)}

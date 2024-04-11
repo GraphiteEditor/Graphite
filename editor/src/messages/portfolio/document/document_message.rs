@@ -35,6 +35,7 @@ pub enum DocumentMessage {
 		aggregate: AlignAggregate,
 		align_to_artboard: bool,
 		align_link_selected: bool,
+		align_reference_layer: Option<LayerNodeIdentifier>,
 	},
 	BackupDocument {
 		network: NodeNetwork,

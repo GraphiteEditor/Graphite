@@ -179,6 +179,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				aggregate,
 				align_to_artboard,
 				align_link_selected,
+				align_reference_layer,
 			} => {
 				self.backup(responses);
 
@@ -189,6 +190,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let combined_box = if align_to_artboard {
 					self.metadata().bounding_box_viewport(self.metadata().active_artboard())
+				} else if let Some(layer_aligned_to) = align_reference_layer {
+					self.metadata().bounding_box_viewport(layer_aligned_to)
 				} else {
 					self.selected_visible_layers_bounding_box_viewport()
 				};
@@ -201,7 +204,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Max => combined_box[1],
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
-				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
+
+				let moved_layers = self
+					.selected_nodes
+					.selected_unlocked_layers(self.metadata())
+					.filter(|layer| Some(layer) != align_reference_layer.as_ref());
+				for layer in moved_layers {
 					let bbox = if align_link_selected && align_to_artboard {
 						self.selected_visible_layers_bounding_box_viewport()
 					} else {
