@@ -48,6 +48,14 @@ impl BezierHandles {
 		matches!(self, Self::Cubic { .. })
 	}
 
+	pub fn is_finite(&self) -> bool {
+		match self {
+			BezierHandles::Linear => true,
+			BezierHandles::Quadratic { handle } => handle.is_finite(),
+			BezierHandles::Cubic { handle_start, handle_end } => handle_start.is_finite() && handle_end.is_finite(),
+		}
+	}
+
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn start(&self) -> Option<DVec2> {
 		match *self {

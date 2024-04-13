@@ -180,8 +180,8 @@ impl SegmentDomain {
 			(None, None) => (self.ids.len(), false),
 		};
 		self.ids.insert(index, id);
-		self.start_point.insert(index, start);
-		self.end_point.insert(index, end);
+		self.start_point.insert(index, if flip { end } else { start });
+		self.end_point.insert(index, if flip { start } else { end });
 		self.handles.insert(index, if flip { handles.flipped() } else { handles });
 		self.stroke.insert(index, stroke);
 	}
@@ -429,9 +429,9 @@ impl<'a> Iterator for StrokePathIter<'a> {
 			.take_while(|&(_, start, end)| {
 				let continuous = old_end.is_none() || old_end.is_some_and(|old_end| old_end == start);
 				old_end = Some(end);
-				count += 1;
 				continuous
-			});
+			})
+			.inspect(|_| count += 1);
 
 		let subpath = self.vector_data.subpath_from_segments(segments_iter);
 		self.segment_index += count;

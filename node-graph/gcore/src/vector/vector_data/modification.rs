@@ -18,6 +18,10 @@ impl PointModification {
 
 		for (id, pos) in point_domain.positions_mut() {
 			let Some(&delta) = self.delta.get(&id) else { continue };
+			if !delta.is_finite() {
+				warn!("invalid delta");
+				continue;
+			}
 			*pos += delta;
 		}
 		for (id, g1_continous) in point_domain.g1_continous_mut() {
@@ -30,6 +34,10 @@ impl PointModification {
 
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
+			if !position.is_finite() {
+				warn!("invalid position");
+				continue;
+			}
 			let get_continous = |continous: &HashMap<[SegmentId; 2], bool>| continous.iter().filter(|(_, enabled)| **enabled).map(|(val, _)| *val).collect();
 			let g1_continous = self.g1_continous.get(&add_id).map(get_continous).unwrap_or_default();
 			point_domain.push(add_id, position, g1_continous);
@@ -57,19 +65,31 @@ pub struct SegmentModification {
 }
 
 impl SegmentModification {
-	pub fn apply(&self, segment_domain: &mut SegmentDomain) {
+	pub fn apply(&self, segment_domain: &mut SegmentDomain, point_domain: &PointDomain) {
 		segment_domain.retain(|id| !self.remove.contains(id));
 
 		for (id, point) in segment_domain.start_point_mut() {
 			let Some(&new) = self.start_point.get(&id) else { continue };
+			if !point_domain.ids().contains(&new) {
+				warn!("invalid start id");
+				continue;
+			}
 			*point = new;
 		}
 		for (id, point) in segment_domain.end_point_mut() {
 			let Some(&new) = self.end_point.get(&id) else { continue };
+			if !point_domain.ids().contains(&new) {
+				warn!("invalid end id");
+				continue;
+			}
 			*point = new;
 		}
 		for (id, handles) in segment_domain.handles_mut() {
 			let Some(&new) = self.handles.get(&id) else { continue };
+			if !new.is_finite() {
+				warn!("invalid handles");
+				continue;
+			}
 			*handles = new;
 		}
 		for (id, stroke) in segment_domain.stroke_mut() {
@@ -82,6 +102,18 @@ impl SegmentModification {
 			let Some(&end) = self.end_point.get(&add_id) else { continue };
 			let Some(&handles) = self.handles.get(&add_id) else { continue };
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
+			if !point_domain.ids().contains(&start) {
+				warn!("invalid start id");
+				continue;
+			}
+			if !point_domain.ids().contains(&end) {
+				warn!("invalid end id");
+				continue;
+			}
+			if !handles.is_finite() {
+				warn!("invalid handles");
+				continue;
+			}
 			segment_domain.push(add_id, start, end, handles, stroke);
 		}
 	}
@@ -154,7 +186,7 @@ pub enum VectorModificationType {
 impl VectorModification {
 	pub fn apply(&self, vector_data: &mut VectorData) {
 		self.points.apply(&mut vector_data.point_domain);
-		self.segments.apply(&mut vector_data.segment_domain);
+		self.segments.apply(&mut vector_data.segment_domain, &vector_data.point_domain);
 		self.regions.apply(&mut vector_data.region_domain);
 	}
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
@@ -193,8 +225,6 @@ pub struct PathModify<VectorModificationNode> {
 
 #[node_macro::node_fn(PathModify)]
 fn path_modify(mut vector_data: VectorData, modification: VectorModification) -> VectorData {
-	info!("{vector_data:#?}");
 	modification.apply(&mut vector_data);
-	info!("{vector_data:#?}");
 	vector_data
 }
