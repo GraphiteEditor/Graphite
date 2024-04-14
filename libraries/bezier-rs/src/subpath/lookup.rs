@@ -2,6 +2,7 @@ use super::*;
 use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE};
 use crate::utils::{SubpathTValue, TValue, TValueType};
 use glam::DVec2;
+use rustnomial::{Derivable, Integrable};
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
@@ -28,6 +29,42 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/length/solo" title="Length Demo"></iframe>
 	pub fn length(&self, tolerance: Option<f64>) -> f64 {
 		self.iter().map(|bezier| bezier.length(tolerance)).sum()
+	}
+
+	/// Return the area enclosed by the `Subpath`.
+	/// Even if the the subpath is not closed, it will be considered as closed to calculate the area.
+	/// It will give a positive value if the path is anti-clockwise and negetive value if the path is clockwise.
+	pub fn area(&self) -> f64 {
+		(0..self.manipulator_groups.len())
+			.map(|start_index| {
+				let end_index = (start_index + 1) % self.manipulator_groups.len();
+				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
+				let (f_x, f_y) = bezier.parametric_polynomial();
+				(f_x * f_y.derivative()).integral().eval(0.0, 1.0)
+			})
+			.sum()
+	}
+
+	/// Return the centroid of the `Subpath`.
+	/// Even if the the subpath is not closed, it will be considered as closed to calculate the centroid.
+	/// It will return `None` if no manipulator is present.
+	pub fn centroid(&self) -> Option<DVec2> {
+		let (x_sum, y_sum, area) = (0..self.manipulator_groups.len())
+			.map(|start_index| {
+				let end_index = (start_index + 1) % self.manipulator_groups.len();
+				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
+				let (f_x, f_y) = bezier.parametric_polynomial();
+				let f_y_prime = f_y.derivative();
+
+				let x_part = (f_x.pow(2) * f_y_prime.clone()).integral().eval(0.0, 1.0);
+				let y_part = (f_y.pow(2) * f_x.derivative()).integral().eval(0.0, 1.0);
+				let area_part = (f_x * f_y_prime).integral().eval(0.0, 1.0);
+
+				(x_part, y_part, area_part)
+			})
+			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
+
+		Some(DVec2::new(x_sum / area / 2.0, y_sum / area / -2.0))
 	}
 
 	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
@@ -206,6 +243,72 @@ mod tests {
 
 		subpath.closed = true;
 		assert_eq!(subpath.length(None), linear_bezier.length(None) + quadratic_bezier.length(None) + cubic_bezier.length(None));
+	}
+
+	#[test]
+	fn area() {
+		let start = DVec2::new(0.0, 0.0);
+		let end = DVec2::new(1.0, 1.0);
+		let handle = DVec2::new(0.0, 1.0);
+
+		let mut subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: start,
+					in_handle: None,
+					out_handle: Some(handle),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: end,
+					in_handle: None,
+					out_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let expected_area = -1.0 / 3.0;
+		let epsilon = 0.000000001;
+
+		assert!((subpath.area() - expected_area).abs() < epsilon);
+
+		subpath.closed = true;
+		assert!((subpath.area() - expected_area).abs() < epsilon);
+	}
+
+	#[test]
+	fn centroid() {
+		let start = DVec2::new(0.0, 0.0);
+		let end = DVec2::new(1.0, 1.0);
+		let handle = DVec2::new(0.0, 1.0);
+
+		let mut subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: start,
+					in_handle: None,
+					out_handle: Some(handle),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: end,
+					in_handle: None,
+					out_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let expected_centroid = DVec2::new(0.4, 0.6);
+		let epsilon = 0.000000001;
+
+		assert!(subpath.centroid().unwrap().abs_diff_eq(expected_centroid, epsilon));
+
+		subpath.closed = true;
+		assert!(subpath.centroid().unwrap().abs_diff_eq(expected_centroid, epsilon));
 	}
 
 	#[test]
