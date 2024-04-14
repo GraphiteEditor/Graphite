@@ -12,6 +12,8 @@ use graphene_core::Color;
 
 use glam::DAffine2;
 
+use super::utility_types::misc::AlignMode;
+
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DocumentMessage {
@@ -33,9 +35,7 @@ pub enum DocumentMessage {
 	AlignSelectedLayers {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
-		align_to_artboard: bool,
-		align_link_selected: bool,
-		align_reference_layer: Option<LayerNodeIdentifier>,
+		align_mode: AlignMode,
 	},
 	BackupDocument {
 		network: NodeNetwork,

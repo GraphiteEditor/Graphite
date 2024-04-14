@@ -7,7 +7,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, AlignMode, FlipAxis};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
@@ -69,9 +69,9 @@ pub enum SelectToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
-	SetAlignedToArtboard(bool),
-	SetAlignLinkSelected(bool),
-	SetAlignReferenceLayer(NodeId),
+	SetAlignMode(AlignMode),
+	SetArtboardAlignMode(bool),
+	SetAlignToLayer(u64),
 	DragStart { add_to_selection: Key, select_deepest: Key },
 	DragStop { remove_from_selection: Key },
 	EditLayer,
@@ -118,7 +118,7 @@ impl SelectTool {
 			.widget_holder()
 	}
 
-	fn alignment_widgets(&self, disabled: bool, align_to_artboard: bool, align_link_selected: bool, align_reference_layer: Option<LayerNodeIdentifier>) -> impl Iterator<Item = WidgetHolder> {
+	fn alignment_widgets(&self, disabled: bool, align_mode: AlignMode) -> impl Iterator<Item = WidgetHolder> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
@@ -133,16 +133,7 @@ impl SelectTool {
 				};
 				IconButton::new(icon, 24)
 					.tooltip(tooltip)
-					.on_update(move |_| {
-						DocumentMessage::AlignSelectedLayers {
-							axis,
-							aggregate,
-							align_to_artboard,
-							align_link_selected,
-							align_reference_layer,
-						}
-						.into()
-					})
+					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate, align_mode }.into())
 					.disabled(disabled)
 					.widget_holder()
 			})
@@ -169,79 +160,82 @@ impl SelectTool {
 
 	fn align_popover_menu_widgets(&self, document: &DocumentMessageHandler) -> WidgetHolder {
 		let selected_layers_ids = &self.tool_data.layers_dragging;
-		let selected_layers_names: Vec<String> = selected_layers_ids
+		let selected_layers_names = selected_layers_ids.iter().map(|layer| {
+			let node = document.network().nodes.get(&layer.to_node()).unwrap();
+			if node.alias.is_empty() {
+				format!("{}", node.name.clone())
+			} else {
+				node.alias.clone()
+			}
+		});
+
+		let layer_entries: Vec<MenuListEntry> = selected_layers_ids
 			.iter()
-			.map(|layer| {
-				let node = document.network().nodes.get(&layer.to_node()).unwrap();
-				if node.alias.is_empty() {
-					format!("{}", node.name.clone())
-				} else {
-					node.alias.clone()
-				}
+			.zip(selected_layers_names)
+			.map(|(layer, name)| {
+				let NodeId(node_id_value) = layer.to_node();
+				MenuListEntry::new(node_id_value.to_string())
+					.label(name)
+					.on_update(move |_| SelectToolMessage::SetAlignToLayer(node_id_value).into())
 			})
 			.collect();
 
-		let mut entries = Vec::with_capacity(selected_layers_ids.len());
-		for (layer, name) in selected_layers_ids.iter().zip(selected_layers_names) {
-			let NodeId(node_id_value) = layer.to_node();
-			entries.push(
-				MenuListEntry::new(node_id_value.to_string())
-					.label(name)
-					.on_update(move |_| SelectToolMessage::SetAlignReferenceLayer(NodeId(node_id_value)).into()),
-			);
-		}
-		let selected_layer_idx = entries
-			.iter()
-			.position(|entry| {
-				let align_to_layer = self.tool_data.align_reference_layer;
-				if let Some(align_to_layer) = align_to_layer {
-					return align_to_layer.to_node().0.to_string() == entry.value;
-				}
-				false
-			})
-			.map(|i| i as u32);
-		let entries = vec![entries];
+		let selected_layer_idx = layer_entries.iter().position(|entry| self.tool_data.align_to_layer_id.to_string() == entry.value).map(|i| i as u32);
+		let layer_entries = vec![layer_entries];
 
-		let align_to_artboard = self.tool_data.align_to_artboard;
-		let align_link_selected = self.tool_data.align_link_selected;
-		let infinite_canvas = document.metadata().bounding_box_viewport(document.metadata().active_artboard()).is_none();
+		let radio_entries = [
+			(AlignMode::Selection, "Selection"),
+			(
+				AlignMode::Artboard {
+					shallow_align: self.tool_data.align_artboard_shallow,
+				},
+				"Artboard",
+			),
+			(AlignMode::Layer(self.tool_data.align_to_layer_id), "Layer"),
+		]
+		.into_iter()
+		.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| SelectToolMessage::SetAlignMode(val).into()))
+		.collect();
 
+		let radio_selected_index = match self.tool_data.align_mode {
+			AlignMode::Selection => 0,
+			AlignMode::Artboard { .. } => 1,
+			AlignMode::Layer(_) => 2,
+		};
+
+		let align_mode = self.tool_data.align_mode;
 		PopoverButton::new("Align", "Change alignment properties")
 			.options_widget(vec![
 				LayoutGroup::Row {
-					widgets: vec![
-						CheckboxInput::new(align_to_artboard)
-							.tooltip("Align selection relative to artboard.")
-							.disabled(infinite_canvas)
-							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignedToArtboard(input.checked).into())
-							.widget_holder(),
-						TextLabel::new("To Artboard").widget_holder(),
-					],
+					widgets: vec![RadioInput::new(radio_entries).selected_index(Some(radio_selected_index)).widget_holder()],
 				},
 				LayoutGroup::Row {
 					widgets: vec![
-						CheckboxInput::new(align_link_selected)
-							.disabled(!align_to_artboard)
+						CheckboxInput::new(self.tool_data.align_artboard_shallow)
+							.disabled(!matches!(align_mode, AlignMode::Artboard { .. }))
 							.tooltip("Align combined bounding box.")
-							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetAlignLinkSelected(input.checked).into())
+							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetArtboardAlignMode(input.checked).into())
 							.widget_holder(),
-						TextLabel::new("Link selected objects").widget_holder(),
+						TextLabel::new("Shallow align").widget_holder(),
 					],
 				},
 				LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Select a reference layer:").widget_holder()],
+					widgets: vec![TextLabel::new("Select a layer to align to:").widget_holder()],
 				},
 				LayoutGroup::Row {
-					widgets: vec![DropdownInput::new(entries).selected_index(selected_layer_idx).disabled(align_to_artboard).widget_holder()],
+					widgets: vec![DropdownInput::new(layer_entries)
+						.selected_index(selected_layer_idx.unwrap_or(0 as u32).into())
+						.disabled(!matches!(align_mode, AlignMode::Layer(_)))
+						.widget_holder()],
 				},
 			])
 			.widget_holder()
 	}
 
 	fn should_refresh_align_popover(&mut self) -> bool {
-		let checkbox_changed = self.tool_data.align_popover_changed;
-		self.tool_data.align_popover_changed = false;
-		checkbox_changed
+		let align_mode_changed = self.tool_data.align_mode_changed;
+		self.tool_data.align_mode_changed = false;
+		align_mode_changed
 	}
 
 	pub fn should_update_widgets(&mut self) -> bool {
@@ -259,9 +253,12 @@ impl SelectTool {
 		widgets.push(self.pivot_widget(self.tool_data.selected_layers_count == 0));
 
 		// Align
-		let disabled = self.tool_data.selected_layers_count == 0 || (!self.tool_data.align_to_artboard && self.tool_data.selected_layers_count < 2);
+		let disabled = {
+			let align_to_artboard = matches!(self.tool_data.align_mode, AlignMode::Artboard { .. });
+			self.tool_data.selected_layers_count == 0 || (!align_to_artboard && self.tool_data.selected_layers_count < 2)
+		};
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.extend(self.alignment_widgets(disabled, self.tool_data.align_to_artboard, self.tool_data.align_link_selected, self.tool_data.align_reference_layer));
+		widgets.extend(self.alignment_widgets(disabled, self.tool_data.align_mode));
 		widgets.push(self.align_popover_menu_widgets(document));
 
 		// Flip
@@ -369,10 +366,10 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
-	align_reference_layer: Option<LayerNodeIdentifier>,
-	align_to_artboard: bool,
-	align_link_selected: bool,
-	align_popover_changed: bool,
+	align_mode: AlignMode,
+	align_to_layer_id: u64,
+	align_artboard_shallow: bool,
+	align_mode_changed: bool,
 }
 
 impl SelectToolData {
@@ -491,20 +488,21 @@ impl Fsm for SelectToolFsmState {
 			return self;
 		};
 		match (self, event) {
-			(_, SelectToolMessage::SetAlignReferenceLayer(layer_node_id)) => {
-				tool_data.align_reference_layer = Some(LayerNodeIdentifier::new_unchecked(layer_node_id));
-				tool_data.align_popover_changed = true;
+			(_, SelectToolMessage::SetAlignMode(new_align_mode)) => {
+				tool_data.align_mode = new_align_mode;
+				tool_data.align_mode_changed = true;
 				self
 			}
-			(_, SelectToolMessage::SetAlignedToArtboard(to_artboard)) => {
-				tool_data.align_to_artboard = to_artboard;
-				tool_data.align_popover_changed = true;
-				tool_data.align_reference_layer = None;
+			(_, SelectToolMessage::SetArtboardAlignMode(shallow_align)) => {
+				tool_data.align_mode = AlignMode::Artboard { shallow_align };
+				tool_data.align_artboard_shallow = shallow_align;
+				tool_data.align_mode_changed = true;
 				self
 			}
-			(_, SelectToolMessage::SetAlignLinkSelected(align_link_selected)) => {
-				tool_data.align_link_selected = align_link_selected;
-				tool_data.align_popover_changed = true;
+			(_, SelectToolMessage::SetAlignToLayer(node_id_value)) => {
+				tool_data.align_mode = AlignMode::Layer(node_id_value);
+				tool_data.align_to_layer_id = node_id_value;
+				tool_data.align_mode_changed = true;
 				self
 			}
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {

@@ -25,6 +25,16 @@ pub enum AlignAggregate {
 	Center,
 }
 
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum AlignMode {
+	#[default]
+	Selection,
+	Artboard {
+		shallow_align: bool,
+	},
+	Layer(u64),
+}
+
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DocumentMode {
 	#[default]

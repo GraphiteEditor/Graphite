@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState};
+use super::utility_types::misc::{AlignMode, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -174,43 +174,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
-			DocumentMessage::AlignSelectedLayers {
-				axis,
-				aggregate,
-				align_to_artboard,
-				align_link_selected,
-				align_reference_layer,
-			} => {
+			DocumentMessage::AlignSelectedLayers { axis, aggregate, align_mode } => {
 				self.backup(responses);
+
+				debug!("WE GOT: {:?}", align_mode);
 
 				let axis = match axis {
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
 
-				let combined_box = if align_to_artboard {
-					self.metadata().bounding_box_viewport(self.metadata().active_artboard())
-				} else if let Some(layer_aligned_to) = align_reference_layer {
-					self.metadata().bounding_box_viewport(layer_aligned_to)
-				} else {
-					self.selected_visible_layers_bounding_box_viewport()
+				let mut layer_align_to = None;
+				let alignment_box = match align_mode {
+					AlignMode::Artboard { .. } => self.metadata().bounding_box_viewport(self.metadata().active_artboard()),
+					AlignMode::Layer(layer_aligned_to) => {
+						layer_align_to = Some(LayerNodeIdentifier::new_unchecked(NodeId(layer_aligned_to)));
+						self.metadata().bounding_box_viewport(layer_align_to.unwrap())
+					}
+					_ => self.selected_visible_layers_bounding_box_viewport(),
 				};
-				let Some(combined_box) = combined_box else {
+				let Some(alignment_box) = alignment_box else {
 					return;
 				};
 
 				let aggregated = match aggregate {
-					AlignAggregate::Min => combined_box[0],
-					AlignAggregate::Max => combined_box[1],
-					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
+					AlignAggregate::Min => alignment_box[0],
+					AlignAggregate::Max => alignment_box[1],
+					AlignAggregate::Center => (alignment_box[0] + alignment_box[1]) / 2.,
 				};
 
-				let moved_layers = self
-					.selected_nodes
-					.selected_unlocked_layers(self.metadata())
-					.filter(|layer| Some(layer) != align_reference_layer.as_ref());
+				let moved_layers = self.selected_nodes.selected_unlocked_layers(self.metadata()).filter(|layer| Some(layer) != layer_align_to.as_ref());
+
 				for layer in moved_layers {
-					let bbox = if align_link_selected && align_to_artboard {
+					let bbox = if let AlignMode::Artboard { shallow_align: true } = align_mode {
 						self.selected_visible_layers_bounding_box_viewport()
 					} else {
 						self.metadata().bounding_box_viewport(layer)
