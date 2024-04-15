@@ -16,6 +16,14 @@ const subpathFeatures = {
 		name: "Length",
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
+	area: {
+		name: "Area",
+		callback: (subpath: WasmSubpathInstance): string => subpath.area(),
+	},
+	centroid: {
+		name: "Centroid",
+		callback: (subpath: WasmSubpathInstance): string => subpath.centroid(),
+	},
 	evaluate: {
 		name: "Evaluate",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.evaluate(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),
