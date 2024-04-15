@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState};
+use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -718,12 +718,60 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(state) = snapping_enabled {
 					self.snapping_state.snapping_enabled = state
 				};
-				if let Some(state) = bounding_box_snapping {
-					self.snapping_state.bounding_box_snapping = state
+
+				if let Some(OptionBoundsSnapping {
+					edge_midpoints,
+					edges,
+					centers,
+					corners,
+				}) = bounding_box_snapping
+				{
+					if let Some(state) = edge_midpoints {
+						self.snapping_state.bounds.edge_midpoints = state
+					};
+					if let Some(state) = edges {
+						self.snapping_state.bounds.edges = state
+					};
+					if let Some(state) = centers {
+						self.snapping_state.bounds.centers = state
+					};
+					if let Some(state) = corners {
+						self.snapping_state.bounds.corners = state
+					};
 				}
-				if let Some(state) = geometry_snapping {
-					self.snapping_state.geometry_snapping = state
-				};
+
+				if let Some(OptionPointSnapping {
+					paths,
+					path_intersections,
+					point_handles_free,
+					point_handles_colinear,
+					line_midpoints,
+					normals,
+					tangents,
+				}) = geometry_snapping
+				{
+					if let Some(state) = path_intersections {
+						self.snapping_state.nodes.path_intersections = state
+					};
+					if let Some(state) = paths {
+						self.snapping_state.nodes.paths = state
+					};
+					if let Some(state) = point_handles_colinear {
+						self.snapping_state.nodes.point_handles_colinear = state
+					};
+					if let Some(state) = point_handles_free {
+						self.snapping_state.nodes.point_handles_free = state
+					};
+					if let Some(state) = line_midpoints {
+						self.snapping_state.nodes.line_midpoints = state
+					};
+					if let Some(state) = normals {
+						self.snapping_state.nodes.normals = state
+					};
+					if let Some(state) = tangents {
+						self.snapping_state.nodes.tangents = state
+					};
+				}
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1158,47 +1206,92 @@ impl DocumentMessageHandler {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
-						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
-						geometry_snapping: Some(snapping_state.geometry_snapping),
+						bounding_box_snapping: None,
+						geometry_snapping: None,
 					}
 					.into()
 				})
 				.widget_holder(),
 			PopoverButton::new("Snapping", "Snap customization settings")
-				.options_widget(vec![
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(snapping_state.bounding_box_snapping)
-								.tooltip(SnappingOptions::BoundingBoxes.to_string())
-								.on_update(move |input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: Some(input.checked),
-										geometry_snapping: None,
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.snapping_state.geometry_snapping)
-								.tooltip(SnappingOptions::Geometry.to_string())
-								.on_update(|input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: None,
-										geometry_snapping: Some(input.checked),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder(),
-						],
-					},
-				])
+				.options_widget(
+					[LayoutGroup::Row {
+						widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder()],
+					}]
+					.into_iter()
+					.chain(
+						[
+							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
+							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
+							(BoundingBoxSnapTarget::Center, snapping_state.bounds.centers),
+							(BoundingBoxSnapTarget::Corner, snapping_state.bounds.corners),
+						]
+						.into_iter()
+						.map(|(enum_type, bound_state)| LayoutGroup::Row {
+							widgets: vec![
+								CheckboxInput::new(bound_state)
+									.tooltip(enum_type.to_string())
+									.on_update(move |input: &CheckboxInput| {
+										DocumentMessage::SetSnapping {
+											snapping_enabled: None,
+											bounding_box_snapping: Some(OptionBoundsSnapping {
+												edges: if enum_type == BoundingBoxSnapTarget::Edge { Some(input.checked) } else { None },
+												edge_midpoints: if enum_type == BoundingBoxSnapTarget::EdgeMidpoint { Some(input.checked) } else { None },
+												centers: if enum_type == BoundingBoxSnapTarget::Center { Some(input.checked) } else { None },
+												corners: if enum_type == BoundingBoxSnapTarget::Corner { Some(input.checked) } else { None },
+											}),
+											geometry_snapping: None,
+										}
+										.into()
+									})
+									.widget_holder(),
+								TextLabel::new(enum_type.to_string()).widget_holder(),
+							],
+						})
+						.chain(
+							[LayoutGroup::Row {
+								widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
+							}]
+							.into_iter()
+							.chain(
+								[
+									(GeometrySnapTarget::HandlesColinear, snapping_state.nodes.point_handles_colinear),
+									(GeometrySnapTarget::HandlesFree, snapping_state.nodes.point_handles_free),
+									(GeometrySnapTarget::LineMidpoint, snapping_state.nodes.line_midpoints),
+									(GeometrySnapTarget::Path, snapping_state.nodes.paths),
+									(GeometrySnapTarget::Normal, snapping_state.nodes.normals),
+									(GeometrySnapTarget::Tangent, snapping_state.nodes.tangents),
+									(GeometrySnapTarget::Intersection, snapping_state.nodes.path_intersections),
+								]
+								.into_iter()
+								.map(|(enum_type, bound_state)| LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(bound_state)
+											.tooltip(enum_type.to_string())
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														point_handles_colinear: if enum_type == GeometrySnapTarget::HandlesColinear { Some(input.checked) } else { None },
+														point_handles_free: if enum_type == GeometrySnapTarget::HandlesFree { Some(input.checked) } else { None },
+														line_midpoints: if enum_type == GeometrySnapTarget::LineMidpoint { Some(input.checked) } else { None },
+														paths: if enum_type == GeometrySnapTarget::Path { Some(input.checked) } else { None },
+														normals: if enum_type == GeometrySnapTarget::Normal { Some(input.checked) } else { None },
+														tangents: if enum_type == GeometrySnapTarget::Tangent { Some(input.checked) } else { None },
+														path_intersections: if enum_type == GeometrySnapTarget::Intersection { Some(input.checked) } else { None },
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new(enum_type.to_string()).widget_holder(),
+									],
+								}),
+							),
+						),
+					)
+					.collect(),
+				)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
