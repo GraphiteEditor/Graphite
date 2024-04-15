@@ -14,7 +14,7 @@ use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute,
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
@@ -867,7 +867,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("From", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+				DocumentInputType::value("From", TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::extract_channel_properties,
