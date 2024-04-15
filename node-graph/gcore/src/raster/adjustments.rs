@@ -267,15 +267,6 @@ fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractAlphaNode;
-
-#[node_macro::node_fn(ExtractAlphaNode)]
-fn extract_alpha_node(color: Color) -> Color {
-	let alpha = color.a();
-	Color::from_rgbaf32(alpha, alpha, alpha, 1.).unwrap()
-}
-
-#[derive(Debug, Clone, Copy, Default)]
 pub struct ExtractOpaqueNode;
 
 #[node_macro::node_fn(ExtractOpaqueNode)]

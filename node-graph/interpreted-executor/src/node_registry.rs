@@ -452,7 +452,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// Filters
 		raster_node!(graphene_core::raster::LuminanceNode<_>, params: [LuminanceCalculation]),
 		raster_node!(graphene_core::raster::ExtractChannelNode<_>, params: [RedGreenBlueAlpha]),
-		raster_node!(graphene_core::raster::ExtractAlphaNode<>, params: []),
 		raster_node!(graphene_core::raster::ExtractOpaqueNode<>, params: []),
 		raster_node!(graphene_core::raster::LevelsNode<_, _, _, _, _>, params: [f64, f64, f64, f64, f64]),
 		register_node!(graphene_std::image_segmentation::ImageSegmentationNode<_>, input: ImageFrame<Color>, params: [ImageFrame<Color>]),

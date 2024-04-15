@@ -874,14 +874,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Extract Alpha",
-			category: "Image Adjustments",
-			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractAlphaNode<>"),
-			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-			..Default::default()
-		},
-		DocumentNodeDefinition {
 			name: "Extract Opaque",
 			category: "Image Adjustments",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
