@@ -3,7 +3,7 @@ use crate::utils::{solve_cubic, solve_quadratic, TValue};
 use crate::{to_symmetrical_basis_pair, SymmetricalBasis};
 
 use glam::DMat2;
-use rustnomial::{polynomial, Polynomial};
+use poly_it::{storage::arrayvec::ArrayVec, Polynomial};
 use std::ops::Range;
 
 /// Functionality that solve for various curve information such as derivative, tangent, intersect, etc.
@@ -43,25 +43,34 @@ impl Bezier {
 
 	/// Returns two [`Polynomial`]s representing the parametric equations for x and y coordinates of the bezier curve respectively.
 	/// The domain of both the equations are from t=0.0 representing the start and t=1.0 representing the end of the bezier curve.
-	pub fn parametric_polynomial(&self) -> (Polynomial<f64>, Polynomial<f64>) {
+	pub fn parametric_polynomial(&self) -> (Polynomial<f64, ArrayVec<f64, 10>>, Polynomial<f64, ArrayVec<f64, 10>>) {
 		match self.handles {
 			BezierHandles::Linear => {
 				let term1 = self.end - self.start;
 
-				(polynomial!(term1.x, self.start.x), polynomial!(term1.y, self.start.y))
+				(
+					Polynomial::new(ArrayVec::from([self.start.x, term1.x, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+					Polynomial::new(ArrayVec::from([self.start.y, term1.y, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+				)
 			}
 			BezierHandles::Quadratic { handle } => {
 				let term1 = 2.0 * (handle - self.start);
 				let term2 = self.start - 2.0 * handle + self.end;
 
-				(polynomial!(term2.x, term1.x, self.start.x), polynomial!(term2.y, term1.y, self.start.y))
+				(
+					Polynomial::new(ArrayVec::from([self.start.x, term1.x, term2.x, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+					Polynomial::new(ArrayVec::from([self.start.y, term1.y, term2.y, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+				)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				let term1 = 3.0 * (handle_start - self.start);
 				let term2 = 3.0 * (handle_end - handle_start) - term1;
 				let term3 = self.end - self.start - term2 - term1;
 
-				(polynomial!(term3.x, term2.x, term1.x, self.start.x), polynomial!(term3.y, term2.y, term1.y, self.start.y))
+				(
+					Polynomial::new(ArrayVec::from([self.start.x, term1.x, term2.x, term3.x, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+					Polynomial::new(ArrayVec::from([self.start.y, term1.y, term2.y, term3.y, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
+				)
 			}
 		}
 	}

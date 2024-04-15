@@ -564,7 +564,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "log",
- "rustnomial",
+ "poly_it",
  "serde",
 ]
 
@@ -4309,6 +4309,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "poly_it"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af34640a7fcb8b8597b1f7eef9a3cb315eaaaeb2b8b74b7f018456b79a26281e"
+dependencies = [
+ "arrayvec",
+ "num-traits",
+ "tinyvec",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4772,12 +4783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "roots"
-version = "0.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c36d2bbc763f480668d6d6790ae2fdd2e52ac0c21a3a26d156f3534a3d9eea9"
-
-[[package]]
 name = "roxmltree"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4846,16 +4851,6 @@ checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
  "ring",
  "untrusted",
-]
-
-[[package]]
-name = "rustnomial"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d91ecaf1ec3f9d9b069e7bf2a2cf5e253b90dd6fe8723e1abf8692ed1ac3ae25"
-dependencies = [
- "num",
- "roots",
 ]
 
 [[package]]

@@ -2,7 +2,6 @@ use super::*;
 use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE};
 use crate::utils::{SubpathTValue, TValue, TValueType};
 use glam::DVec2;
-use rustnomial::{Derivable, Integrable};
 
 /// Functionality relating to looking up properties of the `Subpath` or points along the `Subpath`.
 impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
@@ -39,8 +38,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.map(|start_index| {
 				let end_index = (start_index + 1) % self.manipulator_groups.len();
 				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
-				let (f_x, f_y) = bezier.parametric_polynomial();
-				(f_x * f_y.derivative()).integral().eval(0.0, 1.0)
+				let (f_x, mut f_y) = bezier.parametric_polynomial();
+				f_y.deriv_mut();
+				f_y = f_y * f_x;
+				f_y.antideriv_mut();
+				f_y.eval(1.0) - f_y.eval(0.0)
 			})
 			.sum()
 	}
@@ -54,17 +56,22 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let end_index = (start_index + 1) % self.manipulator_groups.len();
 				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
 				let (f_x, f_y) = bezier.parametric_polynomial();
-				let f_y_prime = f_y.derivative();
+				let f_y_prime = f_y.deriv();
+				let f_x_prime = f_x.deriv();
+				let f_xy = f_x.clone() * f_y;
 
-				let x_part = (f_x.pow(2) * f_y_prime.clone()).integral().eval(0.0, 1.0);
-				let y_part = (f_y.pow(2) * f_x.derivative()).integral().eval(0.0, 1.0);
-				let area_part = (f_x * f_y_prime).integral().eval(0.0, 1.0);
+				let mut x_part = -f_xy.clone() * f_x_prime;
+				let mut y_part = f_xy * f_y_prime.clone();
+				let mut area_part = f_x * f_y_prime;
+				x_part.antideriv_mut();
+				y_part.antideriv_mut();
+				area_part.antideriv_mut();
 
-				(x_part, y_part, area_part)
+				(x_part.eval(1.0) - x_part.eval(0.0), y_part.eval(1.0) - y_part.eval(0.0), area_part.eval(1.0) - area_part.eval(0.0))
 			})
 			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 
-		Some(DVec2::new(x_sum / area / 2.0, y_sum / area / -2.0))
+		Some(DVec2::new(x_sum / area, y_sum / area))
 	}
 
 	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
