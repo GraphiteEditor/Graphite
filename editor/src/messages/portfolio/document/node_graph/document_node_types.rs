@@ -912,26 +912,26 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "RedNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "GreenNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Green), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "BlueNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Blue), false)],
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "AlphaNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractAlphaNode<>")),
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<>")),
 						..Default::default()
 					},
 				]
