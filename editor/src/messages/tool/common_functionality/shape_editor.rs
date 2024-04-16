@@ -89,7 +89,7 @@ pub struct ClosestSegment {
 
 impl ClosestSegment {
 	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroup<ManipulatorGroupId>, end: ManipulatorGroup<ManipulatorGroupId>) -> Self {
-		// 0.5 is half the line (center to side) but it's convenient to allow targetting slightly more than half the line width
+		// 0.5 is half the line (center to side) but it's convenient to allow targeting slightly more than half the line width
 		const STROKE_WIDTH_PERCENT: f64 = 0.7;
 
 		let bezier = info.bezier;
