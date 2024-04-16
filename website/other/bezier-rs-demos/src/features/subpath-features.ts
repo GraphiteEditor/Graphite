@@ -18,11 +18,13 @@ const subpathFeatures = {
 	},
 	area: {
 		name: "Area",
-		callback: (subpath: WasmSubpathInstance): string => subpath.area(),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	centroid: {
 		name: "Centroid",
-		callback: (subpath: WasmSubpathInstance): string => subpath.centroid(),
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.centroid(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	evaluate: {
 		name: "Evaluate",

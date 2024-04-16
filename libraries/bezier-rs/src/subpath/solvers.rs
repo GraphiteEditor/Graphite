@@ -130,6 +130,33 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		intersections_vec
 	}
 
+	/// Returns a list of `t` values that correspond to all the self intersection points of the subpath. The index and `t` value of both will be returned that corresponds to a point.
+	/// The points will be sorted based on their index and `t` repsectively.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+	///
+	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+	pub fn all_self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
+		let mut intersections_vec = Vec::new();
+		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
+		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
+		self.iter().enumerate().for_each(|(i, other)| {
+			intersections_vec.extend(other.self_intersections(error).iter().flat_map(|value| [(i, value[0]), (i, value[1])]));
+			self.iter().enumerate().take(i).chain(self.iter().enumerate().skip(i + 1)).for_each(|(j, curve)| {
+				intersections_vec.extend(
+					curve
+						.intersections(&other, error, minimum_separation)
+						.iter()
+						.filter(|&value| value > &err && (1. - value) > err)
+						.map(|value| (j, *value)),
+				);
+			});
+		});
+		intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+		intersections_vec
+	}
+
 	/// Calculates the intersection points the subpath has with a given rectangle and returns a list of `(usize, f64)` tuples,
 	/// where the `usize` represents the index of the curve in the subpath, and the `f64` represents the `t`-value local to
 	/// that curve where the intersection occurred.
