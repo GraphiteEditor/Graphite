@@ -35,47 +35,34 @@ let
     # wasm-pack needs this
     extensions = [ "rust-src" "rust-analyzer" "clippy"];
   };
-in
-  # Make a shell with the dependencies we need
-  pkgs.mkShell {
-    packages = with pkgs; [
+
+  packages = with pkgs; [
       rustc-wasm
       nodejs
       cargo
       cargo-watch
-      cargo-nextest
-      cargo-expand
       wasm-pack
-      binaryen
-      wasm-bindgen-cli
-      vulkan-loader
-      libxkbcommon
-      llvm
-      gcc-unwrapped.lib
-      llvmPackages.libcxxStdenv
-      pkg-config
-      # used for profiling
-      gnuplot
-      samply
-      cargo-flamegraph
 
-      # For Tauri
       openssl
       glib
       gtk3
       libsoup
       webkitgtk
 
-      # For Raw-rs tests
-      libraw
+      pkg-config
 
-      # Use Mold as a linker
+      # Use Mold as a Linke
       mold
-    ];
+  ];
+in
+  # Make a shell with the dependencies we need
+  pkgs.mkShell {
+    packages = packages;
 
     # Hacky way to run Cargo through Mold
     LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm pkgs.libraw];
     shellHook = ''
+    export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath packages}:$LD_LIBRARY_PATH
     alias cargo='mold --run cargo'
     '';
   }

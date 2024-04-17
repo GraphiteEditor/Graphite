@@ -85,9 +85,6 @@ web-sys = { workspace = true, optional = true, features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-autoquant = { git = "https://github.com/truedoctor/autoquant", optional = true, features = [
-	"fitting",
-] }
 
-# Optional dependencies
-image-compare = { version = "0.4.1", optional = true }
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
