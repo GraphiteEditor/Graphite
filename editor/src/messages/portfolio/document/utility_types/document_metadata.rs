@@ -536,6 +536,7 @@ impl LayerNodeIdentifier {
 	pub fn filled(&self, network: &NodeNetwork) -> bool {
 		use graph_craft::document::value::TaggedValue;
 		use graph_craft::document::NodeInput;
+		use graphene_core::vector::style::FillType;
 
 		// TODO: make more concise
 		network.upstream_flow_back_from_nodes(vec![self.to_node()], true).any(|(document_node, _)| {
@@ -543,8 +544,11 @@ impl LayerNodeIdentifier {
 				&& document_node.inputs.iter().any(|node_input| match node_input {
 					NodeInput::Value { tagged_value, .. } => match tagged_value {
 						TaggedValue::OptionalColor(optional_color) => match optional_color {
-							// TODO: Check if color is not fully transparent
-							Some(_color) => true,
+							Some(color) => color.a() > f32::EPSILON,
+							_ => false,
+						},
+						TaggedValue::FillType(fill_type) => match fill_type {
+							FillType::Gradient => true,
 							_ => false,
 						},
 						_ => false,
