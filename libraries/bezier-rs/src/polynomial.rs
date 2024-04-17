@@ -11,7 +11,7 @@ impl<const N: usize> Polynomial<N> {
 	}
 
 	pub fn zero() -> Polynomial<N> {
-		Polynomial { coeffs: [0.0; N] }
+		Polynomial { coeffs: [0.; N] }
 	}
 
 	pub fn coeffs(&self) -> &[f64; N] {
@@ -27,11 +27,11 @@ impl<const N: usize> Polynomial<N> {
 	}
 
 	pub fn as_size<const M: usize>(&self) -> Option<Polynomial<M>> {
-		let mut coeffs = [0.0; M];
+		let mut coeffs = [0.; M];
 
 		if M >= N {
 			coeffs[..N].copy_from_slice(&self.coeffs);
-		} else if self.coeffs.iter().rev().take(N - M).all(|&x| x == 0.0) {
+		} else if self.coeffs.iter().rev().take(N - M).all(|&x| x == 0.) {
 			coeffs.copy_from_slice(&self.coeffs[..M])
 		} else {
 			return None;
@@ -153,8 +153,8 @@ mod test {
 	fn evaluation() {
 		let p = Polynomial::new([1., 2., 3.]);
 
-		assert_eq!(p.eval(1.0), 6.);
-		assert_eq!(p.eval(2.0), 17.);
+		assert_eq!(p.eval(1.), 6.);
+		assert_eq!(p.eval(2.), 17.);
 	}
 
 	#[test]
@@ -197,7 +197,7 @@ mod test {
 
 		assert_eq!(p.derivative(), p_deriv);
 
-		p.coeffs_mut()[0] = 0.0;
+		p.coeffs_mut()[0] = 0.;
 		assert_eq!(p_deriv.antiderivative().unwrap(), p);
 
 		assert_eq!(p.antiderivative(), None);

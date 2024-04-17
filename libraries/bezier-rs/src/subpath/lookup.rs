@@ -41,7 +41,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
 	pub fn area(&self, error: Option<f64>, minimum_separation: Option<f64>) -> f64 {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
-		let mut current_sign: f64 = 1.0;
+		let mut current_sign: f64 = 1.;
 
 		(0..self.manipulator_groups.len())
 			.map(|start_index| {
@@ -53,12 +53,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				f_y *= &f_x;
 				f_y.antiderivative_mut();
 
-				let mut curve_sum = -current_sign * f_y.eval(0.0);
+				let mut curve_sum = -current_sign * f_y.eval(0.);
 				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == start_index) {
 					curve_sum += 2. * current_sign * f_y.eval(*t);
 					current_sign *= -1.;
 				}
-				curve_sum += current_sign * f_y.eval(1.0);
+				curve_sum += current_sign * f_y.eval(1.);
 				curve_sum
 			})
 			.sum()
@@ -75,7 +75,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
 	pub fn centroid(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Option<DVec2> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
-		let mut current_sign: f64 = 1.0;
+		let mut current_sign: f64 = 1.;
 
 		let (x_sum, y_sum, area) = (0..self.manipulator_groups.len())
 			.map(|start_index| {
@@ -94,18 +94,18 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				y_part.antiderivative_mut();
 				area_part.antiderivative_mut();
 
-				let mut curve_sum_x = -current_sign * x_part.eval(0.0);
-				let mut curve_sum_y = -current_sign * y_part.eval(0.0);
-				let mut curve_sum_area = -current_sign * area_part.eval(0.0);
+				let mut curve_sum_x = -current_sign * x_part.eval(0.);
+				let mut curve_sum_y = -current_sign * y_part.eval(0.);
+				let mut curve_sum_area = -current_sign * area_part.eval(0.);
 				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == start_index) {
 					curve_sum_x += 2. * current_sign * x_part.eval(*t);
 					curve_sum_y += 2. * current_sign * y_part.eval(*t);
 					curve_sum_area += 2. * current_sign * area_part.eval(*t);
 					current_sign *= -1.;
 				}
-				curve_sum_x += current_sign * x_part.eval(1.0);
-				curve_sum_y += current_sign * y_part.eval(1.0);
-				curve_sum_area += current_sign * area_part.eval(1.0);
+				curve_sum_x += current_sign * x_part.eval(1.);
+				curve_sum_y += current_sign * y_part.eval(1.);
+				curve_sum_area += current_sign * area_part.eval(1.);
 
 				(-curve_sum_x, curve_sum_y, curve_sum_area)
 			})
@@ -294,9 +294,9 @@ mod tests {
 
 	#[test]
 	fn area() {
-		let start = DVec2::new(0.0, 0.0);
-		let end = DVec2::new(1.0, 1.0);
-		let handle = DVec2::new(0.0, 1.0);
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(1., 1.);
+		let handle = DVec2::new(0., 1.);
 
 		let mut subpath = Subpath::new(
 			vec![
@@ -316,7 +316,7 @@ mod tests {
 			false,
 		);
 
-		let expected_area = -1.0 / 3.0;
+		let expected_area = -1. / 3.;
 		let epsilon = 0.000000001;
 
 		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
@@ -327,9 +327,9 @@ mod tests {
 
 	#[test]
 	fn centroid() {
-		let start = DVec2::new(0.0, 0.0);
-		let end = DVec2::new(1.0, 1.0);
-		let handle = DVec2::new(0.0, 1.0);
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(1., 1.);
+		let handle = DVec2::new(0., 1.);
 
 		let mut subpath = Subpath::new(
 			vec![
