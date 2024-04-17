@@ -9,6 +9,7 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerClassification, LayerPanelEntry, SelectedNodes};
@@ -139,14 +140,70 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::Copy);
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
-			NodeGraphMessage::DeleteNode { node_id, reconnect } => {
-				self.remove_node(document_network, selected_nodes, node_id, responses, reconnect);
-			}
-			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
-				responses.add(DocumentMessage::StartTransaction);
+			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
+				let mut delete_nodes = HashSet::new();
+				for node_id in &node_ids {
+					delete_nodes.insert(*node_id);
+					if reconnect {
+						let node = document_network.nodes.get(&node_id).expect("node should always exist");
+						let child_id = node.inputs.get(1).and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
+						if let Some(child_id) = child_id {
+							let outward_links = document_network.collect_outwards_links();
+							for (_node, upstream_id) in document_network.upstream_flow_back_from_nodes(vec![*child_id], false) {
+								// TODO: move into a document_network function .is_sole_dependent. This function does a downstream traversal starting from the current node,
+								// and only traverses for nodes that are not in the delete_nodes set. If all downstream nodes converge to some node in the delete_nodes set,
+								// then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent. This means disconnected branches
+								// that do not feed into the delete_nodes set or the output node will be deleted.
+								let mut stack = vec![upstream_id];
+								let mut can_delete = true;
+								while let Some(current_node) = stack.pop() {
+									if let Some(downstream_nodes) = outward_links.get(&current_node) {
+										for downstream_node in downstream_nodes {
+											if document_network.original_outputs_contain(*downstream_node) {
+												can_delete = false;
+											} else if !delete_nodes.contains(downstream_node) {
+												stack.push(*downstream_node);
+											}
+											// Continue traversing over the downstream sibling, which happens if the current node is a sibling to a node in node_ids
+											else {
+												for deleted_node_id in &node_ids {
+													let output_node: &DocumentNode = document_network.nodes.get(&deleted_node_id).expect("node should always exist");
+													if let Some(input) = output_node.inputs.get(0) {
+														if let NodeInput::Node { node_id, .. } = input {
+															if *node_id == current_node {
+																stack.push(*deleted_node_id);
+															};
+														};
+													};
+												}
+											};
+										}
+									}
+								}
+								if can_delete {
+									delete_nodes.insert(upstream_id);
+								}
+							}
+						}
+					}
+				}
 
-				for node_id in selected_nodes.selected_nodes().copied() {
-					responses.add(NodeGraphMessage::DeleteNode { node_id, reconnect });
+				for delete_node_id in delete_nodes {
+					let delete_node = document_network.nodes.get(&delete_node_id).expect("node should always exist");
+					if delete_node.is_layer {
+						// Delete node from document metadata
+						let layer_node = LayerNodeIdentifier::new(delete_node_id, document_network);
+						layer_node.delete(document_metadata);
+						// Shift the position of the upstream sibling nodes for a deleted layer node. This ends up causing more positioning issues than it solves.
+						// let shift = IVec2::new(0, -3);
+						// let node_ids = document_network.upstream_flow_back_from_nodes(vec![delete_node_id], false).map(|(_, id)| id).collect::<Vec<_>>();
+
+						// for node_id in node_ids {
+						// 	let Some(node) = document_network.nodes.get_mut(&node_id) else { continue };
+						// 	node.metadata.position += shift;
+						// }
+					}
+					self.remove_node(document_network, selected_nodes, delete_node_id, responses, reconnect);
 				}
 
 				if let Some(network) = document_network.nested_network(&self.network) {
@@ -155,7 +212,19 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
+				// No need to call this since the metadata is already updated
+				// load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
+
+			/// Deletes selected_nodes. If reconnect is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings(primary input/output) are reconnected. If reconnect is false, then only the selected nodes are deleted and not reconnected.
+			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: selected_nodes.selected_nodes().copied().collect(),
+					reconnect,
+				});
+			}
+
 			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					warn!("No network");
@@ -883,9 +952,8 @@ impl NodeGraphMessageHandler {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				// Reconnect to the node below when deleting a layer node.
-				let reconnect_from_input_index = if node.is_layer() { 1 } else { 0 };
-				if matches!(&node.inputs.get(reconnect_from_input_index), Some(NodeInput::Node { .. })) {
-					reconnect_to_input = Some(node.inputs[reconnect_from_input_index].clone());
+				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) {
+					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}
 		}

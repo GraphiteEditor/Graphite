@@ -148,7 +148,7 @@ impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
 		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-			graph.upstream_flow_back_from_nodes(vec![node.primary_input()?.as_node()?], true).find(|(node, _)| node.is_layer)
+			graph.upstream_flow_back_from_nodes(vec![node.inputs.get(1)?.as_node()?], true).find(|(node, _)| node.is_layer)
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
@@ -159,10 +159,9 @@ impl DocumentMetadata {
 
 		// Refers to output node: NodeId(0)
 		let output_node_id = graph.exports[0].node_id;
-		let Some(output_node) = graph.nodes.get(&output_node_id) else {
-			return;
-		};
-		let Some((layer_node, node_id)) = first_child_layer(graph, output_node) else {
+
+		// Check if a layer node is upstream from the Output node
+		let Some((layer_node, node_id)) = graph.upstream_flow_back_from_nodes(vec![output_node_id], true).find(|(node, _)| node.is_layer) else {
 			return;
 		};
 		let parent = LayerNodeIdentifier::ROOT;

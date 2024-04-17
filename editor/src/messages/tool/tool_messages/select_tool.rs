@@ -365,8 +365,9 @@ impl SelectToolData {
 
 		// Delete the duplicated layers
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			responses.add(GraphOperationMessage::DeleteLayer {
-				id: layer_ancestors.last().unwrap().to_node(),
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![layer_ancestors.last().unwrap().to_node()],
+				reconnect: true,
 			});
 		}
 

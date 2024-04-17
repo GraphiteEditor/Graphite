@@ -380,7 +380,7 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				if let Some(artboard) = tool_data.selected_artboard.take() {
 					let id = artboard.to_node();
-					responses.add(GraphOperationMessage::DeleteArtboard { id });
+					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
 				}
 				ArtboardToolFsmState::Ready
 			}

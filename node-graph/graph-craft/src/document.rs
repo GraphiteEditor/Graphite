@@ -754,7 +754,7 @@ impl NodeNetwork {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
 
-	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
+	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
 	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
@@ -802,7 +802,7 @@ impl NodeNetwork {
 	}
 }
 
-/// Iterate over the primary inputs of nodes (if `only_follow_primary` is true), so in the case of `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// Iterate over the horizontal inputs of nodes (if `only_follow_primary` is true), so in the case of `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
@@ -815,7 +815,7 @@ impl<'a> Iterator for FlowIter<'a> {
 			let node_id = self.stack.pop()?;
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if document_node.is_layer { 1 } else { 0 };
+				let skip = if document_node.is_layer && self.only_follow_primary { 1 } else { 0 };
 				let take = if self.only_follow_primary { 1 } else { usize::MAX };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 

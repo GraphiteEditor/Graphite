@@ -100,12 +100,6 @@ pub enum GraphOperationMessage {
 		location: IVec2,
 		dimensions: IVec2,
 	},
-	DeleteLayer {
-		id: NodeId,
-	},
-	DeleteArtboard {
-		id: NodeId,
-	},
 	ClearArtboards,
 	NewSvg {
 		id: NodeId,

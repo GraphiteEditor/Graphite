@@ -200,21 +200,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				modify_inputs.resize_artboard(location, dimensions);
 			}
-			GraphOperationMessage::DeleteLayer { id } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.delete_layer(id, selected_nodes, false);
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
-			}
-			GraphOperationMessage::DeleteArtboard { id } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(artboard_id) = modify_inputs.document_network.nodes.get(&id).and_then(|node| node.inputs[0].as_node()) {
-					modify_inputs.delete_artboard(artboard_id, selected_nodes);
-				} else {
-					warn!("Artboard does not exist");
-				}
-				modify_inputs.delete_layer(id, selected_nodes, true);
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
-			}
 			GraphOperationMessage::ClearArtboards => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				let artboard_nodes = modify_inputs
@@ -225,7 +210,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					.map(|(id, _)| *id)
 					.collect::<Vec<_>>();
 				for artboard in artboard_nodes {
-					modify_inputs.delete_artboard(artboard, selected_nodes);
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![artboard],
+						reconnect: true,
+					});
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}

@@ -252,7 +252,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				info!("{:#?}", self.network);
 			}
 			DocumentMessage::DeleteLayer { id } => {
-				responses.add(GraphOperationMessage::DeleteLayer { id });
+				responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
@@ -840,7 +840,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 
 				for id in ungrouped_folders {
-					responses.add(GraphOperationMessage::DeleteLayer { id });
+					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
 				}
 				responses.add(DocumentMessage::CommitTransaction);
 			}

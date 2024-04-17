@@ -25,8 +25,8 @@ pub enum NodeGraphMessage {
 		y: i32,
 	},
 	Cut,
-	DeleteNode {
-		node_id: NodeId,
+	DeleteNodes {
+		node_ids: Vec<NodeId>,
 		reconnect: bool,
 	},
 	DeleteSelectedNodes {
