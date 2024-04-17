@@ -1,3 +1,4 @@
+use base64::Engine;
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::Image;
@@ -360,6 +361,56 @@ fn render_canvas(
 		transform: glam::DAffine2::IDENTITY,
 	};
 	RenderOutput::CanvasFrame(frame.into())
+}
+
+pub struct RasterizeVectorNode<Footprint, Surface> {
+	footprint: Footprint,
+	surface_handle: Surface,
+}
+
+#[node_macro::node_fn(RasterizeVectorNode)]
+async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<SRGBA8> {
+	let mut render = SvgRender::new();
+
+	let resolution = footprint.resolution;
+	// TODO: reenable once we switch to full node graph
+	let min = footprint.transform.inverse().transform_point2((0., 0.).into());
+	let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+	let render_params = RenderParams {
+		// TODO: Use correct bounds
+		culling_bounds: Some([min, max]),
+		..Default::default()
+	};
+
+	data.render_svg(&mut render, &render_params);
+	render.format_svg(min, max);
+	let svg_string = render.svg.to_svg_string();
+
+	let canvas = &surface_handle.surface;
+	canvas.set_width(resolution.x);
+	canvas.set_height(resolution.y);
+
+	let array = svg_string.as_bytes();
+	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+
+	let preamble = "data:image/svg+xml;base64,";
+	let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+	base64_string.push_str(preamble);
+	base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+
+	let image_data = web_sys::HtmlImageElement::new().unwrap();
+	image_data.set_src(base64_string.as_str());
+	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+	context.draw_image_with_html_image_element(&image_data, 0., 0.).unwrap();
+
+	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+
+	let image = Image::from_raw_buffer(resolution.x, resolution.y, rasterized.data().0);
+	ImageFrame {
+		image,
+		transform: glam::DAffine2::from_scale(resolution.as_dvec2()),
+		..Default::default()
+	}
 }
 
 // Render with the data node taking in Footprint.
