@@ -256,22 +256,14 @@ pub struct ExtractChannelNode<TargetChannel> {
 }
 
 #[node_macro::node_fn(ExtractChannelNode)]
-fn extract_channel_node(color: Color, channel: RedGreenBlue) -> Color {
+fn extract_channel_node(color: Color, channel: RedGreenBlueAlpha) -> Color {
 	let extracted_value = match channel {
-		RedGreenBlue::Red => color.r(),
-		RedGreenBlue::Green => color.g(),
-		RedGreenBlue::Blue => color.b(),
+		RedGreenBlueAlpha::Red => color.r(),
+		RedGreenBlueAlpha::Green => color.g(),
+		RedGreenBlueAlpha::Blue => color.b(),
+		RedGreenBlueAlpha::Alpha => color.a(),
 	};
-	color.map_rgb(|_| extracted_value)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractAlphaNode;
-
-#[node_macro::node_fn(ExtractAlphaNode)]
-fn extract_alpha_node(color: Color) -> Color {
-	let alpha = color.a();
-	Color::from_rgbaf32(alpha, alpha, alpha, 1.).unwrap()
+	color.map_rgba(|_| extracted_value)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -602,6 +594,27 @@ impl core::fmt::Display for RedGreenBlue {
 			RedGreenBlue::Red => write!(f, "Red"),
 			RedGreenBlue::Green => write!(f, "Green"),
 			RedGreenBlue::Blue => write!(f, "Blue"),
+		}
+	}
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "std", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+pub enum RedGreenBlueAlpha {
+	Red,
+	Green,
+	Blue,
+	Alpha,
+}
+
+impl core::fmt::Display for RedGreenBlueAlpha {
+	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+		match self {
+			RedGreenBlueAlpha::Red => write!(f, "Red"),
+			RedGreenBlueAlpha::Green => write!(f, "Green"),
+			RedGreenBlueAlpha::Blue => write!(f, "Blue"),
+			RedGreenBlueAlpha::Alpha => write!(f, "Alpha"),
 		}
 	}
 }
