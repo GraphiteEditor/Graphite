@@ -47,10 +47,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.map(|start_index| {
 				let end_index = (start_index + 1) % self.manipulator_groups.len();
 				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
-				let (f_x, mut f_y) = bezier.parametric_polynomial();
-				f_y.deriv_mut();
-				f_y = f_y * f_x;
-				f_y.antideriv_mut();
+				let (f_x, f_y) = bezier.parametric_polynomial();
+				let (f_x, mut f_y) = (f_x.as_size::<7>().unwrap(), f_y.as_size::<7>().unwrap());
+				f_y.derivative_mut();
+				f_y *= &f_x;
+				f_y.antiderivative_mut();
 
 				let mut curve_sum = -current_sign * f_y.eval(0.0);
 				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == start_index) {
@@ -81,16 +82,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let end_index = (start_index + 1) % self.manipulator_groups.len();
 				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
 				let (f_x, f_y) = bezier.parametric_polynomial();
-				let f_y_prime = f_y.deriv();
-				let f_x_prime = f_x.deriv();
-				let f_xy = f_x.clone() * f_y;
+				let (f_x, f_y) = (f_x.as_size::<10>().unwrap(), f_y.as_size::<10>().unwrap());
+				let f_y_prime = f_y.derivative();
+				let f_x_prime = f_x.derivative();
+				let f_xy = &f_x * &f_y;
 
-				let mut x_part = -f_xy.clone() * f_x_prime;
-				let mut y_part = f_xy * f_y_prime.clone();
-				let mut area_part = f_x * f_y_prime;
-				x_part.antideriv_mut();
-				y_part.antideriv_mut();
-				area_part.antideriv_mut();
+				let mut x_part = &f_xy * &f_x_prime;
+				let mut y_part = &f_xy * &f_y_prime;
+				let mut area_part = &f_x * &f_y_prime;
+				x_part.antiderivative_mut();
+				y_part.antiderivative_mut();
+				area_part.antiderivative_mut();
 
 				let mut curve_sum_x = -current_sign * x_part.eval(0.0);
 				let mut curve_sum_y = -current_sign * y_part.eval(0.0);
@@ -105,7 +107,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				curve_sum_y += current_sign * y_part.eval(1.0);
 				curve_sum_area += current_sign * area_part.eval(1.0);
 
-				(curve_sum_x, curve_sum_y, curve_sum_area)
+				(-curve_sum_x, curve_sum_y, curve_sum_area)
 			})
 			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 

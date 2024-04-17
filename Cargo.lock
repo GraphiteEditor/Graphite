@@ -564,7 +564,6 @@ dependencies = [
  "dyn-any",
  "glam",
  "log",
- "poly_it",
  "serde",
 ]
 
@@ -4306,17 +4305,6 @@ dependencies = [
  "rustix",
  "tracing",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "poly_it"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af34640a7fcb8b8597b1f7eef9a3cb315eaaaeb2b8b74b7f018456b79a26281e"
-dependencies = [
- "arrayvec",
- "num-traits",
- "tinyvec",
 ]
 
 [[package]]
