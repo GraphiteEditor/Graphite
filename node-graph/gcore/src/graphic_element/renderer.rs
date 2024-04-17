@@ -205,10 +205,14 @@ fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
+// TODO: Consider renaming this to better express what it does
 pub trait GraphicElementRendered {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
+
 	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]>;
+
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>);
+
 	fn to_usvg_node(&self) -> usvg::Node {
 		let mut render = SvgRender::new();
 		let render_params = RenderParams::new(crate::vector::style::ViewMode::Normal, ImageRenderMode::Base64, None, false, false, false);

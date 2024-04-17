@@ -155,6 +155,7 @@ impl Image<Color> {
 		}
 	}
 }
+
 impl Image<SRGBA8> {
 	pub fn to_png(&self) -> Vec<u8> {
 		use ::image::ImageEncoder;

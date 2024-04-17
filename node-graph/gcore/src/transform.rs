@@ -165,7 +165,7 @@ pub enum RenderQuality {
 	Scale(f32),
 	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
 	/// This should be used to gradually update the render quality of a cached node
-	Probabilty(f32),
+	Probability(f32),
 	/// Render at full quality
 	Full,
 }
