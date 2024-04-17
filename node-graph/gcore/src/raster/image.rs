@@ -125,6 +125,15 @@ impl<P: Pixel> Image<P> {
 		}
 	}
 
+	pub fn from_raw_buffer(width: u32, height: u32, data: Vec<u8>) -> Self {
+		Self {
+			width,
+			height,
+			data: bytemuck::cast_vec(data),
+			base64_string: None,
+		}
+	}
+
 	pub fn as_slice(&self) -> ImageSlice<P> {
 		ImageSlice {
 			width: self.width,
@@ -145,13 +154,15 @@ impl Image<Color> {
 			base64_string: None,
 		}
 	}
-
+}
+impl Image<SRGBA8> {
 	pub fn to_png(&self) -> Vec<u8> {
 		use ::image::ImageEncoder;
-		let (data, width, height) = self.to_flat_u8();
 		let mut png = Vec::new();
 		let encoder = ::image::codecs::png::PngEncoder::new(&mut png);
-		encoder.write_image(&data, width, height, ::image::ColorType::Rgba8).expect("failed to encode image as png");
+		encoder
+			.write_image(bytemuck::cast_slice(self.data.as_slice()), self.width, self.height, ::image::ColorType::Rgba8)
+			.expect("failed to encode image as png");
 		png
 	}
 }
@@ -211,6 +222,15 @@ where
 		}
 
 		(result, *width, *height)
+	}
+
+	pub fn to_png(&self) -> Vec<u8> {
+		use ::image::ImageEncoder;
+		let (data, width, height) = self.to_flat_u8();
+		let mut png = Vec::new();
+		let encoder = ::image::codecs::png::PngEncoder::new(&mut png);
+		encoder.write_image(&data, width, height, ::image::ColorType::Rgba8).expect("failed to encode image as png");
+		png
 	}
 }
 

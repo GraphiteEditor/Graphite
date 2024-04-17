@@ -85,3 +85,6 @@ web-sys = { workspace = true, optional = true, features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
