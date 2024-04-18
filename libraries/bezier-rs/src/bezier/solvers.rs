@@ -372,14 +372,17 @@ impl Bezier {
 		})
 	}
 
-    pub fn all_intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
+	pub fn all_intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
 		let mut intersection_t_values = self.unfiltered_intersections(other, error);
-		intersection_t_values.sort_by(|a, b| (a[0]+a[1]).partial_cmp(&(b[0]+b[1])).unwrap());
+		intersection_t_values.sort_by(|a, b| (a[0] + a[1]).partial_cmp(&(b[0] + b[1])).unwrap());
 
 		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE) && (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE){
+			if !accumulator.is_empty()
+				&& (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+				&& (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			{
 				accumulator.pop();
 			}
 			accumulator.push(*t);
@@ -404,8 +407,8 @@ impl Bezier {
 			let vertical_distance = (rotation_matrix * other.start).x;
 			let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
-            let y_start = (rotation_matrix * other.start).y;
-            let y_end = (rotation_matrix * other.end).y;
+			let y_start = (rotation_matrix * other.start).y;
+			let y_end = (rotation_matrix * other.end).y;
 
 			// Compute the roots of the resulting bezier curve
 			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);

@@ -321,10 +321,10 @@ mod tests {
 		let expected_area = -1. / 3.;
 		let epsilon = 0.000000001;
 
-		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
+		assert!((subpath.area(Some(0.001), Some(0.001)).0 - expected_area).abs() < epsilon);
 
 		subpath.closed = true;
-		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
+		assert!((subpath.area(Some(0.001), Some(0.001)).0 - expected_area).abs() < epsilon);
 	}
 
 	#[test]

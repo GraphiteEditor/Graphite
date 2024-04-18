@@ -140,7 +140,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn all_self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
-        let minimum_separation = minimum_separation.unwrap_or(MIN_SEPARATION_VALUE);
+		let minimum_separation = minimum_separation.unwrap_or(MIN_SEPARATION_VALUE);
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		self.iter().enumerate().for_each(|(i, other)| {
 			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0], i, value[1])));
@@ -155,7 +155,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			});
 		});
 
-        intersections_vec.sort_by(|a, b| (a.1+a.3).partial_cmp(&(b.1+b.3)).unwrap());
+		intersections_vec.sort_by(|a, b| (a.1 + a.3).partial_cmp(&(b.1 + b.3)).unwrap());
 		let intersections_vec = intersections_vec.iter().fold(Vec::new(), |mut accumulator: Vec<(usize, f64, usize, f64)>, t| {
 			if !accumulator.is_empty() && (accumulator.last().unwrap().1 - t.1).abs() < minimum_separation && (accumulator.last().unwrap().3 - t.3).abs() < minimum_separation {
 				accumulator.pop();
@@ -164,7 +164,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			accumulator
 		});
 
-        let mut intersections_vec: Vec<(usize, f64)> = intersections_vec.into_iter().flat_map(|(a, b, c, d)| [(a, b), (c, d)]).collect();
+		let mut intersections_vec: Vec<(usize, f64)> = intersections_vec.into_iter().flat_map(|(a, b, c, d)| [(a, b), (c, d)]).collect();
 		intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
 		intersections_vec
 	}
