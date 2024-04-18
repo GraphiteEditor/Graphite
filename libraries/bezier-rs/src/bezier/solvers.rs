@@ -363,8 +363,23 @@ impl Bezier {
 		let mut intersection_t_values = self.unfiltered_intersections(other, error);
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+		intersection_t_values.iter().map(|x| x[0]).fold(Vec::new(), |mut accumulator, t| {
 			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE) {
+				accumulator.pop();
+			}
+			accumulator.push(t);
+			accumulator
+		})
+	}
+
+    pub fn all_intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
+		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
+		// Otherwise, use bounding box to determine intersections
+		let mut intersection_t_values = self.unfiltered_intersections(other, error);
+		intersection_t_values.sort_by(|a, b| (a[0]+a[1]).partial_cmp(&(b[0]+b[1])).unwrap());
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty() && (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE) && (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE){
 				accumulator.pop();
 			}
 			accumulator.push(*t);
@@ -376,7 +391,7 @@ impl Bezier {
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
+	pub fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<[f64; 2]> {
 		let error = error.unwrap_or(0.5);
 		if other.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
@@ -389,6 +404,9 @@ impl Bezier {
 			let vertical_distance = (rotation_matrix * other.start).x;
 			let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
+            let y_start = (rotation_matrix * other.start).y;
+            let y_end = (rotation_matrix * other.end).y;
+
 			// Compute the roots of the resulting bezier curve
 			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);
 
@@ -400,12 +418,17 @@ impl Bezier {
 				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min_corner, max_corner, MAX_ABSOLUTE_DIFFERENCE).all())
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
-				.collect::<Vec<f64>>();
+                .map(|t| {
+                    let y = translated_bezier.evaluate(TValue::Parametric(t)).y;
+                    let other_t = (y-y_start)/(y_end-y_start);
+                    [t, other_t]
+                })
+				.collect::<Vec<[f64; 2]>>();
 		}
 
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
-		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
+		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().copied().collect()
 	}
 
 	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
