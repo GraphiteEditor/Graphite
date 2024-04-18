@@ -9,6 +9,9 @@ pub mod raster;
 
 pub mod http;
 
+#[cfg(feature = "serde")]
+pub mod imaginate_v2;
+
 pub mod any;
 
 #[cfg(feature = "gpu")]
