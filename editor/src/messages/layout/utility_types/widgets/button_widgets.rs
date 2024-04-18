@@ -47,24 +47,16 @@ pub struct PopoverButton {
 
 	pub disabled: bool,
 
-	// Placeholder popover content heading
-	#[widget_builder(constructor)]
-	pub header: String,
-
-	// Placeholder popover content paragraph
-	#[widget_builder(constructor)]
-	pub text: String,
-
 	pub tooltip: String,
-
-	#[serde(rename = "optionsWidget")]
-	pub options_widget: SubLayout,
-
-	#[serde(rename = "popoverMinWidth")]
-	pub popover_min_width: Option<u32>,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
+
+	#[serde(rename = "popoverLayout")]
+	pub popover_layout: SubLayout,
+
+	#[serde(rename = "popoverMinWidth")]
+	pub popover_min_width: Option<u32>,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]

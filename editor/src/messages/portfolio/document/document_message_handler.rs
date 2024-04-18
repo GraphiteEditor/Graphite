@@ -1,5 +1,5 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState};
+use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
@@ -718,12 +718,56 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(state) = snapping_enabled {
 					self.snapping_state.snapping_enabled = state
 				};
-				if let Some(state) = bounding_box_snapping {
-					self.snapping_state.bounding_box_snapping = state
+
+				if let Some(OptionBoundsSnapping {
+					edge_midpoints,
+					edges,
+					centers,
+					corners,
+				}) = bounding_box_snapping
+				{
+					if let Some(state) = edge_midpoints {
+						self.snapping_state.bounds.edge_midpoints = state
+					};
+					if let Some(state) = edges {
+						self.snapping_state.bounds.edges = state
+					};
+					if let Some(state) = centers {
+						self.snapping_state.bounds.centers = state
+					};
+					if let Some(state) = corners {
+						self.snapping_state.bounds.corners = state
+					};
 				}
-				if let Some(state) = geometry_snapping {
-					self.snapping_state.geometry_snapping = state
-				};
+
+				if let Some(OptionPointSnapping {
+					paths,
+					path_intersections,
+					anchors,
+					line_midpoints,
+					normals,
+					tangents,
+				}) = geometry_snapping
+				{
+					if let Some(state) = path_intersections {
+						self.snapping_state.nodes.path_intersections = state
+					};
+					if let Some(state) = paths {
+						self.snapping_state.nodes.paths = state
+					};
+					if let Some(state) = anchors {
+						self.snapping_state.nodes.anchors = state
+					};
+					if let Some(state) = line_midpoints {
+						self.snapping_state.nodes.line_midpoints = state
+					};
+					if let Some(state) = normals {
+						self.snapping_state.nodes.normals = state
+					};
+					if let Some(state) = tangents {
+						self.snapping_state.nodes.tangents = state
+					};
+				}
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -1149,7 +1193,16 @@ impl DocumentMessageHandler {
 				.tooltip("Overlays")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
-			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
@@ -1158,47 +1211,112 @@ impl DocumentMessageHandler {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
-						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
-						geometry_snapping: Some(snapping_state.geometry_snapping),
+						bounding_box_snapping: None,
+						geometry_snapping: None,
 					}
 					.into()
 				})
 				.widget_holder(),
-			PopoverButton::new("Snapping", "Snap customization settings")
-				.options_widget(vec![
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(snapping_state.bounding_box_snapping)
-								.tooltip(SnappingOptions::BoundingBoxes.to_string())
-								.on_update(move |input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: Some(input.checked),
-										geometry_snapping: None,
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.snapping_state.geometry_snapping)
-								.tooltip(SnappingOptions::Geometry.to_string())
-								.on_update(|input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: None,
-										geometry_snapping: Some(input.checked),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder(),
-						],
-					},
-				])
+			PopoverButton::new()
+				.popover_layout(
+					[
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new("Snapping").bold(true).widget_holder()],
+						},
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder()],
+						},
+					]
+					.into_iter()
+					.chain(
+						[
+							(BoundingBoxSnapTarget::Center, snapping_state.bounds.centers),
+							(BoundingBoxSnapTarget::Corner, snapping_state.bounds.corners),
+							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
+							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
+						]
+						.into_iter()
+						.map(|(enum_type, bound_state)| LayoutGroup::Row {
+							widgets: vec![
+								CheckboxInput::new(bound_state)
+									.on_update(move |input: &CheckboxInput| {
+										DocumentMessage::SetSnapping {
+											snapping_enabled: None,
+											bounding_box_snapping: Some(OptionBoundsSnapping {
+												edges: if enum_type == BoundingBoxSnapTarget::Edge { Some(input.checked) } else { None },
+												edge_midpoints: if enum_type == BoundingBoxSnapTarget::EdgeMidpoint { Some(input.checked) } else { None },
+												centers: if enum_type == BoundingBoxSnapTarget::Center { Some(input.checked) } else { None },
+												corners: if enum_type == BoundingBoxSnapTarget::Corner { Some(input.checked) } else { None },
+											}),
+											geometry_snapping: None,
+										}
+										.into()
+									})
+									.widget_holder(),
+								TextLabel::new(enum_type.to_string()).widget_holder(),
+							],
+						})
+						.chain(
+							[
+								LayoutGroup::Row {
+									widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
+								},
+								LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(snapping_state.nodes.anchors)
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														anchors: Some(input.checked),
+														..Default::default()
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new("Anchor").widget_holder(),
+									],
+								},
+							]
+							.into_iter()
+							.chain(
+								[
+									(GeometrySnapTarget::LineMidpoint, snapping_state.nodes.line_midpoints),
+									(GeometrySnapTarget::Path, snapping_state.nodes.paths),
+									(GeometrySnapTarget::Normal, snapping_state.nodes.normals),
+									(GeometrySnapTarget::Tangent, snapping_state.nodes.tangents),
+									(GeometrySnapTarget::Intersection, snapping_state.nodes.path_intersections),
+								]
+								.into_iter()
+								.map(|(enum_type, bound_state)| LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(bound_state)
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														anchors: None,
+														line_midpoints: if enum_type == GeometrySnapTarget::LineMidpoint { Some(input.checked) } else { None },
+														paths: if enum_type == GeometrySnapTarget::Path { Some(input.checked) } else { None },
+														normals: if enum_type == GeometrySnapTarget::Normal { Some(input.checked) } else { None },
+														tangents: if enum_type == GeometrySnapTarget::Tangent { Some(input.checked) } else { None },
+														path_intersections: if enum_type == GeometrySnapTarget::Intersection { Some(input.checked) } else { None },
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new(enum_type.to_string()).widget_holder(),
+									],
+								}),
+							),
+						),
+					)
+					.collect(),
+				)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
@@ -1206,8 +1324,8 @@ impl DocumentMessageHandler {
 				.tooltip("Grid")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisible(optional_input.checked).into())
 				.widget_holder(),
-			PopoverButton::new("Grid", "Grid customization settings")
-				.options_widget(overlay_options(&self.snapping_state.grid))
+			PopoverButton::new()
+				.popover_layout(overlay_options(&self.snapping_state.grid))
 				.popover_min_width(Some(320))
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -1230,7 +1348,16 @@ impl DocumentMessageHandler {
 				_ => Some(1),
 			})
 			.widget_holder(),
-			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
@@ -1247,25 +1374,34 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::ResetCanvasTiltAndZoomTo100Percent))
 				.on_update(|_| NavigationMessage::ResetCanvasTiltAndZoomTo100Percent.into())
 				.widget_holder(),
-			PopoverButton::new(
-				"Canvas Navigation",
-				"
-					Interactive controls in this\n\
-					menu are coming soon.\n\
-					\n\
-					Pan:\n\
-					• Middle Click Drag\n\
-					\n\
-					Tilt:\n\
-					• Alt + Middle Click Drag\n\
-					\n\
-					Zoom:\n\
-					• Shift + Middle Click Drag\n\
-					• Ctrl + Scroll Wheel Roll
-				"
-				.trim(),
-			)
-			.widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Canvas Navigation").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new(
+							"
+								Interactive controls in this\n\
+								menu are coming soon.\n\
+								\n\
+								Pan:\n\
+								• Middle Click Drag\n\
+								\n\
+								Tilt:\n\
+								• Alt + Middle Click Drag\n\
+								\n\
+								Zoom:\n\
+								• Shift + Middle Click Drag\n\
+								• Ctrl + Scroll Wheel Roll
+							"
+							.trim(),
+						)
+						.multiline(true)
+						.widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
 				.unit("%")
