@@ -437,12 +437,12 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
-				// Check if the tool is in Selection Box mode
+				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox { .. }) {
-					// get the updated box bounds
+					// Get the updated selection box bounds
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
-					// Outline layers to be selected
+					// Draw outline visualizations on the layers to be selected
 					for layer in document.intersect_quad(quad, &document.network) {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
