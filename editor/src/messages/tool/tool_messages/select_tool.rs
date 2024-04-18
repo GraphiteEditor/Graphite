@@ -183,56 +183,67 @@ impl SelectTool {
 		let selected_layer_idx = layer_entries.iter().position(|entry| self.tool_data.align_to_layer_id.to_string() == entry.value).map(|i| i as u32);
 		let layer_entries = vec![layer_entries];
 
+		let shallow_align = self.tool_data.align_artboard_shallow;
+		let align_to_layer_id = self.tool_data.align_to_layer_id;
 		let radio_entries = [
-			(AlignMode::Selection, "Selection"),
-			(
-				AlignMode::Artboard {
-					shallow_align: self.tool_data.align_artboard_shallow,
-				},
-				"Artboard",
-			),
-			(AlignMode::Layer(self.tool_data.align_to_layer_id), "Layer"),
+			(AlignMode::Selection, "Selection", "Align all selected layers individually to their combined bounding box"),
+			(AlignMode::Layer(align_to_layer_id), "Layer", "Align all other selected layers to a specific selected layer"),
+			(AlignMode::Artboard { shallow_align }, "Artboard", "Align each selected layer to its artboard"),
 		]
 		.into_iter()
-		.map(|(val, name)| RadioEntryData::new(format!("{val:?}")).label(name).on_update(move |_| SelectToolMessage::SetAlignMode(val).into()))
+		.map(|(val, name, tooltip)| {
+			RadioEntryData::new(format!("{val:?}"))
+				.label(name)
+				.tooltip(tooltip)
+				.on_update(move |_| SelectToolMessage::SetAlignMode(val).into())
+		})
 		.collect();
 
 		let radio_selected_index = match self.tool_data.align_mode {
 			AlignMode::Selection => 0,
-			AlignMode::Artboard { .. } => 1,
-			AlignMode::Layer(_) => 2,
+			AlignMode::Layer(_) => 1,
+			AlignMode::Artboard { .. } => 2,
 		};
 
 		let align_mode = self.tool_data.align_mode;
-		PopoverButton::new()
-			.popover_layout(vec![
-				LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Align").widget_holder()],
-				},
-				LayoutGroup::Row {
-					widgets: vec![RadioInput::new(radio_entries).selected_index(Some(radio_selected_index)).widget_holder()],
-				},
-				LayoutGroup::Row {
-					widgets: vec![
-						CheckboxInput::new(self.tool_data.align_artboard_shallow)
-							.disabled(!matches!(align_mode, AlignMode::Artboard { .. }))
-							.tooltip("Align combined bounding box.")
-							.on_update(move |input: &CheckboxInput| SelectToolMessage::SetArtboardAlignMode(input.checked).into())
-							.widget_holder(),
-						TextLabel::new("Shallow align").widget_holder(),
-					],
-				},
-				LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Select a layer to align to:").widget_holder()],
-				},
-				LayoutGroup::Row {
-					widgets: vec![DropdownInput::new(layer_entries)
-						.selected_index(selected_layer_idx.unwrap_or(0 as u32).into())
-						.disabled(!matches!(align_mode, AlignMode::Layer(_)))
-						.widget_holder()],
-				},
-			])
-			.widget_holder()
+		let disabled = !matches!(align_mode, AlignMode::Artboard { .. });
+		let preserve_relative_positions_tooltip = "Align selected layers as a group instead of individually";
+
+		let mut popover_layout = vec![
+			LayoutGroup::Row {
+				widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
+			},
+			LayoutGroup::Row {
+				widgets: vec![RadioInput::new(radio_entries).selected_index(Some(radio_selected_index)).widget_holder()],
+			},
+		];
+
+		if matches!(align_mode, AlignMode::Layer(_)) {
+			popover_layout.push(LayoutGroup::Row {
+				widgets: vec![DropdownInput::new(layer_entries)
+					.selected_index(selected_layer_idx.unwrap_or(0 as u32).into())
+					.disabled(!matches!(align_mode, AlignMode::Layer(_)))
+					.widget_holder()],
+			});
+		}
+
+		if matches!(align_mode, AlignMode::Artboard { .. }) {
+			popover_layout.push(LayoutGroup::Row {
+				widgets: vec![
+					CheckboxInput::new(self.tool_data.align_artboard_shallow)
+						.disabled(disabled)
+						.tooltip(preserve_relative_positions_tooltip)
+						.on_update(move |input: &CheckboxInput| SelectToolMessage::SetArtboardAlignMode(input.checked).into())
+						.widget_holder(),
+					TextLabel::new("Preserve Relative Positions")
+						.disabled(disabled)
+						.tooltip(preserve_relative_positions_tooltip)
+						.widget_holder(),
+				],
+			});
+		}
+
+		PopoverButton::new().popover_layout(popover_layout).widget_holder()
 	}
 
 	fn should_refresh_align_popover(&mut self) -> bool {
