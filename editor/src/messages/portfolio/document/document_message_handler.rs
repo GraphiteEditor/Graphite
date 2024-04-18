@@ -297,7 +297,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.collect();
 
 					let id = NodeId(generate_uuid());
-					let insert_index = -1;
+					let selected_layer_index = parent.children(self.metadata()).collect::<Vec<_>>().iter().position(|&sibling| sibling == layer).unwrap_or(0);
+					let insert_index = if (selected_layer_index as i64 - 1) < 0 { -1 } else { selected_layer_index as isize };
 					responses.add(GraphOperationMessage::NewCustomLayer {
 						id,
 						nodes,
