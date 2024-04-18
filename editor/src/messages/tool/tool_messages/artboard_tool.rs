@@ -223,11 +223,18 @@ impl Fsm for ArtboardToolFsmState {
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 				let mouse_position = input.mouse.position;
 				let to_viewport = document.metadata().document_to_viewport;
-				let snap_data = SnapData::ignore(document, input, &[]);
+
+				let present_artboard = match tool_data.selected_artboard {
+					Some(value) => value,
+					None => LayerNodeIdentifier::default(),
+				};
+				let ignore_slice: &[LayerNodeIdentifier] = &[present_artboard];
+				let snap_data = SnapData::ignore(document, input, ignore_slice);
 				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
 				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
 				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
 				tool_data.snap_manager.update_indicator(snapped);
+
 				tool_data.resize_artboard(responses, document, snapped_mouse_position, from_center, constrain_square);
 
 				// AutoPanning
@@ -239,6 +246,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::ResizingBounds
 			}
+
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
@@ -277,17 +285,26 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let mouse_position = input.mouse.position;
 				let to_viewport = document.metadata().document_to_viewport;
-				let snap_data = SnapData::ignore(document, input, &[]);
+				let present_artboard = match tool_data.selected_artboard {
+					Some(value) => value,
+					None => LayerNodeIdentifier::default(),
+				};
+
+				let ignore_slice: &[LayerNodeIdentifier] = &[present_artboard];
+				let snap_data = SnapData::ignore(document, input, ignore_slice);
 				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
 				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
 				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
+				tool_data.snap_manager.update_indicator(snapped);
 				let mut start = tool_data.drag_start;
 				let mut size = snapped_mouse_position - start;
 				let root_transform = document.metadata().document_to_viewport.inverse();
+
 				// Constrain axis
 				if input.keyboard.get(constrain_axis_or_aspect as usize) {
 					size = size.abs().max(size.abs().yx()) * size.signum();
 				}
+
 				// From center
 				if input.keyboard.get(center as usize) {
 					start -= size;
@@ -337,6 +354,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Drawing
 			}
+
 			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerMove { .. }) => {
 				let cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
 
