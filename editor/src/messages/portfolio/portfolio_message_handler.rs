@@ -186,7 +186,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let node = layer.to_node();
 						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
 
-						let Some(node) = active_document.network().nodes.get(&node).and_then(|node| node.primary_input()).and_then(|input| input.as_node()) else {
+						let Some(node) = active_document
+							.network()
+							.nodes
+							.get(&node)
+							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
+							.and_then(|input| input.as_node())
+						else {
 							continue;
 						};
 

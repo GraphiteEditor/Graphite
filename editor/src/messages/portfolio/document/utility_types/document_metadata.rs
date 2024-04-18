@@ -647,11 +647,8 @@ pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.nodes.get(&layer.to_node()).and_then(|node| node.primary_input()).is_some_and(|input| input.as_node().is_none())
-		|| network
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
-			.skip(1)
-			.any(|(node, _)| node.is_artboard() || node.is_layer())
+	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.get(1)).is_some_and(|input| input.as_node().is_none())
+		|| network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).skip(1).any(|(node, _)| node.is_layer)
 }
 
 #[test]

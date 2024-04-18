@@ -304,7 +304,7 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 
 		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
-		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.primary_input();
+		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.inputs.get(0);
 		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
 			let pre_node = self.document_network.nodes.get(node_id)?;
 			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.

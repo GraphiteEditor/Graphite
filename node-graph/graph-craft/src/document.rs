@@ -273,14 +273,6 @@ impl DocumentNode {
 		}
 	}
 
-	pub fn primary_input(&self) -> Option<&NodeInput> {
-		if self.is_layer {
-			self.inputs.get(1)
-		} else {
-			self.inputs.first()
-		}
-	}
-
 	fn resolve_proto_node(mut self) -> ProtoNode {
 		assert!(!self.inputs.is_empty() || self.manual_composition.is_some(), "Resolving document node {self:#?} with no inputs");
 		let DocumentNodeImplementation::ProtoNode(fqn) = self.implementation else {
@@ -372,10 +364,13 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
-
+	// A node is a folder if the secondary input does not exist, or if a layer exists upstream as a child
 	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
-		let input_connection = self.inputs.get(1).and_then(|input| input.as_node()).and_then(|node_id| network.nodes.get(&node_id));
-		input_connection.map(|node| node.is_layer()).unwrap_or(false)
+		self.inputs.get(1).is_some_and(|input| {
+			input
+				.as_node()
+				.map_or(false, |node_id| network.upstream_flow_back_from_nodes(vec![node_id], true).skip(1).any(|(node, _)| node.is_layer))
+		})
 	}
 }
 
@@ -755,11 +750,11 @@ impl NodeNetwork {
 	}
 
 	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, horizontal_traversal: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
 			network: self,
-			only_follow_primary,
+			horizontal_traversal,
 		}
 	}
 
@@ -806,7 +801,7 @@ impl NodeNetwork {
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
-	only_follow_primary: bool,
+	horizontal_traversal: bool,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
@@ -815,8 +810,8 @@ impl<'a> Iterator for FlowIter<'a> {
 			let node_id = self.stack.pop()?;
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if document_node.is_layer && self.only_follow_primary { 1 } else { 0 };
-				let take = if self.only_follow_primary { 1 } else { usize::MAX };
+				let skip = if document_node.is_layer && self.horizontal_traversal { 1 } else { 0 };
+				let take = if self.horizontal_traversal { 1 } else { usize::MAX };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
