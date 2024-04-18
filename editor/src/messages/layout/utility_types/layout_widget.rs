@@ -219,7 +219,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 			self.current_slice = Some(&self.current_slice.unwrap()[1..]);
 
 			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = item {
-				self.stack.extend(p.options_widget.iter());
+				self.stack.extend(p.popover_layout.iter());
 				return self.next();
 			}
 
@@ -260,7 +260,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 			self.current_slice = Some(rest);
 
 			if let WidgetHolder { widget: Widget::PopoverButton(p), .. } = first {
-				self.stack.extend(p.options_widget.iter_mut());
+				self.stack.extend(p.popover_layout.iter_mut());
 				return self.next();
 			}
 

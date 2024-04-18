@@ -171,7 +171,19 @@ impl LayoutHolder for SelectTool {
 		let disabled = self.tool_data.selected_layers_count < 2;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
-		widgets.push(PopoverButton::new("Align", "Coming soon").disabled(disabled).widget_holder());
+		widgets.push(
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.disabled(disabled)
+				.widget_holder(),
+		);
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;

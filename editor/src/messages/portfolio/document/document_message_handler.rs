@@ -743,8 +743,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(OptionPointSnapping {
 					paths,
 					path_intersections,
-					point_handles_free,
-					point_handles_colinear,
+					anchors,
 					line_midpoints,
 					normals,
 					tangents,
@@ -756,11 +755,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					if let Some(state) = paths {
 						self.snapping_state.nodes.paths = state
 					};
-					if let Some(state) = point_handles_colinear {
-						self.snapping_state.nodes.point_handles_colinear = state
-					};
-					if let Some(state) = point_handles_free {
-						self.snapping_state.nodes.point_handles_free = state
+					if let Some(state) = anchors {
+						self.snapping_state.nodes.anchors = state
 					};
 					if let Some(state) = line_midpoints {
 						self.snapping_state.nodes.line_midpoints = state
@@ -1197,7 +1193,16 @@ impl DocumentMessageHandler {
 				.tooltip("Overlays")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
-			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
@@ -1212,24 +1217,28 @@ impl DocumentMessageHandler {
 					.into()
 				})
 				.widget_holder(),
-			PopoverButton::new("Snapping", "Snap customization settings")
-				.options_widget(
-					[LayoutGroup::Row {
-						widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder()],
-					}]
+			PopoverButton::new()
+				.popover_layout(
+					[
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new("Snapping").bold(true).widget_holder()],
+						},
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder()],
+						},
+					]
 					.into_iter()
 					.chain(
 						[
-							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
-							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
 							(BoundingBoxSnapTarget::Center, snapping_state.bounds.centers),
 							(BoundingBoxSnapTarget::Corner, snapping_state.bounds.corners),
+							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
+							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
 						]
 						.into_iter()
 						.map(|(enum_type, bound_state)| LayoutGroup::Row {
 							widgets: vec![
 								CheckboxInput::new(bound_state)
-									.tooltip(enum_type.to_string())
 									.on_update(move |input: &CheckboxInput| {
 										DocumentMessage::SetSnapping {
 											snapping_enabled: None,
@@ -1248,14 +1257,32 @@ impl DocumentMessageHandler {
 							],
 						})
 						.chain(
-							[LayoutGroup::Row {
-								widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
-							}]
+							[
+								LayoutGroup::Row {
+									widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
+								},
+								LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(snapping_state.nodes.anchors)
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														anchors: Some(input.checked),
+														..Default::default()
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new("Anchor").widget_holder(),
+									],
+								},
+							]
 							.into_iter()
 							.chain(
 								[
-									(GeometrySnapTarget::HandlesColinear, snapping_state.nodes.point_handles_colinear),
-									(GeometrySnapTarget::HandlesFree, snapping_state.nodes.point_handles_free),
 									(GeometrySnapTarget::LineMidpoint, snapping_state.nodes.line_midpoints),
 									(GeometrySnapTarget::Path, snapping_state.nodes.paths),
 									(GeometrySnapTarget::Normal, snapping_state.nodes.normals),
@@ -1266,14 +1293,12 @@ impl DocumentMessageHandler {
 								.map(|(enum_type, bound_state)| LayoutGroup::Row {
 									widgets: vec![
 										CheckboxInput::new(bound_state)
-											.tooltip(enum_type.to_string())
 											.on_update(move |input: &CheckboxInput| {
 												DocumentMessage::SetSnapping {
 													snapping_enabled: None,
 													bounding_box_snapping: None,
 													geometry_snapping: Some(OptionPointSnapping {
-														point_handles_colinear: if enum_type == GeometrySnapTarget::HandlesColinear { Some(input.checked) } else { None },
-														point_handles_free: if enum_type == GeometrySnapTarget::HandlesFree { Some(input.checked) } else { None },
+														anchors: None,
 														line_midpoints: if enum_type == GeometrySnapTarget::LineMidpoint { Some(input.checked) } else { None },
 														paths: if enum_type == GeometrySnapTarget::Path { Some(input.checked) } else { None },
 														normals: if enum_type == GeometrySnapTarget::Normal { Some(input.checked) } else { None },
@@ -1299,8 +1324,8 @@ impl DocumentMessageHandler {
 				.tooltip("Grid")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisible(optional_input.checked).into())
 				.widget_holder(),
-			PopoverButton::new("Grid", "Grid customization settings")
-				.options_widget(overlay_options(&self.snapping_state.grid))
+			PopoverButton::new()
+				.popover_layout(overlay_options(&self.snapping_state.grid))
 				.popover_min_width(Some(320))
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -1323,7 +1348,16 @@ impl DocumentMessageHandler {
 				_ => Some(1),
 			})
 			.widget_holder(),
-			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
@@ -1340,25 +1374,34 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::ResetCanvasTiltAndZoomTo100Percent))
 				.on_update(|_| NavigationMessage::ResetCanvasTiltAndZoomTo100Percent.into())
 				.widget_holder(),
-			PopoverButton::new(
-				"Canvas Navigation",
-				"
-					Interactive controls in this\n\
-					menu are coming soon.\n\
-					\n\
-					Pan:\n\
-					• Middle Click Drag\n\
-					\n\
-					Tilt:\n\
-					• Alt + Middle Click Drag\n\
-					\n\
-					Zoom:\n\
-					• Shift + Middle Click Drag\n\
-					• Ctrl + Scroll Wheel Roll
-				"
-				.trim(),
-			)
-			.widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Canvas Navigation").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new(
+							"
+								Interactive controls in this\n\
+								menu are coming soon.\n\
+								\n\
+								Pan:\n\
+								• Middle Click Drag\n\
+								\n\
+								Tilt:\n\
+								• Alt + Middle Click Drag\n\
+								\n\
+								Zoom:\n\
+								• Shift + Middle Click Drag\n\
+								• Ctrl + Scroll Wheel Roll
+							"
+							.trim(),
+						)
+						.multiline(true)
+						.widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
 				.unit("%")

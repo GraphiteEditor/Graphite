@@ -327,10 +327,10 @@ impl SnapCandidatePoint {
 		Self::new(document_point, source, SnapTarget::None)
 	}
 	pub fn handle(document_point: DVec2) -> Self {
-		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::HandlesFree))
+		Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles))
 	}
 	pub fn handle_neighbors(document_point: DVec2, neighbors: impl Into<Vec<DVec2>>) -> Self {
-		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::HandlesFree));
+		let mut point = Self::new_source(document_point, SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles));
 		point.neighbors = neighbors.into();
 		point
 	}
@@ -401,19 +401,19 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 
 		let colinear = are_manipulator_handles_colinear(group, to_document, subpath, index);
 
-		if colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::HandlesColinear)) {
+		if colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::AnchorWithColinearHandles)) {
 			// Colinear handles
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::HandlesColinear),
-				SnapTarget::Geometry(GeometrySnapTarget::HandlesColinear),
+				SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles),
+				SnapTarget::Geometry(GeometrySnapTarget::AnchorWithColinearHandles),
 			));
-		} else if !colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::HandlesFree)) {
+		} else if !colinear && document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::AnchorWithFreeHandles)) {
 			// Free handles
 			points.push(SnapCandidatePoint::new(
 				to_document.transform_point2(group.anchor),
-				SnapSource::Geometry(GeometrySnapSource::HandlesFree),
-				SnapTarget::Geometry(GeometrySnapTarget::HandlesFree),
+				SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles),
+				SnapTarget::Geometry(GeometrySnapTarget::AnchorWithFreeHandles),
 			));
 		}
 	}
