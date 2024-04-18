@@ -204,8 +204,11 @@ impl SelectTool {
 		};
 
 		let align_mode = self.tool_data.align_mode;
-		PopoverButton::new("Align", "Change alignment properties")
-			.options_widget(vec![
+		PopoverButton::new()
+			.popover_layout(vec![
+				LayoutGroup::Row {
+					widgets: vec![TextLabel::new("Align").widget_holder()],
+				},
 				LayoutGroup::Row {
 					widgets: vec![RadioInput::new(radio_entries).selected_index(Some(radio_selected_index)).widget_holder()],
 				},
@@ -517,13 +520,6 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
-				// Get the layer the user is hovering over
-				let click = document.click(input.mouse.position, &document.network);
-				let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
-				if let Some(layer) = not_selected_click {
-					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-				}
-
 				// Update bounds
 				let transform = document
 					.selected_nodes
@@ -554,9 +550,25 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
-				// Update dragging box
+				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox { .. }) {
-					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
+					// Get the updated selection box bounds
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					// Draw outline visualizations on the layers to be selected
+					for layer in document.intersect_quad(quad, &document.network) {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
+
+					// Update the selection box
+					overlay_context.quad(quad);
+				} else {
+					// Get the layer the user is hovering over
+					let click = document.click(input.mouse.position, &document.network);
+					let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
+					if let Some(layer) = not_selected_click {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
 				}
 
 				self

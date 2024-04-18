@@ -12,7 +12,7 @@ use graphene_core::Color;
 
 use glam::DAffine2;
 
-use super::utility_types::misc::AlignMode;
+use super::utility_types::misc::{AlignMode, OptionBoundsSnapping, OptionPointSnapping};
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -129,8 +129,8 @@ pub enum DocumentMessage {
 	},
 	SetSnapping {
 		snapping_enabled: Option<bool>,
-		bounding_box_snapping: Option<bool>,
-		geometry_snapping: Option<bool>,
+		bounding_box_snapping: Option<OptionBoundsSnapping>,
+		geometry_snapping: Option<OptionPointSnapping>,
 	},
 	SetViewMode {
 		view_mode: ViewMode,

@@ -106,6 +106,9 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 	widgets.push(LayoutGroup::Row {
+		widgets: vec![TextLabel::new("Grid").bold(true).widget_holder()],
+	});
+	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Origin").table_align(true).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),

@@ -278,9 +278,9 @@ impl ShapeState {
 						let source = if handle.is_handle() {
 							SnapSource::Geometry(GeometrySnapSource::Handle)
 						} else if are_manipulator_handles_colinear(group, to_document, subpath, index) {
-							SnapSource::Geometry(GeometrySnapSource::HandlesColinear)
+							SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles)
 						} else {
-							SnapSource::Geometry(GeometrySnapSource::HandlesFree)
+							SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles)
 						};
 						let Some(position) = handle.get_position(group) else { continue };
 						let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);

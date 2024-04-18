@@ -75,6 +75,16 @@
 		.floating-menu {
 			left: 50%;
 			bottom: 0;
+
+			.floating-menu-content > :first-child:not(:has(:not(.text-label))),
+			.floating-menu-content > :first-child:not(:has(:not(.checkbox-input))) {
+				margin-top: -8px;
+			}
+
+			.floating-menu-content > :last-child:not(:has(:not(.text-label))),
+			.floating-menu-content > :last-child:not(:has(:not(.checkbox-input))) {
+				margin-bottom: -8px;
+			}
 		}
 	}
 </style>
