@@ -1,5 +1,5 @@
 use super::*;
-use crate::consts::{MAX_ABSOLUTE_DIFFERENCE, MIN_SEPARATION_VALUE};
+use crate::consts::MAX_ABSOLUTE_DIFFERENCE;
 use crate::utils::{compute_circular_subpath_details, line_intersection, SubpathTValue};
 use crate::TValue;
 
@@ -116,7 +116,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		self.iter().enumerate().for_each(|(i, other)| {
-			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0])));
+			intersections_vec.extend(other.self_intersections(error, minimum_separation).iter().map(|value| (i, value[0])));
 			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
 				intersections_vec.extend(
 					curve
@@ -140,32 +140,26 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn all_self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<(usize, f64)> {
 		let mut intersections_vec = Vec::new();
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
-		let minimum_separation = minimum_separation.unwrap_or(MIN_SEPARATION_VALUE);
+		let num_curves = self.len();
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		self.iter().enumerate().for_each(|(i, other)| {
-			intersections_vec.extend(other.self_intersections(error).iter().map(|value| (i, value[0], i, value[1])));
+			intersections_vec.extend(
+				other.self_intersections(error, minimum_separation).iter()
+					.flat_map(|value| [(i, value[0]), (i, value[1])])
+			);
 			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
 				intersections_vec.extend(
 					curve
-						.unfiltered_intersections(&other, error)
+						.all_intersections(&other, error, minimum_separation)
 						.iter()
-						.filter(|&value| value[0] > err && (1. - value[0]) > err && value[1] > err && (1. - value[1]) > err)
-						.map(|value| (j, value[0], i, value[1])),
+						.filter(|&value| (j != i + 1 || value[0] > err || (1. - value[1]) > err) && (j != num_curves-1 || i != 0 || value[1] > err || (1. - value[0]) > err))
+						.flat_map(|value| [(j, value[0]), (i, value[1])]),
 				);
 			});
 		});
 
-		intersections_vec.sort_by(|a, b| (a.1 + a.3).partial_cmp(&(b.1 + b.3)).unwrap());
-		let intersections_vec = intersections_vec.iter().fold(Vec::new(), |mut accumulator: Vec<(usize, f64, usize, f64)>, t| {
-			if !accumulator.is_empty() && (accumulator.last().unwrap().1 - t.1).abs() < minimum_separation && (accumulator.last().unwrap().3 - t.3).abs() < minimum_separation {
-				accumulator.pop();
-			}
-			accumulator.push(*t);
-			accumulator
-		});
-
-		let mut intersections_vec: Vec<(usize, f64)> = intersections_vec.into_iter().flat_map(|(a, b, c, d)| [(a, b), (c, d)]).collect();
 		intersections_vec.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
 		intersections_vec
 	}
 

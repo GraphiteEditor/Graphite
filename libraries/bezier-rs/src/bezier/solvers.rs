@@ -431,7 +431,7 @@ impl Bezier {
 
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
-		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().copied().collect()
+		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).to_vec()
 	}
 
 	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
@@ -504,7 +504,7 @@ impl Bezier {
 	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
-	pub fn self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
+	fn unfiltered_self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
 		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
 			return vec![];
 		}
@@ -532,6 +532,27 @@ impl Bezier {
 			.enumerate()
 			.flat_map(|(index, (subcurve, t_pair))| Bezier::intersections_between_vectors_of_curves(&[(subcurve, t_pair)], &combined_list2[index + 2..], error))
 			.collect()
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
+		let mut intersection_t_values = self.unfiltered_self_intersections(error);
+		intersection_t_values.sort_by(|a, b| (a[0] + a[1]).partial_cmp(&(b[0] + b[1])).unwrap());
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty()
+				&& (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+				&& (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			{
+				accumulator.pop();
+			}
+			accumulator.push(*t);
+			accumulator
+		})
 	}
 
 	/// Returns a list of parametric `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
@@ -1114,13 +1135,13 @@ mod tests {
 	#[test]
 	fn test_intersect_with_self() {
 		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 180., 140.);
-		let intersections = bezier.self_intersections(Some(0.5));
+		let intersections = bezier.self_intersections(Some(0.5), None);
 		assert!(compare_vec_of_points(
 			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[0]))).collect(),
 			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[1]))).collect(),
 			2.
 		));
-		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None).is_empty());
-		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None).is_empty());
+		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None, None).is_empty());
+		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None, None).is_empty());
 	}
 }

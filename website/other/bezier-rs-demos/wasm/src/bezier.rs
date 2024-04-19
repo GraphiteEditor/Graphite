@@ -498,11 +498,11 @@ impl WasmBezier {
 	}
 
 	/// The wrapped return type is `Vec<[f64; 2]>`.
-	pub fn intersect_self(&self, error: f64) -> String {
+	pub fn intersect_self(&self, error: f64, minimum_separation: f64) -> String {
 		let bezier_curve_svg = self.get_bezier_path();
 		let intersect_self_svg = self
 			.0
-			.self_intersections(Some(error))
+			.self_intersections(Some(error), Some(minimum_separation))
 			.iter()
 			.map(|intersection_t| {
 				let point = &self.0.evaluate(TValue::Parametric(intersection_t[0]));

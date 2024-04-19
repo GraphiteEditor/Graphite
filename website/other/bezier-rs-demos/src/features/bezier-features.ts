@@ -453,7 +453,7 @@ const bezierFeatures = {
 	},
 	"intersect-self": {
 		name: "Intersect (Self)",
-		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error),
+		callback: (bezier: WasmBezierInstance, options: Record<string, number>): string => bezier.intersect_self(options.error, options.minimum_separation),
 		demoOptions: {
 			Linear: {
 				disabled: true,
@@ -462,7 +462,7 @@ const bezierFeatures = {
 				disabled: true,
 			},
 			Cubic: {
-				inputOptions: [errorOptions],
+				inputOptions: [errorOptions, minimumSeparationOptions],
 				customPoints: [
 					[160, 180],
 					[170, 10],

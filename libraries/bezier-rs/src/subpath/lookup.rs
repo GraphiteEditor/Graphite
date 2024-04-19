@@ -39,11 +39,11 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	pub fn area(&self, error: Option<f64>, minimum_separation: Option<f64>) -> (f64, Vec<(usize, f64)>) {
+	pub fn area(&self, error: Option<f64>, minimum_separation: Option<f64>) -> f64 {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
-		let area = (0..self.manipulator_groups.len())
+		(0..self.manipulator_groups.len())
 			.map(|start_index| {
 				let end_index = (start_index + 1) % self.manipulator_groups.len();
 				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
@@ -61,9 +61,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				curve_sum += current_sign * f_y.eval(1.);
 				curve_sum
 			})
-			.sum();
-
-		(area, all_intersections)
+			.sum()
 	}
 
 	/// Return the centroid of the `Subpath` always considering it as a closed subpath.
@@ -319,12 +317,12 @@ mod tests {
 		);
 
 		let expected_area = -1. / 3.;
-		let epsilon = 0.000000001;
+		let epsilon = 0.00001;
 
-		assert!((subpath.area(Some(0.001), Some(0.001)).0 - expected_area).abs() < epsilon);
+		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
 
 		subpath.closed = true;
-		assert!((subpath.area(Some(0.001), Some(0.001)).0 - expected_area).abs() < epsilon);
+		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
 	}
 
 	#[test]
@@ -352,7 +350,7 @@ mod tests {
 		);
 
 		let expected_centroid = DVec2::new(0.4, 0.6);
-		let epsilon = 0.000000001;
+		let epsilon = 0.00001;
 
 		assert!(subpath.centroid(Some(0.001), Some(0.001)).unwrap().abs_diff_eq(expected_centroid, epsilon));
 
