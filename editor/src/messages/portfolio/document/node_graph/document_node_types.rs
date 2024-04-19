@@ -82,6 +82,7 @@ pub struct DocumentNodeDefinition {
 	pub name: &'static str,
 	pub category: &'static str,
 	pub is_layer: bool,
+	pub display_as_layer: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
@@ -96,6 +97,7 @@ impl Default for DocumentNodeDefinition {
 			name: Default::default(),
 			category: Default::default(),
 			is_layer: false,
+			display_as_layer: false,
 			implementation: Default::default(),
 			inputs: Default::default(),
 			outputs: Default::default(),
@@ -193,9 +195,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Layer",
+			name: "Merge",
 			category: "General",
 			is_layer: true,
+			display_as_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(2), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(2), 0)],
@@ -247,6 +250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Artboard",
 			category: "General",
 			is_layer: true,
+			display_as_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(2), 0)],
@@ -2987,6 +2991,7 @@ impl DocumentNodeDefinition {
 		DocumentNode {
 			name: self.name.to_string(),
 			is_layer: self.is_layer,
+			display_as_layer: self.display_as_layer,
 			inputs,
 			manual_composition: self.manual_composition.clone(),
 			has_primary_output: self.has_primary_output,

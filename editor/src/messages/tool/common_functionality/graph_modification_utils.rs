@@ -247,7 +247,7 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
 		self.primary_layer_flow()
 			.skip(1)// Skip self
-			.take_while(|(node, _)| !node.is_layer())
+			.take_while(|(node, _)| !node.is_layer)
 			.find(|(node, _)| node.name == node_name)
 			.map(|(node, _id)| &node.inputs)
 	}

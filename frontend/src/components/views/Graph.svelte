@@ -127,7 +127,7 @@
 			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index !== 0) || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
@@ -169,7 +169,7 @@
 			if (disconnecting?.linkIndex === index) return [];
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n) || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && link.linkEndInputIndex == 0n) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -370,7 +370,6 @@
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
-
 			// Output: Begin dragging out a new link
 			if (isOutput) {
 				// Disallow creating additional vertical output links from an already-connected layer
@@ -385,6 +384,7 @@
 			else {
 				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
+				console.log("inputNodeConnectionIndexSearch: " + inputNodeConnectionIndexSearch);
 				// const isLayerBottomConnector = frontendNode?.isLayer && inputNodeConnectionIndexSearch === 1;
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 				if (inputIndex === undefined || nodeId === undefined) return;
@@ -809,28 +809,6 @@
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
 				<div class="node-chain" />
-				<!-- Layer input port (from left) -->
-				<div class="input ports">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
-						class="port"
-						data-port="input"
-						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
-						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
-						bind:this={inputs[nodeIndex][0]}
-					>
-						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
-						{/if}
-						{#if node.primaryInput?.connected}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-						{:else}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
 						{@html $nodeGraph.thumbnails.get(node.id)}
@@ -864,6 +842,31 @@
 						viewBox="0 0 8 12"
 						class="port bottom"
 						data-port="input"
+						data-datatype={node.primaryInput?.dataType}
+						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+						bind:this={inputs[nodeIndex][0]}
+					>
+						{#if node.primaryInput}
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
+						{/if}
+						{#if node.primaryInput?.connected}
+							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
+							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connected)?.isLayer}
+								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
+							{/if}
+						{:else}
+							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
+						{/if}
+					</svg>
+				</div>
+				<!-- Layer input port (from left) -->
+				<div class="input ports">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="port"
+						data-port="input"
 						data-datatype={stackDataInput.dataType}
 						style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
 						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
@@ -871,12 +874,9 @@
 					>
 						<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
 						{#if stackDataInput.connected}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if $nodeGraph.nodes.find((n) => n.id === stackDataInput.connected)?.isLayer}
-								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
-							{/if}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 						{/if}
 					</svg>
 				</div>

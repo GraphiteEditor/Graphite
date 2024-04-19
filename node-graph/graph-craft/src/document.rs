@@ -163,6 +163,9 @@ pub struct DocumentNode {
 	/// User chosen state for displaying as left to right node or bottom top layer.
 	#[serde(default)]
 	pub is_layer: bool,
+	/// Toggle to display node as a vertical layer type node in the graph UI.
+	#[serde(default)]
+	pub display_as_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
@@ -217,6 +220,7 @@ impl Default for DocumentNode {
 			has_primary_output: true,
 			implementation: Default::default(),
 			is_layer: false,
+			display_as_layer: false,
 			visible: true,
 			locked: Default::default(),
 			metadata: Default::default(),
@@ -351,12 +355,6 @@ impl DocumentNode {
 			}
 		}
 		self
-	}
-
-	pub fn is_layer(&self) -> bool {
-		// TODO: Use something more robust than checking against a string.
-		// TODO: Or, more fundamentally separate the concept of a layer from a node.
-		self.name == "Layer"
 	}
 
 	pub fn is_artboard(&self) -> bool {
@@ -949,7 +947,7 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
-			if node.is_layer() {
+			if node.is_layer {
 				// Connect layer node to the graphic group below
 				node.inputs.drain(..1);
 			} else {

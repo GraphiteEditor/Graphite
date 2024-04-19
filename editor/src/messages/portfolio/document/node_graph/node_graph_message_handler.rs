@@ -156,6 +156,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								// that do not feed into the delete_nodes set or the output node will be deleted.
 								let mut stack = vec![upstream_id];
 								let mut can_delete = true;
+								//TODO: Add iteration limit to force break in case of infinite while loop
 								while let Some(current_node) = stack.pop() {
 									if let Some(downstream_nodes) = outward_links.get(&current_node) {
 										for downstream_node in downstream_nodes {
@@ -318,15 +319,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(DocumentMessage::StartTransaction);
 
+				let mut exposed_value_count = node
+					.inputs
+					.iter()
+					.filter(|input| if let NodeInput::Value { tagged_value, exposed } = input { *exposed } else { false })
+					.count();
+
 				let mut input = node.inputs[input_index].clone();
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = new_exposed;
+					if new_exposed {
+						exposed_value_count += 1
+					} else {
+						exposed_value_count -= 1
+					};
 				} else if let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) {
 					if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
 						input = NodeInput::Value {
 							tagged_value: tagged_value.clone(),
 							exposed: new_exposed,
 						};
+						if new_exposed {
+							exposed_value_count += 1
+						} else {
+							exposed_value_count -= 1
+						};
+					}
+				}
+				if node.has_primary_output {
+					let node_input_count = node.inputs.iter().filter(|input| if let NodeInput::Node { .. } = input { true } else { false }).count();
+					if node_input_count + exposed_value_count != 2 {
+						responses.add(NodeGraphMessage::ToggleLayer {
+							node_id: node_id,
+							display_as_layer: false,
+						});
 					}
 				}
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
@@ -592,6 +618,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
+			NodeGraphMessage::ToggleSelectedLayers => {
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
+					for node_id in selected_nodes.selected_nodes() {
+						if let Some(node) = network.nodes.get_mut(&node_id) {
+							if node.has_primary_output {
+								let mut exposed_value_count = node
+									.inputs
+									.iter()
+									.filter(|input| if let NodeInput::Value { tagged_value, exposed } = input { *exposed } else { false })
+									.count();
+								let node_input_count = node.inputs.iter().filter(|input| if let NodeInput::Node { .. } = input { true } else { false }).count();
+								if node_input_count + exposed_value_count == 2 {
+									responses.add(NodeGraphMessage::ToggleLayer {
+										node_id: *node_id,
+										display_as_layer: !node.display_as_layer,
+									});
+								}
+							}
+
+							if network.connected_to_output(*node_id) {
+								responses.add(NodeGraphMessage::RunDocumentGraph);
+							}
+						}
+					}
+				}
+			}
+			NodeGraphMessage::ToggleLayer { node_id, display_as_layer } => {
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
+					if let Some(node) = network.nodes.get_mut(&node_id) {
+						node.display_as_layer = display_as_layer;
+					}
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+			}
 			NodeGraphMessage::SetName { node_id, name } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetNameImpl { node_id, name });
@@ -654,7 +714,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
 		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
+			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, ToggleSelectedLayers, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
 		} else if self.has_selection {
 			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
 		} else {
@@ -738,7 +798,7 @@ impl NodeGraphMessageHandler {
 		let (mut layers, mut nodes) = (Vec::new(), Vec::new());
 		for node_id in selected_nodes.selected_nodes() {
 			if let Some(layer_or_node) = network.nodes.get(node_id) {
-				if layer_or_node.is_layer() {
+				if layer_or_node.is_layer {
 					layers.push(*node_id);
 				} else {
 					nodes.push(*node_id);
@@ -766,7 +826,7 @@ impl NodeGraphMessageHandler {
 				network
 					.upstream_flow_back_from_nodes(vec![layers[0]], true)
 					.enumerate()
-					.take_while(|(i, (node, _))| if *i == 0 { true } else { !node.is_layer() })
+					.take_while(|(i, (node, _))| if *i == 0 { true } else { !node.is_layer })
 					.map(|(_, (node, node_id))| node_properties::generate_node_properties(node, node_id, context))
 					.collect()
 			}
@@ -851,11 +911,9 @@ impl NodeGraphMessageHandler {
 
 			// Errors
 			let errors = self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone());
-
 			nodes.push(FrontendNode {
 				id: node_id,
-				//is_layer: node.is_layer,
-				is_layer: false,
+				is_layer: node.display_as_layer,
 				alias,
 				name: node.name.clone(),
 				primary_input,

@@ -101,6 +101,11 @@ pub enum NodeGraphMessage {
 	ToggleLocked {
 		node_id: NodeId,
 	},
+	ToggleSelectedLayers,
+	ToggleLayer {
+		node_id: NodeId,
+		display_as_layer: bool,
+	},
 	SetLocked {
 		node_id: NodeId,
 		locked: bool,

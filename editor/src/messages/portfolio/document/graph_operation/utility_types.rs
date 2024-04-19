@@ -73,7 +73,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut document = Self::new(document_network, document_metadata, node_graph, responses);
 
 		let mut id = id;
-		while !document.document_network.nodes.get(&id)?.is_layer() {
+		while !document.document_network.nodes.get(&id)?.is_layer {
 			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
 
@@ -166,7 +166,7 @@ impl<'a> ModifyInputsContext<'a> {
 				//If an NLN (non layer node) is in the stack, create a Layer node for it to feed into
 				if !next_node_in_stack.is_layer {
 					let nln_layer_id = NodeId(generate_uuid());
-					let nln_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+					let nln_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 					let nln_layer_input = NodeInput::node(next_node_in_stack_id, 0);
 					let nln_layer_input_index = 1; //Input NLN node to the "Over" for the new layer
 					let post_node_input = NodeInput::node(nln_layer_id, 0);
@@ -225,10 +225,10 @@ impl<'a> ModifyInputsContext<'a> {
 			// Pre_node will never be an artboard, since all artboards must be connected to root, and output node will be the artboard if it exists.
 			let pre_node = self.document_network.nodes.get(&pre_node_id).expect("Pre node id should always refer to a node");
 
-			if !pre_node.is_layer() {
+			if !pre_node.is_layer {
 				// If pre_node is a non-layer node (NLN), create a layer for this node, and set pre_node to that layer.
 				let nln_layer_id = NodeId(generate_uuid());
-				let nln_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+				let nln_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 				let nln_layer_input = NodeInput::node(pre_node_id, 0);
 				let nln_layer_input_index = 1;
 				let post_node_input = NodeInput::node(nln_layer_id, 0);
@@ -246,7 +246,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 				pre_node_id = nln_layer_id;
 			};
-			let new_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_between(
 				new_id,
 				new_layer_node,
@@ -258,7 +258,7 @@ impl<'a> ModifyInputsContext<'a> {
 				IVec2::new(0, 3),
 			);
 		} else {
-			let new_layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
+			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(-8, 3));
 		}
 
@@ -422,7 +422,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let input_index = if output_node.is_layer() { 1 } else { 0 };
+		let input_index = if output_node.is_layer { 1 } else { 0 };
 		let metadata = output_node.metadata.clone();
 		let new_input = output_node.inputs.get(input_index).cloned().filter(|input| input.as_node().is_some());
 		let node_id = NodeId(generate_uuid());

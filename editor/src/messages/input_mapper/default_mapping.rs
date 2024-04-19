@@ -59,6 +59,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
 		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
 		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedLocked),
+		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedLayers),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
