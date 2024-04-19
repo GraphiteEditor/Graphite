@@ -143,16 +143,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let num_curves = self.len();
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
 		self.iter().enumerate().for_each(|(i, other)| {
-			intersections_vec.extend(
-				other.self_intersections(error, minimum_separation).iter()
-					.flat_map(|value| [(i, value[0]), (i, value[1])])
-			);
+			intersections_vec.extend(other.self_intersections(error, minimum_separation).iter().flat_map(|value| [(i, value[0]), (i, value[1])]));
 			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
 				intersections_vec.extend(
 					curve
 						.all_intersections(&other, error, minimum_separation)
 						.iter()
-						.filter(|&value| (j != i + 1 || value[0] > err || (1. - value[1]) > err) && (j != num_curves-1 || i != 0 || value[1] > err || (1. - value[0]) > err))
+						.filter(|&value| (j != i + 1 || value[0] > err || (1. - value[1]) > err) && (j != num_curves - 1 || i != 0 || value[1] > err || (1. - value[0]) > err))
 						.flat_map(|value| [(j, value[0]), (i, value[1])]),
 				);
 			});

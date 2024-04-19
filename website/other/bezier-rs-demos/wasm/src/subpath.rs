@@ -93,8 +93,7 @@ impl WasmSubpath {
 	}
 
 	pub fn area(&self, error: f64, minimum_separation: f64) -> String {
-		let (area, intersections) = self.0.area(Some(error), Some(minimum_separation));
-		let area_text = draw_text(format!("Len: {} Data: {:?}", intersections.len(), intersections), 5., 193., BLACK);
+		let area_text = draw_text(format!("Area: {}", self.0.area(Some(error), Some(minimum_separation))), 5., 193., BLACK);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), area_text))
 	}
 
