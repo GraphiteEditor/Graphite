@@ -142,9 +142,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let err = error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE);
 		let num_curves = self.len();
 		// TODO: optimization opportunity - this for-loop currently compares all intersections with all curve-segments in the subpath collection
-		self.iter().enumerate().for_each(|(i, other)| {
+		self.iter_closed().enumerate().for_each(|(i, other)| {
 			intersections_vec.extend(other.self_intersections(error, minimum_separation).iter().flat_map(|value| [(i, value[0]), (i, value[1])]));
-			self.iter().enumerate().skip(i + 1).for_each(|(j, curve)| {
+			self.iter_closed().enumerate().skip(i + 1).for_each(|(j, curve)| {
 				intersections_vec.extend(
 					curve
 						.all_intersections(&other, error, minimum_separation)

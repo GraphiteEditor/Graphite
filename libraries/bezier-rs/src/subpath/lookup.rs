@@ -43,10 +43,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
-		(0..self.manipulator_groups.len())
-			.map(|start_index| {
-				let end_index = (start_index + 1) % self.manipulator_groups.len();
-				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
+		self.iter_closed()
+			.enumerate()
+			.map(|(index, bezier)| {
 				let (f_x, f_y) = bezier.parametric_polynomial();
 				let (f_x, mut f_y) = (f_x.as_size::<7>().unwrap(), f_y.as_size::<7>().unwrap());
 				f_y.derivative_mut();
@@ -54,7 +53,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				f_y.antiderivative_mut();
 
 				let mut curve_sum = -current_sign * f_y.eval(0.);
-				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == start_index) {
+				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == index) {
 					curve_sum += 2. * current_sign * f_y.eval(*t);
 					current_sign *= -1.;
 				}
@@ -77,10 +76,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
-		let (x_sum, y_sum, area) = (0..self.manipulator_groups.len())
-			.map(|start_index| {
-				let end_index = (start_index + 1) % self.manipulator_groups.len();
-				let bezier = self.manipulator_groups[start_index].to_bezier(&self.manipulator_groups[end_index]);
+		let (x_sum, y_sum, area) = self
+			.iter_closed()
+			.enumerate()
+			.map(|(index, bezier)| {
 				let (f_x, f_y) = bezier.parametric_polynomial();
 				let (f_x, f_y) = (f_x.as_size::<10>().unwrap(), f_y.as_size::<10>().unwrap());
 				let f_y_prime = f_y.derivative();
@@ -97,7 +96,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				let mut curve_sum_x = -current_sign * x_part.eval(0.);
 				let mut curve_sum_y = -current_sign * y_part.eval(0.);
 				let mut curve_sum_area = -current_sign * area_part.eval(0.);
-				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == start_index) {
+				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == index) {
 					curve_sum_x += 2. * current_sign * x_part.eval(*t);
 					curve_sum_y += 2. * current_sign * y_part.eval(*t);
 					curve_sum_area += 2. * current_sign * area_part.eval(*t);
