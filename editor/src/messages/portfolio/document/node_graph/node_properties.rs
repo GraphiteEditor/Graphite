@@ -2289,17 +2289,22 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 
 pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", None, add_blank_assist);
-	let count = number_widget(document_node, node_id, 2, "Count", NumberInput::default().min(1.), true);
+	let angle = number_widget(document_node, node_id, 2, "Angle", NumberInput::default().unit("°"), true);
+	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
 
-	vec![direction, LayoutGroup::Row { widgets: count }]
+	vec![direction, LayoutGroup::Row { widgets: angle }, LayoutGroup::Row { widgets: instances }]
 }
 
 pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let angle_offset = number_widget(document_node, node_id, 1, "Angle Offset", NumberInput::default().unit("°"), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true); // TODO: What units?
-	let count = number_widget(document_node, node_id, 3, "Count", NumberInput::default().min(1.), true);
+	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
 
-	vec![LayoutGroup::Row { widgets: angle_offset }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: count }]
+	vec![
+		LayoutGroup::Row { widgets: angle_offset },
+		LayoutGroup::Row { widgets: radius },
+		LayoutGroup::Row { widgets: instances },
+	]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

@@ -58,8 +58,8 @@
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-	$: nodeListX = ((nodeListLocation?.x || 0) * GRID_SIZE + transform.x) * transform.scale;
-	$: nodeListY = ((nodeListLocation?.y || 0) * GRID_SIZE + transform.y) * transform.scale;
+	$: nodeListX = ((nodeListLocation?.x || 0) + transform.x) * transform.scale;
+	$: nodeListY = ((nodeListLocation?.y || 0) + transform.y) * transform.scale;
 
 	let appearAboveMouse = false;
 	let appearRightOfMouse = false;
@@ -69,8 +69,8 @@
 		if (!bounds) return;
 		const { width, height } = bounds;
 
-		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH / 2;
-		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT / 2;
+		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH;
+		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT;
 	})();
 
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
@@ -320,8 +320,8 @@
 
 	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
 		nodeListLocation = {
-			x: Math.round(((e.clientX - graphBounds.x) / transform.scale - transform.x) / GRID_SIZE),
-			y: Math.round(((e.clientY - graphBounds.y) / transform.scale - transform.y) / GRID_SIZE),
+			x: (e.clientX - graphBounds.x) / transform.scale - transform.x,
+			y: (e.clientY - graphBounds.y) / transform.scale - transform.y,
 		};
 
 		// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
@@ -639,10 +639,7 @@
 			if (!nodeListLocation) return;
 			let nodeListLocation2: { x: number; y: number } = nodeListLocation;
 
-			linkInProgressToConnector = new DOMRect(
-				(nodeListLocation2.x * GRID_SIZE + transform.x) * transform.scale + graphBounds.x,
-				(nodeListLocation2.y * GRID_SIZE + transform.y) * transform.scale + graphBounds.y,
-			);
+			linkInProgressToConnector = new DOMRect((nodeListLocation2.x + transform.x) * transform.scale + graphBounds.x, (nodeListLocation2.y + transform.y) * transform.scale + graphBounds.y);
 
 			return;
 		} else if (draggingNodes) {
@@ -671,7 +668,9 @@
 		if (!nodeListLocation) return;
 
 		const inputNodeConnectionIndex = 0;
-		const inputConnectedNodeID = editor.instance.createNode(nodeType, nodeListLocation.x, nodeListLocation.y - 1);
+		const x = Math.round(nodeListLocation.x / GRID_SIZE);
+		const y = Math.round(nodeListLocation.y / GRID_SIZE) - 1;
+		const inputConnectedNodeID = editor.instance.createNode(nodeType, x, y);
 		nodeListLocation = undefined;
 
 		if (!linkInProgressFromConnector) return;
@@ -751,18 +750,18 @@
 			class="node-list"
 			data-node-list
 			styles={{
+				transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
 				left: `${nodeListX}px`,
 				top: `${nodeListY}px`,
-				transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
 				width: `${ADD_NODE_MENU_WIDTH}px`,
+				height: `${ADD_NODE_MENU_HEIGHT}px`,
 			}}
 		>
 			<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-			<div class="list-nodes" style={`height: ${ADD_NODE_MENU_HEIGHT}px;`} on:wheel|passive|stopPropagation>
+			<div class="list-results" on:wheel|passive|stopPropagation>
 				{#each nodeCategories as nodeCategory}
-					<details style="display: flex; flex-direction: column;" open={nodeCategory[1].open}>
+					<details open={nodeCategory[1].open}>
 						<summary>
-							<IconLabel icon="DropdownArrow" />
 							<TextLabel>{nodeCategory[0]}</TextLabel>
 						</summary>
 						{#each nodeCategory[1].nodes as nodeType}
@@ -770,7 +769,7 @@
 						{/each}
 					</details>
 				{:else}
-					<div style="margin-right: 4px;"><TextLabel>No search results</TextLabel></div>
+					<TextLabel>No search results</TextLabel>
 				{/each}
 			</div>
 		</LayoutCol>
@@ -1081,46 +1080,58 @@
 		.node-list {
 			width: max-content;
 			position: absolute;
+			box-sizing: border-box;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
 
-			.text-button {
-				width: 100%;
+			.text-input {
+				flex: 0 0 auto;
+				margin-bottom: 4px;
 			}
 
-			.list-nodes {
-				overflow-y: scroll;
-			}
+			.list-results {
+				overflow-y: auto;
+				flex: 1 1 auto;
 
-			details {
-				margin-right: 4px;
-				cursor: pointer;
-			}
+				details {
+					cursor: pointer;
+					display: flex;
+					flex-direction: column;
 
-			summary {
-				list-style-type: none;
-				display: flex;
-				align-items: center;
-				gap: 2px;
+					&[open] summary .text-label::before {
+						transform: rotate(90deg);
+					}
 
-				span {
-					white-space: break-spaces;
+					summary {
+						display: flex;
+						align-items: center;
+						gap: 2px;
+
+						.text-label {
+							padding-left: 16px;
+							position: relative;
+							width: 100%;
+
+							&::before {
+								content: "";
+								position: absolute;
+								margin: auto;
+								top: 0;
+								bottom: 0;
+								left: 0;
+								width: 8px;
+								height: 8px;
+								background: var(--icon-expand-collapse-arrow);
+							}
+						}
+					}
+
+					.text-button {
+						width: 100%;
+						margin: 4px 0;
+					}
 				}
-			}
-
-			details summary svg {
-				transform: rotate(-90deg);
-			}
-
-			details[open] summary svg {
-				transform: rotate(0deg);
-			}
-
-			.text-button + .text-button {
-				display: block;
-				margin-left: 0;
-				margin-top: 4px;
 			}
 		}
 
