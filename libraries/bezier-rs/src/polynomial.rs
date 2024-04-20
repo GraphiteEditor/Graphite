@@ -1,5 +1,5 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::fmt::{self, Display, Formatter};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A struct that represents a polynomial with a maximum degree of `N-1`.
 ///
@@ -10,7 +10,6 @@ pub struct Polynomial<const N: usize> {
 }
 
 impl<const N: usize> Polynomial<N> {
-
 	/// Create a new polynomial from the coefficients given in the array.
 	///
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
@@ -111,9 +110,13 @@ impl<const N: usize> Display for Polynomial<N> {
 			}
 
 			coeff.fmt(f)?;
-			if index == 0 { continue }
+			if index == 0 {
+				continue;
+			}
 			f.write_str("x")?;
-			if index == 1 { continue }
+			if index == 1 {
+				continue;
+			}
 			f.write_str("^")?;
 			index.fmt(f)?;
 		}

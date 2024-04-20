@@ -42,7 +42,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
-		let area: f64 = self.iter_closed()
+		let area: f64 = self
+			.iter_closed()
 			.enumerate()
 			.map(|(index, bezier)| {
 				let (f_x, f_y) = bezier.parametric_polynomial();
@@ -316,7 +317,7 @@ mod tests {
 			false,
 		);
 
-		let expected_area = -1. / 3.;
+		let expected_area = 1. / 3.;
 		let epsilon = 0.00001;
 
 		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
