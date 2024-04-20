@@ -1,4 +1,5 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::fmt::{self, Display, Formatter};
 
 /// A struct that represents a polynomial with a maximum degree of `N-1`.
 ///
@@ -96,6 +97,28 @@ impl<const N: usize> Polynomial<N> {
 impl<const N: usize> Default for Polynomial<N> {
 	fn default() -> Self {
 		Self::zero()
+	}
+}
+
+impl<const N: usize> Display for Polynomial<N> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let mut first = true;
+		for (index, coeff) in self.coeffs.iter().enumerate().rev().filter(|(_, &coeff)| coeff != 0.) {
+			if first {
+				first = false;
+			} else {
+				f.write_str(" + ")?
+			}
+
+			coeff.fmt(f)?;
+			if index == 0 { continue }
+			f.write_str("x")?;
+			if index == 1 { continue }
+			f.write_str("^")?;
+			index.fmt(f)?;
+		}
+
+		Ok(())
 	}
 }
 
@@ -227,5 +250,12 @@ mod test {
 		assert_eq!(p_deriv.antiderivative().unwrap(), p);
 
 		assert_eq!(p.antiderivative(), None);
+	}
+
+	#[test]
+	fn display() {
+		let p = Polynomial::new([1., 2., 0., 3.]);
+
+		assert_eq!(format!("{:.2}", p), "3.00x^3 + 2.00x + 1.00");
 	}
 }
