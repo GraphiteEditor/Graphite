@@ -2628,10 +2628,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Repeat",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_core::vector::RepeatNode<_, _>"),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::RepeatNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Direction", TaggedValue::DVec2((100., 0.).into()), false),
+				DocumentInputType::value("Direction", TaggedValue::DVec2((0., 0.).into()), false),
+				DocumentInputType::value("Angle", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Count", TaggedValue::U32(10), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
