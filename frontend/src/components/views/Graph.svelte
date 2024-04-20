@@ -11,6 +11,7 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -48,6 +49,7 @@
 	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
 	let nodeListLocation: { x: number; y: number } | undefined = undefined;
+	let contextMenuNodeId: bigint | undefined = undefined;
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
@@ -311,6 +313,7 @@
 	function keydown(e: KeyboardEvent) {
 		if (e.key.toLowerCase() === "escape") {
 			nodeListLocation = undefined;
+			contextMenuNodeId = undefined;
 			document.removeEventListener("keydown", keydown);
 			linkInProgressFromConnector = undefined;
 			// linkInProgressFromLayerTop = undefined;
@@ -341,22 +344,34 @@
 		const nodeIdString = node?.getAttribute("data-node") || undefined;
 		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
 		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
+		const contextMenu = (e.target as HTMLElement).closest("[context-menu]") as HTMLElement | undefined;
+		// Create the context menu popup on right click on a node, then exit
+		if (rmb && node) {
+			const graphBounds = graph?.getBoundingClientRect();
+			if (!graphBounds) return;
+			nodeListLocation = undefined;
+			contextMenuNodeId = nodeId;
+			document.addEventListener("keydown", keydown);
+			return;
+		}
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
+			contextMenuNodeId = undefined;
 			loadNodeList(e, graphBounds);
 			return;
 		}
 
-		// If the user is clicking on the add nodes list, exit here
-		if (lmb && nodeList) return;
+		// If the user is clicking on the add nodes list or context menu, exit here
+		if (lmb && (nodeList || contextMenu)) return;
 
 		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 		if (lmb) {
 			nodeListLocation = undefined;
 			linkInProgressFromConnector = undefined;
+			contextMenuNodeId = undefined;
 			// linkInProgressFromLayerTop = undefined;
 			// linkInProgressFromLayerBottom = undefined;
 		}
@@ -384,7 +399,6 @@
 			else {
 				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
-				console.log("inputNodeConnectionIndexSearch: " + inputNodeConnectionIndexSearch);
 				// const isLayerBottomConnector = frontendNode?.isLayer && inputNodeConnectionIndexSearch === 1;
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 				if (inputIndex === undefined || nodeId === undefined) return;
@@ -543,6 +557,14 @@
 
 	function toggleLayerVisibility(id: bigint) {
 		editor.instance.toggleLayerVisibility(id);
+	}
+
+	function toggleLayerDisplay(node: FrontendNode, displayAsLayer: boolean) {
+		let primaryInputCount = node.primaryInput ? 1 : 0;
+		let exposedInputCount = node.exposedInputs.length;
+		if (primaryInputCount + exposedInputCount == 2) {
+			editor.instance.toggleLayerDisplay(node.id, displayAsLayer);
+		}
 	}
 
 	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
@@ -902,6 +924,38 @@
 						</clipPath>
 					</defs>
 				</svg>
+				{#if contextMenuNodeId === node.id}
+					<LayoutCol
+						class="context-menu"
+						context-menu
+						styles={{
+							left: `0px`,
+							top: `50px`,
+							width: `200px`,
+						}}
+					>
+						<div style="display:flex; flex-direction: row; align-items: center;">
+							<TextLabel style="margin-right: 4px;">Display:</TextLabel>
+							<RadioInput
+								selectedIndex={node.isLayer ? 1 : 0}
+								entries={[
+									{
+										value: "node",
+										label: "Node",
+										action: () => {
+											toggleLayerDisplay(node, false);
+										},
+									},
+									{
+										value: "layer",
+										label: "Layer",
+										// Layer node cannot be toggled to a layer node
+									},
+								]}
+							/>
+						</div>
+					</LayoutCol>
+				{/if}
 			</div>
 		{/each}
 		<!-- Nodes -->
@@ -1035,6 +1089,38 @@
 						</clipPath>
 					</defs>
 				</svg>
+				{#if contextMenuNodeId === node.id}
+					<LayoutCol
+						class="context-menu"
+						context-menu
+						styles={{
+							left: `0px`,
+							top: `50px`,
+							width: `200px`,
+						}}
+					>
+						<div style="display:flex; flex-direction: row; align-items: center;">
+							<TextLabel style="margin-right: 4px;">Display:</TextLabel>
+							<RadioInput
+								selectedIndex={node.isLayer ? 1 : 0}
+								entries={[
+									{
+										value: "node",
+										label: "Node",
+										// Node cannot be toggled to node
+									},
+									{
+										value: "layer",
+										label: "Layer",
+										action: () => {
+											toggleLayerDisplay(node, true);
+										},
+									},
+								]}
+							/>
+						</div>
+					</LayoutCol>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -1134,7 +1220,14 @@
 				}
 			}
 		}
-
+		.context-menu {
+			width: max-content;
+			position: absolute;
+			padding: 5px;
+			z-index: 3;
+			background-color: var(--color-3-darkgray);
+			border: 1px solid var(--color-5-dullgray);
+		}
 		.wires {
 			pointer-events: none;
 			position: absolute;

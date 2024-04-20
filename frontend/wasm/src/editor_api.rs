@@ -777,7 +777,13 @@ impl JsEditorHandle {
 		let message = DocumentMessage::ToggleLayerExpansion { id };
 		self.dispatch(message);
 	}
-
+	/// Toggle display type for a layer
+	#[wasm_bindgen(js_name = toggleLayerDisplay)]
+	pub fn toggle_layer_display(&self, id: u64, display_as_layer: bool) {
+		let node_id = NodeId(id);
+		let message = NodeGraphMessage::ToggleLayer { node_id, display_as_layer };
+		self.dispatch(message);
+	}
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
 	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
