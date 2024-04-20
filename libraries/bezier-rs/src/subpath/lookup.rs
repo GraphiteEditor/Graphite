@@ -30,8 +30,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.length(tolerance)).sum()
 	}
 
-	/// Return the area enclosed by the `Subpath` always considering it as a closed subpath.
-	/// It will give a positive value if the path is anti-clockwise and negetive value if the path is clockwise.
+	/// Return the area enclosed by the `Subpath` always considering it as a closed subpath. It will always give a positive value.
 	///
 	/// Because the calculation of area for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
@@ -43,7 +42,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
-		self.iter_closed()
+		let area: f64 = self.iter_closed()
 			.enumerate()
 			.map(|(index, bezier)| {
 				let (f_x, f_y) = bezier.parametric_polynomial();
@@ -60,7 +59,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				curve_sum += current_sign * f_y.eval(1.);
 				curve_sum
 			})
-			.sum()
+			.sum();
+
+		area.abs()
 	}
 
 	/// Return the centroid of the `Subpath` always considering it as a closed subpath.
