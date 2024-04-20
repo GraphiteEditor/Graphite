@@ -372,6 +372,14 @@ impl Bezier {
 		})
 	}
 
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of pairs of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided one
+	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum separation value. If the difference
+	/// between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// The first value in pair is with respect to the current bezier and the second value in pair is with respect to the provided parameter.
+	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
 	pub fn all_intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections

@@ -130,7 +130,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		intersections_vec
 	}
 
-	/// Returns a list of `t` values that correspond to all the self intersection points of the subpath. The index and `t` value of both will be returned that corresponds to a point.
+	/// Returns a list of `t` values that correspond to all the self intersection points of the subpath always considering it as a closed subpath. The index and `t` value of both will be returned that corresponds to a point.
 	/// The points will be sorted based on their index and `t` repsectively.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
