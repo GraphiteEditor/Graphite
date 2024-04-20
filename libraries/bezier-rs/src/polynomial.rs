@@ -1,31 +1,49 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+/// A struct that represents a polynomial with a maximum degree of `N-1`.
+///
+/// It provides basic mathematical operations for polynomals like addition, multiplication, differentiation, integration, etc.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Polynomial<const N: usize> {
 	coeffs: [f64; N],
 }
 
 impl<const N: usize> Polynomial<N> {
+
+	/// Create a new polynomial from the coefficients given in the array.
+	///
+	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
 	pub fn new(value: [f64; N]) -> Polynomial<N> {
 		Polynomial { coeffs: value }
 	}
 
+	/// Create a polynomial where all its coefficients are zero.
 	pub fn zero() -> Polynomial<N> {
 		Polynomial { coeffs: [0.; N] }
 	}
 
+	/// Return an immutable reference to the coefficients.
+	///
+	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
 	pub fn coeffs(&self) -> &[f64; N] {
 		&self.coeffs
 	}
 
+	/// Return a mutable reference to the coefficients.
+	///
+	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
 	pub fn coeffs_mut(&mut self) -> &mut [f64; N] {
 		&mut self.coeffs
 	}
 
+	/// Evaluate the polynomial at `value`.
 	pub fn eval(&self, value: f64) -> f64 {
 		self.coeffs.iter().rev().copied().reduce(|acc, x| acc * value + x).unwrap()
 	}
 
+	/// Return the same polynomial but with a different maximum degree of `M-1`.\
+	///
+	/// Returns `None` if the polynomial cannot fit in the specified size.
 	pub fn as_size<const M: usize>(&self) -> Option<Polynomial<M>> {
 		let mut coeffs = [0.; M];
 
@@ -40,11 +58,15 @@ impl<const N: usize> Polynomial<N> {
 		Some(Polynomial { coeffs })
 	}
 
+	/// Computes the derivative in place.
 	pub fn derivative_mut(&mut self) {
 		self.coeffs.iter_mut().enumerate().for_each(|(index, x)| *x *= index as f64);
 		self.coeffs.rotate_left(1);
 	}
 
+	/// Computes the antiderivative at $C = 0$ in place.
+	///
+	/// Returns `None` if the polynomial is not big enough to accomodate the extra degree.
 	pub fn antiderivative_mut(&mut self) -> Option<()> {
 		if self.coeffs[N - 1] != 0. {
 			return None;
@@ -54,12 +76,16 @@ impl<const N: usize> Polynomial<N> {
 		Some(())
 	}
 
+	/// Computes the derivative.
 	pub fn derivative(&self) -> Polynomial<N> {
 		let mut ans = *self;
 		ans.derivative_mut();
 		ans
 	}
 
+	/// Computes the antiderivative at $C = 0$.
+	///
+	/// Returns `None` if the polynomial is not big enough to accomodate the extra degree.
 	pub fn antiderivative(&self) -> Option<Polynomial<N>> {
 		let mut ans = *self;
 		ans.antiderivative_mut()?;
