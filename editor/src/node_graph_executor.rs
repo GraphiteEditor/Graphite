@@ -98,7 +98,7 @@ pub(crate) struct ExecutionResponse {
 	transform: DAffine2,
 }
 
-enum NodeGraphUpdate {
+pub(crate) enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
@@ -151,6 +151,7 @@ impl NodeRuntime {
 		requests.reverse();
 		requests.dedup_by(|a, b| matches!(a, NodeRuntimeMessage::ExecutionRequest(_)) && matches!(b, NodeRuntimeMessage::ExecutionRequest(_)));
 		requests.reverse();
+		println!("Got request {:#?}", requests.len());
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
@@ -158,6 +159,7 @@ impl NodeRuntime {
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
 					execution_id, graph, render_config, ..
 				}) => {
+					println!("exeCUTE");
 					let transform = render_config.viewport.transform;
 
 					let result = self.execute_network(graph, render_config).await;
@@ -224,16 +226,19 @@ impl NodeRuntime {
 			};
 
 			assert_ne!(proto_network.nodes.len(), 0, "No protonodes exist?");
+			println!("Update exec");
 			if let Err(e) = self.executor.update(proto_network).await {
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);
 			}
+			println!("Resolve type");
 			self.resolved_types = self.executor.document_node_types();
 		}
 
 		use graph_craft::graphene_compiler::Executor;
 
+		println!("Getting response");
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
@@ -563,11 +568,14 @@ impl NodeGraphExecutor {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);
 
-					let Ok(node_graph_output) = result else {
-						// Clear the click targets while the graph is in an un-renderable state
-						document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
+					let node_graph_output = match result {
+						Ok(output) => output,
+						Err(e) => {
+							// Clear the click targets while the graph is in an un-renderable state
+							document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
 
-						return Err("Node graph evaluation failed".to_string());
+							return Err(format!("Node graph evaluation failed {e}"));
+						}
 					};
 
 					document.metadata.update_transforms(new_upstream_transforms);

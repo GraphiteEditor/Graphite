@@ -302,10 +302,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
-			let center = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
-
 			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
-				transform_utils::update_transform(inputs, center.inverse() * transform * usvg_transform(node.abs_transform()) * center);
+				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
 			});
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);

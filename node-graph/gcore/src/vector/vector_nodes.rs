@@ -361,7 +361,7 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 	let mut result = VectorData::empty();
-	for (_, mut subpath) in vector_data.region_bezier_paths() {
+	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}

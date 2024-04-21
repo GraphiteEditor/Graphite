@@ -239,7 +239,7 @@ pub struct DrawImageFrameNode<Surface> {
 }
 
 #[node_macro::node_fn(DrawImageFrameNode)]
-async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> SurfaceHandleFrame<HtmlCanvasElement> {
+async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
@@ -368,7 +368,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, Footprint, Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
@@ -397,7 +397,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, (), Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]

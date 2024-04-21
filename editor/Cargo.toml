@@ -62,3 +62,4 @@ web-sys = { workspace = true, features = [
 [dev-dependencies]
 env_logger = "0.10"
 futures = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -2437,6 +2437,7 @@ dependencies = [
  "serde_json",
  "specta",
  "thiserror",
+ "tokio",
  "usvg",
  "wasm-bindgen",
  "wasm-bindgen-futures",

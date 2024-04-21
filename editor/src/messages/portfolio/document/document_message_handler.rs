@@ -48,7 +48,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
-	node_graph_handler: NodeGraphMessageHandler,
+	pub(crate) node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]

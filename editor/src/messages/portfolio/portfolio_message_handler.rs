@@ -23,9 +23,9 @@ pub struct PortfolioMessageData<'a> {
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	documents: HashMap<DocumentId, DocumentMessageHandler>,
+	pub(crate) documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
-	active_document_id: Option<DocumentId>,
+	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
@@ -641,12 +641,15 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+		println!("Poll eval");
 		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
+			println!("No active doc");
 			return;
 		};
 
 		self.executor.poll_node_graph_evaluation(active_document, responses).unwrap_or_else(|e| {
 			log::error!("Error while evaluating node graph: {e}");
+			println!("Error whilst eval");
 
 			let error = r#"
 				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
