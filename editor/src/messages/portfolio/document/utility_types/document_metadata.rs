@@ -429,27 +429,6 @@ impl LayerNodeIdentifier {
 		}
 	}
 
-	/// TODO: Delete this. Only used for comparing to descendants() functionality in click_xray
-	/// Returns an iterator over all artboards connected to ROOT node (output node, id = 0). Should be replaced
-	pub fn artboard_descendants<'a>(self, metadata: &'a DocumentMetadata, network: &'a NodeNetwork) -> DescendantsIter<'a> {
-		let front = network.nodes.get(&NodeId(0)).and_then(|document_node| {
-			if let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = document_node.inputs.get(0).as_ref() {
-				Some(LayerNodeIdentifier::new_unchecked(*node_id))
-			} else {
-				None
-			}
-		});
-		let back = network.nodes.get(&NodeId(0)).and_then(|document_node| {
-			let mut current_node_id = &NodeId(0);
-			// Loop until current node does not have an input of type Node.
-			while let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = &network.nodes.get(&current_node_id).and_then(|document_node| document_node.inputs.get(0)) {
-				current_node_id = node_id;
-			}
-			Some(LayerNodeIdentifier::new_unchecked(*current_node_id))
-		});
-		DescendantsIter { front, back, metadata }
-	}
-
 	/// Add a child towards the top of the Layers panel
 	pub fn push_front_child(self, metadata: &mut DocumentMetadata, new: LayerNodeIdentifier) {
 		assert!(!metadata.structure.contains_key(&new), "Cannot add already existing layer");

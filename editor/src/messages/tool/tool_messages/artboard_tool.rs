@@ -3,7 +3,6 @@ use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
@@ -135,7 +134,7 @@ impl ArtboardToolData {
 				bounding_box_manager.bounds = bounds;
 				bounding_box_manager.transform = document.metadata().document_to_viewport;
 			}
-
+			responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![intersection.to_node()] });
 			true
 		} else {
 			self.selected_artboard = None;
@@ -157,7 +156,6 @@ impl ArtboardToolData {
 		let center = from_center.then_some(bounds.center_of_transformation);
 		let (position, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
@@ -228,7 +226,6 @@ impl Fsm for ArtboardToolFsmState {
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: position.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -270,9 +267,8 @@ impl Fsm for ArtboardToolFsmState {
 				let start = root_transform.transform_point2(start);
 				let size = root_transform.transform_vector2(size);
 
-				if let Some(artboard) = tool_data.selected_artboard {
+				if tool_data.selected_artboard.is_some() {
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: artboard.to_node(),
 						location: start.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -387,7 +383,6 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
 						dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 					});

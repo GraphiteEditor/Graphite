@@ -1,11 +1,10 @@
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -126,7 +125,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
-		let mut output = output_node_id;
 
 		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top most artboard,
 		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
@@ -193,8 +191,8 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		}
 
-		let mut post_node = self.document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
-		let mut pre_node_id = post_node
+		let post_node = self.document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
+		let pre_node_id = post_node
 			.inputs
 			.get(post_node_input_index)
 			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
@@ -309,7 +307,6 @@ impl<'a> ModifyInputsContext<'a> {
 			let pre_node = self.document_network.nodes.get(node_id)?;
 			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
 			let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
-			let primary_input_node_output = NodeOutput::new(*node_id, 0);
 
 			self.insert_between(
 				new_id,

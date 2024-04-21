@@ -9,7 +9,6 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
-use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerClassification, LayerPanelEntry, SelectedNodes};
@@ -217,7 +216,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 
-			/// Deletes selected_nodes. If reconnect is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings(primary input/output) are reconnected. If reconnect is false, then only the selected nodes are deleted and not reconnected.
+			// Deletes selected_nodes. If reconnect is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings(primary input/output) are reconnected.
+			// If reconnect is false, then only the selected nodes are deleted and not reconnected.
 			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
@@ -322,7 +322,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let mut exposed_value_count = node
 					.inputs
 					.iter()
-					.filter(|input| if let NodeInput::Value { tagged_value, exposed } = input { *exposed } else { false })
+					.filter(|input| if let NodeInput::Value { tagged_value: _, exposed } = input { *exposed } else { false })
 					.count();
 
 				let mut input = node.inputs[input_index].clone();
@@ -623,10 +623,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					for node_id in selected_nodes.selected_nodes() {
 						if let Some(node) = network.nodes.get_mut(&node_id) {
 							if node.has_primary_output {
-								let mut exposed_value_count = node
+								let exposed_value_count = node
 									.inputs
 									.iter()
-									.filter(|input| if let NodeInput::Value { tagged_value, exposed } = input { *exposed } else { false })
+									.filter(|input| if let NodeInput::Value { tagged_value: _, exposed } = input { *exposed } else { false })
 									.count();
 								let node_input_count = node.inputs.iter().filter(|input| if let NodeInput::Node { .. } = input { true } else { false }).count();
 								if node_input_count + exposed_value_count == 2 {

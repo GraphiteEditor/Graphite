@@ -105,7 +105,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.create_artboard(id, artboard);
+				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
+					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
+				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			GraphOperationMessage::NewBitmapLayer {
@@ -196,12 +198,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
-			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
+			GraphOperationMessage::ResizeArtboard { location, dimensions } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				modify_inputs.resize_artboard(location, dimensions);
 			}
 			GraphOperationMessage::ClearArtboards => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				let artboard_nodes = modify_inputs
 					.document_network
 					.nodes
