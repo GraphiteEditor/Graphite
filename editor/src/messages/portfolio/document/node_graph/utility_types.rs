@@ -73,6 +73,8 @@ pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
+	#[serde(rename = "canBeLayer")]
+	pub can_be_layer: bool,
 	pub alias: String,
 	pub name: String,
 	#[serde(rename = "primaryInput")]

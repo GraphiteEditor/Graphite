@@ -9,6 +9,7 @@
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
@@ -48,8 +49,9 @@
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
 	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
-	let nodeListLocation: { x: number; y: number } | undefined = undefined;
-	let contextMenuNodeId: bigint | undefined = undefined;
+	let contextMenuOpenCoordinates: { x: number; y: number } | undefined = undefined;
+	let toggleDisplayAsLayerNodeId: bigint | undefined = undefined;
+	let toggleDisplayAsLayerCurrentlyIsNode: boolean = false;
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
@@ -60,8 +62,8 @@
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-	$: nodeListX = ((nodeListLocation?.x || 0) + transform.x) * transform.scale;
-	$: nodeListY = ((nodeListLocation?.y || 0) + transform.y) * transform.scale;
+	$: contextMenuX = ((contextMenuOpenCoordinates?.x || 0) + transform.x) * transform.scale;
+	$: contextMenuY = ((contextMenuOpenCoordinates?.y || 0) + transform.y) * transform.scale;
 
 	let appearAboveMouse = false;
 	let appearRightOfMouse = false;
@@ -71,8 +73,8 @@
 		if (!bounds) return;
 		const { width, height } = bounds;
 
-		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH;
-		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT;
+		appearRightOfMouse = contextMenuX > width - ADD_NODE_MENU_WIDTH;
+		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
 	})();
 
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
@@ -312,8 +314,7 @@
 
 	function keydown(e: KeyboardEvent) {
 		if (e.key.toLowerCase() === "escape") {
-			nodeListLocation = undefined;
-			contextMenuNodeId = undefined;
+			contextMenuOpenCoordinates = undefined;
 			document.removeEventListener("keydown", keydown);
 			linkInProgressFromConnector = undefined;
 			// linkInProgressFromLayerTop = undefined;
@@ -322,7 +323,7 @@
 	}
 
 	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
-		nodeListLocation = {
+		contextMenuOpenCoordinates = {
 			x: (e.clientX - graphBounds.x) / transform.scale - transform.x,
 			y: (e.clientY - graphBounds.y) / transform.scale - transform.y,
 		};
@@ -343,35 +344,33 @@
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeIdString = node?.getAttribute("data-node") || undefined;
 		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
-		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
-		const contextMenu = (e.target as HTMLElement).closest("[context-menu]") as HTMLElement | undefined;
-		// Create the context menu popup on right click on a node, then exit
-		if (rmb && node) {
-			const graphBounds = graph?.getBoundingClientRect();
-			if (!graphBounds) return;
-			nodeListLocation = undefined;
-			contextMenuNodeId = nodeId;
-			document.addEventListener("keydown", keydown);
-			return;
-		}
+		const contextMenu = (e.target as HTMLElement).closest("[data-context-menu]") as HTMLElement | undefined;
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
+			toggleDisplayAsLayerNodeId = undefined;
+
+			if (node) {
+				toggleDisplayAsLayerNodeId = nodeId;
+				toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === nodeId)?.isLayer || false);
+			}
+
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
-			contextMenuNodeId = undefined;
+
 			loadNodeList(e, graphBounds);
+
 			return;
 		}
 
 		// If the user is clicking on the add nodes list or context menu, exit here
-		if (lmb && (nodeList || contextMenu)) return;
+		if (lmb && contextMenu) return;
 
 		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 		if (lmb) {
-			nodeListLocation = undefined;
+			contextMenuOpenCoordinates = undefined;
 			linkInProgressFromConnector = undefined;
-			contextMenuNodeId = undefined;
+			toggleDisplayAsLayerNodeId = undefined;
 			// linkInProgressFromLayerTop = undefined;
 			// linkInProgressFromLayerBottom = undefined;
 		}
@@ -488,7 +487,7 @@
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
 			transform.y += e.movementY / transform.scale;
-		} else if (linkInProgressFromConnector && !nodeListLocation) {
+		} else if (linkInProgressFromConnector && !contextMenuOpenCoordinates) {
 			const target = e.target as Element | undefined;
 			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
@@ -559,12 +558,17 @@
 		editor.instance.toggleLayerVisibility(id);
 	}
 
-	function toggleLayerDisplay(node: FrontendNode, displayAsLayer: boolean) {
-		let primaryInputCount = node.primaryInput ? 1 : 0;
-		let exposedInputCount = node.exposedInputs.length;
-		if (primaryInputCount + exposedInputCount == 2) {
-			editor.instance.toggleLayerDisplay(node.id, displayAsLayer);
+	function toggleLayerDisplay(displayAsLayer: boolean) {
+		let node = $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId);
+		if (node !== undefined) {
+			contextMenuOpenCoordinates = undefined;
+			editor.instance.setToNodeOrLayer(node.id, displayAsLayer);
+			toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.isLayer || false);
+			toggleDisplayAsLayerNodeId = undefined;
 		}
+	}
+	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
+		return $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.canBeLayer || false;
 	}
 
 	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
@@ -651,17 +655,17 @@
 			}
 		} else if (linkInProgressFromConnector && !initialDisconnecting) {
 			// If the add node menu is already open, we don't want to open it again
-			if (nodeListLocation) return;
+			if (contextMenuOpenCoordinates) return;
 
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
 
 			// Create the node list, which should set nodeListLocation to a valid value
 			loadNodeList(e, graphBounds);
-			if (!nodeListLocation) return;
-			let nodeListLocation2: { x: number; y: number } = nodeListLocation;
+			if (!contextMenuOpenCoordinates) return;
+			let contextMenuLocation2: { x: number; y: number } = contextMenuOpenCoordinates;
 
-			linkInProgressToConnector = new DOMRect((nodeListLocation2.x + transform.x) * transform.scale + graphBounds.x, (nodeListLocation2.y + transform.y) * transform.scale + graphBounds.y);
+			linkInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
 
 			return;
 		} else if (draggingNodes) {
@@ -687,13 +691,13 @@
 	}
 
 	function createNode(nodeType: string) {
-		if (!nodeListLocation) return;
+		if (!contextMenuOpenCoordinates) return;
 
 		const inputNodeConnectionIndex = 0;
-		const x = Math.round(nodeListLocation.x / GRID_SIZE);
-		const y = Math.round(nodeListLocation.y / GRID_SIZE) - 1;
+		const x = Math.round(contextMenuOpenCoordinates.x / GRID_SIZE);
+		const y = Math.round(contextMenuOpenCoordinates.y / GRID_SIZE) - 1;
 		const inputConnectedNodeID = editor.instance.createNode(nodeType, x, y);
-		nodeListLocation = undefined;
+		contextMenuOpenCoordinates = undefined;
 
 		if (!linkInProgressFromConnector) return;
 		const from = connectorToNodeIndex(linkInProgressFromConnector);
@@ -767,33 +771,63 @@
 	style:--dot-radius={`${dotRadius}px`}
 >
 	<!-- Right click menu for adding nodes -->
-	{#if nodeListLocation}
+	{#if contextMenuOpenCoordinates}
 		<LayoutCol
-			class="node-list"
-			data-node-list
+			class="context-menu"
+			data-context-menu
 			styles={{
-				transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
-				left: `${nodeListX}px`,
-				top: `${nodeListY}px`,
-				width: `${ADD_NODE_MENU_WIDTH}px`,
-				height: `${ADD_NODE_MENU_HEIGHT}px`,
+				left: `${contextMenuX}px`,
+				top: `${contextMenuY}px`,
+				...(toggleDisplayAsLayerNodeId === undefined
+					? {
+							transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+							width: `${ADD_NODE_MENU_WIDTH}px`,
+							height: `${ADD_NODE_MENU_HEIGHT}px`,
+						}
+					: {}),
 			}}
 		>
-			<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-			<div class="list-results" on:wheel|passive|stopPropagation>
-				{#each nodeCategories as nodeCategory}
-					<details open={nodeCategory[1].open}>
-						<summary>
-							<TextLabel>{nodeCategory[0]}</TextLabel>
-						</summary>
-						{#each nodeCategory[1].nodes as nodeType}
-							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-						{/each}
-					</details>
-				{:else}
-					<TextLabel>No search results</TextLabel>
-				{/each}
-			</div>
+			{#if toggleDisplayAsLayerNodeId === undefined}
+				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+				<div class="list-results" on:wheel|passive|stopPropagation>
+					{#each nodeCategories as nodeCategory}
+						<details open={nodeCategory[1].open}>
+							<summary>
+								<TextLabel>{nodeCategory[0]}</TextLabel>
+							</summary>
+							{#each nodeCategory[1].nodes as nodeType}
+								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+							{/each}
+						</details>
+					{:else}
+						<TextLabel>No search results</TextLabel>
+					{/each}
+				</div>
+			{:else}
+				<LayoutRow class="toggle-layer-or-node">
+					<TextLabel>Display as</TextLabel>
+					<RadioInput
+						selectedIndex={toggleDisplayAsLayerCurrentlyIsNode ? 0 : 1}
+						entries={[
+							{
+								value: "node",
+								label: "Node",
+								action: () => {
+									toggleLayerDisplay(false);
+								},
+							},
+							{
+								value: "layer",
+								label: "Layer",
+								action: () => {
+									toggleLayerDisplay(true);
+								},
+							},
+						]}
+						disabled={!canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId)}
+					/>
+				</LayoutRow>
+			{/if}
 		</LayoutCol>
 	{/if}
 	<!-- Node connection links -->
@@ -924,38 +958,6 @@
 						</clipPath>
 					</defs>
 				</svg>
-				{#if contextMenuNodeId === node.id}
-					<LayoutCol
-						class="context-menu"
-						context-menu
-						styles={{
-							left: `0px`,
-							top: `50px`,
-							width: `200px`,
-						}}
-					>
-						<div style="display:flex; flex-direction: row; align-items: center;">
-							<TextLabel style="margin-right: 4px;">Display:</TextLabel>
-							<RadioInput
-								selectedIndex={node.isLayer ? 1 : 0}
-								entries={[
-									{
-										value: "node",
-										label: "Node",
-										action: () => {
-											toggleLayerDisplay(node, false);
-										},
-									},
-									{
-										value: "layer",
-										label: "Layer",
-										// Layer node cannot be toggled to a layer node
-									},
-								]}
-							/>
-						</div>
-					</LayoutCol>
-				{/if}
 			</div>
 		{/each}
 		<!-- Nodes -->
@@ -1089,38 +1091,6 @@
 						</clipPath>
 					</defs>
 				</svg>
-				{#if contextMenuNodeId === node.id}
-					<LayoutCol
-						class="context-menu"
-						context-menu
-						styles={{
-							left: `0px`,
-							top: `50px`,
-							width: `200px`,
-						}}
-					>
-						<div style="display:flex; flex-direction: row; align-items: center;">
-							<TextLabel style="margin-right: 4px;">Display:</TextLabel>
-							<RadioInput
-								selectedIndex={node.isLayer ? 1 : 0}
-								entries={[
-									{
-										value: "node",
-										label: "Node",
-										// Node cannot be toggled to node
-									},
-									{
-										value: "layer",
-										label: "Layer",
-										action: () => {
-											toggleLayerDisplay(node, true);
-										},
-									},
-								]}
-							/>
-						</div>
-					</LayoutCol>
-				{/if}
 			</div>
 		{/each}
 	</div>
@@ -1163,13 +1133,14 @@
 			mix-blend-mode: screen;
 		}
 
-		.node-list {
+		.context-menu {
 			width: max-content;
 			position: absolute;
 			box-sizing: border-box;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
+			border-radius: 4px;
 
 			.text-input {
 				flex: 0 0 auto;
@@ -1179,11 +1150,15 @@
 			.list-results {
 				overflow-y: auto;
 				flex: 1 1 auto;
+				// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
+				margin-right: -4px;
 
 				details {
 					cursor: pointer;
 					display: flex;
 					flex-direction: column;
+					// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
+					margin-right: 4px;
 
 					&[open] summary .text-label::before {
 						transform: rotate(90deg);
@@ -1219,15 +1194,13 @@
 					}
 				}
 			}
+
+			.toggle-layer-or-node .text-label {
+				line-height: 24px;
+				margin-right: 8px;
+			}
 		}
-		.context-menu {
-			width: max-content;
-			position: absolute;
-			padding: 5px;
-			z-index: 3;
-			background-color: var(--color-3-darkgray);
-			border: 1px solid var(--color-5-dullgray);
-		}
+
 		.wires {
 			pointer-events: none;
 			position: absolute;

@@ -40,6 +40,9 @@ pub enum NodeGraphMessage {
 		node: NodeId,
 	},
 	DuplicateSelectedNodes,
+	EnforceLayerHasNoMultiParams {
+		node_id: NodeId,
+	},
 	ExitNestedNetwork {
 		depth_of_nesting: usize,
 	},
@@ -89,22 +92,9 @@ pub enum NodeGraphMessage {
 	ShiftNode {
 		node_id: NodeId,
 	},
-	ToggleSelectedVisibility,
-	ToggleVisibility {
-		node_id: NodeId,
-	},
 	SetVisibility {
 		node_id: NodeId,
 		visible: bool,
-	},
-	ToggleSelectedLocked,
-	ToggleLocked {
-		node_id: NodeId,
-	},
-	ToggleSelectedLayers,
-	ToggleLayer {
-		node_id: NodeId,
-		display_as_layer: bool,
 	},
 	SetLocked {
 		node_id: NodeId,
@@ -118,10 +108,23 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		name: String,
 	},
+	SetToNodeOrLayer {
+		node_id: NodeId,
+		display_as_layer: bool,
+	},
+	ToggleLocked {
+		node_id: NodeId,
+	},
 	TogglePreview {
 		node_id: NodeId,
 	},
 	TogglePreviewImpl {
+		node_id: NodeId,
+	},
+	ToggleSelectedLayers,
+	ToggleSelectedLocked,
+	ToggleSelectedVisibility,
+	ToggleVisibility {
 		node_id: NodeId,
 	},
 	UpdateNewNodeGraph,

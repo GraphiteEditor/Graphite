@@ -778,10 +778,10 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 	/// Toggle display type for a layer
-	#[wasm_bindgen(js_name = toggleLayerDisplay)]
-	pub fn toggle_layer_display(&self, id: u64, display_as_layer: bool) {
+	#[wasm_bindgen(js_name = setToNodeOrLayer)]
+	pub fn set_to_node_or_layer(&self, id: u64, display_as_layer: bool) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleLayer { node_id, display_as_layer };
+		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, display_as_layer };
 		self.dispatch(message);
 	}
 	/// Returns the string representation of the nodes contents

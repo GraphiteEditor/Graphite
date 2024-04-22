@@ -105,6 +105,8 @@ export class FrontendGraphOutput {
 export class FrontendNode {
 	readonly isLayer!: boolean;
 
+	readonly canBeLayer!: boolean;
+
 	readonly id!: bigint;
 
 	readonly alias!: string;
