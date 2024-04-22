@@ -4,7 +4,7 @@ import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
-import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
+import { makeKeyboardModifiersBitfield, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { platformIsMac } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
@@ -161,7 +161,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
-		const inTextInput = target === textToolInteractiveInputElement;
 
 		if (get(dialog).visible && !inDialog) {
 			dialog.dismissDialog();
@@ -169,10 +168,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			e.stopPropagation();
 		}
 
-		if (!inTextInput) {
-			if (textToolInteractiveInputElement) editor.instance.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
-			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
-		}
+		viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeKeyboardModifiersBitfield(e);

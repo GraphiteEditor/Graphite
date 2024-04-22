@@ -582,19 +582,6 @@ export class UpdateDocumentLayerStructureJs extends JsMessage {
 export class DisplayEditableTextbox extends JsMessage {
 	readonly text!: string;
 
-	readonly lineWidth!: undefined | number;
-
-	readonly fontSize!: number;
-
-	@Type(() => Color)
-	readonly color!: Color;
-
-	readonly url!: string;
-
-	readonly transform!: number[];
-}
-
-export class DisplayEditableTextboxTransform extends JsMessage {
 	readonly transform!: number[];
 }
 
@@ -657,8 +644,6 @@ export class TriggerGraphViewOverlay extends JsMessage {
 export class TriggerVisitLink extends JsMessage {
 	url!: string;
 }
-
-export class TriggerTextCommit extends JsMessage {}
 
 export class TriggerTextCopy extends JsMessage {
 	readonly copyText!: string;
@@ -1283,7 +1268,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
-	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerCopyToClipboardBlobUrl,
@@ -1303,7 +1287,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerRefreshBoundsOfViewports,
 	TriggerRevokeBlobUrl,
 	TriggerSavePreferences,
-	TriggerTextCommit,
 	TriggerTextCopy,
 	TriggerViewportResize,
 	TriggerVisitLink,

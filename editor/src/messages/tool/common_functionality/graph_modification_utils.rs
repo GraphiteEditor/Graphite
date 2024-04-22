@@ -5,9 +5,9 @@ use crate::messages::prelude::*;
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
-use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{FillType, Gradient};
+use graphene_core::vector::VectorData;
 use graphene_core::Color;
 
 use glam::DVec2;
@@ -165,33 +165,31 @@ pub fn get_text_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -
 }
 
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&String, &Font, f64)> {
+pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&graphene_core::text::RichText, f64, &VectorData)> {
 	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Text")?;
 	let NodeInput::Value {
-		tagged_value: TaggedValue::String(text),
+		tagged_value: TaggedValue::RichText(text),
 		..
 	} = &inputs[1]
 	else {
 		return None;
 	};
-
 	let NodeInput::Value {
-		tagged_value: TaggedValue::Font(font),
+		tagged_value: TaggedValue::F64(line_width),
 		..
 	} = &inputs[2]
 	else {
 		return None;
 	};
-
 	let NodeInput::Value {
-		tagged_value: TaggedValue::F64(font_size),
+		tagged_value: TaggedValue::VectorData(path),
 		..
-	} = inputs[3]
+	} = &inputs[3]
 	else {
 		return None;
 	};
 
-	Some((text, font, font_size))
+	Some((text, *line_width, path))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<f64> {
