@@ -156,7 +156,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					};
 
 					let outward_links = document_network.collect_outwards_links();
-					for (_node, upstream_id) in document_network.upstream_flow_back_from_nodes(vec![*child_id], false) {
+					for (_node, upstream_id) in document_network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 						// TODO: move into a document_network function .is_sole_dependent. This function does a downstream traversal starting from the current node,
 						// and only traverses for nodes that are not in the delete_nodes set. If all downstream nodes converge to some node in the delete_nodes set,
 						// then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent. This means disconnected branches
@@ -809,7 +809,7 @@ impl NodeGraphMessageHandler {
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
 				network
-					.upstream_flow_back_from_nodes(vec![layers[0]], true)
+					.upstream_flow_back_from_nodes(vec![layers[0]], graph_craft::document::FlowType::HorizontalFlow)
 					.enumerate()
 					.take_while(|(i, (node, _))| if *i == 0 { true } else { !node.is_layer })
 					.map(|(_, (node, node_id))| node_properties::generate_node_properties(node, node_id, context))
@@ -851,8 +851,6 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
-			let alias = (!node.alias.is_empty()).then_some(node.alias.clone()).unwrap_or(node.name.clone());
-
 			let node_path = vec![node_id];
 			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
 			let Some(document_node_definition) = document_node_types::resolve_document_node_type(&node.name) else {
@@ -900,7 +898,7 @@ impl NodeGraphMessageHandler {
 				id: node_id,
 				is_layer: node.is_layer,
 				can_be_layer: self.eligible_to_be_layer(network, node_id),
-				alias,
+				alias: Self::unnamed_layer_label(node, network),
 				name: node.name.clone(),
 				primary_input,
 				exposed_inputs,
@@ -947,7 +945,7 @@ impl NodeGraphMessageHandler {
 					has_children: layer.has_children(metadata),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
-					name: network.nodes.get(&node_id).map(|node| node.alias.clone()).unwrap_or(node.name.clone()),
+					name: Self::unnamed_layer_label(node, network),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
 					parents_visible,
@@ -1089,10 +1087,24 @@ impl NodeGraphMessageHandler {
 			.filter(|input| if let NodeInput::Value { tagged_value: _, exposed } = input { *exposed } else { false })
 			.count();
 		let node_input_count = node.inputs.iter().filter(|input| if let NodeInput::Node { .. } = input { true } else { false }).count();
-		if !node.has_primary_output || node_input_count + exposed_value_count != 2 {
+		let input_count = node_input_count + exposed_value_count;
+		let Some(definition) = resolve_document_node_type(&node.name) else { return false };
+		let output_count = definition.outputs.len();
+		//TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
+		if !node.has_primary_output || output_count != 1 || input_count == 0 || input_count > 2 {
 			return false;
 		}
 		true
+	}
+
+	fn unnamed_layer_label(node: &DocumentNode, network: &NodeNetwork) -> String {
+		(!node.alias.is_empty()).then_some(node.alias.clone()).unwrap_or(if node.is_folder(network) {
+			"Folder".to_string()
+		} else if node.name == "Merge" {
+			"Unnamed Layer".to_string()
+		} else {
+			node.name.clone()
+		})
 	}
 }
 

@@ -325,7 +325,7 @@ impl SelectToolData {
 				document.network(),
 				&document
 					.network()
-					.upstream_flow_back_from_nodes(vec![node], false)
+					.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
 					.enumerate()
 					.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 					.collect(),

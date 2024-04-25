@@ -629,7 +629,7 @@
 		if (link) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
 
-			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
+			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
 			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
 			if (!isLayer) editor.instance.shiftNode(selectedNodeId);
 		}
@@ -917,25 +917,27 @@
 					</svg>
 				</div>
 				<!-- Layer input port (from left) -->
-				<div class="input ports">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
-						class="port"
-						data-port="input"
-						data-datatype={stackDataInput.dataType}
-						style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
-						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
-						bind:this={inputs[nodeIndex][1]}
-					>
-						<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
-						{#if stackDataInput.connected}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-						{:else}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
+				{#if node.exposedInputs.length > 0}
+					<div class="input ports">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="input"
+							data-datatype={stackDataInput.dataType}
+							style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
+							bind:this={inputs[nodeIndex][1]}
+						>
+							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
+							{#if stackDataInput.connected}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{:else}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+							{/if}
+						</svg>
+					</div>
+				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<span title={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>

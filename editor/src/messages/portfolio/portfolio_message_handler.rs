@@ -201,7 +201,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 								active_document.network(),
 								&active_document
 									.network()
-									.upstream_flow_back_from_nodes(vec![node], false)
+									.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
 									.enumerate()
 									.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 									.collect(),
@@ -662,9 +662,7 @@ impl PortfolioMessageHandler {
 			return;
 		};
 
-		self.executor.poll_node_graph_evaluation(active_document, responses).unwrap_or_else(|e| {
-			log::error!("Error while evaluating node graph: {e}");
-
+		if self.executor.poll_node_graph_evaluation(active_document, responses).is_err() {
 			let error = r#"
 				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
@@ -675,6 +673,6 @@ impl PortfolioMessageHandler {
 				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
 				.to_string();
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
-		});
+		}
 	}
 }

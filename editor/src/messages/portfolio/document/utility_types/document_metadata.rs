@@ -1,7 +1,7 @@
 use super::nodes::SelectedNodes;
 
-use graph_craft::document::NodeInput;
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
+use graph_craft::document::{FlowType, NodeInput};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
@@ -148,15 +148,12 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
-		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode, is_output_node: bool) -> Option<(&'a DocumentNode, NodeId)> {
+		//Layers connected to a node via horizontal flow (inclusive)
+		fn child_layers<'a>(graph: &'a NodeNetwork, node: NodeId, flow_type: FlowType) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
 			// The output node is the only node with children at index 0
-			let node_input_index = if is_output_node { 0 } else { 1 };
-
-			node.inputs
-				.get(node_input_index)
-				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None })
-				.and_then(|child_id| if let Some(child_node) = graph.nodes.get(child_id) { Some((child_node, *child_id)) } else { None })
-				.and_then(|(child_node, child_id)| if child_node.is_layer { Some((child_node, child_id)) } else { None })
+			graph
+				.upstream_flow_back_from_nodes(vec![node], flow_type)
+				.filter(move |(filter_node, node_id)| filter_node.is_layer || *node_id == node)
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
@@ -170,33 +167,26 @@ impl DocumentMetadata {
 		let Some(output_node) = graph.nodes.get(&output_node_id) else {
 			return;
 		};
-		// Check if a layer node is upstream from the Output node
-		let Some((layer_node, node_id)) = first_child_layer(graph, output_node, true) else {
-			return;
-		};
-		let parent = LayerNodeIdentifier::ROOT;
-		let mut stack = vec![(layer_node, node_id, parent)];
-		while let Some((node, node_id, parent)) = stack.pop() {
-			let mut current = Some((node, node_id));
-			//Iterate though all siblings in a stack
-			while let Some(&(current_node, current_node_id)) = current.as_ref() {
-				if !current_node.is_layer {
-					break;
-				}
-				let current_layer_id = LayerNodeIdentifier::new_unchecked(current_node_id);
-				if !self.structure.contains_key(&current_layer_id) {
-					parent.push_child(self, current_layer_id);
 
-					if let Some((child_node, child_id)) = first_child_layer(graph, current_node, false) {
-						stack.push((child_node, child_id, current_layer_id));
+		let mut awaiting_horizontal_flow = vec![(output_node, output_node_id, LayerNodeIdentifier::ROOT)];
+		let mut awaiting_primary_flow = vec![];
+
+		while let Some((horizontal_root_node, horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
+			let horizontal_flow_iter = child_layers(graph, horizontal_root_node_id, FlowType::HorizontalFlow);
+			// Skip the horizontal_root_node_id node
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
+				let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
+				if !self.structure.contains_key(&current_layer_node) {
+					awaiting_primary_flow.push((current_node, current_node_id, parent_layer_node));
+					parent_layer_node.push_child(self, current_layer_node);
+					parent_layer_node = current_layer_node;
+
+					if is_artboard(current_layer_node, graph) {
+						self.artboards.insert(current_layer_node);
 					}
 
-					if is_artboard(current_layer_id, graph) {
-						self.artboards.insert(current_layer_id);
-					}
-
-					if is_folder(current_layer_id, graph) {
-						self.folders.insert(current_layer_id);
+					if is_folder(current_layer_node, graph) {
+						self.folders.insert(current_layer_node);
 					}
 
 					if !current_node.visible {
@@ -207,9 +197,36 @@ impl DocumentMetadata {
 						self.locked.insert(current_node_id);
 					}
 				}
+			}
+			while let Some((primary_root_node, primary_root_node_id, mut parent_layer_node)) = awaiting_primary_flow.pop() {
+				let primary_flow_iter = child_layers(graph, primary_root_node_id, FlowType::PrimaryFlow);
+				// Skip the primary_root_node_id node
+				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
+					// Create a new layer for the top of each stack, and add it as a child to the previous parent
+					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
+					if !self.structure.contains_key(&current_layer_node) {
+						parent_layer_node.push_child(self, current_layer_node);
 
-				let construct_layer_node = &current_node.inputs[0];
-				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer).map(|node| (node, id)));
+						//The layer nodes for the horizontal flow is itself
+						awaiting_horizontal_flow.push((current_node, current_node_id, current_layer_node));
+
+						if is_artboard(current_layer_node, graph) {
+							self.artboards.insert(current_layer_node);
+						}
+
+						if is_folder(current_layer_node, graph) {
+							self.folders.insert(current_layer_node);
+						}
+
+						if !current_node.visible {
+							self.hidden.insert(current_node_id);
+						}
+
+						if current_node.locked {
+							self.locked.insert(current_node_id);
+						}
+					}
+				}
 			}
 		}
 
@@ -636,12 +653,12 @@ struct NodeRelations {
 // ================
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	let node = network.nodes.get(&layer.to_node()).expect("Layer node identifier should correspond to an existing node");
+	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
 	node.is_artboard()
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	let node = network.nodes.get(&layer.to_node()).expect("Layer node identifier should correspond to an existing node");
+	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
 	node.is_folder(network)
 }
 

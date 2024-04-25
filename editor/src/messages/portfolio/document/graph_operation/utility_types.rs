@@ -434,7 +434,11 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
 		self.document_network.nodes.insert(node_id, new_document_node);
 
-		let upstream_nodes = self.document_network.upstream_flow_back_from_nodes(vec![node_id], true).map(|(_, id)| id).collect::<Vec<_>>();
+		let upstream_nodes = self
+			.document_network
+			.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow)
+			.map(|(_, id)| id)
+			.collect::<Vec<_>>();
 		for node_id in upstream_nodes {
 			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
 			node.metadata.position.x -= 8;
@@ -448,7 +452,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(
 				self.layer_node
 					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
-				true,
+				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.find(|(node, _)| node.name == name)
 			.map(|(_, id)| id);
@@ -473,7 +477,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(
 				self.layer_node
 					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
-				true,
+				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.filter(|(node, _)| node.name == name)
 			.map(|(_, id)| id)

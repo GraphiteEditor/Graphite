@@ -358,18 +358,15 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
-	// A node is a folder if it is a layer, and the secondary input does not exist or is a layer
+	// A node is a folder if it is a Merge node, and the secondary input does not exist or eventually leads to a layer along horizontal flow
 	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
-		if !self.is_layer {
+		if !self.is_layer || self.name != "Merge" {
 			return false;
 		}
-
 		self.inputs.get(1).is_some_and(|input| {
-			if let Some(input) = &input.as_node() {
-				network.nodes.get(input).is_some_and(|child_node| child_node.is_layer)
-			} else {
-				true
-			}
+			input.as_node().map_or(true, |node_id| {
+				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
+			})
 		})
 	}
 }
@@ -544,6 +541,16 @@ pub struct NodeNetwork {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
+}
+
+#[derive(PartialEq)]
+pub enum FlowType {
+	/// Iterate over all upstream nodes.
+	UpstreamFlow,
+	/// Iterate over nodes connected to the primary input.
+	PrimaryFlow,
+	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
+	HorizontalFlow,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -748,19 +755,18 @@ impl NodeNetwork {
 	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
-
 	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, horizontal_traversal: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
 			network: self,
-			horizontal_traversal,
+			flow_type,
 		}
 	}
 
 	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
 	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
-		self.upstream_flow_back_from_nodes(vec![node], true).any(|(_, id)| id == potentially_upstream_node)
+		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
 	}
 
 	/// Check there are no cycles in the graph (this should never happen).
@@ -801,7 +807,7 @@ impl NodeNetwork {
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
-	horizontal_traversal: bool,
+	flow_type: FlowType,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
@@ -810,8 +816,8 @@ impl<'a> Iterator for FlowIter<'a> {
 			let node_id = self.stack.pop()?;
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if document_node.is_layer && self.horizontal_traversal { 1 } else { 0 };
-				let take = if self.horizontal_traversal { 1 } else { usize::MAX };
+				let skip = if self.flow_type == FlowType::HorizontalFlow && document_node.is_layer { 1 } else { 0 };
+				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });

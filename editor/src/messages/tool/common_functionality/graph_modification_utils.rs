@@ -233,19 +233,19 @@ impl<'a> NodeGraphLayer<'a> {
 		}
 	}
 
-	/// Return an iterator up the primary flow of the layer
-	pub fn primary_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
-		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], true)
+	/// Return an iterator up the horizontal flow of the layer
+	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
+		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], graph_craft::document::FlowType::HorizontalFlow)
 	}
 
 	/// Node id of a node if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_name(&self, node_name: &str) -> Option<NodeId> {
-		self.primary_layer_flow().find(|(node, _)| node.name == node_name).map(|(_, id)| id)
+		self.horizontal_layer_flow().find(|(node, _)| node.name == node_name).map(|(_, id)| id)
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
-		self.primary_layer_flow()
+		self.horizontal_layer_flow()
 			.skip(1)// Skip self
 			.take_while(|(node, _)| !node.is_layer)
 			.find(|(node, _)| node.name == node_name)

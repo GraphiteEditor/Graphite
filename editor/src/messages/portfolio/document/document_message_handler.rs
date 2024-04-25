@@ -289,7 +289,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						self.network(),
 						&self
 							.network()
-							.upstream_flow_back_from_nodes(vec![node], false)
+							.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
 							.enumerate()
 							.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 							.collect(),
@@ -431,12 +431,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
-
-				// Disallow trying to insert into self
+				// Disallow trying to insert into self.
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
-
+				// Artboards can only have the Output node as the parent
+				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT {
+					return;
+				}
+				// Disallow inserting layers between artboards. Since only artboards can output to Output node, the layer parent cannot be the output
+				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT {
+					return;
+				}
 				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
