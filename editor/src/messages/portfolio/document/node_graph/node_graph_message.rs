@@ -110,7 +110,7 @@ pub enum NodeGraphMessage {
 	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
-		display_as_layer: bool,
+		is_layer: bool,
 	},
 	ToggleLocked {
 		node_id: NodeId,

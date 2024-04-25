@@ -779,9 +779,9 @@ impl JsEditorHandle {
 	}
 	/// Toggle display type for a layer
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
-	pub fn set_to_node_or_layer(&self, id: u64, display_as_layer: bool) {
+	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
 		let node_id = NodeId(id);
-		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, display_as_layer };
+		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
 	}
 	/// Returns the string representation of the nodes contents

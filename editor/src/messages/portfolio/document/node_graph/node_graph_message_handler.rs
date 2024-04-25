@@ -303,10 +303,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::EnforceLayerHasNoMultiParams { node_id } => {
 				if !self.eligible_to_be_layer(document_network, node_id) {
-					responses.add(NodeGraphMessage::SetToNodeOrLayer {
-						node_id: node_id,
-						display_as_layer: false,
-					})
+					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
 				}
 			}
 			NodeGraphMessage::ExitNestedNetwork { depth_of_nesting } => {
@@ -617,7 +614,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							if node.has_primary_output {
 								responses.add(NodeGraphMessage::SetToNodeOrLayer {
 									node_id: *node_id,
-									display_as_layer: !node.display_as_layer,
+									is_layer: !node.is_layer,
 								});
 							}
 							if network.connected_to_output(*node_id) {
@@ -627,16 +624,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
-			NodeGraphMessage::SetToNodeOrLayer { node_id, display_as_layer } => {
-				if display_as_layer && !self.eligible_to_be_layer(document_network, node_id) {
+			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
+				if is_layer && !self.eligible_to_be_layer(document_network, node_id) {
 					return;
 				}
 
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					if let Some(node) = network.nodes.get_mut(&node_id) {
-						node.display_as_layer = display_as_layer;
+						node.is_layer = is_layer;
 					}
 					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(DocumentMessage::DocumentStructureChanged);
 				}
 			}
 			NodeGraphMessage::SetName { node_id, name } => {
@@ -804,7 +802,7 @@ impl NodeGraphMessageHandler {
 			1 => {
 				let nodes_not_upstream_of_layer = nodes
 					.into_iter()
-					.filter(|&selected_node_id| !network.is_node_upstream_of_another_by_primary_flow(layers[0], selected_node_id));
+					.filter(|&selected_node_id| !network.is_node_upstream_of_another_by_horizontal_flow(layers[0], selected_node_id));
 				if nodes_not_upstream_of_layer.count() > 0 {
 					return Vec::new();
 				}
@@ -900,7 +898,7 @@ impl NodeGraphMessageHandler {
 			let errors = self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone());
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: node.display_as_layer,
+				is_layer: node.is_layer,
 				can_be_layer: self.eligible_to_be_layer(network, node_id),
 				alias,
 				name: node.name.clone(),

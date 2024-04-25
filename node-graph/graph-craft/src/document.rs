@@ -163,9 +163,6 @@ pub struct DocumentNode {
 	/// User chosen state for displaying as left to right node or bottom top layer.
 	#[serde(default)]
 	pub is_layer: bool,
-	/// Toggle to display node as a vertical layer type node in the graph UI.
-	#[serde(default)]
-	pub display_as_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
@@ -220,7 +217,6 @@ impl Default for DocumentNode {
 			has_primary_output: true,
 			implementation: Default::default(),
 			is_layer: false,
-			display_as_layer: false,
 			visible: true,
 			locked: Default::default(),
 			metadata: Default::default(),
@@ -362,12 +358,18 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
-	// A node is a folder if the secondary input does not exist, or if a layer exists upstream as a child
+	// A node is a folder if it is a layer, and the secondary input does not exist or is a layer
 	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
+		if !self.is_layer {
+			return false;
+		}
+
 		self.inputs.get(1).is_some_and(|input| {
-			input
-				.as_node()
-				.map_or(false, |node_id| network.upstream_flow_back_from_nodes(vec![node_id], true).skip(1).any(|(node, _)| node.is_layer))
+			if let Some(input) = &input.as_node() {
+				network.nodes.get(input).is_some_and(|child_node| child_node.is_layer)
+			} else {
+				true
+			}
 		})
 	}
 }
@@ -757,7 +759,7 @@ impl NodeNetwork {
 	}
 
 	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
-	pub fn is_node_upstream_of_another_by_primary_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
+	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
 		self.upstream_flow_back_from_nodes(vec![node], true).any(|(_, id)| id == potentially_upstream_node)
 	}
 

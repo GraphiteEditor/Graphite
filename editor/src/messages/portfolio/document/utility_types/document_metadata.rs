@@ -1,5 +1,6 @@
 use super::nodes::SelectedNodes;
 
+use graph_craft::document::NodeInput;
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
@@ -147,8 +148,15 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
-		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-			graph.upstream_flow_back_from_nodes(vec![node.inputs.get(1)?.as_node()?], true).find(|(node, _)| node.is_layer)
+		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode, is_output_node: bool) -> Option<(&'a DocumentNode, NodeId)> {
+			// The output node is the only node with children at index 0
+			let node_input_index = if is_output_node { 0 } else { 1 };
+
+			node.inputs
+				.get(node_input_index)
+				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None })
+				.and_then(|child_id| if let Some(child_node) = graph.nodes.get(child_id) { Some((child_node, *child_id)) } else { None })
+				.and_then(|(child_node, child_id)| if child_node.is_layer { Some((child_node, child_id)) } else { None })
 		}
 
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
@@ -159,27 +167,34 @@ impl DocumentMetadata {
 
 		// Refers to output node: NodeId(0)
 		let output_node_id = graph.exports[0].node_id;
-
+		let Some(output_node) = graph.nodes.get(&output_node_id) else {
+			return;
+		};
 		// Check if a layer node is upstream from the Output node
-		let Some((layer_node, node_id)) = graph.upstream_flow_back_from_nodes(vec![output_node_id], true).find(|(node, _)| node.is_layer) else {
+		let Some((layer_node, node_id)) = first_child_layer(graph, output_node, true) else {
 			return;
 		};
 		let parent = LayerNodeIdentifier::ROOT;
 		let mut stack = vec![(layer_node, node_id, parent)];
 		while let Some((node, node_id, parent)) = stack.pop() {
 			let mut current = Some((node, node_id));
+			//Iterate though all siblings in a stack
 			while let Some(&(current_node, current_node_id)) = current.as_ref() {
+				if !current_node.is_layer {
+					break;
+				}
 				let current_layer_id = LayerNodeIdentifier::new_unchecked(current_node_id);
 				if !self.structure.contains_key(&current_layer_id) {
 					parent.push_child(self, current_layer_id);
 
-					if let Some((child_node, child_id)) = first_child_layer(graph, current_node) {
+					if let Some((child_node, child_id)) = first_child_layer(graph, current_node, false) {
 						stack.push((child_node, child_id, current_layer_id));
 					}
 
 					if is_artboard(current_layer_id, graph) {
 						self.artboards.insert(current_layer_id);
 					}
+
 					if is_folder(current_layer_id, graph) {
 						self.folders.insert(current_layer_id);
 					}
@@ -193,7 +208,6 @@ impl DocumentMetadata {
 					}
 				}
 
-				// Get the sibling below
 				let construct_layer_node = &current_node.inputs[0];
 				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer).map(|node| (node, id)));
 			}
@@ -622,12 +636,13 @@ struct NodeRelations {
 // ================
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.is_artboard())
+	let node = network.nodes.get(&layer.to_node()).expect("Layer node identifier should correspond to an existing node");
+	node.is_artboard()
 }
 
 pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.get(1)).is_some_and(|input| input.as_node().is_none())
-		|| network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).skip(1).any(|(node, _)| node.is_layer)
+	let node = network.nodes.get(&layer.to_node()).expect("Layer node identifier should correspond to an existing node");
+	node.is_folder(network)
 }
 
 #[test]
