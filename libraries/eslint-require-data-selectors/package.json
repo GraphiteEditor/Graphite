@@ -1,0 +1,15 @@
+{
+	"name": "eslint-require-data-selectors",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"test": "node require-data-selectors.test.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"devDependencies": {
+		"eslint": "^8.57.0"
+	}
+}
