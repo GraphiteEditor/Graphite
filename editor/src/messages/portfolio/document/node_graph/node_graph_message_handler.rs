@@ -1,4 +1,4 @@
-use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput, Source};
+use graph_craft::document::{DocumentNode, FlowType, NodeId, NodeInput, NodeNetwork, NodeOutput, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -11,7 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerClassification, LayerPanelEntry, SelectedNodes};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 
 use glam::IVec2;
@@ -847,7 +847,10 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_nodes(&self, links: &[FrontendNodeLink], network: &NodeNetwork) -> Vec<FrontendNode> {
-		let connected_node_to_output_lookup = links.iter().map(|link| ((link.link_start, link.link_start_output_index), link.link_end)).collect::<HashMap<_, _>>();
+		let connected_node_to_output_lookup = links
+			.iter()
+			.map(|link| ((link.link_start, link.link_start_output_index), (link.link_end, link.link_end_input_index)))
+			.collect::<HashMap<_, _>>();
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
@@ -883,11 +886,16 @@ impl NodeGraphMessageHandler {
 			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
 			// Outputs
-			let mut outputs = document_node_definition.outputs.iter().enumerate().map(|(index, output_type)| FrontendGraphOutput {
-				data_type: output_type.data_type,
-				name: output_type.name.to_string(),
-				resolved_type: self.resolved_types.outputs.get(&Source { node: node_path.clone(), index }).map(|output| format!("{output:?}")),
-				connected: connected_node_to_output_lookup.get(&(node_id, index)).copied(),
+			let mut outputs = document_node_definition.outputs.iter().enumerate().map(|(index, output_type)| {
+				let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, index)).copied().map(|(a, b)| (Some(a), Some(b))).unwrap_or((None, None));
+
+				FrontendGraphOutput {
+					data_type: output_type.data_type,
+					name: output_type.name.to_string(),
+					resolved_type: self.resolved_types.outputs.get(&Source { node: node_path.clone(), index }).map(|output| format!("{output:?}")),
+					connected,
+					connected_index,
+				}
 			});
 			let primary_output = node.has_primary_output.then(|| outputs.next()).flatten();
 			let exposed_outputs = outputs.collect::<Vec<_>>();
@@ -898,7 +906,7 @@ impl NodeGraphMessageHandler {
 				id: node_id,
 				is_layer: node.is_layer,
 				can_be_layer: self.eligible_to_be_layer(network, node_id),
-				alias: Self::unnamed_layer_label(node, network),
+				alias: Self::untitled_layer_label(node),
 				name: node.name.clone(),
 				primary_input,
 				exposed_inputs,
@@ -918,15 +926,6 @@ impl NodeGraphMessageHandler {
 		for (&node_id, node) in &network.nodes {
 			if node.is_layer {
 				let layer = LayerNodeIdentifier::new(node_id, network);
-				let layer_classification = {
-					if metadata.is_artboard(layer) {
-						LayerClassification::Artboard
-					} else if metadata.is_folder(layer) {
-						LayerClassification::Folder
-					} else {
-						LayerClassification::Layer
-					}
-				};
 
 				let parents_visible = layer
 					.ancestors(metadata)
@@ -940,12 +939,21 @@ impl NodeGraphMessageHandler {
 
 				let data = LayerPanelEntry {
 					id: node_id,
-					layer_classification,
+					children_allowed:
+						// The layer has other layers as children along the secondary input's horizontal flow
+						layer.has_children(metadata)
+						|| (
+							// At least one secondary input is exposed on this layer node
+							node.inputs.iter().skip(1).any(|input| input.is_exposed()) &&
+							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
+							network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
+						),
+					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
-					has_children: layer.has_children(metadata),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
-					name: Self::unnamed_layer_label(node, network),
+					name: node.name.clone(),
+					alias: Self::untitled_layer_label(node),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: node.visible,
 					parents_visible,
@@ -1097,14 +1105,10 @@ impl NodeGraphMessageHandler {
 		true
 	}
 
-	fn unnamed_layer_label(node: &DocumentNode, network: &NodeNetwork) -> String {
-		(!node.alias.is_empty()).then_some(node.alias.clone()).unwrap_or(if node.is_folder(network) {
-			"Folder".to_string()
-		} else if node.name == "Merge" {
-			"Unnamed Layer".to_string()
-		} else {
-			node.name.clone()
-		})
+	fn untitled_layer_label(node: &DocumentNode) -> String {
+		(node.alias != "")
+			.then_some(node.alias.clone())
+			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() })
 	}
 }
 

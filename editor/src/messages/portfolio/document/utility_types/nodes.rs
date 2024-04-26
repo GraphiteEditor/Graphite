@@ -30,24 +30,18 @@ impl serde::Serialize for JsRawBuffer {
 	}
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub enum LayerClassification {
-	#[default]
-	Folder,
-	Artboard,
-	Layer,
-}
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub name: String,
+	pub alias: String,
 	pub tooltip: String,
-	#[serde(rename = "layerClassification")]
-	pub layer_classification: LayerClassification,
+	#[serde(rename = "childrenAllowed")]
+	pub children_allowed: bool,
+	#[serde(rename = "childrenPresent")]
+	pub children_present: bool,
 	pub expanded: bool,
-	#[serde(rename = "hasChildren")]
-	pub has_children: bool,
+	pub depth: usize,
 	pub visible: bool,
 	#[serde(rename = "parentsVisible")]
 	pub parents_visible: bool,
@@ -56,7 +50,6 @@ pub struct LayerPanelEntry {
 	pub parents_unlocked: bool,
 	#[serde(rename = "parentId")]
 	pub parent_id: Option<NodeId>,
-	pub depth: usize,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

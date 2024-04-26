@@ -100,6 +100,8 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string | undefined;
 
 	readonly connected!: bigint | undefined;
+
+	readonly connectedIndex!: bigint | undefined;
 }
 
 export class FrontendNode {
@@ -608,16 +610,23 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 }
 
 export class LayerPanelEntry {
+	id!: bigint;
+
 	name!: string;
+
+	alias!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	layerClassification!: LayerClassification;
+	childrenAllowed!: boolean;
+
+	childrenPresent!: boolean;
 
 	expanded!: boolean;
 
-	hasChildren!: boolean;
+	@Transform(({ value }: { value: bigint }) => Number(value))
+	depth!: number;
 
 	visible!: boolean;
 
@@ -628,14 +637,7 @@ export class LayerPanelEntry {
 	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
-
-	id!: bigint;
-
-	@Transform(({ value }: { value: bigint }) => Number(value))
-	depth!: number;
 }
-
-export type LayerClassification = "Folder" | "Artboard" | "Layer";
 
 export class DisplayDialogDismiss extends JsMessage {}
 

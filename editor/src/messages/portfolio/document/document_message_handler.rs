@@ -1546,7 +1546,7 @@ impl DocumentMessageHandler {
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				//
 				IconButton::new("NewLayer", 24)
-					.tooltip("New Folder/Layer")
+					.tooltip("New Layer")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 					.widget_holder(),

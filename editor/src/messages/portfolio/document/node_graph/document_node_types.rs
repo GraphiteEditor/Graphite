@@ -240,7 +240,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
-			properties: node_properties::layer_no_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {

@@ -185,7 +185,7 @@ impl DocumentMetadata {
 						self.artboards.insert(current_layer_node);
 					}
 
-					if is_folder(current_layer_node, graph) {
+					if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
 						self.folders.insert(current_layer_node);
 					}
 
@@ -207,14 +207,14 @@ impl DocumentMetadata {
 					if !self.structure.contains_key(&current_layer_node) {
 						parent_layer_node.push_child(self, current_layer_node);
 
-						//The layer nodes for the horizontal flow is itself
+						// The layer nodes for the horizontal flow is itself
 						awaiting_horizontal_flow.push((current_node, current_node_id, current_layer_node));
 
 						if is_artboard(current_layer_node, graph) {
 							self.artboards.insert(current_layer_node);
 						}
 
-						if is_folder(current_layer_node, graph) {
+						if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
 							self.folders.insert(current_layer_node);
 						}
 
@@ -655,11 +655,6 @@ struct NodeRelations {
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
 	node.is_artboard()
-}
-
-pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
-	node.is_folder(network)
 }
 
 #[test]

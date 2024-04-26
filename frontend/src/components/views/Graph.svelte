@@ -173,7 +173,7 @@
 			if (disconnecting?.linkIndex === index) return [];
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && link.linkEndInputIndex == 0n) || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && Number(link.linkEndInputIndex) == 0) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -257,8 +257,9 @@
 
 	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
 		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
+		const outputPortRect = outputPort.getBoundingClientRect();
 
-		const pathString = buildWirePathString(outputPort.getBoundingClientRect(), inputPortRect, verticalOut, verticalIn);
+		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
 
 		return { pathString, dataType, thick: verticalIn && verticalOut };
@@ -728,17 +729,22 @@
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
 
-	function layerBorderMask(nodeWidth: number): string {
+	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number): string {
 		const NODE_HEIGHT = 2 * 24;
 		const THUMBNAIL_WIDTH = 72 + 8 * 2;
 		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
 
+		const nodeWidth = nodeWidthFromThumbnail + nodeChainAreaLeftExtension;
+
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+
 		// Left input
-		boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+		if (nodeChainAreaLeftExtension > 0) {
+			boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+		}
 
 		// Thumbnail
-		boxes.push({ x: 28, y: -FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT * 2 });
+		boxes.push({ x: nodeChainAreaLeftExtension - 8, y: -FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT * 2 });
 
 		// Right visibility button
 		boxes.push({ x: nodeWidth - 12, y: (NODE_HEIGHT - 24) / 2, width: 24, height: 24 });
@@ -857,6 +863,7 @@
 				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				style:--label-width={labelWidthGridCells}
+				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -864,7 +871,6 @@
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
-				<div class="node-chain" />
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
 						{@html $nodeGraph.thumbnails.get(node.id)}
@@ -881,10 +887,10 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
+								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -956,7 +962,10 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(36 + 72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple)} />
+							<path
+								clip-rule="evenodd"
+								d={layerBorderMask(72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple, node.exposedInputs.length === 0 ? 0 : 36)}
+							/>
 						</clipPath>
 					</defs>
 				</svg>
@@ -1055,7 +1064,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -1074,7 +1083,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${`${parameter.connected}, port index ${parameter.connectedIndex}` || "nothing"}`}</title>
 							{#if parameter.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -1362,10 +1371,12 @@
 
 		.layer {
 			border-radius: 8px;
-			--half-visibility-button: 12px;
 			--extra-width-to-reach-grid-multiple: 8px;
+			--node-chain-area-left-extension: 0;
 			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
-			width: calc(36px + 72px + 8px + 24px * Max(3, var(--label-width)) + 8px + var(--half-visibility-button) + var(--extra-width-to-reach-grid-multiple));
+			width: calc(72px + 8px + 24px * Max(3, var(--label-width)) + 8px + 12px + var(--extra-width-to-reach-grid-multiple));
+			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
+			margin-left: calc((1.5 - var(--node-chain-area-left-extension)) * 24px);
 
 			&::after {
 				border: 1px solid var(--color-5-dullgray);
@@ -1375,10 +1386,6 @@
 			&.selected {
 				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
 				background: rgba(66, 66, 66, 0.4);
-			}
-
-			.node-chain {
-				width: 36px;
 			}
 
 			.thumbnail {
@@ -1436,7 +1443,7 @@
 
 			.visibility {
 				position: absolute;
-				right: calc(-1 * var(--half-visibility-button));
+				right: -12px;
 			}
 
 			.visibility,

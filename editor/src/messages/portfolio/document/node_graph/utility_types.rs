@@ -66,6 +66,8 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	pub connected: Option<NodeId>,
+	#[serde(rename = "connectedIndex")]
+	pub connected_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

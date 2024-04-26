@@ -2236,12 +2236,8 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
 }
 
-pub fn node_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Node has no properties")
-}
-
-pub fn layer_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Layer has no properties")
+pub fn node_no_properties(document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	string_properties(if document_node.is_layer { "Layer has no properties" } else { "Node has no properties" })
 }
 
 pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

@@ -358,13 +358,16 @@ impl DocumentNode {
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
-	// A node is a folder if it is a Merge node, and the secondary input does not exist or eventually leads to a layer along horizontal flow
-	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
-		if !self.is_layer || self.name != "Merge" {
+
+	// TODO: Is this redundant with `LayerNodeIdentifier::has_children()`? Consider removing this in favor of that.
+	/// Determines if a document node acting as a layer has any nested children where its secondary input eventually leads to a layer along horizontal flow.
+	pub fn layer_has_child_layers(&self, network: &NodeNetwork) -> bool {
+		if !self.is_layer {
 			return false;
 		}
-		self.inputs.get(1).is_some_and(|input| {
-			input.as_node().map_or(true, |node_id| {
+
+		self.inputs.iter().skip(1).any(|input| {
+			input.as_node().map_or(false, |node_id| {
 				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
 			})
 		})
@@ -755,6 +758,7 @@ impl NodeNetwork {
 	pub fn previous_outputs_contain(&self, node_id: NodeId) -> Option<bool> {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
+
 	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
 	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
