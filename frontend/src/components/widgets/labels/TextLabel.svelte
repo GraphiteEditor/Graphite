@@ -56,11 +56,11 @@
 	}
 
 	function handlePointerEnter() {
-		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.add("label-is-hovered");
+		document.querySelector(`[data-checkbox-label="${forCheckbox}"]`)?.classList.add("label-is-hovered");
 	}
 
 	function handlePointerLeave() {
-		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.remove("label-is-hovered");
+		document.querySelector(`[data-checkbox-label="${forCheckbox}"]`)?.classList.remove("label-is-hovered");
 	}
 
 	onMount(() => watchForCheckbox(forCheckbox));

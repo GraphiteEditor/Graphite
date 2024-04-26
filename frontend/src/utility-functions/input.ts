@@ -400,6 +400,7 @@ function potentiallyClearTextSelection(e: PointerEvent) {
 	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
 
 	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	// eslint-disable-next-line graphite/require-data-selectors -- Every text control is wanted here, whichever component drew it
 	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
 	controls.forEach((control) => {
 		const caret = control.selectionStart;

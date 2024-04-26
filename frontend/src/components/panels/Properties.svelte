@@ -60,7 +60,7 @@
 		if (!handle) return;
 
 		// Don't begin a drag when pressing one of the header's own buttons (pin/delete/visibility); only the header itself grabs
-		if (target.closest("button") !== handle) return;
+		if (target.closest("[data-icon-button]")) return;
 
 		const section = target.closest("[data-properties-reorderable-section]");
 		const nodeIdAttribute = section?.getAttribute("data-node-id");
