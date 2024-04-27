@@ -617,6 +617,8 @@ impl JsEditorHandle {
 		let insert_parent_id = insert_parent_id.map(NodeId);
 
 		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
+
+		self.dispatch(DocumentMessage::StartTransaction);
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
@@ -625,7 +627,6 @@ impl JsEditorHandle {
 	}
 
 	/// Set the name for the layer
-	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
 		let id = NodeId(id);
 		let message = NodeGraphMessage::SetName { node_id: id, name };

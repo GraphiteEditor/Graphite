@@ -31,7 +31,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_core::{concrete, generic, ProtoNodeIdentifier};
 use graphene_std::wasm_application_io::WasmEditorApi;
 
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, IVec2};
 
 use std::vec;
 
@@ -449,8 +449,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
-				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect::<Vec<_>>();
-
+				let mut ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect::<Vec<_>>();
+				ordered_last_elements.reverse();
 				for layer_to_move in ordered_last_elements.clone() {
 					// Part 1: Disconnect layer to move and layers before/after
 					let mut downstream_layer = None;
@@ -469,6 +469,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					if let Some(upstream_sibling) = layer_to_move.next_sibling(&self.metadata) {
 						if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
 							*node_id = upstream_sibling.to_node();
+						}
+						let upstream_shift = IVec2::new(0, -3);
+						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+						modify_inputs.shift_upstream(upstream_sibling.to_node(), upstream_shift);
+						{
+							if let Some(upstream_sibling_node_mut) = self.network.nodes.get_mut(&upstream_sibling.to_node()) {
+								upstream_sibling_node_mut.metadata.position += upstream_shift;
+							};
 						}
 					} else {
 						// Disconnect node directly downstream if upstream sibling doesn't exist
@@ -519,7 +527,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// If moved to top of a layer stack, move to the left of the post node. The stack will be shifted down later.
 					// If moved within a stack, move directly on the post node. The rest of the stack will be shifted down later.
 					let offset_to_post_node = if insert_index == 0 {
-						new_position - current_position - glam::IVec2::new(8, 0)
+						new_position - current_position - IVec2::new(8, 0)
 					} else {
 						new_position - current_position
 					};
@@ -554,7 +562,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// shift stack down, starting at the moved node.
 					let mut modify_inputs: ModifyInputsContext = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-					let shift = glam::IVec2::new(0, 3);
+					let shift = IVec2::new(0, 3);
 					modify_inputs.shift_upstream(layer_to_move.to_node(), shift);
 					{
 						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
@@ -1764,7 +1772,7 @@ impl DocumentMessageHandler {
 
 		// If moving down, insert below this layer. If moving up, insert above this layer.
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 } as isize;
-
+		responses.add(DocumentMessage::StartTransaction);
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
 
