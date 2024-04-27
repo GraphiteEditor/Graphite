@@ -122,35 +122,25 @@ impl<'a> ModifyInputsContext<'a> {
 
 		Some(new_id)
 	}
-
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
-		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
-
-		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top most artboard,
-		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
-		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
-		let mut post_node_id: NodeId = output_node_id;
+	/// Starts at any layer, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index
+	///			-> Post node input_index: 0
+	///		↑		if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
+	///	->	Layer1	input_index: 1
+	///		↑		if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
+	///	->	Layer2	input_index: 2
+	///		↑
+	///	->	NLN
+	///		↑		if skip_layer_nodes == 2, return (NLN, Some(Layer3), 0)
+	///	->	Layer3	input_index: 3
+	///				if skip_layer_nodes == 3, return (Layer3, None, 0)
+	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, mut insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
 		let mut post_node_input_index = 1; // Assume post node is a layer type.
 		if post_node_id == NodeId(0) {
 			post_node_input_index = 0; // Output node input index.
-						   // Check if an artboard is connected, and switch post node to the artboard.
-			if let Some(NodeInput::Node { node_id, .. }) = &self.document_network.nodes.get(&post_node_id).expect("Output node should always exist").inputs.get(0) {
-				let input_node = self.document_network.nodes.get(&node_id).expect("First input node should exist");
-				if input_node.is_artboard() {
-					post_node_id = *node_id;
-					post_node_input_index = 1; //Children for artboards connect to the second ("Over") input.
-				}
-			}
 		}
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
-		//			-> Post node
-		//		⬆️		if skip_layer_nodes == 0, insert new layer here
-		//	->	Layer 	stack_index: 0
-		//      ⬆️		if skip_layer_nodes == 1, insert new layer here
-		//  -> 	Layer	stack_index: 1
-		for _ in 0..skip_layer_nodes {
-			let next_node_in_stack_id = self
-				.document_network
+		for current_index in 0..insert_index {
+			let next_node_in_stack_id = network
 				.nodes
 				.get(&post_node_id)
 				.expect("Post node should always exist")
@@ -159,91 +149,67 @@ impl<'a> ModifyInputsContext<'a> {
 				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
 
 			if let Some(mut next_node_in_stack_id) = next_node_in_stack_id {
-				let next_node_in_stack = self.document_network.nodes.get(&next_node_in_stack_id).expect("Stack node should always exist");
-
-				//If an NLN (non layer node) is in the stack, create a Layer node for it to feed into
+				// Skip over non layer nodes
+				let next_node_in_stack = network.nodes.get(&next_node_in_stack_id).expect("Stack node should always exist");
 				if !next_node_in_stack.is_layer {
-					let nln_layer_id = NodeId(generate_uuid());
-					let nln_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-					let nln_layer_input = NodeInput::node(next_node_in_stack_id, 0);
-					let nln_layer_input_index = 1; //Input NLN node to the "Over" for the new layer
-					let post_node_input = NodeInput::node(nln_layer_id, 0);
-					// Add the NLN layer between the NLN and post_node. The new layer will be added between this layer and the post_node
-					next_node_in_stack_id = self
-						.insert_between(
-							nln_layer_id,
-							nln_layer_node,
-							nln_layer_input,
-							nln_layer_input_index,
-							post_node_id,
-							post_node_input,
-							post_node_input_index,
-							IVec2::new(-8, 3),
-						)
-						.expect("Could not create layer node for NLN")
+					insert_index += 1
 				}
-
 				post_node_id = next_node_in_stack_id;
 				post_node_input_index = 0; //Input as a sibling to the Layer node above
 			} else {
-				log::info!("Error creating layer: skip_layer_nodes index out of bounds");
-				return None;
+				log::error!("Error creating layer: insert_index out of bounds");
+				continue;
 			};
 		}
 
-		let post_node = self.document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
-		let pre_node_id = post_node
+		// Move post_node to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at index 1 + insert_index
+		let mut post_node = network.nodes.get(&post_node_id).expect("Post node should always exist");
+		let mut pre_node_id = post_node
 			.inputs
 			.get(post_node_input_index)
 			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
 
-		if let Some(mut pre_node_id) = pre_node_id {
-			// A new layer needs to be inserted between nodes. Post node can either be a parent or sibling. Siblings are part of the same stack.
-			// The follow diagrams are for a parent post node, but same concept applies for sibling post node (which happens if skip_layer_nodes is > 0).
-			// Before
-			// 				 	-> Post node
-			//				⬆️
-			//			->	Old Layer
-			// After
-			//					-> Post node
-			//				⬆️
-			//			->	New Layer (id: new_id)
-			//				⬆️
-			//			->	Old Layer
-			//
-			// Before
-			// 		    	NLN	-> Post node
-			// After
-			// 		          	-> Post node
-			//              ⬆️
-			// 			-> 	New Layer (id: new_id)
-			//              ⬆️
-			//      NLN	-> 	New Layer (id: random_id)
-
-			// Pre_node will never be an artboard, since all artboards must be connected to root, and output node will be the artboard if it exists.
-			let pre_node = self.document_network.nodes.get(&pre_node_id).expect("Pre node id should always refer to a node");
-
+		// Skip until pre_node is either a layer or does not exist
+		while let Some(pre_node_id_value) = pre_node_id {
+			let pre_node = network.nodes.get(&pre_node_id_value).expect("pre_node_id should be a layer");
 			if !pre_node.is_layer {
-				// If pre_node is a non-layer node (NLN), create a layer for this node, and set pre_node to that layer.
-				let nln_layer_id = NodeId(generate_uuid());
-				let nln_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-				let nln_layer_input = NodeInput::node(pre_node_id, 0);
-				let nln_layer_input_index = 1;
-				let post_node_input = NodeInput::node(nln_layer_id, 0);
-				// Add the NLN layer between the NLN and post_node. The new layer will be added between this layer and the post_node
-				self.insert_between(
-					nln_layer_id,
-					nln_layer_node,
-					nln_layer_input,
-					nln_layer_input_index,
-					post_node_id,
-					post_node_input,
-					post_node_input_index,
-					IVec2::new(-8, 3),
-				);
+				post_node = pre_node;
+				post_node_id = pre_node_id_value;
+				pre_node_id = post_node
+					.inputs
+					.get(0)
+					.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+				post_node_input_index = 0;
+			} else {
+				break;
+			}
+		}
 
-				pre_node_id = nln_layer_id;
-			};
+		(post_node_id, pre_node_id, post_node_input_index)
+	}
+
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, mut skip_layer_nodes: usize) -> Option<NodeId> {
+		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
+
+		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top most artboard,
+		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
+		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
+
+		let mut post_node_id = output_node_id;
+		if post_node_id == NodeId(0) {
+			// Check if an artboard is connected, and switch post node to the artboard.
+			if let Some(NodeInput::Node { node_id, .. }) = &self.document_network.nodes.get(&post_node_id).expect("Output node should always exist").inputs.get(0) {
+				let input_node = self.document_network.nodes.get(&node_id).expect("First input node should exist");
+				if input_node.is_artboard() {
+					post_node_id = *node_id;
+				}
+			}
+		}
+
+		let (mut post_node_id, pre_node_id, mut post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
+
+		if let Some(pre_node_id) = pre_node_id {
+			let pre_node = self.document_network.nodes.get(&pre_node_id).expect("pre_node_id should always be a node");
 			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_between(
 				new_id,
@@ -257,17 +223,11 @@ impl<'a> ModifyInputsContext<'a> {
 			);
 		} else {
 			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(-8, 3));
-		}
-
-		//TODO: Is this necessary? When load_structure is called it resets these changes and builds the structure from scratch.
-		let parent = LayerNodeIdentifier::new(post_node_id, self.document_network);
-		let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
-		// Check if new layer is a child or sibling to post_node
-		if post_node_input_index == 0 {
-			parent.add_after(self.document_metadata, new_child);
-		} else {
-			parent.push_front_child(self.document_metadata, new_child);
+			if post_node_input_index == 1 {
+				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(-8, 3));
+			} else {
+				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(0, 3));
+			}
 		}
 
 		Some(new_id)

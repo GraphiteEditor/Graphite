@@ -128,7 +128,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 				alias,
 			} => {
-				info!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
+				//trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
 
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 

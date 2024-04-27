@@ -191,7 +191,7 @@ impl DocumentMetadata {
 				}
 			}
 			while let Some((primary_root_node, primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
-				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::HorizontalFlow);
+				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
 				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
 					if !current_node.visible {
