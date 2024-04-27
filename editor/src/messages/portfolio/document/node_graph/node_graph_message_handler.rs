@@ -66,6 +66,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						new_layer: selected_nodes.selected_layers(document_metadata).next(),
 					});
 				}
+				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::ConnectNodesByLink {

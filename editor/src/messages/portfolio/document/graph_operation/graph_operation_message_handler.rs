@@ -198,9 +198,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
-			GraphOperationMessage::ResizeArtboard { location, dimensions } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.resize_artboard(location, dimensions);
+			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
+					modify_inputs.resize_artboard(location, dimensions);
+				}
 			}
 			GraphOperationMessage::ClearArtboards => {
 				let modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);

@@ -232,7 +232,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let parent = self
 					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let insert_index = parent
@@ -358,7 +358,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				let parent = self
 					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, direct_child)| {
@@ -1277,7 +1277,7 @@ impl DocumentMessageHandler {
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
 		self.metadata()
-			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
+			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 

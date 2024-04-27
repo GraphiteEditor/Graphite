@@ -93,14 +93,14 @@ impl DocumentMetadata {
 		sorted_layers
 	}
 
-	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root.
-	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
+	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
+	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<LayerNodeIdentifier> {
 		layers
 			.map(|layer| {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
 				layer_path.reverse();
 
-				if include_self || !self.folders.contains(&layer) {
+				if !self.is_artboard(layer) && !self.is_folder(layer) {
 					layer_path.pop();
 				}
 

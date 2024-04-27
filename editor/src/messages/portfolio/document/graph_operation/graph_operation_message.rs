@@ -96,6 +96,7 @@ pub enum GraphOperationMessage {
 		insert_index: isize,
 	},
 	ResizeArtboard {
+		id: NodeId,
 		location: IVec2,
 		dimensions: IVec2,
 	},

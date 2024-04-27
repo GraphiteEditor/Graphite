@@ -23,6 +23,7 @@ pub enum ArtboardToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	UpdateSelectedArtboard,
 	DeleteSelected,
 	NudgeSelected { delta_x: f64, delta_y: f64 },
 	PointerDown,
@@ -156,6 +157,7 @@ impl ArtboardToolData {
 		let center = from_center.then_some(bounds.center_of_transformation);
 		let (position, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
 		responses.add(GraphOperationMessage::ResizeArtboard {
+			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
@@ -226,6 +228,7 @@ impl Fsm for ArtboardToolFsmState {
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 
 					responses.add(GraphOperationMessage::ResizeArtboard {
+						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: position.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -267,15 +270,16 @@ impl Fsm for ArtboardToolFsmState {
 				let start = root_transform.transform_point2(start);
 				let size = root_transform.transform_vector2(size);
 
-				if tool_data.selected_artboard.is_some() {
+				if let Some(artboard) = tool_data.selected_artboard {
 					responses.add(GraphOperationMessage::ResizeArtboard {
+						id: artboard.to_node(),
 						location: start.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
 				} else {
 					let id = NodeId(generate_uuid());
-					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
+					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
 					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
@@ -373,16 +377,19 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
+			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
+				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.metadata().is_artboard(*layer));
+				self
+			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
-				if let Some(artboard) = tool_data.selected_artboard.take() {
-					let id = artboard.to_node();
-					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
-				}
+				tool_data.selected_artboard.take();
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					responses.add(GraphOperationMessage::ResizeArtboard {
+						id: tool_data.selected_artboard.unwrap().to_node(),
 						location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
 						dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 					});
