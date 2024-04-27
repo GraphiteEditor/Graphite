@@ -627,6 +627,7 @@ impl JsEditorHandle {
 	}
 
 	/// Set the name for the layer
+	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
 		let id = NodeId(id);
 		let message = NodeGraphMessage::SetName { node_id: id, name };

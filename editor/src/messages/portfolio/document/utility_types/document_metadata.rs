@@ -148,14 +148,6 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
-		//Layers connected to a node via horizontal flow (inclusive)
-		fn child_layers<'a>(graph: &'a NodeNetwork, node: NodeId, flow_type: FlowType) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
-			// The output node is the only node with children at index 0
-			graph
-				.upstream_flow_back_from_nodes(vec![node], flow_type)
-				.filter(move |(filter_node, node_id)| filter_node.is_layer || *node_id == node)
-		}
-
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
 		self.artboards = HashSet::new();
 		self.folders = HashSet::new();
@@ -164,48 +156,29 @@ impl DocumentMetadata {
 
 		// Refers to output node: NodeId(0)
 		let output_node_id = graph.exports[0].node_id;
-
-		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
+		let Some(output_node) = graph.nodes.get(&output_node_id) else {
+			return;
+		};
+		let mut awaiting_horizontal_flow = vec![(output_node, output_node_id, LayerNodeIdentifier::ROOT)];
 		let mut awaiting_primary_flow = vec![];
 
-		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
-			let horizontal_flow_iter = child_layers(graph, horizontal_root_node_id, FlowType::HorizontalFlow);
+		while let Some((horizontal_root_node, horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
+			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
 			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
-				let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
-				if !self.structure.contains_key(&current_layer_node) {
-					awaiting_primary_flow.push((current_node_id, parent_layer_node));
-					parent_layer_node.push_child(self, current_layer_node);
-					parent_layer_node = current_layer_node;
-
-					if is_artboard(current_layer_node, graph) {
-						self.artboards.insert(current_layer_node);
-					}
-
-					if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
-						self.folders.insert(current_layer_node);
-					}
-
-					if !current_node.visible {
-						self.hidden.insert(current_node_id);
-					}
-
-					if current_node.locked {
-						self.locked.insert(current_node_id);
-					}
+				if !current_node.visible {
+					self.hidden.insert(current_node_id);
 				}
-			}
-			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
-				let primary_flow_iter = child_layers(graph, primary_root_node_id, FlowType::PrimaryFlow);
-				// Skip the primary_root_node_id node
-				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
-					// Create a new layer for the top of each stack, and add it as a child to the previous parent
+
+				if current_node.locked {
+					self.locked.insert(current_node_id);
+				}
+				if current_node.is_layer {
 					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
 					if !self.structure.contains_key(&current_layer_node) {
+						awaiting_primary_flow.push((current_node, current_node_id, parent_layer_node));
 						parent_layer_node.push_child(self, current_layer_node);
-
-						// The layer nodes for the horizontal flow is itself
-						awaiting_horizontal_flow.push((current_node_id, current_layer_node));
+						parent_layer_node = current_layer_node;
 
 						if is_artboard(current_layer_node, graph) {
 							self.artboards.insert(current_layer_node);
@@ -214,13 +187,36 @@ impl DocumentMetadata {
 						if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
 							self.folders.insert(current_layer_node);
 						}
+					}
+				}
+			}
+			while let Some((primary_root_node, primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
+				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::HorizontalFlow);
+				// Skip the primary_root_node_id node
+				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
+					if !current_node.visible {
+						self.hidden.insert(current_node_id);
+					}
 
-						if !current_node.visible {
-							self.hidden.insert(current_node_id);
-						}
+					if current_node.locked {
+						self.locked.insert(current_node_id);
+					}
+					if current_node.is_layer {
+						// Create a new layer for the top of each stack, and add it as a child to the previous parent
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
+						if !self.structure.contains_key(&current_layer_node) {
+							parent_layer_node.push_child(self, current_layer_node);
 
-						if current_node.locked {
-							self.locked.insert(current_node_id);
+							// The layer nodes for the horizontal flow is itself
+							awaiting_horizontal_flow.push((current_node, current_node_id, current_layer_node));
+
+							if is_artboard(current_layer_node, graph) {
+								self.artboards.insert(current_layer_node);
+							}
+
+							if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
+								self.folders.insert(current_layer_node);
+							}
 						}
 					}
 				}
