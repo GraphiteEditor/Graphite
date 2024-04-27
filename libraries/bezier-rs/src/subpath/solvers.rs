@@ -274,12 +274,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			return self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0;
 		}
 
-		// The curve is not closed. Pretend that it is and compute the winding number change
-		// if we had a segment from the last point back to the first.
+		// The curve is not closed. Pretend that it is and compute the winding number
+		// change as if we had a segment from the last point back to the first.
 
 		// Position of first and last anchor points.
-		let first_anchor_point = self.manipulator_groups.first().map(|manipulator_group| manipulator_group.anchor);
-		let last_anchor_point = self.manipulator_groups.last().map(|manipulator_group| manipulator_group.anchor);
+		let first_anchor_point = self.manipulator_groups.first().map(|group| group.anchor);
+		let last_anchor_point = self.manipulator_groups.last().map(|group| group.anchor);
 		let endpoints = first_anchor_point.zip(last_anchor_point);
 
 		// Weight interpolating intersection location from last to first anchor point. Reject weights outside of [0, 1].

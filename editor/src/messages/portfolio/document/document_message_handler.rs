@@ -903,7 +903,7 @@ impl DocumentMessageHandler {
 			.filter(move |(layer, target)| {
 				target
 					.iter()
-					.any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer), layer.filled(&self.network)))
+					.any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer), layer.visibly_filled(&self.network)))
 			})
 			.map(|(layer, _)| layer)
 	}

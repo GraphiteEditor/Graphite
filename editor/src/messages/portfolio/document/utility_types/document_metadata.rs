@@ -1,12 +1,14 @@
 use super::nodes::SelectedNodes;
 
-use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
+use graphene_core::vector::style::FillType;
+use graphene_std::vector::PointId;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::PointId;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -533,29 +535,21 @@ impl LayerNodeIdentifier {
 			.expect("There should be a layer before the root")
 	}
 
-	pub fn filled(&self, network: &NodeNetwork) -> bool {
-		use graph_craft::document::value::TaggedValue;
-		use graph_craft::document::NodeInput;
-		use graphene_core::vector::style::FillType;
+	pub fn visibly_filled(&self, network: &NodeNetwork) -> bool {
+		network
+			.upstream_flow_back_from_nodes(vec![self.to_node()], true)
+			.filter(|(node, _)| node.name == "Fill")
+			.any(|(node, _)| {
+				node.inputs.iter().any(|node_input| {
+					let NodeInput::Value { tagged_value, .. } = node_input else { return false };
 
-		// TODO: make more concise
-		network.upstream_flow_back_from_nodes(vec![self.to_node()], true).any(|(document_node, _)| {
-			document_node.name == "Fill"
-				&& document_node.inputs.iter().any(|node_input| match node_input {
-					NodeInput::Value { tagged_value, .. } => match tagged_value {
-						TaggedValue::OptionalColor(optional_color) => match optional_color {
-							Some(color) => color.a() > f32::EPSILON,
-							_ => false,
-						},
-						TaggedValue::FillType(fill_type) => match fill_type {
-							FillType::Gradient => true,
-							_ => false,
-						},
+					match tagged_value {
+						TaggedValue::OptionalColor(optional_color) => optional_color.map(|color| color.a() > f32::EPSILON).unwrap_or(false),
+						TaggedValue::FillType(fill_type) => fill_type == &FillType::Gradient,
 						_ => false,
-					},
-					_ => false,
+					}
 				})
-		})
+			})
 	}
 }
 
