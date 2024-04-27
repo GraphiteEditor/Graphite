@@ -5,7 +5,9 @@ use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
@@ -445,13 +447,137 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
-				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-				responses.add(DocumentMessage::DeleteSelectedLayers);
-				responses.add(PortfolioMessage::PasteIntoFolder {
-					clipboard: Clipboard::Internal,
-					parent,
-					insert_index,
-				});
+				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
+				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
+				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect::<Vec<_>>();
+
+				for layer_to_move in ordered_last_elements.clone() {
+					// Part 1: Disconnect layer to move and layers before/after
+					let mut downstream_layer = None;
+					if let Some(previous_sibling) = layer_to_move.previous_sibling(&self.metadata) {
+						downstream_layer = self.network.nodes.get_mut(&previous_sibling.to_node()).map(|previous_sibling_node| (previous_sibling_node, 0))
+					} else if let Some(parent) = layer_to_move.parent(&self.metadata) {
+						let parent_input_index = if parent.to_node() == NodeId(0) { 0 } else { 1 };
+						downstream_layer = self.network.nodes.get_mut(&parent.to_node()).map(|parent_node| (parent_node, parent_input_index))
+					};
+
+					// Downstream layer should always exist
+					let Some((downstream_node, downstream_input_index)) = downstream_layer else {
+						continue;
+					};
+					// Reconnect downstream node to upstream sibling if it exists
+					if let Some(upstream_sibling) = layer_to_move.next_sibling(&self.metadata) {
+						if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
+							*node_id = upstream_sibling.to_node();
+						}
+					} else {
+						// Disconnect node directly downstream if upstream sibling doesn't exist
+						DocumentMessageHandler::disconnect_input(downstream_node, downstream_input_index);
+					}
+					{
+						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
+							continue;
+						};
+						DocumentMessageHandler::disconnect_input(layer_to_move_node_mut, 0);
+					}
+					// Part 2: Reconnect layer_to_move to new parent at insert index
+					let mut post_node_id = parent.to_node();
+					let mut post_node_input_index = if post_node_id == NodeId(0) { 0 } else { 1 };
+
+					for _ in 0..insert_index {
+						let next_node_in_stack_id = self
+							.network
+							.nodes
+							.get(&post_node_id)
+							.expect("Post node should always exist")
+							.inputs
+							.get(post_node_input_index)
+							.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+						if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+							post_node_id = next_node_in_stack_id;
+							post_node_input_index = 0; //Input as a sibling to the Layer node above
+						} else {
+							log::error!("Error creating layer: skip_layer_nodes index out of bounds");
+							continue;
+						};
+					}
+
+					let post_node = self.network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
+					let pre_node_id = post_node
+						.inputs
+						.get(post_node_input_index)
+						.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+
+					// Layer_to_move should always correspond to a node
+					let Some(layer_to_move_node) = self.network.nodes.get(&layer_to_move.to_node()) else {
+						continue;
+					};
+					// Move current layer to post node
+					let current_position = layer_to_move_node.metadata.position;
+					let new_position = post_node.metadata.position;
+
+					// If moved to top of a layer stack, move to the left of the post node. The stack will be shifted down later.
+					// If moved within a stack, move directly on the post node. The rest of the stack will be shifted down later.
+					let offset_to_post_node = if insert_index == 0 {
+						new_position - current_position - glam::IVec2::new(8, 0)
+					} else {
+						new_position - current_position
+					};
+
+					let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+					modify_inputs.shift_upstream(layer_to_move.to_node(), offset_to_post_node);
+					{
+						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
+							continue;
+						};
+						layer_to_move_node_mut.metadata.position += offset_to_post_node;
+					}
+
+					// Update post_node input to layer_to_move
+					let post_node_mut = self.network.nodes.get_mut(&post_node_id).expect("Post node id should always refer to a node");
+					if let Some(NodeInput::Node { node_id, .. }) = post_node_mut.inputs.get_mut(post_node_input_index) {
+						*node_id = layer_to_move.to_node();
+					} else if let Some(node_input) = post_node_mut.inputs.get_mut(post_node_input_index) {
+						*node_input = NodeInput::node(layer_to_move.to_node(), 0);
+					}
+
+					let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
+						continue;
+					};
+
+					if let Some(pre_node_id) = pre_node_id {
+						// If pre node exists, connect layer_to_move sibling input to that node.
+						if let Some(node_input) = layer_to_move_node_mut.inputs.get_mut(0) {
+							*node_input = NodeInput::node(pre_node_id, 0);
+						}
+					}
+
+					// shift stack down, starting at the moved node.
+					let mut modify_inputs: ModifyInputsContext = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+					let shift = glam::IVec2::new(0, 3);
+					modify_inputs.shift_upstream(layer_to_move.to_node(), shift);
+					{
+						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
+							continue;
+						};
+						layer_to_move_node_mut.metadata.position += shift;
+					}
+					self.metadata.load_structure(&self.network, &mut self.selected_nodes);
+				}
+
+				if ordered_last_elements.iter().any(|layer_to_move| self.network.connected_to_output(layer_to_move.to_node())) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				// responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+				// responses.add(DocumentMessage::DeleteSelectedLayers);
+				// responses.add(PortfolioMessage::PasteIntoFolder {
+				// 	clipboard: Clipboard::Internal,
+				// 	parent,
+				// 	insert_index,
+				// });
 			}
 			DocumentMessage::NudgeSelectedLayers {
 				delta_x,
@@ -1124,6 +1250,21 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	pub fn disconnect_input(layer_to_disconnect_node: &mut DocumentNode, input_index: usize) {
+		let Some(node_type) = resolve_document_node_type(&layer_to_disconnect_node.name) else {
+			warn!("Node {} not in library", layer_to_disconnect_node.name);
+			return;
+		};
+		let Some(existing_input) = layer_to_disconnect_node.inputs.get_mut(input_index) else {
+			warn!("Node does not have and input at the selected index");
+			return;
+		};
+		let mut default_input = node_type.inputs[input_index].default.clone();
+		if let NodeInput::Value { exposed, .. } = &mut default_input {
+			*exposed = existing_input.is_exposed();
+		}
+		*existing_input = default_input;
+	}
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.

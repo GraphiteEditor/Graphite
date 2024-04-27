@@ -1,7 +1,7 @@
 use super::nodes::SelectedNodes;
 
+use graph_craft::document::FlowType;
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
-use graph_craft::document::{FlowType, NodeInput};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
@@ -164,20 +164,17 @@ impl DocumentMetadata {
 
 		// Refers to output node: NodeId(0)
 		let output_node_id = graph.exports[0].node_id;
-		let Some(output_node) = graph.nodes.get(&output_node_id) else {
-			return;
-		};
 
-		let mut awaiting_horizontal_flow = vec![(output_node, output_node_id, LayerNodeIdentifier::ROOT)];
+		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
 		let mut awaiting_primary_flow = vec![];
 
-		while let Some((horizontal_root_node, horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
+		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = child_layers(graph, horizontal_root_node_id, FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
 			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
 				let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
 				if !self.structure.contains_key(&current_layer_node) {
-					awaiting_primary_flow.push((current_node, current_node_id, parent_layer_node));
+					awaiting_primary_flow.push((current_node_id, parent_layer_node));
 					parent_layer_node.push_child(self, current_layer_node);
 					parent_layer_node = current_layer_node;
 
@@ -198,7 +195,7 @@ impl DocumentMetadata {
 					}
 				}
 			}
-			while let Some((primary_root_node, primary_root_node_id, mut parent_layer_node)) = awaiting_primary_flow.pop() {
+			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = child_layers(graph, primary_root_node_id, FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
 				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
@@ -208,7 +205,7 @@ impl DocumentMetadata {
 						parent_layer_node.push_child(self, current_layer_node);
 
 						// The layer nodes for the horizontal flow is itself
-						awaiting_horizontal_flow.push((current_node, current_node_id, current_layer_node));
+						awaiting_horizontal_flow.push((current_node_id, current_layer_node));
 
 						if is_artboard(current_layer_node, graph) {
 							self.artboards.insert(current_layer_node);
