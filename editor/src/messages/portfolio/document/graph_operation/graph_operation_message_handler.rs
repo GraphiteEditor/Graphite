@@ -141,9 +141,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				DocumentMessageHandler::disconnect_input(upstream_sibling_node, 0);
 
 				let upstream_shift = IVec2::new(-8, 0);
-				upstream_sibling_node.metadata.position += upstream_shift;
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift);
+				modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift, true);
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);

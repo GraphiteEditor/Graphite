@@ -107,7 +107,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.document_network.nodes.insert(id, new_node);
 
-		self.shift_upstream(id, shift_upstream);
+		self.shift_upstream(id, shift_upstream, false);
 
 		Some(id)
 	}
@@ -122,7 +122,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 		Some(new_id)
 	}
-	/// Starts at any layer, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index
+
+	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index
 	///			-> Post node input_index: 0
 	///		↑		if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
 	///	->	Layer1	input_index: 1
@@ -208,9 +209,7 @@ impl<'a> ModifyInputsContext<'a> {
 				}
 			}
 		}
-		log::debug!("skip_layer_nodes: {:?}", skip_layer_nodes);
 		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
-		log::debug!("pre_node_id: {:?}, post_node_id: {:?}", pre_node_id, post_node_id);
 		if let Some(pre_node_id) = pre_node_id {
 			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_between(
@@ -353,8 +352,11 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
+	pub fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2, shift_self: bool) {
 		let mut shift_nodes = HashSet::new();
+		if shift_self {
+			shift_nodes.insert(node_id);
+		}
 		let mut stack = vec![node_id];
 		while let Some(node_id) = stack.pop() {
 			let Some(node) = self.document_network.nodes.get(&node_id) else { continue };

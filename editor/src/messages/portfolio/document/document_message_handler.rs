@@ -11,7 +11,6 @@ use crate::messages::portfolio::document::node_graph::document_node_types::resol
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
-use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
@@ -360,7 +359,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
-
 				// Cancel grouping layers across different artboards
 				// TODO: Group each set of layers for each artboard separately
 				if parent == LayerNodeIdentifier::ROOT {
@@ -453,42 +451,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				for layer_to_move in ordered_last_elements.clone() {
 					// Part 1: Disconnect layer to move and layers before/after
-					let mut downstream_layer = None;
-					if let Some(previous_sibling) = layer_to_move.previous_sibling(&self.metadata) {
-						downstream_layer = Some((previous_sibling.to_node(), false))
-					} else if let Some(parent) = layer_to_move.parent(&self.metadata) {
-						downstream_layer = Some((parent.to_node(), true))
-					};
-
-					// Downstream layer should always exist
-					let Some((downstream_layer_node_id, downstream_layer_is_parent)) = downstream_layer else {
-						continue;
-					};
-					// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
-					let flow_type = if downstream_layer_is_parent {
-						graph_craft::document::FlowType::HorizontalFlow
-					} else {
-						graph_craft::document::FlowType::PrimaryFlow
-					};
-					let downstream_node = self.network.upstream_flow_back_from_nodes(vec![downstream_layer_node_id], flow_type).find(|(node, node_id)| {
-						// Get secondary input only if it is the downstream_layer_node_id, the parent of layer to move, and a layer node (parent might be output)
-						let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == *node_id && node.is_layer;
-						let node_input_index = if is_parent_layer { 1 } else { 0 };
-						node.inputs.get(node_input_index).is_some_and(|node_input| {
-							if let NodeInput::Node { node_id, .. } = node_input {
-								*node_id == layer_to_move.to_node()
-							} else {
-								false
-							}
-						})
-					});
-					let Some((downstream_node, downstream_node_id)) = downstream_node else {
+					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, layer_to_move) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
 					};
-
-					let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == downstream_node_id && downstream_node.is_layer;
-					let downstream_input_index = if is_parent_layer { 1 } else { 0 };
 
 					// Reconnect downstream node to upstream sibling if it exists
 					let layer_to_move_sibling_input = self.network.nodes.get(&layer_to_move.to_node()).and_then(|node| node.inputs.get(0));
@@ -502,12 +468,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						}
 						let upstream_shift = IVec2::new(0, -3);
 						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-						modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift);
-						{
-							if let Some(upstream_sibling_node_mut) = self.network.nodes.get_mut(&upstream_sibling_id) {
-								upstream_sibling_node_mut.metadata.position += upstream_shift;
-							};
-						}
+						modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift, true);
 					} else {
 						// Disconnect node directly downstream if upstream sibling doesn't exist
 						let Some(downstream_node) = self.network.nodes.get_mut(&downstream_node_id) else {
@@ -543,13 +504,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 
 					let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-					modify_inputs.shift_upstream(layer_to_move.to_node(), offset_to_post_node);
-					{
-						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
-							continue;
-						};
-						layer_to_move_node_mut.metadata.position += offset_to_post_node;
-					}
+					modify_inputs.shift_upstream(layer_to_move.to_node(), offset_to_post_node, true);
 
 					// Update post_node input to layer_to_move
 					let post_node_mut = self.network.nodes.get_mut(&post_node_id).expect("Post node id should always refer to a node");
@@ -573,13 +528,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// shift stack down, starting at the moved node.
 					let mut modify_inputs: ModifyInputsContext = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
 					let shift = IVec2::new(0, 3);
-					modify_inputs.shift_upstream(layer_to_move.to_node(), shift);
-					{
-						let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer_to_move.to_node()) else {
-							continue;
-						};
-						layer_to_move_node_mut.metadata.position += shift;
-					}
+					modify_inputs.shift_upstream(layer_to_move.to_node(), shift, true);
+
 					self.metadata.load_structure(&self.network, &mut self.selected_nodes);
 				}
 
@@ -947,52 +897,91 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::StartTransaction);
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
-				let mut ungrouped_folders = HashSet::new();
+				// let mut ungrouped_folders = HashSet::new();
 
-				for folder in folder_paths {
-					// Select all the children of the folder
-					let selected = folder
-						.descendants(self.metadata())
-						.filter_map(|descendant| {
-							if ungrouped_folders.contains(&descendant.to_node()) {
-								return None;
-							};
+				for folder in folder_paths.clone() {
+					// Cannot ungroup artboard
+					let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
+					if folder_node.is_artboard() {
+						return;
+					}
 
-							let parent = descendant.parent(self.metadata()).expect("No parent");
-							if parent != folder && !ungrouped_folders.contains(&parent.to_node()) {
-								return None;
+					// Get first child layer node that feeds into the secondary input for the folder
+					let Some(child_layer) = folder.first_child(&self.metadata) else {
+						log::error!("Folder should always have a child");
+						return;
+					};
+					let child_layer_node_id = child_layer.to_node();
+
+					//Move child_layer stack x position to folder stack
+					{
+						let child_layer_node = self.network.nodes.get(&child_layer_node_id).expect("Child node should always exist for layer");
+						let x_offset = folder_node.metadata.position.x - child_layer_node.metadata.position.x;
+						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+						modify_inputs.shift_upstream(child_layer_node_id, IVec2::new(x_offset, 0), true)
+					}
+
+					// Set the input for the node downstream of folder to the first layer node
+					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
+						log::error!("Downstream node should always exist when moving layer");
+						continue;
+					};
+					let Some(NodeInput::Node { node_id, .. }) = self
+						.network
+						.nodes
+						.get_mut(&downstream_node_id)
+						.expect("downstream node should always exist")
+						.inputs
+						.get_mut(downstream_input_index)
+					else {
+						log::error!("Could not get downstream node input");
+						continue;
+					};
+					*node_id = child_layer_node_id;
+
+					// Get the node that feeds into the primary input for the folder (if it exists)
+					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
+						let upstream_sibling_id = *node_id;
+
+						// Get the node at the bottom of the first layer node stack
+						let mut last_child_node_id = child_layer_node_id;
+						loop {
+							if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) {
+								last_child_node_id = *node_id;
+							} else {
+								break;
 							}
+						}
 
-							Some(descendant.to_node())
-						})
-						.collect::<Vec<NodeId>>();
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: selected });
+						// Connect the primary input of the bottom layer to the node to the upstream sibling
+						let Some(node_input) = self.network.nodes.get_mut(&last_child_node_id).expect("Last child node should always exist").inputs.get_mut(0) else {
+							log::error!("Could not get last child node primary input");
+							continue;
+						};
+						*node_input = NodeInput::node(upstream_sibling_id, 0);
 
-					// Copy them
-					responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+						// Shift upstream_sibling down by the height of the child layer stack
+						let top_of_stack = self.network.nodes.get(&child_layer_node_id).expect("Child layer should always exist for child layer id");
+						let bottom_of_stack = self.network.nodes.get(&last_child_node_id).expect("Last child layer should always exist for last child layer id");
+						let y_offset = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y + 3;
+						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+						modify_inputs.shift_upstream(upstream_sibling_id, IVec2::new(0, y_offset), true);
+					}
 
-					// Paste them into the folder above
-					let insert_index = folder
-						.parent(self.metadata())
-						.unwrap_or(LayerNodeIdentifier::ROOT)
-						.children(self.metadata())
-						.enumerate()
-						.find_map(|(index, item)| (item == folder).then_some(index as isize))
-						.unwrap_or(-1);
-					responses.add(PortfolioMessage::PasteIntoFolder {
-						clipboard: Clipboard::Internal,
-						parent: folder.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT),
-						insert_index,
+					// Shift first child layer to folder location
+					let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
+					modify_inputs.shift_upstream(child_layer_node_id, IVec2::new(0, -3), true);
+					// Delete folder and all horizontal inputs
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![folder.to_node()],
+						reconnect: true,
 					});
-
-					// Mark the folder for deletion
-					ungrouped_folders.insert(folder.to_node());
 				}
-
-				for id in ungrouped_folders {
-					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
+				if folder_paths.iter().any(|folder| self.network.connected_to_output(folder.to_node())) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
 				self.metadata.document_to_viewport = transform;
@@ -1283,6 +1272,48 @@ impl DocumentMessageHandler {
 		}
 		*existing_input = default_input;
 	}
+
+	pub fn get_downstream_node(network: &NodeNetwork, metadata: &DocumentMetadata, layer_to_move: LayerNodeIdentifier) -> Option<(NodeId, usize)> {
+		let mut downstream_layer = None;
+		if let Some(previous_sibling) = layer_to_move.previous_sibling(metadata) {
+			downstream_layer = Some((previous_sibling.to_node(), false))
+		} else if let Some(parent) = layer_to_move.parent(metadata) {
+			downstream_layer = Some((parent.to_node(), true))
+		};
+
+		// Downstream layer should always exist
+		let Some((downstream_layer_node_id, downstream_layer_is_parent)) = downstream_layer else {
+			return None;
+		};
+
+		// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
+		let flow_type = if downstream_layer_is_parent {
+			graph_craft::document::FlowType::HorizontalFlow
+		} else {
+			graph_craft::document::FlowType::PrimaryFlow
+		};
+
+		network
+			.upstream_flow_back_from_nodes(vec![downstream_layer_node_id], flow_type)
+			.find(|(node, node_id)| {
+				// Get secondary input only if it is the downstream_layer_node_id, the parent of layer to move, and a layer node (parent might be output)
+				let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == *node_id && node.is_layer;
+				let node_input_index = if is_parent_layer { 1 } else { 0 };
+				node.inputs.get(node_input_index).is_some_and(|node_input| {
+					if let NodeInput::Node { node_id, .. } = node_input {
+						*node_id == layer_to_move.to_node()
+					} else {
+						false
+					}
+				})
+			})
+			.map(|(downstream_node, downstream_node_id)| {
+				let is_parent_layer = downstream_layer_is_parent && downstream_layer_node_id == downstream_node_id && downstream_node.is_layer;
+				let downstream_input_index = if is_parent_layer { 1 } else { 0 };
+				(downstream_node_id, downstream_input_index)
+			})
+	}
+
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
