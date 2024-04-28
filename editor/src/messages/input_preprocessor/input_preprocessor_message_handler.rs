@@ -30,7 +30,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageData> for 
 					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
 					self.viewport_bounds = bounds;
 
-					responses.add(NavigationMessage::TranslateCanvas { delta: DVec2::ZERO });
+					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 					responses.add(FrontendMessage::TriggerViewportResize);
 				}
 			}

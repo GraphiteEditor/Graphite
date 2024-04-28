@@ -633,16 +633,16 @@ impl JsEditorHandle {
 	}
 
 	/// Translates document (in viewport coords)
-	#[wasm_bindgen(js_name = translateCanvas)]
+	#[wasm_bindgen(js_name = panCanvas)]
 	pub fn translate_canvas(&self, delta_x: f64, delta_y: f64) {
-		let message = NavigationMessage::TranslateCanvas { delta: (delta_x, delta_y).into() };
+		let message = NavigationMessage::CanvasPan { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
 	/// Translates document (in viewport coords)
-	#[wasm_bindgen(js_name = translateCanvasByFraction)]
+	#[wasm_bindgen(js_name = panCanvasByFraction)]
 	pub fn translate_canvas_by_fraction(&self, delta_x: f64, delta_y: f64) {
-		let message = NavigationMessage::TranslateCanvasByViewportFraction { delta: (delta_x, delta_y).into() };
+		let message = NavigationMessage::CanvasPanByViewportFraction { delta: (delta_x, delta_y).into() };
 		self.dispatch(message);
 	}
 
