@@ -133,13 +133,17 @@ impl<'a> ModifyInputsContext<'a> {
 	///		↑		if skip_layer_nodes == 2, return (NLN, Some(Layer3), 0)
 	///	->	Layer3	input_index: 3
 	///				if skip_layer_nodes == 3, return (Layer3, None, 0)
-	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, mut insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
+	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
 		let mut post_node_input_index = 1; // Assume post node is a layer type.
 		if post_node_id == NodeId(0) {
 			post_node_input_index = 0; // Output node input index.
 		}
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
-		for current_index in 0..insert_index {
+		let mut current_index = 0;
+		loop {
+			if current_index == insert_index {
+				break;
+			}
 			let next_node_in_stack_id = network
 				.nodes
 				.get(&post_node_id)
@@ -148,20 +152,19 @@ impl<'a> ModifyInputsContext<'a> {
 				.get(post_node_input_index)
 				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
 
-			if let Some(mut next_node_in_stack_id) = next_node_in_stack_id {
-				// Skip over non layer nodes
+			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+				// Only increment index for layer nodes
 				let next_node_in_stack = network.nodes.get(&next_node_in_stack_id).expect("Stack node should always exist");
-				if !next_node_in_stack.is_layer {
-					insert_index += 1
+				if next_node_in_stack.is_layer {
+					current_index += 1;
 				}
 				post_node_id = next_node_in_stack_id;
 				post_node_input_index = 0; //Input as a sibling to the Layer node above
 			} else {
 				log::error!("Error creating layer: insert_index out of bounds");
-				continue;
+				break;
 			};
 		}
-
 		// Move post_node to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at index 1 + insert_index
 		let mut post_node = network.nodes.get(&post_node_id).expect("Post node should always exist");
 		let mut pre_node_id = post_node
@@ -188,7 +191,7 @@ impl<'a> ModifyInputsContext<'a> {
 		(post_node_id, pre_node_id, post_node_input_index)
 	}
 
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, mut skip_layer_nodes: usize) -> Option<NodeId> {
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
 		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top most artboard,
@@ -205,11 +208,10 @@ impl<'a> ModifyInputsContext<'a> {
 				}
 			}
 		}
-
-		let (mut post_node_id, pre_node_id, mut post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
-
+		log::debug!("skip_layer_nodes: {:?}", skip_layer_nodes);
+		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
+		log::debug!("pre_node_id: {:?}, post_node_id: {:?}", pre_node_id, post_node_id);
 		if let Some(pre_node_id) = pre_node_id {
-			let pre_node = self.document_network.nodes.get(&pre_node_id).expect("pre_node_id should always be a node");
 			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_between(
 				new_id,

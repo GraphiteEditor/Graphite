@@ -64,6 +64,9 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
+	MoveUpstreamSiblingToChild {
+		id: NodeId,
+	},
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,

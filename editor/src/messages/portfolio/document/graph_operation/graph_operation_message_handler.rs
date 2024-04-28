@@ -103,6 +103,48 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.brush_modify(strokes);
 				}
 			}
+			GraphOperationMessage::MoveUpstreamSiblingToChild { id } => {
+				let Some(node) = document_network.nodes.get(&id) else {
+					log::error!("Node should always exist");
+					return;
+				};
+				let Some(NodeInput::Node { node_id, .. }) = node.inputs.get(0) else {
+					log::error!("Node should always have a sibling input");
+					return;
+				};
+				let upstream_sibling_id = *node_id;
+				let upstream_sibling_node = document_network.nodes.get(&upstream_sibling_id).expect("Upstream sibling should always exist");
+				// Reconnect to node upstream of upstream sibling
+				if let Some(NodeInput::Node { node_id, .. }) = upstream_sibling_node.inputs.get(0) {
+					let reconnect_node_id = *node_id;
+					let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get_mut(&id).expect("Node should always exist").inputs.get_mut(0) else {
+						log::error!("Node should always have a sibling input");
+						return;
+					};
+					*node_id = reconnect_node_id;
+				} else {
+					let Some(node) = document_network.nodes.get_mut(&id) else {
+						log::error!("Node should always exist");
+						return;
+					};
+					DocumentMessageHandler::disconnect_input(node, 0);
+				}
+				// Connect upstream sibling to child input for the node
+				let Some(node_input) = document_network.nodes.get_mut(&id).expect("Node should always exist").inputs.get_mut(1) else {
+					log::error!("Could not get child node input for current node");
+					return;
+				};
+				*node_input = NodeInput::node(upstream_sibling_id, 0);
+
+				// Disconnect upstream sibling input for upstream sibling
+				let upstream_sibling_node = document_network.nodes.get_mut(&upstream_sibling_id).expect("Upstream sibling should always exist");
+				DocumentMessageHandler::disconnect_input(upstream_sibling_node, 0);
+
+				let upstream_shift = IVec2::new(-8, 0);
+				upstream_sibling_node.metadata.position += upstream_shift;
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift);
+			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
@@ -160,13 +202,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 						// Insert node into network
 						modify_inputs.document_network.nodes.insert(node_id, document_node);
-						info!("Inserting nodes");
 					}
 
 					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&NodeId(0)) {
 							layer_node.inputs[1] = NodeInput::node(input, 0);
-							info!("Linking node");
 						}
 					}
 

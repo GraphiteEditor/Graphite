@@ -232,7 +232,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let parent = self
 					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
 
 				let insert_index = parent
@@ -358,8 +358,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				let parent = self
 					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
+					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
 					.unwrap_or(LayerNodeIdentifier::ROOT);
+
+				// Cancel grouping layers across different artboards
+				// TODO: Group each set of layers for each artboard separately
+				if parent == LayerNodeIdentifier::ROOT {
+					return;
+				}
 
 				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, direct_child)| {
 					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
@@ -377,9 +383,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let folder_id = NodeId(generate_uuid());
 
-				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-				responses.add(DocumentMessage::DeleteSelectedLayers);
-
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id: folder_id,
 					nodes: HashMap::new(),
@@ -387,12 +391,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					insert_index: calculated_insert_index.unwrap_or(-1),
 					alias: String::new(),
 				});
-				responses.add(PortfolioMessage::PasteIntoFolder {
-					clipboard: Clipboard::Internal,
-					parent: LayerNodeIdentifier::new_unchecked(folder_id),
-					insert_index: -1,
-				});
-				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
+				responses.add(GraphOperationMessage::MoveUpstreamSiblingToChild { id: folder_id })
 			}
 			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
@@ -445,7 +444,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT {
 					return;
 				}
-				let mut insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
+				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 
 				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
@@ -458,7 +457,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					if let Some(previous_sibling) = layer_to_move.previous_sibling(&self.metadata) {
 						downstream_layer = Some((previous_sibling.to_node(), false))
 					} else if let Some(parent) = layer_to_move.parent(&self.metadata) {
-						let parent_input_index = if parent.to_node() == NodeId(0) { 0 } else { 1 };
 						downstream_layer = Some((parent.to_node(), true))
 					};
 
@@ -525,14 +523,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Part 2: Reconnect layer_to_move to new parent at insert index
-					let (mut post_node_id, pre_node_id, mut post_node_input_index) = ModifyInputsContext::get_post_node_with_index(&self.network, parent.to_node(), insert_index);
+					let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(&self.network, parent.to_node(), insert_index);
 
 					// Layer_to_move should always correspond to a node
 					let Some(layer_to_move_node) = self.network.nodes.get(&layer_to_move.to_node()) else {
 						continue;
 					};
 					// Move current layer to post node
-					let mut post_node = self.network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
+					let post_node = self.network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
 					let current_position = layer_to_move_node.metadata.position;
 					let new_position = post_node.metadata.position;
 
@@ -1297,7 +1295,7 @@ impl DocumentMessageHandler {
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
 		self.metadata()
-			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()))
+			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
