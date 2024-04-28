@@ -330,49 +330,48 @@ impl ShapeState {
 		select_threshold: f64,
 		add_to_selection: bool,
 	) -> Option<Option<SelectedPointsInfo>> {
-		// if self.selected_shape_state.is_empty() {
-		// 	return None;
-		// }
+		if self.selected_shape_state.is_empty() {
+			return None;
+		}
 
-		// if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document_network, document_metadata, mouse_position, select_threshold) {
-		// 	let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		// 	let manipulator_group = vector_data.manipulator_group_id(manipulator_point_id.group)?;
-		// 	let point_position = manipulator_point_id.manipulator_type.get_position(&manipulator_group)?;
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document_network, document_metadata, mouse_position, select_threshold) {
+			let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+			let point_position = manipulator_point_id.get_position(&vector_data)?;
 
-		// 	let selected_shape_state = self.selected_shape_state.get(&layer)?;
-		// 	let already_selected = selected_shape_state.is_selected(manipulator_point_id);
+			let selected_shape_state = self.selected_shape_state.get(&layer)?;
+			let already_selected = selected_shape_state.is_selected(manipulator_point_id);
 
-		// 	// Should we select or deselect the point?
-		// 	let new_selected = if already_selected { !add_to_selection } else { true };
+			// Should we select or deselect the point?
+			let new_selected = if already_selected { !add_to_selection } else { true };
 
-		// 	// Offset to snap the selected point to the cursor
-		// 	let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
+			// Offset to snap the selected point to the cursor
+			let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
 
-		// 	// This is selecting the manipulator only for now, next to generalize to points
-		// 	if new_selected {
-		// 		let retain_existing_selection = add_to_selection || already_selected;
-		// 		if !retain_existing_selection {
-		// 			self.deselect_all_points();
-		// 		}
+			// This is selecting the manipulator only for now, next to generalize to points
+			if new_selected {
+				let retain_existing_selection = add_to_selection || already_selected;
+				if !retain_existing_selection {
+					self.deselect_all_points();
+				}
 
-		// 		// Add to the selected points
-		// 		let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-		// 		selected_shape_state.select_point(manipulator_point_id);
+				// Add to the selected points
+				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
+				selected_shape_state.select_point(manipulator_point_id);
 
-		// 		let points = self
-		// 			.selected_shape_state
-		// 			.iter()
-		// 			.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
-		// 			.collect();
+				let points = self
+					.selected_shape_state
+					.iter()
+					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
+					.collect();
 
-		// 		return Some(Some(SelectedPointsInfo { points, offset }));
-		// 	} else {
-		// 		let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
-		// 		selected_shape_state.deselect_point(manipulator_point_id);
+				return Some(Some(SelectedPointsInfo { points, offset }));
+			} else {
+				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
+				selected_shape_state.deselect_point(manipulator_point_id);
 
-		// 		return Some(None);
-		// 	}
-		// }
+				return Some(None);
+			}
+		}
 		None
 	}
 
@@ -1062,15 +1061,15 @@ impl ShapeState {
 
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
-		// for &layer in self.selected_shape_state.keys() {
-		// 	if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document_network, document_metadata, layer, mouse_position) {
-		// 		// Choose the first point under the threshold
-		// 		if distance_squared < select_threshold_squared {
-		// 			trace!("Selecting... manipulator point: {manipulator_point_id:?}");
-		// 			return Some((layer, manipulator_point_id));
-		// 		}
-		// 	}
-		// }
+		for &layer in self.selected_shape_state.keys() {
+			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document_network, document_metadata, layer, mouse_position) {
+				// Choose the first point under the threshold
+				if distance_squared < select_threshold_squared {
+					trace!("Selecting... manipulator point: {manipulator_point_id:?}");
+					return Some((layer, manipulator_point_id));
+				}
+			}
+		}
 
 		None
 	}
@@ -1081,20 +1080,41 @@ impl ShapeState {
 	/// Return value is an `Option` of the tuple representing `(ManipulatorPointId, distance squared)`.
 	fn closest_point_in_layer(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, pos: glam::DVec2) -> Option<(ManipulatorPointId, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX;
-		let mut result = None;
+		let mut manipulator_point = None;
 
-		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		// let viewspace = document_metadata.transform_to_viewport(layer);
-		// for manipulator in vector_data.manipulator_groups() {
-		// 	let (selected, distance_squared) = SelectedType::closest_widget(&manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
+		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		let viewspace = document_metadata.transform_to_viewport(layer);
 
-		// 	if distance_squared < closest_distance_squared {
-		// 		closest_distance_squared = distance_squared;
-		// 		result = Some((ManipulatorPointId::new(manipulator.id, selected), distance_squared));
-		// 	}
-		// }
+		// Handles
+		for (segment_id, bezier, _, _) in vector_data.segment_bezier_iter() {
+			let bezier = bezier.apply_transformation(|point| viewspace.transform_point2(point));
+			let valid = |handle: DVec2, control: DVec2| handle.distance_squared(control) > crate::consts::HIDE_HANDLE_DISTANCE.powi(2);
 
-		result
+			if let Some(primary_handle) = bezier.handle_start() {
+				if valid(primary_handle, bezier.start) && primary_handle.distance_squared(pos) < closest_distance_squared {
+					closest_distance_squared = primary_handle.distance_squared(pos);
+					manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
+				}
+			}
+			if let Some(end_handle) = bezier.handle_end() {
+				if valid(end_handle, bezier.end) && end_handle.distance_squared(pos) < closest_distance_squared {
+					closest_distance_squared = end_handle.distance_squared(pos);
+					manipulator_point = Some(ManipulatorPointId::EndHandle(segment_id));
+				}
+			}
+		}
+
+		// Anchors
+		for (&id, &point) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+			let point = viewspace.transform_point2(point);
+
+			if point.distance_squared(pos) < closest_distance_squared {
+				closest_distance_squared = point.distance_squared(pos);
+				manipulator_point = Some(ManipulatorPointId::Anchor(id));
+			}
+		}
+
+		manipulator_point.map(|id| (id, closest_distance_squared))
 	}
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
@@ -1247,16 +1267,33 @@ impl ShapeState {
 
 			let transform = document_metadata.transform_to_viewport(layer);
 
-			// for manipulator_group in vector_data.manipulator_groups() {
-			// 	for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-			// 		let Some(position) = selected_type.get_position(&manipulator_group) else { continue };
-			// 		let transformed_position = transform.transform_point2(position);
+			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.start_point().len());
+			assert_eq!(vector_data.segment_domain.ids().len(), vector_data.segment_domain.end_point().len());
+			for start in vector_data.segment_domain.start_point() {
+				assert!(vector_data.point_domain.ids().contains(start));
+			}
+			for end in vector_data.segment_domain.end_point() {
+				assert!(vector_data.point_domain.ids().contains(end));
+			}
 
-			// 		if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
-			// 			state.select_point(ManipulatorPointId::new(manipulator_group.id, selected_type));
-			// 		}
-			// 	}
-			// }
+			for (id, bezier, _, _) in vector_data.segment_bezier_iter() {
+				for (position, id) in [(bezier.handle_start(), ManipulatorPointId::PrimaryHandle(id)), (bezier.handle_end(), ManipulatorPointId::EndHandle(id))] {
+					let Some(position) = position else { continue };
+					let transformed_position = transform.transform_point2(position);
+
+					if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
+						state.select_point(id);
+					}
+				}
+			}
+
+			for (&id, &position) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+				let transformed_position = transform.transform_point2(position);
+
+				if quad[0].min(quad[1]).cmple(transformed_position).all() && quad[0].max(quad[1]).cmpge(transformed_position).all() {
+					state.select_point(ManipulatorPointId::Anchor(id));
+				}
+			}
 		}
 	}
 }

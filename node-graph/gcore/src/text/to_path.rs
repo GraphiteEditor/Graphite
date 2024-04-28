@@ -37,7 +37,7 @@ impl OutlineBuilder for Builder {
 	fn quad_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) {
 		let [handle, anchor] = [self.point(x1, y1), self.point(x2, y2)];
 		self.current_subpath.last_manipulator_group_mut().unwrap().out_handle = Some(handle);
-		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_anchor_with_id(anchor, self.id.next_id()));
+		self.current_subpath.push_manipulator_group(ManipulatorGroup::new_with_id(anchor, None, None, self.id.next_id()));
 	}
 
 	fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) {

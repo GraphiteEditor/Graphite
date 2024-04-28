@@ -66,7 +66,8 @@ impl VectorData {
 		let subpath = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
 		for point in subpath.manipulator_groups() {
-			self.point_domain.push(point.id, point.anchor, Vec::new());
+			let id = if self.point_domain.ids().contains(&point.id) { self.point_domain.next_id() } else { point.id };
+			self.point_domain.push(id, point.anchor, Vec::new());
 		}
 
 		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
@@ -75,8 +76,9 @@ impl VectorData {
 			(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
 		};
 		let [mut first_seg, mut last_seg] = [None, None];
+		let mut id = self.segment_domain.next_id();
 		for pair in subpath.manipulator_groups().windows(2) {
-			let id = SegmentId::generate();
+			let id = id.next_id();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
 			self.segment_domain.push(id, pair[0].id, pair[1].id, handles(&pair[0], &pair[1]), stroke_id);
@@ -86,7 +88,7 @@ impl VectorData {
 
 		if subpath.closed() {
 			if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
-				let id = SegmentId::generate();
+				let id = id.next_id();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
 				self.segment_domain.push(id, last.id, first.id, handles(last, first), stroke_id);
@@ -168,6 +170,15 @@ pub enum ManipulatorPointId {
 	Anchor(PointId),
 	PrimaryHandle(SegmentId),
 	EndHandle(SegmentId),
+}
+impl ManipulatorPointId {
+	pub fn get_position(&self, vector_data: &VectorData) -> Option<DVec2> {
+		match self {
+			ManipulatorPointId::Anchor(id) => vector_data.point_domain.pos_from_id(*id),
+			ManipulatorPointId::PrimaryHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
+			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+		}
+	}
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

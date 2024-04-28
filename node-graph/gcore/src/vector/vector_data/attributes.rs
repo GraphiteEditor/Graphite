@@ -23,8 +23,10 @@ macro_rules! create_ids {
 					self.0
 				}
 
-				pub fn next_id(self) -> Self {
-					Self(self.0 + 1)
+				pub fn next_id(&mut self) -> Self {
+
+					self.0 += 1;
+					*self
 				}
 			}
 		)*
@@ -96,6 +98,9 @@ impl PointDomain {
 	pub fn ids(&self) -> &[PointId] {
 		&self.id
 	}
+	pub fn next_id(&self) -> PointId {
+		self.ids().iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(PointId::ZERO)
+	}
 
 	pub fn pos_from_id(&self, id: PointId) -> Option<DVec2> {
 		let pos = self.resolve_id(id).map(|index| self.positions[index]);
@@ -163,6 +168,19 @@ impl SegmentDomain {
 		self.ids.retain(f);
 	}
 
+	pub fn ids(&self) -> &[SegmentId] {
+		&self.ids
+	}
+	pub fn next_id(&self) -> SegmentId {
+		self.ids().iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(SegmentId::ZERO)
+	}
+	pub fn start_point(&self) -> &[PointId] {
+		&self.start_point
+	}
+	pub fn end_point(&self) -> &[PointId] {
+		&self.end_point
+	}
+
 	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
 		if self.ids.contains(&id) {
 			warn!("Duplicate segment");
@@ -200,12 +218,15 @@ impl SegmentDomain {
 	}
 
 	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
+		debug_assert_eq!(self.ids.len(), self.handles.len());
+		debug_assert_eq!(self.ids.len(), self.start_point.len());
+		debug_assert_eq!(self.ids.len(), self.end_point.len());
 		self.ids.iter().position(|&check_id| check_id == id)
 	}
 
 	fn resolve_range(&self, range: &core::ops::RangeInclusive<SegmentId>) -> Option<core::ops::RangeInclusive<usize>> {
 		match (self.resolve_id(*range.start()), self.resolve_id(*range.end())) {
-			(Some(start), Some(end)) => Some(start..=end),
+			(Some(start), Some(end)) if start.max(end) < self.handles.len().min(self.ids.len()).min(self.start_point.len()).min(self.end_point.len()) => Some((start..=end)),
 			_ => {
 				warn!("Resolving range with invalid id");
 				None
@@ -372,10 +393,13 @@ impl super::VectorData {
 			.zip(&self.region_domain.segment_range)
 			.filter_map(|(&id, segment_range)| self.segment_domain.resolve_range(segment_range).map(|range| (id, range)))
 			.filter_map(|(id, range)| {
-				let segments_iter = self.segment_domain.handles[range.clone()]
+				let segments_iter = self
+					.segment_domain
+					.handles
+					.get(range.clone())?
 					.iter()
-					.zip(&self.segment_domain.start_point[range.clone()])
-					.zip(&self.segment_domain.end_point[range])
+					.zip(self.segment_domain.start_point.get(range.clone())?)
+					.zip(self.segment_domain.end_point.get(range)?)
 					.map(|((&handles, &start), &end)| (handles, start, end));
 
 				self.subpath_from_segments(segments_iter).map(|subpath| (id, subpath))
