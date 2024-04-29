@@ -389,7 +389,59 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					insert_index: calculated_insert_index.unwrap_or(-1),
 					alias: String::new(),
 				});
-				responses.add(GraphOperationMessage::MoveUpstreamSiblingToChild { id: folder_id })
+
+				// Create a vec of nodes to move with all selected layers in the parent layer child stack, as well as each non layer sibling directly upstream of the selected layer
+				let mut nodes_to_move = Vec::new();
+
+				// Skip over horizontal non layer node chain that feeds into parent
+				let Some(mut current_stack_node_id) = parent.first_child(&self.metadata).and_then(|current_stack_node| Some(current_stack_node.to_node())) else {
+					log::error!("Folder should always have child");
+					return;
+				};
+
+				let current_stack_node_id_ref = &mut current_stack_node_id;
+
+				loop {
+					let mut current_stack_node = self.network.nodes.get(current_stack_node_id_ref).expect("Current stack node id should always be a node");
+
+					// Check if the current stack node is a selected layer
+					if self
+						.selected_nodes
+						.selected_layers(&self.metadata)
+						.any(|selected_node_id| selected_node_id.to_node() == *current_stack_node_id_ref)
+					{
+						nodes_to_move.push(*current_stack_node_id_ref);
+						//Push all non layer sibling nodes directly upstream of the selected layer
+						loop {
+							if let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) {
+								let next_node = self.network.nodes.get(node_id).expect("Stack node id should always be a node");
+								// If the next node is a layer, immediately break and leave current stack node as the non layer node
+								if next_node.is_layer {
+									break;
+								}
+								*current_stack_node_id_ref = *node_id;
+								current_stack_node = next_node;
+								nodes_to_move.push(*current_stack_node_id_ref);
+							} else {
+								break;
+							}
+						}
+					}
+					// Get next node
+					if let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) {
+						*current_stack_node_id_ref = *node_id;
+					} else {
+						break;
+					}
+				}
+
+				nodes_to_move.push(NodeId(8194460532762557732));
+				responses.add(GraphOperationMessage::MoveUpstreamSiblingsToChild {
+					new_parent: folder_id,
+					upstream_sibling_ids: nodes_to_move,
+				});
+
+				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			DocumentMessage::ImaginateGenerate => responses.add(PortfolioMessage::SubmitGraphRender { document_id }),
 			DocumentMessage::ImaginateRandom { imaginate_node, then_generate } => {
@@ -916,9 +968,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					//Move child_layer stack x position to folder stack
 					{
 						let child_layer_node = self.network.nodes.get(&child_layer_node_id).expect("Child node should always exist for layer");
-						let x_offset = folder_node.metadata.position.x - child_layer_node.metadata.position.x;
+						let offset = folder_node.metadata.position - child_layer_node.metadata.position;
 						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-						modify_inputs.shift_upstream(child_layer_node_id, IVec2::new(x_offset, 0), true)
+						modify_inputs.shift_upstream(child_layer_node_id, offset, true)
 					}
 
 					// Set the input for the node downstream of folder to the first layer node
@@ -963,14 +1015,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						// Shift upstream_sibling down by the height of the child layer stack
 						let top_of_stack = self.network.nodes.get(&child_layer_node_id).expect("Child layer should always exist for child layer id");
 						let bottom_of_stack = self.network.nodes.get(&last_child_node_id).expect("Last child layer should always exist for last child layer id");
-						let y_offset = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y + 3;
+						let target_distance = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y;
+
+						let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
+						let upstream_sibling_node = self.network.nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
+						let current_distance = upstream_sibling_node.metadata.position.y - folder_node.metadata.position.y;
+
+						let y_offset = target_distance - current_distance + 3;
 						let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
 						modify_inputs.shift_upstream(upstream_sibling_id, IVec2::new(0, y_offset), true);
 					}
 
-					// Shift first child layer to folder location
-					let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-					modify_inputs.shift_upstream(child_layer_node_id, IVec2::new(0, -3), true);
 					// Delete folder and all horizontal inputs
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![folder.to_node()],
@@ -1256,7 +1311,7 @@ impl DocumentMessageHandler {
 			self.saved_hash = None;
 		}
 	}
-
+	//TODO: Replace with disconnect message
 	pub fn disconnect_input(layer_to_disconnect_node: &mut DocumentNode, input_index: usize) {
 		let Some(node_type) = resolve_document_node_type(&layer_to_disconnect_node.name) else {
 			warn!("Node {} not in library", layer_to_disconnect_node.name);

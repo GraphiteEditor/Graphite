@@ -674,6 +674,8 @@ impl JsEditorHandle {
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
 		let node_id = NodeId(node_id);
+
+		self.dispatch(DocumentMessage::StartTransaction);
 		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
 		self.dispatch(message);
 	}

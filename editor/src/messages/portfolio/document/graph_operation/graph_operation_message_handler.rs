@@ -103,46 +103,68 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.brush_modify(strokes);
 				}
 			}
-			GraphOperationMessage::MoveUpstreamSiblingToChild { id } => {
-				let Some(node) = document_network.nodes.get(&id) else {
-					log::error!("Node should always exist");
-					return;
-				};
-				let Some(NodeInput::Node { node_id, .. }) = node.inputs.get(0) else {
-					log::error!("Node should always have a sibling input");
-					return;
-				};
-				let upstream_sibling_id = *node_id;
-				let upstream_sibling_node = document_network.nodes.get(&upstream_sibling_id).expect("Upstream sibling should always exist");
-				// Reconnect to node upstream of upstream sibling
-				if let Some(NodeInput::Node { node_id, .. }) = upstream_sibling_node.inputs.get(0) {
-					let reconnect_node_id = *node_id;
-					let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get_mut(&id).expect("Node should always exist").inputs.get_mut(0) else {
-						log::error!("Node should always have a sibling input");
+			GraphOperationMessage::MoveUpstreamSiblingsToChild { new_parent, mut upstream_sibling_ids } => {
+				//Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
+				upstream_sibling_ids.reverse();
+				for node_to_move in upstream_sibling_ids.clone() {
+					//Connect pre node to post node, or disconnect pre node if post node doesn't exist
+					let mut pre_node_id = new_parent;
+					loop {
+						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&pre_node_id).expect("Current node should always exist").inputs.get(0) else {
+							log::error!("End of stack should never be reached");
+							return;
+						};
+						if *node_id == node_to_move {
+							break;
+						}
+						pre_node_id = *node_id;
+					}
+
+					if let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&node_to_move).expect("Node to move should always exist").inputs.get(0) {
+						let post_node_id = *node_id;
+						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get_mut(&pre_node_id).expect("Pre node should always exist").inputs.get_mut(0) else {
+							log::error!("Pre node should always have primary input");
+							return;
+						};
+						*node_id = post_node_id;
+					} else {
+						DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&pre_node_id).expect("Upstream sibling should always exist"), 0);
+					}
+
+					// Connect upstream sibling to the secondary input of the parent
+					let Some(parent_secondary_input) = document_network.nodes.get(&new_parent).expect("Parent should always exist").inputs.get(1) else {
+						log::error!("Could not get child node input for current node");
 						return;
 					};
-					*node_id = reconnect_node_id;
-				} else {
-					let Some(node) = document_network.nodes.get_mut(&id) else {
-						log::error!("Node should always exist");
+
+					//Insert upstream_sibling_node at top of group stack
+					if let NodeInput::Node { node_id, .. } = parent_secondary_input {
+						//If there is already a node at the top of the stack, insert upstream_sibling_node in between
+						let current_child = *node_id;
+						let Some(upstream_sibling_input) = document_network.nodes.get_mut(&node_to_move).expect("Upstream sibling should always exist").inputs.get_mut(0) else {
+							log::error!("Could not get upstream sibling node input");
+							return;
+						};
+						*upstream_sibling_input = NodeInput::node(current_child, 0);
+					}
+
+					let Some(parent_secondary_input_mut) = document_network.nodes.get_mut(&new_parent).expect("Node should always exist").inputs.get_mut(1) else {
+						log::error!("Could not get child node input for current node");
 						return;
 					};
-					DocumentMessageHandler::disconnect_input(node, 0);
+
+					*parent_secondary_input_mut = NodeInput::node(node_to_move, 0);
 				}
-				// Connect upstream sibling to child input for the node
-				let Some(node_input) = document_network.nodes.get_mut(&id).expect("Node should always exist").inputs.get_mut(1) else {
-					log::error!("Could not get child node input for current node");
+
+				let Some(most_upstream_sibling) = upstream_sibling_ids.first() else {
 					return;
 				};
-				*node_input = NodeInput::node(upstream_sibling_id, 0);
+				DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&most_upstream_sibling).expect("Upstream sibling should always exist"), 0);
 
-				// Disconnect upstream sibling input for upstream sibling
-				let upstream_sibling_node = document_network.nodes.get_mut(&upstream_sibling_id).expect("Upstream sibling should always exist");
-				DocumentMessageHandler::disconnect_input(upstream_sibling_node, 0);
-
+				let top_of_stack = upstream_sibling_ids.last().expect("Upstream nodes to move cannot be empty");
 				let upstream_shift = IVec2::new(-8, 0);
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.shift_upstream(upstream_sibling_id, upstream_shift, true);
+				modify_inputs.shift_upstream(*top_of_stack, upstream_shift, true);
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
