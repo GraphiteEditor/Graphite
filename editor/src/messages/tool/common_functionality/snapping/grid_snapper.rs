@@ -150,7 +150,7 @@ impl GridSnapper {
 		}
 	}
 
-	pub fn contrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
+	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint) {
 		let tolerance = snap_tolerance(snap_data.document);
 		let projected = constraint.projection(point.document_point);
 		let lines = self.get_snap_lines(projected, snap_data);
@@ -170,7 +170,7 @@ impl GridSnapper {
 					source: point.source,
 					target: SnapTarget::Grid(GridSnapTarget::Line),
 					at_intersection: false,
-					contrained: true,
+					constrained: true,
 					source_bounds: point.quad,
 					curves: [
 						Some(Bezier::from_linear_dvec2(projected - constraint_direction * tolerance, projected + constraint_direction * tolerance)),

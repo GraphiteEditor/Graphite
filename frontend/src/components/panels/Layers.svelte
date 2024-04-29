@@ -130,11 +130,15 @@
 	}
 
 	function toggleLayerVisibility(id: bigint) {
-		editor.instance.toggleLayerVisibility(id);
+		editor.handle.toggleLayerVisibility(id);
+	}
+
+	function toggleLayerLock(id: bigint) {
+		editor.handle.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClick(id: bigint) {
-		editor.instance.toggleLayerExpansion(id);
+		editor.handle.toggleLayerExpansion(id);
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -160,7 +164,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.instance.setLayerName(listing.entry.id, name);
+		editor.handle.setLayerName(listing.entry.id, name);
 		listing.entry.name = name;
 	}
 
@@ -192,11 +196,11 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.instance.selectLayer(listing.entry.id, accel, shift);
+		editor.handle.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
-		editor.instance.deselectAllLayers();
+		editor.handle.deselectAllLayers();
 	}
 
 	function isNestingLayer(layerClassification: LayerClassification) {
@@ -318,7 +322,7 @@
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			select?.();
-			editor.instance.moveLayerInTree(insertParentId, insertIndex);
+			editor.handle.moveLayerInTree(insertParentId, insertIndex);
 		}
 		draggingData = undefined;
 		fakeHighlight = undefined;
@@ -377,6 +381,7 @@
 					classes={{
 						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : $nodeGraph.selected.includes(listing.entry.id),
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
+						"nesting-layer": isNestingLayer(listing.entry.layerClassification),
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
@@ -387,7 +392,13 @@
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if isNestingLayer(listing.entry.layerClassification)}
-						<button class="expand-arrow" class:expanded={listing.entry.expanded} on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)} tabindex="0" />
+						<button
+							class="expand-arrow"
+							class:expanded={listing.entry.expanded}
+							disabled={!listing.entry.hasChildren}
+							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
+							tabindex="0"
+						/>
 						{#if listing.entry.layerClassification === "Artboard"}
 							<IconLabel icon="Artboard" class={"layer-type-icon"} />
 						{:else if listing.entry.layerClassification === "Folder"}
@@ -413,12 +424,25 @@
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
+					{#if !listing.entry.unlocked || !listing.entry.parentsUnlocked}
+						<IconButton
+							class={"status-toggle"}
+							classes={{ inactive: !listing.entry.parentsUnlocked }}
+							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+							size={24}
+							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
+							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
+							tooltip={listing.entry.unlocked ? "Lock" : "Unlock"}
+						/>
+					{/if}
 					<IconButton
-						class={"visibility"}
+						class={"status-toggle"}
+						classes={{ inactive: !listing.entry.parentsVisible }}
 						action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						tooltip={listing.entry.visible ? "Visible" : "Hidden"}
+						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
+						tooltip={listing.entry.visible ? "Hide" : "Show"}
 					/>
 				</LayoutRow>
 			{/each}
@@ -443,15 +467,26 @@
 				min-width: 300px;
 			}
 
-			// Blend mode selector
-			.dropdown-input {
-				max-width: 120px;
-			}
-
 			// Blend mode selector and opacity slider
 			.dropdown-input,
 			.number-input {
 				flex: 1 1 auto;
+			}
+
+			// Blend mode selector
+			.dropdown-input {
+				max-width: 120px;
+				flex-basis: 120px;
+			}
+
+			// Opacity slider
+			.number-input {
+				max-width: 180px;
+				flex-basis: 180px;
+
+				+ .separator ~ .separator {
+					flex-grow: 1;
+				}
 			}
 		}
 
@@ -464,11 +499,15 @@
 				flex: 0 0 auto;
 				align-items: center;
 				position: relative;
+				border-bottom: 1px solid var(--color-2-mildblack);
+				border-radius: 2px;
 				height: 32px;
 				margin: 0 4px;
 				padding-left: calc(4px + var(--layer-indent-levels) * 16px);
-				border-bottom: 1px solid var(--color-2-mildblack);
-				border-radius: 2px;
+
+				&.nesting-layer {
+					padding-left: calc(var(--layer-indent-levels) * 16px);
+				}
 
 				&.selected {
 					background: var(--color-4-dimgray);
@@ -493,23 +532,28 @@
 					justify-content: center;
 					border-radius: 2px;
 
-					&:hover {
-						background: var(--color-5-dullgray);
-					}
-
 					&::after {
 						content: "";
 						position: absolute;
-						width: 0;
-						height: 0;
-						border-style: solid;
-						border-width: 3px 0 3px 6px;
-						border-color: transparent transparent transparent var(--color-e-nearwhite);
+						width: 8px;
+						height: 8px;
+						background: var(--icon-expand-collapse-arrow);
+					}
+
+					&[disabled]::after {
+						background: var(--icon-expand-collapse-arrow-disabled);
+					}
+
+					&:hover:not([disabled]) {
+						background: var(--color-5-dullgray);
+
+						&::after {
+							background: var(--icon-expand-collapse-arrow-hover);
+						}
 					}
 
 					&.expanded::after {
-						border-width: 6px 3px 0 3px;
-						border-color: var(--color-e-nearwhite) transparent transparent transparent;
+						transform: rotate(90deg);
 					}
 				}
 
@@ -573,10 +617,14 @@
 					}
 				}
 
-				.visibility {
+				.status-toggle {
 					flex: 0 0 auto;
 					align-items: center;
 					height: 100%;
+
+					&.inactive {
+						background-image: var(--background-inactive-stripes);
+					}
 
 					.icon-button {
 						height: 100%;

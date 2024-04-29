@@ -14,6 +14,7 @@
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
 	export let label: string;
 	export let icon: IconName | undefined = undefined;
+	export let hoverIcon: IconName | undefined = undefined;
 	export let emphasized = false;
 	export let flush = false;
 	export let minWidth = 0;
@@ -54,6 +55,7 @@
 	<button
 		class="text-button"
 		class:open={self?.open}
+		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
 		class:disabled
 		class:flush
@@ -68,6 +70,9 @@
 	>
 		{#if icon}
 			<IconLabel {icon} />
+			{#if hoverIcon && !disabled}
+				<IconLabel icon={hoverIcon} />
+			{/if}
 		{/if}
 		{#if icon && label}
 			<Separator type={flush ? "Unrelated" : "Related"} />
@@ -116,6 +121,16 @@
 		&.open {
 			--button-background-color: var(--color-6-lowergray);
 			--button-text-color: var(--color-f-white);
+		}
+
+		&.hover-icon {
+			&:not(:hover) .icon-label:nth-of-type(2) {
+				display: none;
+			}
+
+			&:hover .icon-label:nth-of-type(1) {
+				display: none;
+			}
 		}
 
 		&.disabled {

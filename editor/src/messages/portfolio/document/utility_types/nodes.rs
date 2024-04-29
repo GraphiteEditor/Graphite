@@ -46,7 +46,14 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "layerClassification")]
 	pub layer_classification: LayerClassification,
 	pub expanded: bool,
+	#[serde(rename = "hasChildren")]
+	pub has_children: bool,
 	pub visible: bool,
+	#[serde(rename = "parentsVisible")]
+	pub parents_visible: bool,
+	pub unlocked: bool,
+	#[serde(rename = "parentsUnlocked")]
+	pub parents_unlocked: bool,
 	#[serde(rename = "parentId")]
 	pub parent_id: Option<NodeId>,
 	pub depth: usize,
@@ -62,6 +69,19 @@ impl SelectedNodes {
 
 	pub fn selected_visible_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		self.selected_layers(metadata).filter(move |&layer| self.layer_visible(layer, metadata))
+	}
+
+	pub fn layer_locked(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
+		layer.ancestors(metadata).any(|layer| metadata.node_is_locked(layer.to_node()))
+	}
+
+	pub fn selected_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(metadata).filter(move |&layer| !self.layer_locked(layer, metadata))
+	}
+
+	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(metadata)
+			.filter(move |&layer| self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata))
 	}
 
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {

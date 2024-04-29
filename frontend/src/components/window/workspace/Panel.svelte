@@ -119,7 +119,7 @@
 						<table>
 							<tr>
 								<td>
-									<TextButton label="New Document" icon="File" flush={true} action={() => editor.instance.newDocumentDialog()} />
+									<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
@@ -127,7 +127,7 @@
 							</tr>
 							<tr>
 								<td>
-									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.instance.openDocument()} />
+									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
 								</td>
 								<td>
 									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
@@ -135,7 +135,7 @@
 							</tr>
 							<tr>
 								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.instance.demoArtworkDialog()} />
+									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
 								</td>
 							</tr>
 						</table>

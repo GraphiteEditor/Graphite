@@ -5,15 +5,16 @@ pub enum NavigationOperation {
 	#[default]
 	None,
 	Pan {
-		pre_commit_pan: DVec2,
+		pan_original_for_abort: DVec2,
 	},
-	Rotate {
-		pre_commit_tilt: f64,
-		snap_tilt: bool,
-		snap_tilt_released: bool,
+	Tilt {
+		tilt_original_for_abort: f64,
+		tilt_raw_not_snapped: f64,
+		snap: bool,
 	},
 	Zoom {
-		pre_commit_zoom: f64,
-		snap_zoom_enabled: bool,
+		zoom_raw_not_snapped: f64,
+		zoom_original_for_abort: f64,
+		snap: bool,
 	},
 }

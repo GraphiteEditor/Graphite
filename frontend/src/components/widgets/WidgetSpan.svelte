@@ -58,15 +58,15 @@
 	}
 
 	function widgetValueCommit(index: number, value: unknown) {
-		editor.instance.widgetValueCommit(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueCommit(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	function widgetValueUpdate(index: number, value: unknown) {
-		editor.instance.widgetValueUpdate(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	function widgetValueCommitAndUpdate(index: number, value: unknown) {
-		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283
@@ -143,13 +143,8 @@
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
-			<PopoverButton {...exclude(popoverButton, ["header", "text", "optionsWidget"])}>
-				<TextLabel bold={true}>{popoverButton.header}</TextLabel>
-				{#if popoverButton.optionsWidget?.length}
-					<WidgetLayout layout={{ layout: popoverButton.optionsWidget, layoutTarget: layoutTarget }} />
-				{:else}
-					<TextLabel multiline={true}>{popoverButton.text}</TextLabel>
-				{/if}
+			<PopoverButton {...exclude(popoverButton, ["popoverLayout"])}>
+				<WidgetLayout layout={{ layout: popoverButton.popoverLayout, layoutTarget: layoutTarget }} />
 			</PopoverButton>
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}

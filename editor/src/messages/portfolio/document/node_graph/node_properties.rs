@@ -10,7 +10,8 @@ use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RelativeAbsolute, SelectiveColorChoice,
+	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
@@ -387,6 +388,33 @@ fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				MenuListEntry::new(format!("{method:?}"))
 					.label(method.to_string())
 					.on_update(update_value(move |_| TaggedValue::RedGreenBlue(method), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+		let entries = vec![entries];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			DropdownInput::new(entries).selected_index(Some(mode as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
+}
+
+fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::RedGreenBlueAlpha(mode),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let calculation_modes = [RedGreenBlueAlpha::Red, RedGreenBlueAlpha::Green, RedGreenBlueAlpha::Blue, RedGreenBlueAlpha::Alpha];
+		let mut entries = Vec::with_capacity(calculation_modes.len());
+		for method in calculation_modes {
+			entries.push(
+				MenuListEntry::new(format!("{method:?}"))
+					.label(method.to_string())
+					.on_update(update_value(move |_| TaggedValue::RedGreenBlueAlpha(method), node_id, index))
 					.on_commit(commit_value),
 			);
 		}
@@ -971,7 +999,7 @@ pub fn insert_channel_properties(document_node: &DocumentNode, node_id: NodeId, 
 }
 
 pub fn extract_channel_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let color_channel = color_channel(document_node, node_id, 1, "From", true);
+	let color_channel = rgba_channel(document_node, node_id, 1, "From", true);
 
 	vec![color_channel]
 }
@@ -1503,12 +1531,136 @@ pub fn ellipse_properties(document_node: &DocumentNode, node_id: NodeId, _contex
 }
 
 pub fn rectangle_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let operand = |name: &str, index| {
-		let widgets = number_widget(document_node, node_id, index, name, NumberInput::default(), true);
+	let size_x_index = 1;
+	let size_y_index = 2;
+	let corner_rounding_type_index = 3;
+	let corner_radius_index = 4;
+	let clamped_index = 5;
 
-		LayoutGroup::Row { widgets }
-	};
-	vec![operand("Size X", 1), operand("Size Y", 2)]
+	// Size X
+	let size_x = number_widget(document_node, node_id, size_x_index, "Size X", NumberInput::default(), true);
+
+	// Size Y
+	let size_y = number_widget(document_node, node_id, size_y_index, "Size Y", NumberInput::default(), true);
+
+	// Corner Radius
+	let mut corner_radius_row_1 = start_widgets(document_node, node_id, corner_radius_index, "Corner Radius", FrontendGraphDataType::Number, true);
+	corner_radius_row_1.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_holder()];
+	corner_radius_row_2.push(TextLabel::new("").widget_holder());
+	add_blank_assist(&mut corner_radius_row_2);
+
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::Bool(is_individual),
+		exposed: false,
+	} = &document_node.inputs[corner_rounding_type_index]
+	{
+		// Values
+		let uniform_val = match document_node.inputs[corner_radius_index] {
+			NodeInput::Value {
+				tagged_value: TaggedValue::F64(x),
+				exposed: false,
+			} => x,
+			NodeInput::Value {
+				tagged_value: TaggedValue::F64Array4(x),
+				exposed: false,
+			} => x[0],
+			_ => 0.,
+		};
+		let individual_val = match document_node.inputs[corner_radius_index] {
+			NodeInput::Value {
+				tagged_value: TaggedValue::F64Array4(x),
+				exposed: false,
+			} => x,
+			NodeInput::Value {
+				tagged_value: TaggedValue::F64(x),
+				exposed: false,
+			} => [x; 4],
+			_ => [0.; 4],
+		};
+
+		// Uniform/individual radio input widget
+		let uniform = RadioEntryData::new("Uniform")
+			.label("Uniform")
+			.on_update(move |_| {
+				Message::Batched(Box::new([
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: corner_rounding_type_index,
+						value: TaggedValue::Bool(false),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: corner_radius_index,
+						value: TaggedValue::F64(uniform_val),
+					}
+					.into(),
+				]))
+			})
+			.on_commit(commit_value);
+		let individual = RadioEntryData::new("Individual")
+			.label("Individual")
+			.on_update(move |_| {
+				Message::Batched(Box::new([
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: corner_rounding_type_index,
+						value: TaggedValue::Bool(true),
+					}
+					.into(),
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: corner_radius_index,
+						value: TaggedValue::F64Array4(individual_val),
+					}
+					.into(),
+				]))
+			})
+			.on_commit(commit_value);
+		let radio_input = RadioInput::new(vec![uniform, individual]).selected_index(Some(is_individual as u32)).widget_holder();
+		corner_radius_row_1.push(radio_input);
+
+		// Radius value input widget
+		let input_widget = if is_individual {
+			let from_string = |string: &str| {
+				string
+					.split(&[',', ' '])
+					.filter(|x| !x.is_empty())
+					.map(str::parse::<f64>)
+					.collect::<Result<Vec<f64>, _>>()
+					.ok()
+					.map(|v| {
+						let arr: Box<[f64; 4]> = v.into_boxed_slice().try_into().unwrap_or_default();
+						*arr
+					})
+					.map(TaggedValue::F64Array4)
+			};
+			TextInput::default()
+				.value(individual_val.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
+				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, corner_radius_index))
+				.widget_holder()
+		} else {
+			NumberInput::default()
+				.value(Some(uniform_val))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, corner_radius_index))
+				.on_commit(commit_value)
+				.widget_holder()
+		};
+		corner_radius_row_2.push(input_widget);
+	}
+
+	// Clamped
+	let clamped = bool_widget(document_node, node_id, clamped_index, "Clamped", true);
+
+	vec![
+		LayoutGroup::Row { widgets: size_x },
+		LayoutGroup::Row { widgets: size_y },
+		LayoutGroup::Row { widgets: corner_radius_row_1 },
+		LayoutGroup::Row { widgets: corner_radius_row_2 },
+		LayoutGroup::Row { widgets: clamped },
+	]
 }
 
 pub fn regular_polygon_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2137,17 +2289,22 @@ pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context
 
 pub fn repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let direction = vec2_widget(document_node, node_id, 1, "Direction", "X", "Y", " px", None, add_blank_assist);
-	let count = number_widget(document_node, node_id, 2, "Count", NumberInput::default().min(1.), true);
+	let angle = number_widget(document_node, node_id, 2, "Angle", NumberInput::default().unit("°"), true);
+	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
 
-	vec![direction, LayoutGroup::Row { widgets: count }]
+	vec![direction, LayoutGroup::Row { widgets: angle }, LayoutGroup::Row { widgets: instances }]
 }
 
 pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let angle_offset = number_widget(document_node, node_id, 1, "Angle Offset", NumberInput::default().unit("°"), true);
 	let radius = number_widget(document_node, node_id, 2, "Radius", NumberInput::default(), true); // TODO: What units?
-	let count = number_widget(document_node, node_id, 3, "Count", NumberInput::default().min(1.), true);
+	let instances = number_widget(document_node, node_id, 3, "Instances", NumberInput::default().min(1.).is_integer(true), true);
 
-	vec![LayoutGroup::Row { widgets: angle_offset }, LayoutGroup::Row { widgets: radius }, LayoutGroup::Row { widgets: count }]
+	vec![
+		LayoutGroup::Row { widgets: angle_offset },
+		LayoutGroup::Row { widgets: radius },
+		LayoutGroup::Row { widgets: instances },
+	]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

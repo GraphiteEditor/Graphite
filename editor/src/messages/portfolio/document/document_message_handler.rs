@@ -1,8 +1,8 @@
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{SnappingOptions, SnappingState};
+use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
-use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, is_folder, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -190,7 +190,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					AlignAggregate::Max => combined_box[1],
 					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
 				};
-				for layer in self.selected_nodes.selected_layers(self.metadata()) {
+				for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -297,7 +297,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.collect();
 
 					let id = NodeId(generate_uuid());
-					let insert_index = -1;
+					let selected_layer_index = parent.children(self.metadata()).collect::<Vec<_>>().iter().position(|&sibling| sibling == layer).unwrap_or(0);
+					let insert_index = if (selected_layer_index as i64 - 1) < 0 { -1 } else { selected_layer_index as isize };
 					responses.add(GraphOperationMessage::NewCustomLayer {
 						id,
 						nodes,
@@ -313,10 +314,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.selected_visible_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.selected_visible_and_unlock_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
-					for layer in self.selected_nodes.selected_layers(self.metadata()) {
+					for layer in self.selected_nodes.selected_unlocked_layers(self.metadata()) {
 						responses.add(GraphOperationMessage::TransformChange {
 							layer,
 							transform: DAffine2::from_scale(scale),
@@ -460,7 +461,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				match ipp.keyboard.key(resize) {
 					// Nudge translation
 					false => {
-						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+						for layer in self
+							.selected_nodes
+							.selected_layers(self.metadata())
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
+						{
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
 								transform: DAffine2::from_translation(delta),
@@ -491,7 +496,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						let pivot = DAffine2::from_translation(pivot);
 						let transformation = pivot * scale * pivot.inverse();
 
-						for layer in self.selected_nodes.selected_layers(self.metadata()) {
+						for layer in self
+							.selected_nodes
+							.selected_layers(self.metadata())
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
+						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
 							let new = to.inverse() * transformation * to * original_transform;
@@ -562,7 +571,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
 				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = document_transform_scale.log2();
@@ -577,7 +586,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
-				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -614,8 +623,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::SelectAllLayers => {
 				let metadata = self.metadata();
-				let all_layers_except_artboards = metadata.all_layers().filter(move |&layer| !metadata.is_artboard(layer));
-				let nodes = all_layers_except_artboards.map(|layer| layer.to_node()).collect();
+				let all_layers_except_artboards_invisible_and_locked = metadata
+					.all_layers()
+					.filter(move |&layer| !metadata.is_artboard(layer))
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata) && !self.selected_nodes.layer_locked(layer, metadata));
+				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
 			DocumentMessage::SelectedLayersLower => {
@@ -706,12 +718,56 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if let Some(state) = snapping_enabled {
 					self.snapping_state.snapping_enabled = state
 				};
-				if let Some(state) = bounding_box_snapping {
-					self.snapping_state.bounding_box_snapping = state
+
+				if let Some(OptionBoundsSnapping {
+					edge_midpoints,
+					edges,
+					centers,
+					corners,
+				}) = bounding_box_snapping
+				{
+					if let Some(state) = edge_midpoints {
+						self.snapping_state.bounds.edge_midpoints = state
+					};
+					if let Some(state) = edges {
+						self.snapping_state.bounds.edges = state
+					};
+					if let Some(state) = centers {
+						self.snapping_state.bounds.centers = state
+					};
+					if let Some(state) = corners {
+						self.snapping_state.bounds.corners = state
+					};
 				}
-				if let Some(state) = geometry_snapping {
-					self.snapping_state.geometry_snapping = state
-				};
+
+				if let Some(OptionPointSnapping {
+					paths,
+					path_intersections,
+					anchors,
+					line_midpoints,
+					normals,
+					tangents,
+				}) = geometry_snapping
+				{
+					if let Some(state) = path_intersections {
+						self.snapping_state.nodes.path_intersections = state
+					};
+					if let Some(state) = paths {
+						self.snapping_state.nodes.paths = state
+					};
+					if let Some(state) = anchors {
+						self.snapping_state.nodes.anchors = state
+					};
+					if let Some(state) = line_midpoints {
+						self.snapping_state.nodes.line_midpoints = state
+					};
+					if let Some(state) = normals {
+						self.snapping_state.nodes.normals = state
+					};
+					if let Some(state) = tangents {
+						self.snapping_state.nodes.tangents = state
+					};
+				}
 			}
 			DocumentMessage::SetViewMode { view_mode } => {
 				self.view_mode = view_mode;
@@ -792,16 +848,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
-				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
+				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });
 			}
 			DocumentMessage::ZoomCanvasTo200Percent => {
-				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
+				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 2. });
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
-					responses.add(NavigationMessage::SetCanvasTilt { angle_radians: 0. });
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
@@ -822,6 +879,7 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -835,20 +893,45 @@ impl DocumentMessageHandler {
 			.root()
 			.descendants(&self.metadata)
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 
-	/// Find the layer that has been clicked on from a viewport space location
+	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
+	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+		node_list.iter().find(|&&layer| !is_folder(layer, network)).copied()
+	}
+
+	/// Find any layers sorted by index that are under the given location in viewport space.
+	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	}
+
+	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
+	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		let mut node_list = self.click_list_any(viewport_location, network);
+		node_list.truncate(node_list.iter().position(|&layer| !is_folder(layer, network)).unwrap_or(0) + 1);
+		node_list
+	}
+
+	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
+		self.click_list(viewport_location, network).last().copied()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
 			.selected_visible_layers(self.metadata())
+			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.reduce(graphene_core::renderer::Quad::combine_bounds)
+	}
+
+	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		self.selected_nodes
+			.selected_visible_and_unlocked_layers(self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1128,7 +1211,16 @@ impl DocumentMessageHandler {
 				.tooltip("Overlays")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
-			PopoverButton::new("Overlays", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Overlays").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
@@ -1137,47 +1229,112 @@ impl DocumentMessageHandler {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
 						snapping_enabled: Some(snapping_enabled),
-						bounding_box_snapping: Some(snapping_state.bounding_box_snapping),
-						geometry_snapping: Some(snapping_state.geometry_snapping),
+						bounding_box_snapping: None,
+						geometry_snapping: None,
 					}
 					.into()
 				})
 				.widget_holder(),
-			PopoverButton::new("Snapping", "Snap customization settings")
-				.options_widget(vec![
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(snapping_state.bounding_box_snapping)
-								.tooltip(SnappingOptions::BoundingBoxes.to_string())
-								.on_update(move |input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: Some(input.checked),
-										geometry_snapping: None,
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder(),
-						],
-					},
-					LayoutGroup::Row {
-						widgets: vec![
-							CheckboxInput::new(self.snapping_state.geometry_snapping)
-								.tooltip(SnappingOptions::Geometry.to_string())
-								.on_update(|input: &CheckboxInput| {
-									DocumentMessage::SetSnapping {
-										snapping_enabled: None,
-										bounding_box_snapping: None,
-										geometry_snapping: Some(input.checked),
-									}
-									.into()
-								})
-								.widget_holder(),
-							TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder(),
-						],
-					},
-				])
+			PopoverButton::new()
+				.popover_layout(
+					[
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new("Snapping").bold(true).widget_holder()],
+						},
+						LayoutGroup::Row {
+							widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_holder()],
+						},
+					]
+					.into_iter()
+					.chain(
+						[
+							(BoundingBoxSnapTarget::Center, snapping_state.bounds.centers),
+							(BoundingBoxSnapTarget::Corner, snapping_state.bounds.corners),
+							(BoundingBoxSnapTarget::Edge, snapping_state.bounds.edges),
+							(BoundingBoxSnapTarget::EdgeMidpoint, snapping_state.bounds.edge_midpoints),
+						]
+						.into_iter()
+						.map(|(enum_type, bound_state)| LayoutGroup::Row {
+							widgets: vec![
+								CheckboxInput::new(bound_state)
+									.on_update(move |input: &CheckboxInput| {
+										DocumentMessage::SetSnapping {
+											snapping_enabled: None,
+											bounding_box_snapping: Some(OptionBoundsSnapping {
+												edges: if enum_type == BoundingBoxSnapTarget::Edge { Some(input.checked) } else { None },
+												edge_midpoints: if enum_type == BoundingBoxSnapTarget::EdgeMidpoint { Some(input.checked) } else { None },
+												centers: if enum_type == BoundingBoxSnapTarget::Center { Some(input.checked) } else { None },
+												corners: if enum_type == BoundingBoxSnapTarget::Corner { Some(input.checked) } else { None },
+											}),
+											geometry_snapping: None,
+										}
+										.into()
+									})
+									.widget_holder(),
+								TextLabel::new(enum_type.to_string()).widget_holder(),
+							],
+						})
+						.chain(
+							[
+								LayoutGroup::Row {
+									widgets: vec![TextLabel::new(SnappingOptions::Geometry.to_string()).widget_holder()],
+								},
+								LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(snapping_state.nodes.anchors)
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														anchors: Some(input.checked),
+														..Default::default()
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new("Anchor").widget_holder(),
+									],
+								},
+							]
+							.into_iter()
+							.chain(
+								[
+									(GeometrySnapTarget::LineMidpoint, snapping_state.nodes.line_midpoints),
+									(GeometrySnapTarget::Path, snapping_state.nodes.paths),
+									(GeometrySnapTarget::Normal, snapping_state.nodes.normals),
+									(GeometrySnapTarget::Tangent, snapping_state.nodes.tangents),
+									(GeometrySnapTarget::Intersection, snapping_state.nodes.path_intersections),
+								]
+								.into_iter()
+								.map(|(enum_type, bound_state)| LayoutGroup::Row {
+									widgets: vec![
+										CheckboxInput::new(bound_state)
+											.on_update(move |input: &CheckboxInput| {
+												DocumentMessage::SetSnapping {
+													snapping_enabled: None,
+													bounding_box_snapping: None,
+													geometry_snapping: Some(OptionPointSnapping {
+														anchors: None,
+														line_midpoints: if enum_type == GeometrySnapTarget::LineMidpoint { Some(input.checked) } else { None },
+														paths: if enum_type == GeometrySnapTarget::Path { Some(input.checked) } else { None },
+														normals: if enum_type == GeometrySnapTarget::Normal { Some(input.checked) } else { None },
+														tangents: if enum_type == GeometrySnapTarget::Tangent { Some(input.checked) } else { None },
+														path_intersections: if enum_type == GeometrySnapTarget::Intersection { Some(input.checked) } else { None },
+													}),
+												}
+												.into()
+											})
+											.widget_holder(),
+										TextLabel::new(enum_type.to_string()).widget_holder(),
+									],
+								}),
+							),
+						),
+					)
+					.collect(),
+				)
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
@@ -1185,8 +1342,8 @@ impl DocumentMessageHandler {
 				.tooltip("Grid")
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisible(optional_input.checked).into())
 				.widget_holder(),
-			PopoverButton::new("Grid", "Grid customization settings")
-				.options_widget(overlay_options(&self.snapping_state.grid))
+			PopoverButton::new()
+				.popover_layout(overlay_options(&self.snapping_state.grid))
 				.popover_min_width(Some(320))
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -1209,71 +1366,104 @@ impl DocumentMessageHandler {
 				_ => Some(1),
 			})
 			.widget_holder(),
-			PopoverButton::new("View Mode", "Coming soon").widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
-				.on_update(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 				.widget_holder(),
 			IconButton::new("ZoomOut", 24)
 				.tooltip("Zoom Out")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom))
-				.on_update(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 				.widget_holder(),
 			IconButton::new("ZoomReset", 24)
 				.tooltip("Reset Tilt and Zoom to 100%")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::ResetCanvasTiltAndZoomTo100Percent))
-				.on_update(|_| NavigationMessage::ResetCanvasTiltAndZoomTo100Percent.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
+				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
+				.disabled(self.navigation.tilt.abs() < 1e-4 && (self.navigation.zoom - 1.).abs() < 1e-4)
 				.widget_holder(),
-			PopoverButton::new(
-				"Canvas Navigation",
-				"
-					Interactive controls in this\n\
-					menu are coming soon.\n\
-					\n\
-					Pan:\n\
-					• Middle Click Drag\n\
-					\n\
-					Tilt:\n\
-					• Alt + Middle Click Drag\n\
-					\n\
-					Zoom:\n\
-					• Shift + Middle Click Drag\n\
-					• Ctrl + Scroll Wheel Roll
-				"
-				.trim(),
-			)
-			.widget_holder(),
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Canvas Navigation").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new(
+							"
+								Interactive controls in this\n\
+								menu are coming soon.\n\
+								\n\
+								Pan:\n\
+								• Middle Click Drag\n\
+								\n\
+								Tilt:\n\
+								• Alt + Middle Click Drag\n\
+								\n\
+								Zoom:\n\
+								• Shift + Middle Click Drag\n\
+								• Ctrl + Scroll Wheel Roll
+							"
+							.trim(),
+						)
+						.multiline(true)
+						.widget_holder()],
+					},
+				])
+				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.navigation.zoom) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
 				.tooltip("Document zoom within the viewport")
 				.on_update(|number_input: &NumberInput| {
-					NavigationMessage::SetCanvasZoom {
+					NavigationMessage::CanvasZoomSet {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
 				})
 				.increment_behavior(NumberInputIncrementBehavior::Callback)
-				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
-				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+				.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 				.widget_holder(),
 		];
 
-		let tilt_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
+		let tilt_value = self.navigation_handler.snapped_tilt(self.navigation.tilt) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(tilt_value))
 					.unit("°")
-					.step(15.)
+					.increment_behavior(NumberInputIncrementBehavior::Callback)
+					.increment_callback_increase(|number_input: &NumberInput| {
+						let one = 1. + f64::EPSILON * 100.;
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL + one).floor() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
+						}
+						.into()
+					})
+					.increment_callback_decrease(|number_input: &NumberInput| {
+						let one = 1. + f64::EPSILON * 100.;
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL - one).ceil() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
+						}
+						.into()
+					})
 					.tooltip("Document tilt within the viewport")
 					.on_update(|number_input: &NumberInput| {
-						NavigationMessage::SetCanvasTilt {
-							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: number_input.value.unwrap().to_radians(),
 						}
 						.into()
 					})
@@ -1284,7 +1474,8 @@ impl DocumentMessageHandler {
 		widgets.extend([
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			TextButton::new("Node Graph")
-				.icon(Some(if self.graph_view_overlay_open { "GraphViewOpen".into() } else { "GraphViewClosed".into() }))
+				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
+				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
 				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
@@ -1347,6 +1538,10 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
+		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
+		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_visible(layer.to_node()));
+		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_locked(layer.to_node()));
+
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![
 				DropdownInput::new(blend_mode_menu_entries)
@@ -1373,16 +1568,42 @@ impl DocumentMessageHandler {
 						}
 					})
 					.widget_holder(),
+				//
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				IconButton::new("Folder", 24)
-					.tooltip("New Folder")
+				//
+				IconButton::new("NewLayer", 24)
+					.tooltip("New Folder/Layer")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 					.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
+					.widget_holder(),
+				IconButton::new("Folder", 24)
+					.tooltip("Group Selected")
+					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+					.on_update(|_| DocumentMessage::GroupSelectedLayers.into())
+					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new("Trash", 24)
 					.tooltip("Delete Selected")
 					.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 					.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
+					.disabled(!has_selection)
+					.widget_holder(),
+				//
+				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				//
+				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
+					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+					.disabled(!has_selection)
+					.widget_holder(),
+				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
+					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
+					.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+					.disabled(!has_selection)
 					.widget_holder(),
 			],
 		}]);

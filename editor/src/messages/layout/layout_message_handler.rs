@@ -33,7 +33,7 @@ impl LayoutMessageHandler {
 						}
 
 						if let Widget::PopoverButton(popover) = &widget.widget {
-							stack.extend(popover.options_widget.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
+							stack.extend(popover.popover_layout.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
 						}
 					}
 				}

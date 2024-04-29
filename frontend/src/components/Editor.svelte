@@ -15,12 +15,12 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import type { createEditor } from "@graphite/wasm-communication/editor";
+	import { type Editor } from "@graphite/wasm-communication/editor";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor instance
-	export let editor: ReturnType<typeof createEditor>;
+	// Graphite WASM editor
+	export let editor: Editor;
 	setContext("editor", editor);
 
 	// State provider systems
@@ -48,7 +48,7 @@
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.instance.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady(operatingSystem());
 	});
 
 	onDestroy(() => {
@@ -69,6 +69,7 @@
 	:root {
 		// Replace usage of `-rgb` variants with CSS color() function to calculate alpha when browsers support it
 		// See https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color() and https://caniuse.com/css-color-function
+		// Specifically, support for the relative syntax is needed: `color(from var(--color-0-black) srgb r g b / 0.5)` to convert black to 50% alpha
 		--color-0-black: #000;
 		--color-0-black-rgb: 0, 0, 0;
 		--color-1-nearblack: #111;
@@ -137,6 +138,16 @@
 			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px;
+
+		--background-inactive-stripes: repeating-linear-gradient(
+			-45deg,
+			transparent 0px,
+			transparent calc((3px * sqrt(2) / 2) - 0.5px),
+			var(--color-5-dullgray) calc((3px * sqrt(2) / 2) - 0.5px),
+			var(--color-5-dullgray) calc((3px * sqrt(2) / 2) + 0.5px),
+			transparent calc((3px * sqrt(2) / 2) + 0.5px),
+			transparent calc(6px * sqrt(2) / 2)
+		);
 
 		// Arrow triangle (#eee fill)
 		--icon-expand-collapse-arrow: url('data:image/svg+xml;utf8,\

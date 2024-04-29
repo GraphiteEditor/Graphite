@@ -39,10 +39,10 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 *For Graphite to support editing photos from professional digital cameras, it needs a raw decoding/processing library.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis), [Hypercube](/about#hypercube) -->
 - **Needed Skills:** Rust, C++, binary format parsing
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
-- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis), [Hypercube](/about#hypercube)
 - **Expected Outcomes:** Develop a Rust library that ports LibRaw functionality to native Rust. A clean, well-structured code base and API. At a minimum, demonstrate the successful end-to-end decoding, debayering, and color space handling of Sony ARW format photos in Graphite. Publish the library to crates.io.
 
 For Graphite to work as a photo editing app, it needs to import raw photos. These contain compressed sensor imagery and metadata in a variety of formats. Sony ARW is the first target, and additional camera brands are stretch goals, while porting all useful functionality would be the best outcome.
@@ -55,10 +55,10 @@ This project involves diving into the LibRaw source code (~44,000 lines), unders
 
 *Graphite's graph UI needs a system to automatically arrange layers and nodes given incremental changes to the graph contents.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, algorithm design ([constraint solving](https://en.wikipedia.org/wiki/Constraint_satisfaction_problem), [packing](https://en.wikipedia.org/wiki/Packing_problems), [graph drawing](https://en.wikipedia.org/wiki/Graph_drawing))
 - **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
-- **Possible Mentors:** [Keavon](/about#keavon)
 - **Expected Outcomes:** A system that manages the placement of nodes based on a set of layout constraint rules and incremental updates to the graph topology. It should run efficiently, even with large graphs. It should be robust enough to handle a variety of graph topologies and user interactions, producing organized, useful, and stable layouts.
 
 The Graphite concept is built around a node graph representation of layer stacks, while tools automatically generate and manipulate nodes. When a layer or node is inserted, deleted, moved, or referenced, the graph needs to be reorganized to maintain a clear and useful layout. Users can also interactively expand and collapse groups of nodes which occupies or frees up graph real estate.
@@ -71,10 +71,10 @@ While general graph layout algorithms are complex and struggle to produce good r
 
 *Graphite's node graph UI needs to be rewritten using a shader-based rendering system.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis) -->
 - **Needed Skills:** Rust, WGPU, computer graphics, shader programming
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
-- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
 - **Expected Outcomes:** A reimplemented graph UI that draws nodes, layers, connections, thumbnails, text, etc. with a custom shader UI rendering system written with WGPU.
 
 The current graph UI is implemented using HTML/CSS and SVG, which is too slow for large graphs and lacks the flexibility to create the desired visual effects like frosted glass. The new system should be able to handle thousands of nodes with ease, and it should be able to render all the visual effects that are envisioned in the design mockup:
@@ -87,10 +87,10 @@ The proposed system is a custom immediate mode renderer built with shader progra
 
 *Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube) -->
 - **Needed Skills:** Rust, computer graphics
 - **Project Size:** Medium *(GSoC: 175 hours)*
 - **Difficulty:** Medium
-- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
 - **Expected Outcomes:** Complete implementation of Mask mode and its marquee selection. Marching ants visualization shader effect. Integration of selection mask with the node graph and raster editing tools. Useful raster editing workflow.
 
 A central part of the workflow in raster image editors is the selection of portions of the image to constrain manipulations just to the masked areas. Tools such as the circular and rectangular marquee, lasso, and magic wand are used to create masks. Instead of using dedicated tools, Graphite's design reuses the existing vector and raster drawing tools (like Rectangle, Ellipse, Pen, and Fill) to create masks in a dedicated Mask mode. Returning from Mask mode reveals the marching ants selection that constrains further editing operations.
@@ -101,10 +101,10 @@ This is a key feature in Graphite's evolution to a fully-featured raster editor.
 
 *Generative AI and vision ML models will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Oliver](https://github.com/otdavies) -->
 - **Needed Skills:** Machine learning (and potentially: Rust, Python, ONNX, Candle, Burn)
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
-- **Possible Mentors:** [Keavon](/about#keavon), [Oliver](https://github.com/otdavies)
 - **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one GenAI or vision model into Graphite's node graph which can run locally and deploy to a server.
 
 AI is filling a rapidly growing role as a tool in the creative process. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of machine learning nodes.
@@ -125,10 +125,10 @@ Based on the experience and insight brought to the table by the student, the nat
 
 *Graphite's UI needs an upgraded layout system to support more complex and dynamic widget arrangements defined from the backend.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, CSS, TypeScript)
 - **Project Size:** Small *(GSoC: 90 hours)* or Medium *(GSoC: 175 hours)*
 - **Difficulty:** Medium
-- **Possible Mentors:** [Keavon](/about#keavon)
 - **Expected Outcomes:** An improved system for defining widget layouts with better control and flexibility over arrangement and dynamic data binding. Reduction in boilerplate and plumbing required to define each new layout. Better control of styling between rows.
 
 The current system for defining the arrangement of widget layouts from the backend, created during a [previous student project](#2022-backend-layout-system), has served us well thus far but has limitations. This project aims to extend the system to better model our evolved requirements.
@@ -141,10 +141,10 @@ Students should have a good level of familiarity with Rust design patterns to en
 
 *The node graph data model for procedural content generation can be thought of as a spreadsheet, which needs a dedicated viewer/editor panel.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, TypeScript)
 - **Project Size:** Small *(GSoC: 90 hours)*
 - **Difficulty:** Easy-to-medium
-- **Possible Mentors:** [Keavon](/about#keavon)
 - **Expected Outcomes:** A functional panel in the editor that displays the selected node output data as a spreadsheet across multiple domains. Connection to the graph engine to read and edit the data. Virtual scrolling and efficient transfer of data to the frontend.
 
 The node graph is a powerful tool for procedural content generation, but it can be difficult to understand the data that flows through it. Node data can be represented as a spreadsheet, where each row presents a domain-specific instance (e.g., a point, segment, or face) and each column displays an attribute (like position, color, or radius).
@@ -157,10 +157,10 @@ A larger-scoped version of the project can expand this to focus also on displayi
 
 *Adding a timeline-based animation system to Graphite would begin realizing the vision as a versatile content creation suite supporting motion graphics.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon) -->
 - **Needed Skills:** Rust, web (Svelte, CSS, SVG, TypeScript)
 - **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Easy-to-medium
-- **Possible Mentors:** [Keavon](/about#keavon)
 - **Expected Outcomes:** A timeline panel in the editor that can create and edit keyframes and timing curves for animating data channels used by nodes. Ergonomic experience for keyframing properties. Efficient curve interpolation. Rendering optimizations for relatively smooth animation playback.
 
 A powerful outcome of Graphite's node-driven architecture is the relatively simple ability to vary data parameters over time.
@@ -173,10 +173,10 @@ In the backend, the animation curves need to be evaluated at the playhead positi
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
+<!-- - **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube) -->
 - **Needed Skills:** Rust, unit testing
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy
-- **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube)
 - **Expected Outcomes:** Specific focus and scope may vary by the student's interests and proposal. In general, a significant increase in the coverage of tests in useful code areas (such as document loading, manipulation, and rendering) and attention towards systems which measure performance metrics and identify bottlenecks and regressions.
 
 Graphite could benefit from better testing coverage in a number of areas, especially end-to-end testing in the tool, document, and node graph systems. This project is about identifying and addressing areas that are lacking and most vulnerable to suffering from regressions. The student will be responsible for identifying areas that could benefit from better testing.
@@ -185,10 +185,10 @@ Graphite could benefit from better testing coverage in a number of areas, especi
 
 *Infrastructure to generate visualizations of Graphite's system architecture would be a valuable addition to the project's documentation and debugging tools.*
 
+<!-- - **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis) -->
 - **Needed Skills:** Rust (especially proc macros)
 - **Project Size:** Medium *(GSoC: 175 hours)* or Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
-- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
 - **Expected Outcomes:** A system built from proc macros which can generate useful visualizations of Graphite's system architecture. Depending on proposal scope, this can include static visualizations added to the documentation, dynamic message flow visualizations for debugging, and tools to help identify redundant message traffic.
 
 Graphite's editor architecture, based around a message-passing processing queue, is structured as a hierarchical system of message handlers. Each handler stores its own state, and references to the state data may be passed along to its child handlers they need it.
@@ -201,10 +201,10 @@ If proposed as part of the project's scope, a runtime component could be added a
 
 *If you have an idea for a project that you think would be a good fit, we'd love to hear it!*
 
+<!-- - **Possible Mentors:** Varies -->
 - **Needed Skills:** Varies
 - **Project Size:** Varies
 - **Difficulty:** Varies
-- **Possible Mentors:** Varies
 - **Expected Outcomes:** Stated in your proposal.
 
 If none of the projects above suit your interests or experience, we are very open to discussing your own project ideas that could benefit Graphite. You may consult our [task board](https://github.com/orgs/GraphiteEditor/projects/1/views/1) and [roadmap](/features#roadmap) to get a feel for what our current priorities are.

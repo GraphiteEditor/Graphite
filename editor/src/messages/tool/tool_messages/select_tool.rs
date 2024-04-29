@@ -171,7 +171,19 @@ impl LayoutHolder for SelectTool {
 		let disabled = self.tool_data.selected_layers_count < 2;
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.extend(self.alignment_widgets(disabled));
-		widgets.push(PopoverButton::new("Align", "Coming soon").disabled(disabled).widget_holder());
+		widgets.push(
+			PopoverButton::new()
+				.popover_layout(vec![
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
+					},
+					LayoutGroup::Row {
+						widgets: vec![TextLabel::new("Coming soon").widget_holder()],
+					},
+				])
+				.disabled(disabled)
+				.widget_holder(),
+		);
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
@@ -386,32 +398,25 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
-				let selected_layers_count = document.selected_nodes.selected_layers(document.metadata()).count();
+				let selected_layers_count = document.selected_nodes.selected_unlocked_layers(document.metadata()).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
 
 				// Outline selected layers
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
-					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
-				}
-
-				// Get the layer the user is hovering over
-				let click = document.click(input.mouse.position, &document.network);
-				let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
-				if let Some(layer) = not_selected_click {
+				for layer in document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()) {
 					overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 				}
 
 				// Update bounds
 				let transform = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.next()
 					.map(|layer| document.metadata().transform_to_viewport(layer));
 				let transform = transform.unwrap_or(DAffine2::IDENTITY);
 				let bounds = document
 					.selected_nodes
-					.selected_visible_layers(document.metadata())
+					.selected_visible_and_unlocked_layers(document.metadata())
 					.filter_map(|layer| {
 						document
 							.metadata()
@@ -432,9 +437,25 @@ impl Fsm for SelectToolFsmState {
 				// Update pivot
 				tool_data.pivot.update_pivot(document, &mut overlay_context);
 
-				// Update dragging box
+				// Check if the tool is in box selection mode
 				if matches!(self, Self::DrawingBox { .. }) {
-					overlay_context.quad(Quad::from_box([tool_data.drag_start, tool_data.drag_current]));
+					// Get the updated selection box bounds
+					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+
+					// Draw outline visualizations on the layers to be selected
+					for layer in document.intersect_quad(quad, &document.network) {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
+
+					// Update the selection box
+					overlay_context.quad(quad);
+				} else {
+					// Get the layer the user is hovering over
+					let click = document.click(input.mouse.position, &document.network);
+					let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
+					if let Some(layer) = not_selected_click {
+						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
+					}
 				}
 
 				self
@@ -472,8 +493,9 @@ impl Fsm for SelectToolFsmState {
 					.map(|bounding_box| bounding_box.check_rotate(input.mouse.position))
 					.unwrap_or_default();
 
-				let mut selected: Vec<_> = document.selected_nodes.selected_visible_layers(document.metadata()).collect();
-				let intersection = document.click(input.mouse.position, &document.network);
+				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
+				let intersection_list = document.click_list(input.mouse.position, &document.network);
+				let intersection = document.find_deepest(&intersection_list, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -570,11 +592,11 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layer_selected_on_start = Some(intersection);
-						selected = vec![intersection];
+						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
 							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
-							_ => drag_deepest_manipulation(responses, selected, tool_data),
+							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
 						SelectToolFsmState::Dragging
@@ -626,7 +648,7 @@ impl Fsm for SelectToolFsmState {
 					let snapped = if axis_align {
 						let constraint = SnapConstraint::Line {
 							origin: point.document_point,
-							direction: total_mouse_delta_document.normalize(),
+							direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
 						};
 						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
 					} else {
@@ -1094,8 +1116,8 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 }
 
-fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
-	tool_data.layers_dragging.append(&mut selected);
+fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
+	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or_default()]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});

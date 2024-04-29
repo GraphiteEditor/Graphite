@@ -269,15 +269,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuBarEntry {
 							label: "Tilt".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::RotateCanvasBegin),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: true }.into()),
+							shortcut: action_keys!(NavigationMessageDiscriminant::BeginCanvasTilt),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: true }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Reset Tilt".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::SetCanvasTilt),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::SetCanvasTilt { angle_radians: 0.into() }.into()),
+							shortcut: action_keys!(NavigationMessageDiscriminant::CanvasTiltSet),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
@@ -285,15 +285,17 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuBarEntry {
 							label: "Zoom In".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into()),
+							icon: Some("ZoomIn".into()),
+							shortcut: action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Zoom Out".into(),
-							shortcut: action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom),
-							action: MenuBarEntry::create_action(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into()),
+							icon: Some("ZoomOut".into()),
+							shortcut: action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease),
+							action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into()),
 							disabled: no_active_document,
 							..MenuBarEntry::default()
 						},

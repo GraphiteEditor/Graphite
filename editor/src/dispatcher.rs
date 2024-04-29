@@ -102,7 +102,9 @@ impl Dispatcher {
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
-
+				Message::Batched(messages) => {
+					messages.iter().for_each(|message| self.handle_message(message.to_owned()));
+				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
@@ -271,7 +273,7 @@ mod test {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	/// Create an editor instance with three layers
+	/// Create an editor with three layers
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse
