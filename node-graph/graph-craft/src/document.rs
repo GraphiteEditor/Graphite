@@ -959,12 +959,8 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
-			if node.is_layer {
-				// Connect layer node to the graphic group below
-				node.inputs.drain(..1);
-			} else {
-				node.inputs.drain(1..);
-			}
+			// Connect layer node to the graphic group below
+			node.inputs.drain(1..);
 			self.nodes.insert(id, node);
 
 			return;
