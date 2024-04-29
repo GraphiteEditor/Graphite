@@ -106,6 +106,8 @@ import Credits from "@graphite-frontend/assets/icon-16px-solid/credits.svg";
 import CustomColor from "@graphite-frontend/assets/icon-16px-solid/custom-color.svg";
 import Edit from "@graphite-frontend/assets/icon-16px-solid/edit.svg";
 import EyeHidden from "@graphite-frontend/assets/icon-16px-solid/eye-hidden.svg";
+import EyeHide from "@graphite-frontend/assets/icon-16px-solid/eye-hide.svg";
+import EyeShow from "@graphite-frontend/assets/icon-16px-solid/eye-show.svg";
 import EyeVisible from "@graphite-frontend/assets/icon-16px-solid/eye-visible.svg";
 import Eyedropper from "@graphite-frontend/assets/icon-16px-solid/eyedropper.svg";
 import File from "@graphite-frontend/assets/icon-16px-solid/file.svg";
@@ -119,6 +121,7 @@ import IconsGrid from "@graphite-frontend/assets/icon-16px-solid/icons-grid.svg"
 import Image from "@graphite-frontend/assets/icon-16px-solid/image.svg";
 import Layer from "@graphite-frontend/assets/icon-16px-solid/layer.svg";
 import License from "@graphite-frontend/assets/icon-16px-solid/license.svg";
+import NewLayer from "@graphite-frontend/assets/icon-16px-solid/new-layer.svg";
 import NodeBlur from "@graphite-frontend/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@graphite-frontend/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@graphite-frontend/assets/icon-16px-solid/node-color-correction.svg";
@@ -132,6 +135,8 @@ import NodeOutput from "@graphite-frontend/assets/icon-16px-solid/node-output.sv
 import NodeShape from "@graphite-frontend/assets/icon-16px-solid/node-shape.svg";
 import NodeText from "@graphite-frontend/assets/icon-16px-solid/node-text.svg";
 import NodeTransform from "@graphite-frontend/assets/icon-16px-solid/node-transform.svg";
+import PadlockLocked from "@graphite-frontend/assets/icon-16px-solid/padlock-locked.svg";
+import PadlockUnlocked from "@graphite-frontend/assets/icon-16px-solid/padlock-unlocked.svg";
 import Paste from "@graphite-frontend/assets/icon-16px-solid/paste.svg";
 import Random from "@graphite-frontend/assets/icon-16px-solid/random.svg";
 import Regenerate from "@graphite-frontend/assets/icon-16px-solid/regenerate.svg";
@@ -175,6 +180,8 @@ const SOLID_16PX = {
 	Edit: { svg: Edit, size: 16 },
 	Eyedropper: { svg: Eyedropper, size: 16 },
 	EyeHidden: { svg: EyeHidden, size: 16 },
+	EyeHide: { svg: EyeHide, size: 16 },
+	EyeShow: { svg: EyeShow, size: 16 },
 	EyeVisible: { svg: EyeVisible, size: 16 },
 	File: { svg: File, size: 16 },
 	FlipHorizontal: { svg: FlipHorizontal, size: 16 },
@@ -187,6 +194,7 @@ const SOLID_16PX = {
 	Image: { svg: Image, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
+	NewLayer: { svg: NewLayer, size: 16 },
 	NodeBlur: { svg: NodeBlur, size: 16 },
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
@@ -200,6 +208,8 @@ const SOLID_16PX = {
 	NodeShape: { svg: NodeShape, size: 16 },
 	NodeText: { svg: NodeText, size: 16 },
 	NodeTransform: { svg: NodeTransform, size: 16 },
+	PadlockLocked: { svg: PadlockLocked, size: 16 },
+	PadlockUnlocked: { svg: PadlockUnlocked, size: 16 },
 	Paste: { svg: Paste, size: 16 },
 	Random: { svg: Random, size: 16 },
 	Regenerate: { svg: Regenerate, size: 16 },

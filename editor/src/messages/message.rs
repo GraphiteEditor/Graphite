@@ -7,6 +7,7 @@ use graphite_proc_macros::*;
 pub enum Message {
 	NoOp,
 	Init,
+	Batched(Box<[Message]>),
 
 	#[child]
 	Broadcast(BroadcastMessage),

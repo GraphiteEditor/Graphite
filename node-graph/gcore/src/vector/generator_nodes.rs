@@ -31,18 +31,47 @@ fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RectangleGenerator<SizeX, SizeY> {
+pub struct RectangleGenerator<SizeX, SizeY, IsIndividual, CornerRadius, Clamped> {
 	size_x: SizeX,
 	size_y: SizeY,
+	is_individual: IsIndividual,
+	corner_radius: CornerRadius,
+	clamped: Clamped,
+}
+
+trait CornerRadius {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData;
+}
+impl CornerRadius for f64 {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
+		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])])
+	}
+}
+impl CornerRadius for [f64; 4] {
+	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
+		let clamped_radius = if clamped {
+			// Algorithm follows the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
+
+			let mut scale_factor: f64 = 1.;
+			for i in 0..4 {
+				let side_length = if i % 2 == 0 { size.x } else { size.y };
+				let adjacent_corner_radius_sum = self[i] + self[(i + 1) % 4];
+				if side_length < adjacent_corner_radius_sum {
+					scale_factor = scale_factor.min(side_length / adjacent_corner_radius_sum);
+				}
+			}
+			self.map(|x| x * scale_factor)
+		} else {
+			self
+		};
+		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)])
+	}
 }
 
 #[node_macro::node_fn(RectangleGenerator)]
-fn square_generator(_input: (), size_x: f64, size_y: f64) -> VectorData {
-	let size = DVec2::new(size_x, size_y);
-	let corner1 = -size / 2.;
-	let corner2 = size / 2.;
-
-	super::VectorData::from_subpath(Subpath::new_rect(corner1, corner2))
+fn square_generator<T: CornerRadius>(_input: (), size_x: f64, size_y: f64, is_individual: bool, corner_radius: T, clamped: bool) -> VectorData {
+	corner_radius.generate(DVec2::new(size_x, size_y), clamped)
 }
 
 #[derive(Debug, Clone, Copy)]

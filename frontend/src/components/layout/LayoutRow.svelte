@@ -6,6 +6,7 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let tooltip: string | undefined = undefined;
+	// TODO: Add middle-click drag scrolling
 	export let scrollableX = false;
 	export let scrollableY = false;
 

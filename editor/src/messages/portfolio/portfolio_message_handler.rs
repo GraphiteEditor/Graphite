@@ -202,6 +202,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							)
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
+							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
+							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
 							collapsed: false,
 							alias: previous_alias,
 						});
@@ -317,7 +319,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
 				self.load_document(new_document, document_id, responses);
@@ -387,6 +389,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						if entry.selected {
 							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
+						if !entry.visible {
+							responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
+						}
+						if entry.locked {
+							responses.add(NodeGraphMessage::SetLocked { node_id: id, locked: true });
+						}
 					}
 				};
 
@@ -414,6 +422,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							});
 							if entry.selected {
 								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
+							}
+							if !entry.visible {
+								responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
 							}
 						}
 
@@ -453,7 +464,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 			}
@@ -626,7 +637,7 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
 		responses.add(ToolMessage::InitTools);
 		responses.add(NodeGraphMessage::Init);
-		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 		responses.add(PropertiesPanelMessage::Clear);
 		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}

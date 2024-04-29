@@ -35,14 +35,16 @@ pub fn default_mapping() -> Mapping {
 		// ===============
 		//
 		// NavigationMessage
-		entry!(
-			PointerMove;
-			refresh_keys=[Control],
-			action_dispatch=NavigationMessage::PointerMove { snap_angle: Control, wait_for_snap_angle_release: true, snap_zoom: Control, zoom_from_viewport: None },
-		),
-		entry!(KeyDown(Lmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Lmb }),
-		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Mmb }),
-		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::TransformFromMenuEnd { commit_key: Rmb }),
+		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigationMessage::PointerMove { snap: Control }),
+		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
+		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
+		entry!(KeyUp(Rmb); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
+		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
+		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
+		entry!(KeyDown(Lmb); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: Lmb }),
+		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: Mmb }),
+		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: Rmb }),
+		//
 		// ===============
 		// NORMAL PRIORITY
 		// ===============
@@ -57,7 +59,8 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
-		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedHidden),
+		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
+		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedLocked),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
@@ -115,14 +118,11 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ArtboardToolMessage::Abort),
 		//
 		// NavigateToolMessage
-		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: false }),
-		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::ClickZoom { zoom_in: true }),
-		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap_angle: Control, snap_zoom: Control }),
-		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigateToolMessage::RotateCanvasBegin),
 		entry!(KeyDown(Lmb); action_dispatch=NavigateToolMessage::ZoomCanvasBegin),
-		entry!(KeyUp(Rmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
-		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
-		entry!(KeyUp(Mmb); action_dispatch=NavigateToolMessage::TransformCanvasEnd),
+		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NavigateToolMessage::TiltCanvasBegin),
+		entry!(PointerMove; refresh_keys=[Control], action_dispatch=NavigateToolMessage::PointerMove { snap: Control }),
+		entry!(KeyUp(Lmb); action_dispatch=NavigateToolMessage::PointerUp { zoom_in: true }),
+		entry!(KeyUp(Lmb); modifiers=[Shift], action_dispatch=NavigateToolMessage::PointerUp { zoom_in: false }),
 		//
 		// EyedropperToolMessage
 		entry!(KeyDown(Lmb); action_dispatch=EyedropperToolMessage::SamplePrimaryColorBegin),
@@ -350,25 +350,21 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Digit9); action_dispatch=TransformLayerMessage::TypeDigit { digit: 9 }),
 		//
 		// NavigationMessage
-		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu: false }),
-		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::ZoomCanvasBegin),
-		entry!(KeyDown(Lmb); modifiers=[Shift, Space], action_dispatch=NavigationMessage::ZoomCanvasBegin),
-		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Mmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
-		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::TranslateCanvasBegin),
-		entry!(KeyUp(Lmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: false }),
-		entry!(KeyDown(Rmb); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
-		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::TransformCanvasEnd { abort_transform: true }),
-		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }),
-		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }),
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
-		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(1., 0.) }),
-		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(-1., 0.) }),
-		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., 1.) }),
-		entry!(KeyDown(PageDown); action_dispatch=NavigationMessage::TranslateCanvasByViewportFraction { delta: DVec2::new(0., -1.) }),
+		entry!(KeyDown(Mmb); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
+		entry!(KeyDown(Mmb); modifiers=[Shift], action_dispatch=NavigationMessage::BeginCanvasZoom),
+		entry!(KeyDown(Lmb); modifiers=[Shift, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
+		entry!(KeyDown(Mmb); action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(Lmb); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
+		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
+		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),
+		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(-1., 0.) }),
+		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(0., 1.) }),
+		entry!(KeyDown(PageDown); action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(0., -1.) }),
 		entry!(KeyDown(Period); action_dispatch=NavigationMessage::FitViewportToSelection),
 		//
 		// PortfolioMessage
@@ -428,14 +424,14 @@ pub fn zoom_with_scroll() -> Mapping {
 	let mut mapping = default_mapping();
 
 	let remove = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasZoom),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 	];
 	let add = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: true }),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::WheelCanvasTranslate { use_y_as_x: false }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::WheelCanvasZoom),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 	];
 
 	apply_mapping_patch(&mut mapping, remove, add);

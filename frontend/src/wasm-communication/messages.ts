@@ -124,7 +124,9 @@ export class FrontendNode {
 
 	readonly previewed!: boolean;
 
-	readonly disabled!: boolean;
+	readonly visible!: boolean;
+
+	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
 }
@@ -613,7 +615,15 @@ export class LayerPanelEntry {
 
 	expanded!: boolean;
 
-	disabled!: boolean;
+	hasChildren!: boolean;
+
+	visible!: boolean;
+
+	parentsVisible!: boolean;
+
+	unlocked!: boolean;
+
+	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
 
@@ -769,6 +779,8 @@ export class FontInput extends WidgetProps {
 export class IconButton extends WidgetProps {
 	icon!: IconName;
 
+	hoverIcon!: IconName | undefined;
+
 	size!: IconSize;
 
 	disabled!: boolean;
@@ -858,17 +870,13 @@ export class PopoverButton extends WidgetProps {
 
 	disabled!: boolean;
 
-	// Body
-	header!: string;
-
-	text!: string;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	popoverMinWidth: number | undefined;
+	// Body
+	popoverLayout!: LayoutGroup[];
 
-	optionsWidget: LayoutGroup[] | undefined;
+	popoverMinWidth: number | undefined;
 }
 
 export type RadioEntryData = {
@@ -933,6 +941,8 @@ export class TextButton extends WidgetProps {
 	label!: string;
 
 	icon!: IconName | undefined;
+
+	hoverIcon!: IconName | undefined;
 
 	emphasized!: boolean;
 
@@ -1072,7 +1082,7 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	props.kind = kind;
 
 	if (kind === "PopoverButton") {
-		props.optionsWidget = props.optionsWidget.map(createLayoutGroup);
+		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
 	}
 
 	const { widgetId } = widgetHolder;
@@ -1122,8 +1132,8 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			if ("rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if ("layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout instanceof Widget) {
-				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.optionsWidget) {
-					return targetLayout.props.optionsWidget[index];
+				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
+					return targetLayout.props.popoverLayout[index];
 				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");

@@ -79,17 +79,34 @@ fn set_vector_data_stroke(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RepeatNode<Direction, Count> {
+pub struct RepeatNode<Direction, Angle, Instances> {
 	direction: Direction,
-	count: Count,
+	angle: Angle,
+	instances: Instances,
 }
 
 #[node_macro::node_fn(RepeatNode)]
-fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> VectorData {
+fn repeat_vector_data(vector_data: VectorData, direction: DVec2, angle: f64, instances: u32) -> VectorData {
+	let angle = angle.to_radians();
+	let instances = instances.max(1);
+	let total = (instances - 1) as f64;
+
+	if instances == 1 {
+		return vector_data;
+	}
+
 	// Repeat the vector data
 	let mut result = VectorData::empty();
-	for i in 0..count {
-		let transform = DAffine2::from_translation(direction * i as f64);
+
+	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
+	let center = (bounding_box[0] + bounding_box[1]) / 2.;
+
+	for i in 0..instances {
+		let translation = i as f64 * direction / total;
+		let angle = i as f64 * angle / total;
+
+		let transform = DAffine2::from_translation(center) * DAffine2::from_angle(angle) * DAffine2::from_translation(translation) * DAffine2::from_translation(-center);
+
 		result.concat(&vector_data, transform);
 	}
 
@@ -97,14 +114,20 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, count: u32) -> 
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CircularRepeatNode<AngleOffset, Radius, Count> {
+pub struct CircularRepeatNode<AngleOffset, Radius, Instances> {
 	angle_offset: AngleOffset,
 	radius: Radius,
-	count: Count,
+	instances: Instances,
 }
 
 #[node_macro::node_fn(CircularRepeatNode)]
-fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radius: f64, count: u32) -> VectorData {
+fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radius: f64, instances: u32) -> VectorData {
+	let instances = instances.max(1);
+
+	if instances == 1 {
+		return vector_data;
+	}
+
 	let mut result = VectorData::empty();
 
 	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
@@ -112,8 +135,8 @@ fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radiu
 
 	let base_transform = DVec2::new(0., radius) - center;
 
-	for i in 0..count {
-		let angle = (2. * std::f64::consts::PI / count as f64) * i as f64 + angle_offset.to_radians();
+	for i in 0..instances {
+		let angle = (std::f64::consts::TAU / instances as f64) * i as f64 + angle_offset.to_radians();
 		let rotation = DAffine2::from_angle(angle);
 		let transform = DAffine2::from_translation(center) * rotation * DAffine2::from_translation(base_transform);
 		result.concat(&vector_data, transform);
@@ -535,27 +558,31 @@ mod test {
 	#[test]
 	fn repeat() {
 		let direction = DVec2::X * 1.5;
+		let instances = 3;
 		let repeated = RepeatNode {
 			direction: ClonedNode::new(direction),
-			count: ClonedNode::new(3),
+			angle: ClonedNode::new(0.),
+			instances: ClonedNode::new(instances),
 		}
 		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
 		assert_eq!(repeated.region_bezier_paths().count(), 3);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
-			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
+			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[test]
 	fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
+		let instances = 8;
 		let repeated = RepeatNode {
 			direction: ClonedNode::new(direction),
-			count: ClonedNode::new(8),
+			angle: ClonedNode::new(0.),
+			instances: ClonedNode::new(instances),
 		}
 		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::ZERO, DVec2::ONE)));
 		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
-			assert_eq!(subpath.manipulator_groups()[0].anchor, direction * index as f64);
+			assert!((subpath.manipulator_groups()[0].anchor - direction * index as f64 / (instances - 1) as f64).length() < 1e-5);
 		}
 	}
 	#[test]
@@ -563,29 +590,29 @@ mod test {
 		let repeated = CircularRepeatNode {
 			angle_offset: ClonedNode::new(45.),
 			radius: ClonedNode::new(4.),
-			count: ClonedNode::new(8),
+			instances: ClonedNode::new(8),
 		}
 		.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
 		assert_eq!(repeated.region_bezier_paths().count(), 8);
 		for (index, (_, subpath)) in repeated.region_bezier_paths().enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
-			let centre = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_between(centre).to_degrees();
+			let center = (subpath.manipulator_groups()[0].anchor + subpath.manipulator_groups()[2].anchor) / 2.;
+			let actual_angle = DVec2::Y.angle_between(center).to_degrees();
 			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5);
 		}
 	}
 	#[test]
 	fn bounding_box() {
-		let bouding_box = BoundingBoxNode.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
-		assert_eq!(bouding_box.region_bezier_paths().count(), 1);
-		let subpath = bouding_box.region_bezier_paths().next().unwrap().1;
+		let bounding_box = BoundingBoxNode.eval(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE)));
+		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
+		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
 		let points = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE * 10., DVec2::ONE * 10.));
 		let expected_points = points.point_domain.positions().to_vec();
-		let bouding_box = CopyToPoints {
+		let bounding_box = CopyToPoints {
 			points: CullNode::new(FutureWrapperNode(ClonedNode(points))),
 			instance: CullNode::new(FutureWrapperNode(ClonedNode(VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE))))),
 			random_scale_min: FutureWrapperNode(ClonedNode(1.)),
@@ -595,8 +622,8 @@ mod test {
 		}
 		.eval(Footprint::default())
 		.await;
-		assert_eq!(bouding_box.region_bezier_paths().count(), expected_points.len());
-		for (index, (_, subpath)) in bouding_box.region_bezier_paths().enumerate() {
+		assert_eq!(bounding_box.region_bezier_paths().count(), expected_points.len());
+		for (index, (_, subpath)) in bounding_box.region_bezier_paths().enumerate() {
 			let offset = expected_points[index];
 			assert_eq!(
 				&subpath.anchors()[..4],

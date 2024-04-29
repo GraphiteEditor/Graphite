@@ -57,8 +57,6 @@ impl DocumentMode {
 /// SnappingState determines the current individual snapping states
 pub struct SnappingState {
 	pub snapping_enabled: bool,
-	pub bounding_box_snapping: bool,
-	pub geometry_snapping: bool,
 	pub grid_snapping: bool,
 	pub bounds: BoundsSnapping,
 	pub nodes: PointSnapping,
@@ -70,8 +68,6 @@ impl Default for SnappingState {
 	fn default() -> Self {
 		Self {
 			snapping_enabled: true,
-			bounding_box_snapping: true,
-			geometry_snapping: true,
 			grid_snapping: false,
 			bounds: BoundsSnapping {
 				edges: true,
@@ -82,8 +78,7 @@ impl Default for SnappingState {
 			nodes: PointSnapping {
 				paths: true,
 				path_intersections: true,
-				point_handles_free: true,
-				point_handles_colinear: true,
+				anchors: true,
 				line_midpoints: true,
 				normals: true,
 				tangents: true,
@@ -103,15 +98,15 @@ impl SnappingState {
 			return false;
 		}
 		match target {
-			SnapTarget::BoundingBox(bounding_box) if self.bounding_box_snapping => match bounding_box {
+			SnapTarget::BoundingBox(bounding_box) => match bounding_box {
 				BoundingBoxSnapTarget::Corner => self.bounds.corners,
 				BoundingBoxSnapTarget::Edge => self.bounds.edges,
 				BoundingBoxSnapTarget::EdgeMidpoint => self.bounds.edge_midpoints,
 				BoundingBoxSnapTarget::Center => self.bounds.centers,
 			},
-			SnapTarget::Geometry(nodes) if self.geometry_snapping => match nodes {
-				GeometrySnapTarget::HandlesColinear => self.nodes.point_handles_colinear,
-				GeometrySnapTarget::HandlesFree => self.nodes.point_handles_free,
+			SnapTarget::Geometry(nodes) => match nodes {
+				GeometrySnapTarget::AnchorWithColinearHandles => self.nodes.anchors,
+				GeometrySnapTarget::AnchorWithFreeHandles => self.nodes.anchors,
 				GeometrySnapTarget::LineMidpoint => self.nodes.line_midpoints,
 				GeometrySnapTarget::Path => self.nodes.paths,
 				GeometrySnapTarget::Normal => self.nodes.normals,
@@ -131,15 +126,30 @@ pub struct BoundsSnapping {
 	pub edge_midpoints: bool,
 	pub centers: bool,
 }
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct OptionBoundsSnapping {
+	pub edges: Option<bool>,
+	pub corners: Option<bool>,
+	pub edge_midpoints: Option<bool>,
+	pub centers: Option<bool>,
+}
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PointSnapping {
 	pub paths: bool,
 	pub path_intersections: bool,
-	pub point_handles_free: bool,
-	pub point_handles_colinear: bool,
+	pub anchors: bool,
 	pub line_midpoints: bool,
 	pub normals: bool,
 	pub tangents: bool,
+}
+#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct OptionPointSnapping {
+	pub paths: Option<bool>,
+	pub path_intersections: Option<bool>,
+	pub anchors: Option<bool>,
+	pub line_midpoints: Option<bool>,
+	pub normals: Option<bool>,
+	pub tangents: Option<bool>,
 }
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
@@ -216,8 +226,8 @@ impl GridSnapping {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoundingBoxSnapSource {
-	Corner,
 	Center,
+	Corner,
 	EdgeMidpoint,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,11 +237,11 @@ pub enum BoardSnapSource {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapSource {
-	HandlesColinear,
-	HandlesFree,
-	LineMidpoint,
-	PathIntersection,
+	AnchorWithColinearHandles,
+	AnchorWithFreeHandles,
 	Handle,
+	LineMidpoint,
+	Intersection,
 }
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapSource {
@@ -249,23 +259,50 @@ impl SnapSource {
 		matches!(self, Self::BoundingBox(_) | Self::Board(_))
 	}
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoundingBoxSnapTarget {
+	Center,
 	Corner,
 	Edge,
 	EdgeMidpoint,
-	Center,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+
+impl fmt::Display for BoundingBoxSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Center => write!(f, "Box Center"),
+			Self::Corner => write!(f, "Box Corner"),
+			Self::Edge => write!(f, "Along Edge"),
+			Self::EdgeMidpoint => write!(f, "Midpoint of Edge"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GeometrySnapTarget {
-	HandlesColinear,
-	HandlesFree,
+	AnchorWithColinearHandles,
+	AnchorWithFreeHandles,
 	LineMidpoint,
 	Path,
 	Normal,
 	Tangent,
 	Intersection,
 }
+
+impl fmt::Display for GeometrySnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::AnchorWithColinearHandles => write!(f, "Anchor (Colinear Handles)"),
+			Self::AnchorWithFreeHandles => write!(f, "Anchor (Free Handles)"),
+			Self::LineMidpoint => write!(f, "Line Midpoint"),
+			Self::Path => write!(f, "Path"),
+			Self::Normal => write!(f, "Normal to Path"),
+			Self::Tangent => write!(f, "Tangent to Path"),
+			Self::Intersection => write!(f, "Intersection"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoardSnapTarget {
 	Edge,

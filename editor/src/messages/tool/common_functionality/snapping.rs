@@ -113,7 +113,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 						curves: [Some(close.document_curve), Some(far.document_curve)],
 						source: close.point.source,
 						at_intersection: true,
-						contrained: true,
+						constrained: true,
 						..Default::default()
 					})
 				}
@@ -136,7 +136,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 						tolerance: line_i.point.tolerance,
 						source: line_i.point.source,
 						at_intersection: true,
-						contrained: true,
+						constrained: true,
 						..Default::default()
 					})
 				}
@@ -189,7 +189,7 @@ impl SnapManager {
 		self.update_indicator(snapped);
 	}
 
-	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, contrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
+	fn find_best_snap(snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: SnapResults, constrained: bool, off_screen: bool, to_path: bool) -> SnappedPoint {
 		let mut snapped_points = Vec::new();
 		let document = snap_data.document;
 
@@ -207,7 +207,7 @@ impl SnapManager {
 			}
 		}
 
-		if !contrained {
+		if !constrained {
 			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) {
 				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
 					snapped_points.push(closest_curves_intersection);
@@ -255,7 +255,7 @@ impl SnapManager {
 			if candidates.len() > 10 {
 				return;
 			}
-			if !document.selected_nodes.layer_visible(layer, &document.network, &document.metadata) {
+			if !document.selected_nodes.layer_visible(layer, &document.metadata) {
 				return;
 			}
 			if snap_data.ignore.contains(&layer) {
@@ -316,8 +316,8 @@ impl SnapManager {
 
 		let mut snap_data = snap_data.clone();
 		snap_data.candidates = Some(&*self.candidates.get_or_insert_with(|| Self::find_candidates(&snap_data, point, bbox)));
-		self.layer_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
-		self.grid_snapper.contrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.grid_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}

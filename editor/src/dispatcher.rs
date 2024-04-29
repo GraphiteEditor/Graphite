@@ -40,7 +40,12 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-const DEBUG_MESSAGE_BLOCK_LIST: &[&str] = &["AnimationFrame", "PointerMove", "PointerOutsideViewport", "FrameTimeAdvance"];
+const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(BroadcastEventDiscriminant::AnimationFrame)),
+	MessageDiscriminant::InputPreprocessor(InputPreprocessorMessageDiscriminant::FrameTimeAdvance),
+];
+// TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -97,7 +102,9 @@ impl Dispatcher {
 					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
-
+				Message::Batched(messages) => {
+					messages.iter().for_each(|message| self.handle_message(message.to_owned()));
+				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
@@ -223,9 +230,11 @@ impl Dispatcher {
 	/// Logs a message that is about to be executed,
 	/// either as a tree with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
-		let message_name = MessageDiscriminant::from(message).local_name();
+		let discriminant = MessageDiscriminant::from(message);
+		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.iter().any(|&blocked_discriminant| discriminant == blocked_discriminant)
+			|| DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
 
-		if !DEBUG_MESSAGE_BLOCK_LIST.iter().any(|blocked_name| message_name.ends_with(blocked_name)) {
+		if !is_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

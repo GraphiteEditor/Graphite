@@ -38,7 +38,7 @@ module.exports = {
 		camelcase: ["error", { properties: "always" }],
 		"linebreak-style": ["error", "unix"],
 		"eol-last": ["error", "always"],
-		"max-len": ["error", { code: 200, tabWidth: 4 }],
+		"max-len": ["error", { code: 200, tabWidth: 4, ignorePattern: `d="([\\s\\S]*?)"` }],
 		"prefer-destructuring": "off",
 		"no-console": "warn",
 		"no-debugger": "warn",

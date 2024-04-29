@@ -139,26 +139,26 @@
 		});
 	}
 
-	function translateCanvasX(newValue: number) {
+	function panCanvasX(newValue: number) {
 		const delta = newValue - scrollbarPos.x;
 		scrollbarPos.x = newValue;
-		editor.instance.translateCanvas(-delta * scrollbarMultiplier.x, 0);
+		editor.instance.panCanvas(-delta * scrollbarMultiplier.x, 0);
 	}
 
-	function translateCanvasY(newValue: number) {
+	function panCanvasY(newValue: number) {
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
-		editor.instance.translateCanvas(0, -delta * scrollbarMultiplier.y);
+		editor.instance.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
 	function pageX(delta: number) {
 		const move = delta < 0 ? 1 : -1;
-		editor.instance.translateCanvasByFraction(move, 0);
+		editor.instance.panCanvasByFraction(move, 0);
 	}
 
 	function pageY(delta: number) {
 		const move = delta < 0 ? 1 : -1;
-		editor.instance.translateCanvasByFraction(0, move);
+		editor.instance.panCanvasByFraction(0, move);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -506,7 +506,7 @@
 						direction="Vertical"
 						handleLength={scrollbarSize.y}
 						handlePosition={scrollbarPos.y}
-						on:handlePosition={({ detail }) => translateCanvasY(detail)}
+						on:handlePosition={({ detail }) => panCanvasY(detail)}
 						on:pressTrack={({ detail }) => pageY(detail)}
 					/>
 				</LayoutCol>
@@ -516,7 +516,7 @@
 					direction="Horizontal"
 					handleLength={scrollbarSize.x}
 					handlePosition={scrollbarPos.x}
-					on:handlePosition={({ detail }) => translateCanvasX(detail)}
+					on:handlePosition={({ detail }) => panCanvasX(detail)}
 					on:pressTrack={({ detail }) => pageX(detail)}
 				/>
 			</LayoutRow>

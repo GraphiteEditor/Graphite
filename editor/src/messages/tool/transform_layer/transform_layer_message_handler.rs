@@ -45,7 +45,11 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, (document, input, tool_data, shape_editor): TransformData) {
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 
-		let selected_layers = document.selected_nodes.selected_layers(document.metadata()).collect::<Vec<_>>();
+		let selected_layers = document
+			.selected_nodes
+			.selected_layers(document.metadata())
+			.filter(|&layer| document.metadata().node_is_visible(layer.to_node()) && !document.metadata().node_is_locked(layer.to_node()))
+			.collect::<Vec<_>>();
 
 		let mut selected = Selected::new(
 			&mut self.original_transforms,
