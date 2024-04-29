@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
-use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, is_folder, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -900,9 +900,26 @@ impl DocumentMessageHandler {
 			.map(|(layer, _)| layer)
 	}
 
-	/// Find the layer that has been clicked on from a viewport space location
+	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
+	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+		node_list.iter().find(|&&layer| !is_folder(layer, network)).copied()
+	}
+
+	/// Find any layers sorted by index that are under the given location in viewport space.
+	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	}
+
+	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
+	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		let mut node_list = self.click_list_any(viewport_location, network);
+		node_list.truncate(node_list.iter().position(|&layer| !is_folder(layer, network)).unwrap_or(0) + 1);
+		node_list
+	}
+
+	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
+		self.click_list(viewport_location, network).last().copied()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
