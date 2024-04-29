@@ -126,16 +126,16 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Imaginate (Stable Diffusion node/tool)</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Graph data attribute spreadsheet</span>
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Custom subgraph nodes</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Boolean operations for shapes</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -144,10 +144,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Adaptive resolution raster rendering</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Timeline with animation channels</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 26" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -170,16 +166,20 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Fully-supported brush tool</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Select mode (marquee masking)</span>
+			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Timeline with animation channels</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Graph data attribute spreadsheet</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Local file browser for saving/loading</span>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Custom subgraph nodes</span>
+			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Local fonts access</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -190,8 +190,8 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<h3>— Alpha 4 —</h3>
 		</div>
 		<div class="informational">
-			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Local fonts access</span>
+			<img class="atlas" style="--atlas-index: 21" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Select mode (marquee masking)</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -228,10 +228,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Code editor for custom nodes</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 45" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Portable, embeddable render engine</span>
 		</div>
 		<!-- Beta -->
 		<div class="informational heading">
@@ -272,6 +268,10 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Node manager and marketplace</span>
+		</div>
+		<div class="informational">
+			<img class="atlas" style="--atlas-index: 45" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Portable, embeddable render engine</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 35" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />

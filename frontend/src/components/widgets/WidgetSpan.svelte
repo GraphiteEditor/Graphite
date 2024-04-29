@@ -58,15 +58,15 @@
 	}
 
 	function widgetValueCommit(index: number, value: unknown) {
-		editor.instance.widgetValueCommit(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueCommit(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	function widgetValueUpdate(index: number, value: unknown) {
-		editor.instance.widgetValueUpdate(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	function widgetValueCommitAndUpdate(index: number, value: unknown) {
-		editor.instance.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
+		editor.handle.widgetValueCommitAndUpdate(layoutTarget, widgets[index].widgetId, value);
 	}
 
 	// TODO: This seems to work, but verify the correctness and terseness of this, it's adapted from https://stackoverflow.com/a/67434028/775283

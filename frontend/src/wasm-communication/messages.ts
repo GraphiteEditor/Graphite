@@ -4,7 +4,7 @@
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
+import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -1275,7 +1275,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WasmRawInstance, instance: WasmEditorInstance) => JsMessage;
+type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {

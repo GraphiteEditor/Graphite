@@ -108,7 +108,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onKeyDown(key, modifiers, e.repeat);
+			editor.handle.onKeyDown(key, modifiers, e.repeat);
 			return;
 		}
 
@@ -123,7 +123,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (await shouldRedirectKeyboardEventToBackend(e)) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onKeyUp(key, modifiers, e.repeat);
+			editor.handle.onKeyUp(key, modifiers, e.repeat);
 		}
 	}
 
@@ -149,7 +149,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.instance.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
 	function onMouseDown(e: MouseEvent) {
@@ -170,13 +170,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (!inTextInput) {
-			if (textToolInteractiveInputElement) editor.instance.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
+			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
 			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 
 		if (viewportPointerInteractionOngoing) {
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.handle.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
 		}
 	}
 
@@ -186,7 +186,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (textToolInteractiveInputElement) return;
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.instance.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.handle.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
 	function onPotentialDoubleClick(e: MouseEvent) {
@@ -202,7 +202,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (e.button === 2) buttons = 2; // RMB
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.instance.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
 	}
 
 	// Mouse events
@@ -222,7 +222,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (isTargetingCanvas) {
 			e.preventDefault();
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.instance.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.handle.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
 	}
 
@@ -250,18 +250,18 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const flattened = boundsOfViewports.flat();
 		const data = Float64Array.from(flattened);
 
-		if (boundsOfViewports.length > 0) editor.instance.boundsOfViewports(data);
+		if (boundsOfViewports.length > 0) editor.handle.boundsOfViewports(data);
 	}
 
 	async function onBeforeUnload(e: BeforeUnloadEvent) {
 		const activeDocument = get(portfolio).documents[get(portfolio).activeDocumentIndex];
-		if (activeDocument && !activeDocument.isAutoSaved) editor.instance.triggerAutoSave(activeDocument.id);
+		if (activeDocument && !activeDocument.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
-		if (await editor.instance.hasCrashed()) return;
+		if (await editor.handle.hasCrashed()) return;
 
 		// Skip the message during development, since it's annoying when testing
-		if (await editor.instance.inDevelopmentMode()) return;
+		if (await editor.handle.inDevelopmentMode()) return;
 
 		const allDocumentsSaved = get(portfolio).documents.reduce((acc, doc) => acc && doc.isSaved, true);
 		if (!allDocumentsSaved) {
@@ -279,9 +279,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
 					if (text.startsWith("graphite/layer: ")) {
-						editor.instance.pasteSerializedData(text.substring(16, text.length));
+						editor.handle.pasteSerializedData(text.substring(16, text.length));
 					} else if (text.startsWith("graphite/nodes: ")) {
-						editor.instance.pasteSerializedNodes(text.substring(16, text.length));
+						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
 					}
 				});
 			}
@@ -290,14 +290,14 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 			if (file?.type === "svg") {
 				const text = await file.text();
-				editor.instance.pasteSvg(text);
+				editor.handle.pasteSvg(text);
 
 				return;
 			}
 
 			if (file?.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
-				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+				editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 		});
 	}
@@ -329,7 +329,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const text = reader.result as string;
 
 						if (text.startsWith("graphite/layer: ")) {
-							editor.instance.pasteSerializedData(text.substring(16, text.length));
+							editor.handle.pasteSerializedData(text.substring(16, text.length));
 						}
 					};
 					reader.readAsText(blob);
@@ -343,7 +343,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 					const reader = new FileReader();
 					reader.onload = () => {
 						const text = reader.result as string;
-						editor.instance.pasteSvg(text);
+						editor.handle.pasteSvg(text);
 					};
 					reader.readAsText(blob);
 
@@ -356,7 +356,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 					reader.onload = async () => {
 						if (reader.result instanceof ArrayBuffer) {
 							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+							editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 						}
 					};
 					reader.readAsArrayBuffer(blob);
@@ -381,7 +381,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			};
 			const message = Object.entries(matchMessage).find(([key]) => String(err).includes(key))?.[1] || String(err);
 
-			editor.instance.errorDialog("Cannot access clipboard", message);
+			editor.handle.errorDialog("Cannot access clipboard", message);
 		}
 	});
 

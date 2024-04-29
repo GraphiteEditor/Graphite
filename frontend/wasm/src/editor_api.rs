@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{Error, EDITOR_HAS_CRASHED, EDITOR_INSTANCES, JS_EDITOR_HANDLES};
+use crate::{Error, EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED};
 
 use editor::application::generate_uuid;
 use editor::application::Editor;
@@ -47,108 +47,36 @@ pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-/// Helper function for calling JS's `requestAnimationFrame` with the given closure
-fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
-	web_sys::window()
-		.expect("No global `window` exists")
-		.request_animation_frame(f.as_ref().unchecked_ref())
-		.expect("Failed to call `requestAnimationFrame`");
-}
-
-/// Helper function for calling JS's `setTimeout` with the given closure and delay
-fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
-	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
-	web_sys::window()
-		.expect("No global `window` exists")
-		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
-		.expect("Failed to call `setTimeout`");
-}
-
 // ============================================================================
 
-/// To avoid wasm-bindgen from checking mutable reference issues using WasmRefCell we must make all methods take a non-mutable reference to self.
-/// Not doing this creates an issue when Rust calls into JS which calls back to Rust in the same call stack.
+/// This struct is, via wasm-bindgen, used by JS to interact with the editor backend. It does this by calling functions, which are `impl`ed
 #[wasm_bindgen]
 #[derive(Clone)]
-pub struct JsEditorHandle {
-	editor_id: u64,
+pub struct EditorHandle {
+	/// This callback is called by the editor's dispatcher when directing FrontendMessages from Rust to JS
 	frontend_message_handler_callback: js_sys::Function,
 }
 
-/// Provides access to the `Editor` instance and its `JsEditorHandle` by calling the given closure with them as arguments.
-fn call_closure_with_editor_and_handle(mut f: impl FnMut(&mut Editor, &mut JsEditorHandle)) {
-	EDITOR_INSTANCES.with(|instances| {
-		JS_EDITOR_HANDLES.with(|handles| {
-			instances
-				.try_borrow_mut()
-				.map(|mut editors| {
-					for (id, editor) in editors.iter_mut() {
-						let Ok(mut handles) = handles.try_borrow_mut() else {
-							log::error!("Failed to borrow editor handles");
-							continue;
-						};
-						let Some(js_editor) = handles.get_mut(id) else {
-							log::error!("Editor ID ({id}) has no corresponding JsEditorHandle ID");
-							continue;
-						};
-
-						// Call the closure with the editor and its handle
-						f(editor, js_editor)
-					}
-				})
-				.unwrap_or_else(|_| log::error!("Failed to borrow editor instances"));
-		})
-	});
-}
-
-async fn poll_node_graph_evaluation() {
-	// Process no further messages after a crash to avoid spamming the console
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
+// Defined separately from the `impl` block below since this `impl` block lacks the `#[wasm_bindgen]` attribute.
+// Quirks in wasm-bindgen prevent functions in `#[wasm_bindgen]` `impl` blocks from being made publicly accessible from Rust.
+impl EditorHandle {
+	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
+		self.send_frontend_message_to_js(message);
 	}
-
-	editor::node_graph_executor::run_node_graph().await;
-
-	call_closure_with_editor_and_handle(|editor, handle| {
-		let mut messages = VecDeque::new();
-		editor.poll_node_graph_evaluation(&mut messages);
-
-		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
-			handle.send_frontend_message_to_js(response);
-		}
-
-		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
-	})
 }
-
-fn auto_save_all_documents() {
-	// Process no further messages after a crash to avoid spamming the console
-	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-		return;
-	}
-
-	call_closure_with_editor_and_handle(|editor, handle| {
-		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
-			handle.send_frontend_message_to_js(message);
-		}
-	});
-}
-
-// ============================================================================
 
 #[wasm_bindgen]
-impl JsEditorHandle {
+impl EditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor_id = generate_uuid();
 		let editor = Editor::new();
-		let editor_handle = JsEditorHandle {
-			editor_id,
-			frontend_message_handler_callback,
-		};
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().insert(editor_id, editor));
-		JS_EDITOR_HANDLES.with(|instances| instances.borrow_mut().insert(editor_id, editor_handle.clone()));
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR.with(|editor_cell| editor_cell.set(RefCell::new(editor))).is_err() {
+			log::error!("Attempted to initialize the editor more than once");
+		}
+		if EDITOR_HANDLE.with(|handle_cell| handle_cell.set(RefCell::new(editor_handle.clone()))).is_err() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
 		editor_handle
 	}
 
@@ -159,36 +87,16 @@ impl JsEditorHandle {
 			return;
 		}
 
-		#[cfg(feature = "tauri")]
-		{
-			let message: Message = message.into();
-			let message = ron::to_string(&message).unwrap();
+		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
+		editor(|editor| {
+			// Get the editor, then dispatch the message to the backend, and return its response `FrontendMessage` queue
+			let frontend_messages = editor.handle_message(message.into());
 
-			dispatchTauri(message);
-		}
-		#[cfg(not(feature = "tauri"))]
-		{
-			// Get the editor instances, dispatch the message, and store the `FrontendMessage` queue response
-			let frontend_messages = EDITOR_INSTANCES.with(|instances| {
-				// Mutably borrow the editors, and if successful, we can access them in the closure
-				instances.try_borrow_mut().map(|mut editors| {
-					// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-					editors
-						.get_mut(&self.editor_id)
-						.expect("EDITOR_INSTANCES does not contain the current editor_id")
-						.handle_message(message.into())
-				})
-			});
-
-			// Process any `FrontendMessage` responses resulting from the backend processing the dispatched message
-			if let Ok(frontend_messages) = frontend_messages {
-				// Send each `FrontendMessage` to the JavaScript frontend
-				for message in frontend_messages.into_iter() {
-					self.send_frontend_message_to_js(message);
-				}
+			// Send each `FrontendMessage` to the JavaScript frontend
+			for message in frontend_messages.into_iter() {
+				self.send_frontend_message_to_js(message);
 			}
-		}
-		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+		});
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -238,7 +146,7 @@ impl JsEditorHandle {
 			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-				call_closure_with_editor_and_handle(|editor, handle| {
+				editor_and_handle(|editor, handle| {
 					let micros: f64 = timestamp * 1000.;
 					let timestamp = Duration::from_micros(micros.round() as u64);
 
@@ -778,51 +686,13 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Returns the string representation of the nodes contents
-	#[wasm_bindgen(js_name = introspectNode)]
-	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
-		let node_path = node_path.into_iter().map(NodeId).collect::<Vec<_>>();
-		let frontend_messages = EDITOR_INSTANCES.with(|instances| {
-			// Mutably borrow the editors, and if successful, we can access them in the closure
-			instances.try_borrow_mut().map(|mut editors| {
-				// Get the editor instance for this editor ID, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-				let image = editors
-					.get_mut(&self.editor_id)
-					.expect("EDITOR_INSTANCES does not contain the current editor_id")
-					.dispatcher
-					.message_handlers
-					.portfolio_message_handler
-					.introspect_node(&node_path);
-				let image = image?;
-				let image = image.downcast_ref::<graphene_core::raster::ImageFrame<Color>>()?;
-				let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
-				let message_data = image.serialize(&serializer).expect("Failed to serialize FrontendMessage");
-				Some(message_data)
-			})
-		});
-		frontend_messages.unwrap().unwrap_or_default()
-	}
-
 	#[wasm_bindgen(js_name = injectImaginatePollServerStatus)]
 	pub fn inject_imaginate_poll_server_status(&self) {
 		self.dispatch(PortfolioMessage::ImaginatePollServerStatus);
 	}
 }
 
-// Needed to make JsEditorHandle functions pub to Rust.
-// The reason is not fully clear but it has to do with the #[wasm_bindgen] procedural macro.
-impl JsEditorHandle {
-	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
-		self.send_frontend_message_to_js(message);
-	}
-}
-
-impl Drop for JsEditorHandle {
-	fn drop(&mut self) {
-		// Consider removing after https://github.com/rustwasm/wasm-bindgen/pull/2984 is merged and released
-		EDITOR_INSTANCES.with(|instances| instances.borrow_mut().remove(&self.editor_id));
-	}
-}
+// ============================================================================
 
 #[wasm_bindgen(js_name = evaluateMathExpression)]
 pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
@@ -892,6 +762,85 @@ pub fn implicit_multiplication_preprocess(expression: &str) -> String {
 
 	// We have to convert the Greek symbols back to ASCII because meval doesn't support unicode symbols as context constants
 	output_string.replace("logtwo(", "log2(").replace('π', "pi").replace('τ', "tau")
+}
+
+/// Helper function for calling JS's `requestAnimationFrame` with the given closure
+fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
+	web_sys::window()
+		.expect("No global `window` exists")
+		.request_animation_frame(f.as_ref().unchecked_ref())
+		.expect("Failed to call `requestAnimationFrame`");
+}
+
+/// Helper function for calling JS's `setTimeout` with the given closure and delay
+fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
+	let delay = delay.clamp(Duration::ZERO, Duration::from_millis(i32::MAX as u64)).as_millis() as i32;
+	web_sys::window()
+		.expect("No global `window` exists")
+		.set_timeout_with_callback_and_timeout_and_arguments_0(f.as_ref().unchecked_ref(), delay)
+		.expect("Failed to call `setTimeout`");
+}
+
+/// Provides access to the `Editor` by calling the given closure with it as an argument.
+fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
+	EDITOR.with(|editor| {
+		let Some(Ok(mut editor)) = editor.get().map(RefCell::try_borrow_mut) else {
+			// TODO: Investigate if this should just panic instead, and if not doing so right now may be the cause of silent crashes that don't inform the user that the app has panicked
+			log::error!("Failed to borrow the editor");
+			return T::default();
+		};
+
+		callback(&mut *editor)
+	})
+}
+
+/// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
+fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
+	editor(|editor| {
+		EDITOR_HANDLE.with(|editor_handle| {
+			let Some(Ok(mut handle)) = editor_handle.get().map(RefCell::try_borrow_mut) else {
+				log::error!("Failed to borrow editor handle");
+				return;
+			};
+
+			// Call the closure with the editor and its handle
+			callback(editor, &mut handle);
+		})
+	});
+}
+
+async fn poll_node_graph_evaluation() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	editor::node_graph_executor::run_node_graph().await;
+
+	editor_and_handle(|editor, handle| {
+		let mut messages = VecDeque::new();
+		editor.poll_node_graph_evaluation(&mut messages);
+
+		// Send each `FrontendMessage` to the JavaScript frontend
+		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+			handle.send_frontend_message_to_js(response);
+		}
+
+		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+	})
+}
+
+fn auto_save_all_documents() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	editor_and_handle(|editor, handle| {
+		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
+			handle.send_frontend_message_to_js(message);
+		}
+	});
 }
 
 #[test]

@@ -9,7 +9,7 @@ pub struct Editor {
 }
 
 impl Editor {
-	/// Construct a new editor instance.
+	/// Construct the editor.
 	/// Remember to provide a random seed with `editor::set_uuid_seed(seed)` before any editors can be used.
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }

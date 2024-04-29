@@ -363,7 +363,7 @@
 
 		// Alt-click sets the clicked node as previewed
 		if (lmb && e.altKey && nodeId !== undefined) {
-			editor.instance.togglePreview(nodeId);
+			editor.handle.togglePreview(nodeId);
 		}
 
 		// Clicked on a port dot
@@ -440,7 +440,7 @@
 			}
 
 			// Update the selection in the backend if it was modified
-			if (modifiedSelected) editor.instance.selectNodes(new BigUint64Array(updatedSelected));
+			if (modifiedSelected) editor.handle.selectNodes(new BigUint64Array(updatedSelected));
 
 			return;
 		}
@@ -449,7 +449,7 @@
 		if (lmb) {
 			previousSelection = $nodeGraph.selected;
 			// Clear current selection
-			if (!e.shiftKey) editor.instance.selectNodes(new BigUint64Array(0));
+			if (!e.shiftKey) editor.handle.selectNodes(new BigUint64Array(0));
 
 			const graphBounds = graph?.getBoundingClientRect();
 			boxSelection = { startX: e.x - (graphBounds?.x || 0), startY: e.y - (graphBounds?.y || 0), endX: e.x - (graphBounds?.x || 0), endY: e.y - (graphBounds?.y || 0) };
@@ -466,7 +466,7 @@
 		// const nodeId = node?.getAttribute("data-node") || undefined;
 		// if (nodeId !== undefined) {
 		// 	const id = BigInt(nodeId);
-		// 	editor.instance.enterNestedNetwork(id);
+		// 	editor.handle.enterNestedNetwork(id);
 		// }
 	}
 
@@ -510,7 +510,7 @@
 				completeBoxSelection();
 				boxSelection = undefined;
 			} else if ((e.buttons & 2) !== 0) {
-				editor.instance.selectNodes(new BigUint64Array(previousSelection));
+				editor.handle.selectNodes(new BigUint64Array(previousSelection));
 				boxSelection = undefined;
 			} else {
 				const graphBounds = graph?.getBoundingClientRect();
@@ -534,7 +534,7 @@
 	}
 
 	function completeBoxSelection() {
-		editor.instance.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
+		editor.handle.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
 	}
 
 	function showSelected(selected: bigint[], boxSelect: Box | undefined, node: bigint, nodeIndex: number): boolean {
@@ -542,7 +542,7 @@
 	}
 
 	function toggleLayerVisibility(id: bigint) {
-		editor.instance.toggleLayerVisibility(id);
+		editor.handle.toggleLayerVisibility(id);
 	}
 
 	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
@@ -589,7 +589,7 @@
 			const selectedNodeBounds = selectedNode.getBoundingClientRect();
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
-			return editor.instance.rectangleIntersects(
+			return editor.handle.rectangleIntersects(
 				new Float64Array(wireCurveLocations.map((loc) => loc.x)),
 				new Float64Array(wireCurveLocations.map((loc) => loc.y)),
 				selectedNodeBounds.top - containerBoundsBounds.y,
@@ -603,9 +603,9 @@
 		if (link) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
 
-			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
-			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
-			if (!isLayer) editor.instance.shiftNode(selectedNodeId);
+			editor.handle.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
+			editor.handle.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
+			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
 	}
 
@@ -614,7 +614,7 @@
 
 		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
-			editor.instance.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
+			editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
 		disconnecting = undefined;
 
@@ -625,7 +625,7 @@
 			if (from !== undefined && to !== undefined) {
 				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
-				editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+				editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (linkInProgressFromConnector && !initialDisconnecting) {
 			// If the add node menu is already open, we don't want to open it again
@@ -645,11 +645,11 @@
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x && draggingNodes.startY === e.y) {
 				if (selectIfNotDragged !== undefined && ($nodeGraph.selected.length !== 1 || $nodeGraph.selected[0] !== selectIfNotDragged)) {
-					editor.instance.selectNodes(new BigUint64Array([selectIfNotDragged]));
+					editor.handle.selectNodes(new BigUint64Array([selectIfNotDragged]));
 				}
 			}
 
-			if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.instance.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
+			if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.handle.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
 
 			checkInsertBetween();
 
@@ -670,7 +670,7 @@
 		const inputNodeConnectionIndex = 0;
 		const x = Math.round(nodeListLocation.x / GRID_SIZE);
 		const y = Math.round(nodeListLocation.y / GRID_SIZE) - 1;
-		const inputConnectedNodeID = editor.instance.createNode(nodeType, x, y);
+		const inputConnectedNodeID = editor.handle.createNode(nodeType, x, y);
 		nodeListLocation = undefined;
 
 		if (!linkInProgressFromConnector) return;
@@ -678,7 +678,7 @@
 
 		if (from !== undefined) {
 			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-			editor.instance.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+			editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 		}
 
 		linkInProgressFromConnector = undefined;
@@ -882,7 +882,7 @@
 				</div>
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span title={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
+					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
 						{node.alias || "Layer"}
 					</span>
 				</div>
@@ -929,7 +929,7 @@
 				<div class="primary" class:no-parameter-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.name)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={editor.instance.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || node.name}</TextLabel>
+					<TextLabel tooltip={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>{node.alias || node.name}</TextLabel>
 				</div>
 				<!-- Parameter rows -->
 				{#if exposedInputsOutputs.length > 0}

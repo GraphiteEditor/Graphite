@@ -252,7 +252,7 @@
 		// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		if (!(window as any).EyeDropper) {
-			editor.instance.eyedropperSampleForColorPicker();
+			editor.handle.eyedropperSampleForColorPicker();
 			return;
 		}
 
