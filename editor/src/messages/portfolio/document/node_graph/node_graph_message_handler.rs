@@ -269,7 +269,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, selected_nodes, responses);
 			}
@@ -313,7 +313,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, selected_nodes, responses);
 			}
@@ -414,6 +414,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
+				//Since document structure doesn't change, just update the nodes
 				if graph_view_overlay_open {
 					let links = Self::collect_links(network);
 					let nodes = self.collect_nodes(&links, network);
@@ -483,7 +484,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SendGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -582,7 +583,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -699,7 +700,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.alias = name;
 
-						self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+						self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 					}
 				}
 			}
@@ -729,7 +730,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					selected_nodes.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
@@ -1018,9 +1019,11 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
+		//TODO: Move update_layer_panel into message so load structure here can be removed, since load structure is already called in DocumentStructureChanged
+		metadata.load_structure(network, selected_nodes);
 		Self::update_layer_panel(network, metadata, collapsed, responses);
 		if graph_open {
 			let links = Self::collect_links(network);
