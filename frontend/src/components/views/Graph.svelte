@@ -595,7 +595,7 @@
 		const selectedNodeId = $nodeGraph.selected[0];
 		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
-		// Check that neither the input or output of the selected node are already connected.
+		// Check that neither the primary input or output of the selected node are already connected.
 		const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
 		const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
 		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
@@ -616,13 +616,15 @@
 			const selectedNodeBounds = selectedNode.getBoundingClientRect();
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
-			return editor.instance.rectangleIntersects(
-				new Float64Array(wireCurveLocations.map((loc) => loc.x)),
-				new Float64Array(wireCurveLocations.map((loc) => loc.y)),
-				selectedNodeBounds.top - containerBoundsBounds.y,
-				selectedNodeBounds.left - containerBoundsBounds.x,
-				selectedNodeBounds.bottom - containerBoundsBounds.y,
-				selectedNodeBounds.right - containerBoundsBounds.x,
+			return (
+				editor.instance.rectangleIntersects(
+					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
+					selectedNodeBounds.top - containerBoundsBounds.y,
+					selectedNodeBounds.left - containerBoundsBounds.x,
+					selectedNodeBounds.bottom - containerBoundsBounds.y,
+					selectedNodeBounds.right - containerBoundsBounds.x,
+				) && link.linkEnd != selectedNodeId
 			);
 		});
 
@@ -630,8 +632,7 @@
 		if (link) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
 
-			editor.instance.connectNodesByLink(link.linkStart, 0, selectedNodeId, 0);
-			editor.instance.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
+			editor.instance.insertNodeBetween(link.linkEnd, Number(link.linkEndInputIndex), 0, selectedNodeId, 0, Number(link.linkStartOutputIndex), link.linkStart);
 			if (!isLayer) editor.instance.shiftNode(selectedNodeId);
 		}
 	}

@@ -55,6 +55,15 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		document_node: DocumentNode,
 	},
+	InsertNodeBetween {
+		post_node_id: NodeId,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: NodeId,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: NodeId,
+	},
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,

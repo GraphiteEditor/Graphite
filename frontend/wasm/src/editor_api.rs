@@ -662,6 +662,29 @@ impl JsEditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Inserts node between 2 other nodes
+	#[wasm_bindgen(js_name = insertNodeBetween)]
+	pub fn insert_node_between(
+		&self,
+		post_node_id: u64,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: u64,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: u64,
+	) {
+		let message = NodeGraphMessage::InsertNodeBetween {
+			post_node_id: NodeId(post_node_id),
+			post_node_input_index,
+			insert_node_output_index,
+			insert_node_id: NodeId(insert_node_id),
+			insert_node_input_index,
+			pre_node_output_index,
+			pre_node_id: NodeId(pre_node_id),
+		};
+		self.dispatch(message);
+	}
 	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
 	pub fn shift_node(&self, node_id: u64) {

@@ -397,6 +397,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layer_to_move_node_mut.metadata.position = folder_position;
 
 					// Insert node right above the folder
+					//TODO: Use insert layer between message
 					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, current_folder) else {
 						log::error!("Downstream node should always exist when inserting layer");
 						return;
@@ -587,6 +588,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					modify_inputs.shift_upstream(layer_to_move.to_node(), offset_to_post_node, true);
 
 					// Update post_node input to layer_to_move
+					//TODO: Use insert layer between message
 					let post_node_mut = self.network.nodes.get_mut(&post_node_id).expect("Post node id should always refer to a node");
 					if let Some(NodeInput::Node { node_id, .. }) = post_node_mut.inputs.get_mut(post_node_input_index) {
 						*node_id = layer_to_move.to_node();

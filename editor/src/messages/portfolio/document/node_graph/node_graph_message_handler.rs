@@ -269,7 +269,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, selected_nodes, responses);
 			}
@@ -313,7 +313,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.network.pop();
 				}
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 				self.update_selected(document_network, document_metadata, selected_nodes, responses);
 			}
@@ -353,6 +353,56 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					network.nodes.insert(node_id, document_node);
 				}
 			}
+			NodeGraphMessage::InsertNodeBetween {
+				post_node_id,
+				post_node_input_index,
+				insert_node_output_index,
+				insert_node_id,
+				insert_node_input_index,
+				pre_node_output_index,
+				pre_node_id,
+			} => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					error!("No network");
+					return;
+				};
+				let Some(post_node) = network.nodes.get(&post_node_id) else {
+					error!("Post node not found");
+					return;
+				};
+				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
+					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
+					return;
+				};
+				let Some(insert_node) = network.nodes.get(&insert_node_id) else {
+					error!("Insert node not found");
+					return;
+				};
+				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
+					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
+					return;
+				};
+				responses.add(DocumentMessage::StartTransaction);
+
+				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: post_node_id,
+					input_index: post_node_input_index,
+					input: post_input,
+				});
+
+				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: insert_node_id,
+					input_index: insert_node_input_index,
+					input: insert_input,
+				});
+
+				if network.connected_to_output(insert_node_id) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				responses.add(NodeGraphMessage::SendGraph);
+			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
 				let Some(network) = document_network.nested_network_mut(&self.network) else {
 					warn!("No network");
@@ -364,7 +414,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+				if graph_view_overlay_open {
+					let links = Self::collect_links(network);
+					let nodes = self.collect_nodes(&links, network);
+					responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
+				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
@@ -429,7 +483,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SendGraph => {
 				if let Some(network) = document_network.nested_network(&self.network) {
-					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
@@ -528,7 +582,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+				self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -645,7 +699,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.alias = name;
 
-						self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+						self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 					}
 				}
 			}
@@ -675,7 +729,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					selected_nodes.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
 
-					self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
+					self.send_graph(network, graph_view_overlay_open, document_metadata, collapsed, responses);
 
 					let node_types = document_node_types::collect_node_types();
 					responses.add(FrontendMessage::UpdateNodeTypes { node_types });
@@ -964,9 +1018,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
-		metadata.load_structure(network, selected_nodes);
-
+	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
 		Self::update_layer_panel(network, metadata, collapsed, responses);
