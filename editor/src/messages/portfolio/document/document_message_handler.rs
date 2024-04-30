@@ -365,14 +365,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 
-				//Move layers in nested unselected folders above the first unselected parent folder
+				// Move layers in nested unselected folders above the first unselected parent folder
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
 				for layer in selected_layers.clone() {
 					let mut first_unselected_parent_folder = layer.parent(&self.metadata).expect("Layer should always have parent");
 
-					//Find folder in parent child stack
+					// Find folder in parent child stack
 					loop {
-						//Loop until parent layer is deselected. Note that parent cannot be selected, since it is an ancestor of all selected layers
+						// Loop until parent layer is deselected. Note that parent cannot be selected, since it is an ancestor of all selected layers
 						if !selected_layers.iter().any(|selected_layer| *selected_layer == first_unselected_parent_folder) {
 							break;
 						}
@@ -382,15 +382,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						};
 						first_unselected_parent_folder = new_folder;
 					}
-					//Dont move nodes above new group folder parent
+					// Don't move nodes above new group folder parent
 					if first_unselected_parent_folder == parent {
 						continue;
 					}
 
-					//Disconnect above and below the old layer location
+					// Disconnect above and below the old layer location
 					self.disconnect_node(layer, responses);
 
-					//Move disconnected node to folder
+					// Move disconnected node to folder
 					let folder_position = self
 						.network
 						.nodes
@@ -405,7 +405,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					layer_to_move_node_mut.metadata.position = folder_position;
 
 					// Insert node right above the folder
-					//TODO: Use insert layer between message
+					// TODO: Use insert layer between message
 					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder)
 					else {
 						log::error!("Downstream node should always exist when inserting layer");
@@ -422,7 +422,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 					*node_id = layer.to_node();
 
-					//Connect layer primary input to parent folder
+					// Connect layer primary input to parent folder
 					let Some(layer_node_input) = self.network.nodes.get_mut(&layer.to_node()).and_then(|node| node.inputs.get_mut(0)) else {
 						log::error!("Layer should always have primary input");
 						return;
@@ -478,7 +478,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.any(|selected_node_id| selected_node_id.to_node() == *current_stack_node_id_ref)
 					{
 						nodes_to_move.push(*current_stack_node_id_ref);
-						//Push all non layer sibling nodes directly upstream of the selected layer
+						// Push all non layer sibling nodes directly upstream of the selected layer
 						loop {
 							if let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) {
 								let next_node = self.network.nodes.get(node_id).expect("Stack node id should always be a node");
@@ -598,7 +598,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					modify_inputs.shift_upstream(layer_to_move.to_node(), offset_to_post_node, true);
 
 					// Update post_node input to layer_to_move
-					//TODO: Use insert layer between message
+					// TODO: Use insert layer between message
 					let post_node_mut = self.network.nodes.get_mut(&post_node_id).expect("Post node id should always refer to a node");
 					if let Some(NodeInput::Node { node_id, .. }) = post_node_mut.inputs.get_mut(post_node_input_index) {
 						*node_id = layer_to_move.to_node();
@@ -1005,7 +1005,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 					let child_layer_node_id = child_layer.to_node();
 
-					//Move child_layer stack x position to folder stack
+					// Move child_layer stack x position to folder stack
 					{
 						let child_layer_node = self.network.nodes.get(&child_layer_node_id).expect("Child node should always exist for layer");
 						let offset = folder_node.metadata.position - child_layer_node.metadata.position;
@@ -1351,7 +1351,7 @@ impl DocumentMessageHandler {
 			self.saved_hash = None;
 		}
 	}
-	//TODO: Replace with disconnect message
+	// TODO: Replace with disconnect message
 	pub fn disconnect_input(layer_to_disconnect_node: &mut DocumentNode, input_index: usize) {
 		let Some(node_type) = resolve_document_node_type(&layer_to_disconnect_node.name) else {
 			warn!("Node {} not in library", layer_to_disconnect_node.name);
@@ -1409,7 +1409,7 @@ impl DocumentMessageHandler {
 			})
 	}
 
-	//TODO: move into message
+	// TODO: move into message
 	pub fn disconnect_node(&mut self, layer_to_disconnect: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, layer_to_disconnect) else {
 			log::error!("Downstream node should always exist when moving layer");

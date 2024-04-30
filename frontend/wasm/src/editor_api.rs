@@ -811,6 +811,7 @@ impl JsEditorHandle {
 		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
 	}
+
 	/// Returns the string representation of the nodes contents
 	#[wasm_bindgen(js_name = introspectNode)]
 	pub fn introspect_node(&self, node_path: Vec<u64>) -> JsValue {
