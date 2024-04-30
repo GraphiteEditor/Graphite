@@ -92,6 +92,16 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), length_text))
 	}
 
+	pub fn area(&self, error: f64, minimum_separation: f64) -> String {
+		let area_text = draw_text(format!("Area: {}", self.0.area(Some(error), Some(minimum_separation))), 5., 193., BLACK);
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), area_text))
+	}
+
+	pub fn centroid(&self, error: f64, minimum_separation: f64) -> String {
+		let point_text = draw_circle(self.0.centroid(Some(error), Some(minimum_separation)).unwrap(), 4., RED, 1.5, WHITE);
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	}
+
 	pub fn evaluate(&self, t: f64, t_variant: String) -> String {
 		let t = parse_t_variant(&t_variant, t);
 		let point = self.0.evaluate(t);

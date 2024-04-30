@@ -325,7 +325,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(BroadcastEvent::ToolAbort);
-					responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
 				self.load_document(new_document, document_id, responses);
@@ -470,7 +470,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(BroadcastEvent::ToolAbort);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 			}
@@ -643,7 +643,7 @@ impl PortfolioMessageHandler {
 		responses.add(PortfolioMessage::UpdateDocumentWidgets);
 		responses.add(ToolMessage::InitTools);
 		responses.add(NodeGraphMessage::Init);
-		responses.add(NavigationMessage::TranslateCanvas { delta: (0., 0.).into() });
+		responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 		responses.add(PropertiesPanelMessage::Clear);
 		responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 	}

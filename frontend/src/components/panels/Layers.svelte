@@ -130,15 +130,15 @@
 	}
 
 	function toggleLayerVisibility(id: bigint) {
-		editor.instance.toggleLayerVisibility(id);
+		editor.handle.toggleLayerVisibility(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.instance.toggleLayerLock(id);
+		editor.handle.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClick(id: bigint) {
-		editor.instance.toggleLayerExpansion(id);
+		editor.handle.toggleLayerExpansion(id);
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -164,7 +164,7 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.instance.setLayerName(listing.entry.id, name);
+		editor.handle.setLayerName(listing.entry.id, name);
 		listing.entry.alias = name;
 	}
 
@@ -196,11 +196,11 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.instance.selectLayer(listing.entry.id, accel, shift);
+		editor.handle.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
-		editor.instance.deselectAllLayers();
+		editor.handle.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -318,7 +318,7 @@
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			select?.();
-			editor.instance.moveLayerInTree(insertParentId, insertIndex);
+			editor.handle.moveLayerInTree(insertParentId, insertIndex);
 		}
 		draggingData = undefined;
 		fakeHighlight = undefined;

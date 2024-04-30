@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
-import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
 import { type JsMessageType, messageMakers, type JsMessage } from "@graphite/wasm-communication/messages";
+import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // Don't know a better way of typing this since it can be any subclass of JsMessage
@@ -17,7 +17,7 @@ export function createSubscriptionRouter() {
 		subscriptions[messageType.name] = callback;
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WasmRawInstance, instance: WasmEditorInstance) => {
+	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
 		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
 		const messageMaker = messageMakers[messageType];
 		if (!messageMaker) {
@@ -42,7 +42,7 @@ export function createSubscriptionRouter() {
 		// If the `messageMaker` is a `JsMessage` class then we use the class-transformer library's `plainToInstance` function in order to convert the JSON data into the destination class.
 		// If it is not a `JsMessage` then it should be a custom function that creates a JsMessage from a JSON, so we call the function itself with the raw JSON as an argument.
 		// The resulting `message` is an instance of a class that extends `JsMessage`.
-		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, instance);
+		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, handle);
 
 		// If we have constructed a valid message, then we try and execute the callback that the frontend has associated with this message.
 		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.

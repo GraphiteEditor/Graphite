@@ -15,12 +15,12 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import type { createEditor } from "@graphite/wasm-communication/editor";
+	import { type Editor } from "@graphite/wasm-communication/editor";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor instance
-	export let editor: ReturnType<typeof createEditor>;
+	// Graphite WASM editor
+	export let editor: Editor;
 	setContext("editor", editor);
 
 	// State provider systems
@@ -48,7 +48,7 @@
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.instance.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady(operatingSystem());
 	});
 
 	onDestroy(() => {

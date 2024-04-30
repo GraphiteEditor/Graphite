@@ -2,7 +2,7 @@ use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
-use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING};
+use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::node_graph::document_node_types::resol
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
-use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, is_folder, DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -763,7 +763,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
 				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
 				let log = document_transform_scale.log2();
@@ -778,7 +778,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
-				let document_transform_scale = self.navigation_handler.snapped_scale(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -882,7 +882,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
-				self.backup(responses);
 				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
@@ -1083,16 +1082,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
-				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 1. });
+				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 1. });
 			}
 			DocumentMessage::ZoomCanvasTo200Percent => {
-				responses.add_front(NavigationMessage::SetCanvasZoom { zoom_factor: 2. });
+				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 2. });
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
-					responses.add(NavigationMessage::SetCanvasTilt { angle_radians: 0. });
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
@@ -1133,9 +1133,26 @@ impl DocumentMessageHandler {
 			.map(|(layer, _)| layer)
 	}
 
-	/// Find the layer that has been clicked on from a viewport space location
+	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
+	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+		node_list.iter().find(|&&layer| !is_folder(layer, network)).copied()
+	}
+
+	/// Find any layers sorted by index that are under the given location in viewport space.
+	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	}
+
+	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
+	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
+		let mut node_list = self.click_list_any(viewport_location, network);
+		node_list.truncate(node_list.iter().position(|&layer| !is_folder(layer, network)).unwrap_or(0) + 1);
+		node_list
+	}
+
+	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).find(|&layer| !is_artboard(layer, network))
+		self.click_list(viewport_location, network).last().copied()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
@@ -1489,15 +1506,15 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
 							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
 							.label(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
 					.selected_index(Some(self.document_mode as u32))
-					.draw_icon( true)
-					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.draw_icon(true)
+					.interactive(false) // TODO: set to true when dialogs are not spawned
 					.widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 			],
@@ -1686,18 +1703,19 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("ZoomIn", 24)
 				.tooltip("Zoom In")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::IncreaseCanvasZoom))
-				.on_update(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 				.widget_holder(),
 			IconButton::new("ZoomOut", 24)
 				.tooltip("Zoom Out")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::DecreaseCanvasZoom))
-				.on_update(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 				.widget_holder(),
 			IconButton::new("ZoomReset", 24)
 				.tooltip("Reset Tilt and Zoom to 100%")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::ResetCanvasTiltAndZoomTo100Percent))
-				.on_update(|_| NavigationMessage::ResetCanvasTiltAndZoomTo100Percent.into())
+				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
+				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
+				.disabled(self.navigation.tilt.abs() < 1e-4 && (self.navigation.zoom - 1.).abs() < 1e-4)
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -1728,34 +1746,48 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_scale(self.navigation.zoom) * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.navigation.zoom) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
 				.tooltip("Document zoom within the viewport")
 				.on_update(|number_input: &NumberInput| {
-					NavigationMessage::SetCanvasZoom {
+					NavigationMessage::CanvasZoomSet {
 						zoom_factor: number_input.value.unwrap() / 100.,
 					}
 					.into()
 				})
 				.increment_behavior(NumberInputIncrementBehavior::Callback)
-				.increment_callback_decrease(|_| NavigationMessage::DecreaseCanvasZoom { center_on_mouse: false }.into())
-				.increment_callback_increase(|_| NavigationMessage::IncreaseCanvasZoom { center_on_mouse: false }.into())
+				.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+				.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 				.widget_holder(),
 		];
 
-		let tilt_value = self.navigation_handler.snapped_angle(self.navigation.tilt) / (std::f64::consts::PI / 180.);
+		let tilt_value = self.navigation_handler.snapped_tilt(self.navigation.tilt) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),
 				NumberInput::new(Some(tilt_value))
 					.unit("°")
-					.step(15.)
+					.increment_behavior(NumberInputIncrementBehavior::Callback)
+					.increment_callback_increase(|number_input: &NumberInput| {
+						let one = 1. + f64::EPSILON * 100.;
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL + one).floor() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
+						}
+						.into()
+					})
+					.increment_callback_decrease(|number_input: &NumberInput| {
+						let one = 1. + f64::EPSILON * 100.;
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL - one).ceil() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
+						}
+						.into()
+					})
 					.tooltip("Document tilt within the viewport")
 					.on_update(|number_input: &NumberInput| {
-						NavigationMessage::SetCanvasTilt {
-							angle_radians: number_input.value.unwrap() * (std::f64::consts::PI / 180.),
+						NavigationMessage::CanvasTiltSet {
+							angle_radians: number_input.value.unwrap().to_radians(),
 						}
 						.into()
 					})
@@ -1824,6 +1856,7 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
 							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
+							.on_commit(|_| DocumentMessage::StartTransaction.into())
 					})
 					.collect()
 			})

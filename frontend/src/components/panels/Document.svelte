@@ -127,38 +127,38 @@
 			const file = item.getAsFile();
 			if (file?.type.includes("svg")) {
 				const svgData = await file.text();
-				editor.instance.pasteSvg(svgData, e.clientX, e.clientY);
+				editor.handle.pasteSvg(svgData, e.clientX, e.clientY);
 
 				return;
 			}
 
 			if (file?.type.startsWith("image")) {
 				const imageData = await extractPixelData(file);
-				editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
+				editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height, e.clientX, e.clientY);
 			}
 		});
 	}
 
-	function translateCanvasX(newValue: number) {
+	function panCanvasX(newValue: number) {
 		const delta = newValue - scrollbarPos.x;
 		scrollbarPos.x = newValue;
-		editor.instance.translateCanvas(-delta * scrollbarMultiplier.x, 0);
+		editor.handle.panCanvas(-delta * scrollbarMultiplier.x, 0);
 	}
 
-	function translateCanvasY(newValue: number) {
+	function panCanvasY(newValue: number) {
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
-		editor.instance.translateCanvas(0, -delta * scrollbarMultiplier.y);
+		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
 	function pageX(delta: number) {
 		const move = delta < 0 ? 1 : -1;
-		editor.instance.translateCanvasByFraction(move, 0);
+		editor.handle.panCanvasByFraction(move, 0);
 	}
 
 	function pageY(delta: number) {
 		const move = delta < 0 ? 1 : -1;
-		editor.instance.translateCanvasByFraction(0, move);
+		editor.handle.panCanvasByFraction(0, move);
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -290,7 +290,7 @@
 	export function triggerTextCommit() {
 		if (!textInput) return;
 		const textCleaned = textInputCleanup(textInput.innerText);
-		editor.instance.onChangeText(textCleaned);
+		editor.handle.onChangeText(textCleaned);
 	}
 
 	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
@@ -314,7 +314,7 @@
 
 		textInput.oninput = () => {
 			if (!textInput) return;
-			editor.instance.updateBounds(textInputCleanup(textInput.innerText));
+			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
 		textInputMatrix = displayEditableTextbox.transform;
 		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
@@ -371,8 +371,8 @@
 			const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
-				if (setColorChoice === "Primary") editor.instance.updatePrimaryColor(...rgb, 1);
-				if (setColorChoice === "Secondary") editor.instance.updateSecondaryColor(...rgb, 1);
+				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
+				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
 			}
 		});
 
@@ -506,7 +506,7 @@
 						direction="Vertical"
 						handleLength={scrollbarSize.y}
 						handlePosition={scrollbarPos.y}
-						on:handlePosition={({ detail }) => translateCanvasY(detail)}
+						on:handlePosition={({ detail }) => panCanvasY(detail)}
 						on:pressTrack={({ detail }) => pageY(detail)}
 					/>
 				</LayoutCol>
@@ -516,7 +516,7 @@
 					direction="Horizontal"
 					handleLength={scrollbarSize.x}
 					handlePosition={scrollbarPos.x}
-					on:handlePosition={({ detail }) => translateCanvasX(detail)}
+					on:handlePosition={({ detail }) => panCanvasX(detail)}
 					on:pressTrack={({ detail }) => pageX(detail)}
 				/>
 			</LayoutRow>

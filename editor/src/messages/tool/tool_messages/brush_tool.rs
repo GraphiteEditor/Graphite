@@ -165,7 +165,7 @@ impl LayoutHolder for BrushTool {
 					.map(|blend_mode| {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
-							.on_update(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
+							.on_commit(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
 					})
 					.collect()
 			})

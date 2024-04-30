@@ -273,7 +273,7 @@ mod test {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	/// Create an editor instance with three layers
+	/// Create an editor with three layers
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse

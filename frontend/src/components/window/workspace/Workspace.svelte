@@ -30,7 +30,7 @@
 	$: documentTabLabels = $portfolio.documents.map((doc: FrontendDocumentDetails) => {
 		const name = doc.displayName;
 
-		if (!editor.instance.inDevelopmentMode()) return { name };
+		if (!editor.handle.inDevelopmentMode()) return { name };
 
 		const tooltip = `Document ID: ${doc.id}`;
 		return { name, tooltip };
@@ -105,8 +105,8 @@
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
-					clickAction={(tabIndex) => editor.instance.selectDocument($portfolio.documents[tabIndex].id)}
-					closeAction={(tabIndex) => editor.instance.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
+					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
+					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
 					bind:this={documentPanel}
 				/>

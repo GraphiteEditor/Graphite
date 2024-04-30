@@ -29,6 +29,7 @@ unsafe impl<ManipulatorGroupId: crate::Identifier> dyn_any::StaticType for Subpa
 pub struct SubpathIter<'a, ManipulatorGroupId: crate::Identifier> {
 	index: usize,
 	subpath: &'a Subpath<ManipulatorGroupId>,
+	is_always_closed: bool,
 }
 
 impl<ManipulatorGroupId: crate::Identifier> Index<usize> for Subpath<ManipulatorGroupId> {
@@ -55,8 +56,9 @@ impl<ManipulatorGroupId: crate::Identifier> Iterator for SubpathIter<'_, Manipul
 		if self.subpath.is_empty() {
 			return None;
 		}
+		let closed = if self.is_always_closed { true } else { self.subpath.closed };
 		let len = self.subpath.len() - 1
-			+ match self.subpath.closed {
+			+ match closed {
 				true => 1,
 				false => 0,
 			};

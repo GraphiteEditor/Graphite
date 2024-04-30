@@ -40,12 +40,162 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 		let old_zoom = ptz.zoom;
 
 		match message {
-			NavigationMessage::DecreaseCanvasZoom { center_on_mouse } => {
+			NavigationMessage::BeginCanvasPan => {
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
+
+				responses.add(FrontendMessage::UpdateInputHints {
+					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+				});
+
+				self.mouse_position = ipp.mouse.position;
+				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
+			}
+			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+				responses.add(FrontendMessage::UpdateInputHints {
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Snap 15°"),
+							plus: false,
+							slash: false,
+						}]),
+					]),
+				});
+
+				self.navigation_operation = NavigationOperation::Tilt {
+					tilt_original_for_abort: ptz.tilt,
+					tilt_raw_not_snapped: ptz.tilt,
+					snap: false,
+				};
+
+				self.mouse_position = ipp.mouse.position;
+				self.finish_operation_with_click = was_dispatched_from_menu;
+			}
+			NavigationMessage::BeginCanvasZoom => {
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
+				responses.add(FrontendMessage::UpdateInputHints {
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+						HintGroup(vec![HintInfo {
+							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+							key_groups_mac: None,
+							mouse: None,
+							label: String::from("Increments"),
+							plus: false,
+							slash: false,
+						}]),
+					]),
+				});
+
+				self.navigation_operation = NavigationOperation::Zoom {
+					zoom_raw_not_snapped: ptz.zoom,
+					zoom_original_for_abort: ptz.zoom,
+					snap: false,
+				};
+				self.mouse_position = ipp.mouse.position;
+			}
+			NavigationMessage::CanvasPan { delta } => {
+				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta);
+
+				ptz.pan += transformed_delta;
+				responses.add(BroadcastEvent::CanvasTransformed);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+			}
+			NavigationMessage::CanvasPanByViewportFraction { delta } => {
+				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+
+				ptz.pan += transformed_delta;
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+			}
+			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
+				let delta = match use_y_as_x {
+					false => -ipp.mouse.scroll_delta.as_dvec2(),
+					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
+				} * VIEWPORT_SCROLL_RATE;
+				responses.add(NavigationMessage::CanvasPan { delta });
+			}
+			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
+				ptz.tilt = 0.;
+				ptz.zoom = 1.;
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+			}
+			NavigationMessage::CanvasTiltSet { angle_radians } => {
+				ptz.tilt = angle_radians;
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+			}
+			NavigationMessage::CanvasZoomDecrease { center_on_mouse } => {
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom).unwrap_or(&ptz.zoom);
 				if center_on_mouse {
 					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
 				}
-				responses.add(NavigationMessage::SetCanvasZoom { zoom_factor: new_scale });
+				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
+			}
+			NavigationMessage::CanvasZoomIncrease { center_on_mouse } => {
+				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom).unwrap_or(&ptz.zoom);
+				if center_on_mouse {
+					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
+				}
+				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
+			}
+			NavigationMessage::CanvasZoomMouseWheel => {
+				let scroll = ipp.mouse.scroll_delta.scroll_delta();
+				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
+				if ipp.mouse.scroll_delta.y > 0 {
+					zoom_factor = 1. / zoom_factor
+				}
+				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
+
+				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
+				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom * zoom_factor });
+			}
+			NavigationMessage::CanvasZoomSet { zoom_factor } => {
+				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
+				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+			}
+			NavigationMessage::EndCanvasPTZ { abort_transform } => {
+				// If an abort was requested, reset the active PTZ value to its original state
+				if abort_transform && self.navigation_operation != NavigationOperation::None {
+					match self.navigation_operation {
+						NavigationOperation::None => {}
+						NavigationOperation::Tilt { tilt_original_for_abort, .. } => {
+							ptz.tilt = tilt_original_for_abort;
+						}
+						NavigationOperation::Pan { pan_original_for_abort, .. } => {
+							ptz.pan = pan_original_for_abort;
+						}
+						NavigationOperation::Zoom { zoom_original_for_abort, .. } => {
+							ptz.zoom = zoom_original_for_abort;
+						}
+					}
+
+					self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
+				}
+
+				// Final chance to apply snapping if the key was pressed during this final frame
+				ptz.tilt = self.snapped_tilt(ptz.tilt);
+				ptz.zoom = self.snapped_zoom(ptz.zoom);
+
+				// Reset the navigation operation now that it's done
+				self.navigation_operation = NavigationOperation::None;
+
+				// Send the final messages to close out the operation
+				responses.add(BroadcastEvent::CanvasTransformed);
+				responses.add(ToolMessage::UpdateCursor);
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(NavigateToolMessage::End);
+			}
+			NavigationMessage::EndCanvasPTZWithClick { commit_key } => {
+				self.finish_operation_with_click = false;
+
+				let abort_transform = commit_key == Key::Rmb;
+				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform });
 			}
 			NavigationMessage::FitViewportToBounds {
 				bounds: [pos1, pos2],
@@ -80,226 +230,64 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					})
 				}
 			}
-			NavigationMessage::IncreaseCanvasZoom { center_on_mouse } => {
-				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom).unwrap_or(&ptz.zoom);
-				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom, ipp.mouse.position));
-				}
-				responses.add(NavigationMessage::SetCanvasZoom { zoom_factor: new_scale });
-			}
-			NavigationMessage::PointerMove {
-				snap_angle,
-				wait_for_snap_angle_release,
-				snap_zoom,
-				zoom_from_viewport,
-			} => {
+			NavigationMessage::PointerMove { snap } => {
 				match self.navigation_operation {
 					NavigationOperation::None => {}
 					NavigationOperation::Pan { .. } => {
 						let delta = ipp.mouse.position - self.mouse_position;
-						responses.add(NavigationMessage::TranslateCanvas { delta });
+						responses.add(NavigationMessage::CanvasPan { delta });
 					}
-					NavigationOperation::Rotate {
-						snap_tilt,
-						snap_tilt_released,
-						pre_commit_tilt,
+					NavigationOperation::Tilt {
+						tilt_raw_not_snapped,
+						tilt_original_for_abort,
+						..
 					} => {
-						let new_snap = ipp.keyboard.get(snap_angle as usize);
-
-						if !(wait_for_snap_angle_release && new_snap && !snap_tilt_released) {
-							// When disabling snap, keep the viewed rotation as it was previously.
-							if !new_snap && snap_tilt {
-								ptz.tilt = self.snapped_angle(ptz.tilt);
-							}
-							self.navigation_operation = NavigationOperation::Rotate {
-								pre_commit_tilt,
-								snap_tilt: new_snap,
-								snap_tilt_released: true,
-							};
-						}
-
-						let half_viewport = ipp.viewport_bounds.size() / 2.;
-						let rotation = {
+						let tilt_raw_not_snapped = {
+							let half_viewport = ipp.viewport_bounds.size() / 2.;
 							let start_offset = self.mouse_position - half_viewport;
 							let end_offset = ipp.mouse.position - half_viewport;
-							start_offset.angle_between(end_offset)
+							let angle = start_offset.angle_between(end_offset);
+
+							tilt_raw_not_snapped + angle
+						};
+						ptz.tilt = self.snapped_tilt(tilt_raw_not_snapped);
+
+						let snap = ipp.keyboard.get(snap as usize);
+
+						self.navigation_operation = NavigationOperation::Tilt {
+							tilt_original_for_abort,
+							tilt_raw_not_snapped,
+							snap,
 						};
 
-						responses.add(NavigationMessage::SetCanvasTilt { angle_radians: ptz.tilt + rotation });
+						responses.add(NavigationMessage::CanvasTiltSet { angle_radians: ptz.tilt });
 					}
-					NavigationOperation::Zoom { snap_zoom_enabled, pre_commit_zoom } => {
-						let zoom_start = self.snapped_scale(ptz.zoom);
+					NavigationOperation::Zoom {
+						zoom_raw_not_snapped,
+						zoom_original_for_abort,
+						..
+					} => {
+						let zoom_raw_not_snapped = {
+							let vertical_delta = self.mouse_position.y - ipp.mouse.position.y;
+							let amount = vertical_delta * VIEWPORT_ZOOM_MOUSE_RATE;
+							let updated_zoom = zoom_raw_not_snapped * (1. + amount);
 
-						let new_snap = ipp.keyboard.get(snap_zoom as usize);
-						// When disabling snap, keep the viewed zoom as it was previously
-						if !new_snap && snap_zoom_enabled {
-							ptz.zoom = self.snapped_scale(ptz.zoom);
-						}
+							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)
+						};
+						ptz.zoom = self.snapped_zoom(zoom_raw_not_snapped);
 
-						if snap_zoom_enabled != new_snap {
-							self.navigation_operation = NavigationOperation::Zoom {
-								pre_commit_zoom,
-								snap_zoom_enabled: new_snap,
-							};
-						}
+						let snap = ipp.keyboard.get(snap as usize);
 
-						let difference = self.mouse_position.y - ipp.mouse.position.y;
-						let amount = 1. + difference * VIEWPORT_ZOOM_MOUSE_RATE;
+						self.navigation_operation = NavigationOperation::Zoom {
+							zoom_raw_not_snapped,
+							zoom_original_for_abort,
+							snap,
+						};
 
-						ptz.zoom *= amount;
-						ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
-
-						if let Some(mouse) = zoom_from_viewport {
-							let zoom_factor = self.snapped_scale(ptz.zoom) / zoom_start;
-
-							responses.add(NavigationMessage::SetCanvasZoom { zoom_factor: ptz.zoom });
-							responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, mouse));
-						} else {
-							responses.add(NavigationMessage::SetCanvasZoom { zoom_factor: ptz.zoom });
-						}
+						responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom });
 					}
 				}
 
-				self.mouse_position = ipp.mouse.position;
-			}
-			NavigationMessage::ResetCanvasTiltAndZoomTo100Percent => {
-				ptz.tilt = 0.;
-				ptz.zoom = 1.;
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-			}
-			NavigationMessage::RotateCanvasBegin { was_dispatched_from_menu } => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: String::from("Snap 15°"),
-							plus: false,
-							slash: false,
-						}]),
-					]),
-				});
-
-				self.navigation_operation = NavigationOperation::Rotate {
-					pre_commit_tilt: ptz.tilt,
-					snap_tilt_released: false,
-					snap_tilt: false,
-				};
-
-				self.mouse_position = ipp.mouse.position;
-				self.finish_operation_with_click = was_dispatched_from_menu;
-			}
-			NavigationMessage::SetCanvasTilt { angle_radians } => {
-				ptz.tilt = angle_radians;
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-			}
-			NavigationMessage::SetCanvasZoom { zoom_factor } => {
-				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-			}
-			NavigationMessage::TransformCanvasEnd { abort_transform } => {
-				if abort_transform {
-					match self.navigation_operation {
-						NavigationOperation::None => {}
-						NavigationOperation::Rotate { pre_commit_tilt, .. } => {
-							ptz.tilt = pre_commit_tilt;
-							responses.add(NavigationMessage::SetCanvasTilt { angle_radians: pre_commit_tilt });
-						}
-						NavigationOperation::Pan { pre_commit_pan, .. } => {
-							ptz.pan = pre_commit_pan;
-							self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-						}
-						NavigationOperation::Zoom { pre_commit_zoom, .. } => {
-							ptz.zoom = pre_commit_zoom;
-							responses.add(PortfolioMessage::UpdateDocumentWidgets);
-							self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-						}
-					}
-				}
-
-				ptz.tilt = self.snapped_angle(ptz.tilt);
-				ptz.zoom = self.snapped_scale(ptz.zoom);
-				responses.add(BroadcastEvent::CanvasTransformed);
-				responses.add(ToolMessage::UpdateCursor);
-				responses.add(ToolMessage::UpdateHints);
-				self.navigation_operation = NavigationOperation::None;
-			}
-			NavigationMessage::TransformFromMenuEnd { commit_key } => {
-				let abort_transform = commit_key == Key::Rmb;
-				self.finish_operation_with_click = false;
-				responses.add(NavigationMessage::TransformCanvasEnd { abort_transform });
-			}
-			NavigationMessage::TranslateCanvas { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta);
-
-				ptz.pan += transformed_delta;
-				responses.add(BroadcastEvent::CanvasTransformed);
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-			}
-			NavigationMessage::TranslateCanvasBegin => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
-
-				responses.add(FrontendMessage::UpdateInputHints {
-					// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
-				});
-
-				self.mouse_position = ipp.mouse.position;
-				self.navigation_operation = NavigationOperation::Pan { pre_commit_pan: ptz.pan };
-			}
-			NavigationMessage::TranslateCanvasByViewportFraction { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
-
-				ptz.pan += transformed_delta;
-				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
-			}
-			NavigationMessage::WheelCanvasTranslate { use_y_as_x } => {
-				let delta = match use_y_as_x {
-					false => -ipp.mouse.scroll_delta.as_dvec2(),
-					true => (-ipp.mouse.scroll_delta.y as f64, 0.).into(),
-				} * VIEWPORT_SCROLL_RATE;
-				responses.add(NavigationMessage::TranslateCanvas { delta });
-			}
-			NavigationMessage::WheelCanvasZoom => {
-				let scroll = ipp.mouse.scroll_delta.scroll_delta();
-				let mut zoom_factor = 1. + scroll.abs() * VIEWPORT_ZOOM_WHEEL_RATE;
-				if ipp.mouse.scroll_delta.y > 0 {
-					zoom_factor = 1. / zoom_factor
-				}
-				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
-
-				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
-				responses.add(NavigationMessage::SetCanvasZoom { zoom_factor: ptz.zoom * zoom_factor });
-			}
-			NavigationMessage::ZoomCanvasBegin => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						// TODO: Fix bug where canceling doesn't work except with the Navigate tool active
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: String::from("Increments"),
-							plus: false,
-							slash: false,
-						}]),
-					]),
-				});
-
-				self.navigation_operation = NavigationOperation::Zoom {
-					pre_commit_zoom: ptz.zoom,
-					snap_zoom_enabled: false,
-				};
 				self.mouse_position = ipp.mouse.position;
 			}
 		}
@@ -307,30 +295,30 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(NavigationMessageDiscriminant;
-			TranslateCanvasBegin,
-			RotateCanvasBegin,
-			ZoomCanvasBegin,
-			SetCanvasTilt,
-			WheelCanvasZoom,
-			IncreaseCanvasZoom,
-			DecreaseCanvasZoom,
-			WheelCanvasTranslate,
-			TranslateCanvas,
-			TranslateCanvasByViewportFraction,
+			BeginCanvasPan,
+			BeginCanvasTilt,
+			BeginCanvasZoom,
+			CanvasPan,
+			CanvasPanByViewportFraction,
+			CanvasPanMouseWheel,
+			CanvasTiltSet,
+			CanvasZoomDecrease,
+			CanvasZoomIncrease,
+			CanvasZoomMouseWheel,
 			FitViewportToSelection,
 		);
 
 		if self.navigation_operation != NavigationOperation::None {
 			let transforming = actions!(NavigationMessageDiscriminant;
+				EndCanvasPTZ,
 				PointerMove,
-				TransformCanvasEnd,
 			);
 			common.extend(transforming);
 		}
 
 		if self.finish_operation_with_click {
 			let transforming_from_menu = actions!(NavigationMessageDiscriminant;
-				TransformFromMenuEnd,
+				EndCanvasPTZWithClick,
 			);
 
 			common.extend(transforming_from_menu);
@@ -341,17 +329,17 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 }
 
 impl NavigationMessageHandler {
-	pub fn snapped_angle(&self, tilt: f64) -> f64 {
+	pub fn snapped_tilt(&self, tilt: f64) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
-		if let NavigationOperation::Rotate { snap_tilt: true, .. } = self.navigation_operation {
+		if matches!(self.navigation_operation, NavigationOperation::Tilt { snap: true, .. }) {
 			(tilt / increment_radians).round() * increment_radians
 		} else {
 			tilt
 		}
 	}
 
-	pub fn snapped_scale(&self, zoom: f64) -> f64 {
-		if let NavigationOperation::Zoom { snap_zoom_enabled: true, .. } = self.navigation_operation {
+	pub fn snapped_zoom(&self, zoom: f64) -> f64 {
+		if matches!(self.navigation_operation, NavigationOperation::Zoom { snap: true, .. }) {
 			*VIEWPORT_ZOOM_LEVELS.iter().min_by(|a, b| (**a - zoom).abs().partial_cmp(&(**b - zoom).abs()).unwrap()).unwrap_or(&zoom)
 		} else {
 			zoom
@@ -359,16 +347,16 @@ impl NavigationMessageHandler {
 	}
 
 	pub fn calculate_offset_transform(&self, viewport_center: DVec2, pan: DVec2, tilt: f64, zoom: f64) -> DAffine2 {
-		let scaled_center = viewport_center / self.snapped_scale(zoom);
+		let scaled_center = viewport_center / self.snapped_zoom(zoom);
 
 		// Try to avoid fractional coordinates to reduce anti aliasing.
-		let scale = self.snapped_scale(zoom);
+		let scale = self.snapped_zoom(zoom);
 		let rounded_pan = ((pan + scaled_center) * scale).round() / scale - scaled_center;
 
 		// TODO: replace with DAffine2::from_scale_angle_translation and fix the errors
 		let offset_transform = DAffine2::from_translation(scaled_center);
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale));
-		let angle_transform = DAffine2::from_angle(self.snapped_angle(tilt));
+		let angle_transform = DAffine2::from_angle(self.snapped_tilt(tilt));
 		let translation_transform = DAffine2::from_translation(rounded_pan);
 		scale_transform * offset_transform * angle_transform * translation_transform
 	}
@@ -384,17 +372,17 @@ impl NavigationMessageHandler {
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
 
-		NavigationMessage::TranslateCanvas { delta }.into()
+		NavigationMessage::CanvasPan { delta }.into()
 	}
 
 	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, ipp: &InputPreprocessorMessageHandler) -> f64 {
 		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
 		let scale_factor = (document_size / ipp.viewport_bounds.size()).max_element();
 
-		if scale_factor > f64::EPSILON * 100. && scale_factor.is_finite() && scale_factor < VIEWPORT_ZOOM_MIN_FRACTION_COVER {
-			VIEWPORT_ZOOM_MIN_FRACTION_COVER / scale_factor
-		} else {
-			1.
+		if scale_factor <= f64::EPSILON * 100. || !scale_factor.is_finite() || scale_factor >= VIEWPORT_ZOOM_MIN_FRACTION_COVER {
+			return 1.;
 		}
+
+		VIEWPORT_ZOOM_MIN_FRACTION_COVER / scale_factor
 	}
 }

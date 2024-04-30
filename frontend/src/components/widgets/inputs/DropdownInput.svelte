@@ -10,7 +10,7 @@
 
 	const DASH_ENTRY = { value: "", label: "-" };
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
 
 	let menuList: MenuList | undefined;
 	let self: LayoutRow | undefined;
@@ -24,11 +24,17 @@
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
+	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
 	let minWidth = 0;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchActiveEntry(activeEntry);
+	$: watchOpen(open);
+
+	function watchOpen(open: boolean) {
+		initialSelectedIndex = open ? selectedIndex : undefined;
+	}
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_?: number) {
@@ -41,8 +47,18 @@
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
+			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
+			dispatch("hoverInEntry", initialSelectedIndex);
 			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
 		}
+	}
+
+	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
+		dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
+	}
+
+	function dispatchHoverOutEntry() {
+		dispatch("hoverOutEntry", initialSelectedIndex);
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -81,6 +97,8 @@
 		on:naturalWidth={({ detail }) => (minWidth = detail)}
 		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
+		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
+		on:hoverOutEntry={() => dispatchHoverOutEntry()}
 		{open}
 		on:open={({ detail }) => (open = detail)}
 		{entries}
