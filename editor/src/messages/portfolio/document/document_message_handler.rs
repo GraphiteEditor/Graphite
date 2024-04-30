@@ -239,7 +239,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					.enumerate()
 					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as isize))
 					.unwrap_or(-1);
-
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
 					nodes: HashMap::new(),
@@ -365,31 +365,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 
-				//Move layers in nested folders up to parent child stack
+				//Move layers in nested unselected folders above the first unselected parent folder
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
-				for layer in selected_layers {
-					let mut current_folder = layer.parent(&self.metadata).expect("Layer should always have parent");
-					//Dont move nodes that are already in the parent child stack
-					if current_folder == parent {
-						continue;
-					}
+				for layer in selected_layers.clone() {
+					let mut first_unselected_parent_folder = layer.parent(&self.metadata).expect("Layer should always have parent");
+
 					//Find folder in parent child stack
 					loop {
-						let Some(new_folder) = current_folder.parent(&self.metadata) else {
+						//Loop until parent layer is deselected. Note that parent cannot be selected, since it is an ancestor of all selected layers
+						if !selected_layers.iter().any(|selected_layer| *selected_layer == first_unselected_parent_folder) {
+							break;
+						}
+						let Some(new_folder) = first_unselected_parent_folder.parent(&self.metadata) else {
 							log::error!("Layer should always have parent");
 							return;
 						};
-						if new_folder == parent {
-							break;
-						}
-						current_folder = new_folder;
+						first_unselected_parent_folder = new_folder;
+					}
+					//Dont move nodes above new group folder parent
+					if first_unselected_parent_folder == parent {
+						continue;
 					}
 
 					//Disconnect above and below the old layer location
 					self.disconnect_node(layer, responses);
 
 					//Move disconnected node to folder
-					let folder_position = self.network.nodes.get(&current_folder.to_node()).expect("Current folder should always exist").metadata.position;
+					let folder_position = self
+						.network
+						.nodes
+						.get(&first_unselected_parent_folder.to_node())
+						.expect("Current folder should always exist")
+						.metadata
+						.position;
 					let Some(layer_to_move_node_mut) = self.network.nodes.get_mut(&layer.to_node()) else {
 						return;
 					};
@@ -398,7 +406,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Insert node right above the folder
 					//TODO: Use insert layer between message
-					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, current_folder) else {
+					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder)
+					else {
 						log::error!("Downstream node should always exist when inserting layer");
 						return;
 					};
@@ -418,11 +427,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						log::error!("Layer should always have primary input");
 						return;
 					};
-					*layer_node_input = NodeInput::node(current_folder.to_node(), 0);
+					*layer_node_input = NodeInput::node(first_unselected_parent_folder.to_node(), 0);
 
 					let upstream_shift = IVec2::new(0, 3);
 					let mut modify_inputs = ModifyInputsContext::new(&mut self.network, &mut self.metadata, &mut self.node_graph_handler, responses);
-					modify_inputs.shift_upstream(current_folder.to_node(), upstream_shift, true);
+					modify_inputs.shift_upstream(first_unselected_parent_folder.to_node(), upstream_shift, true);
 				}
 
 				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, direct_child)| {
@@ -497,6 +506,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					new_parent: folder_id,
 					upstream_sibling_ids: nodes_to_move,
 				});
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
