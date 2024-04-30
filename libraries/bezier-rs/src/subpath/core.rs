@@ -105,7 +105,20 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
 	pub fn iter(&self) -> SubpathIter<ManipulatorGroupId> {
-		SubpathIter { subpath: self, index: 0 }
+		SubpathIter {
+			subpath: self,
+			index: 0,
+			is_always_closed: false,
+		}
+	}
+
+	/// Returns an iterator of the [Bezier]s along the `Subpath` always considering it as a closed subpath.
+	pub fn iter_closed(&self) -> SubpathIter<ManipulatorGroupId> {
+		SubpathIter {
+			subpath: self,
+			index: 0,
+			is_always_closed: true,
+		}
 	}
 
 	/// Returns a slice of the [ManipulatorGroup]s in the `Subpath`.
