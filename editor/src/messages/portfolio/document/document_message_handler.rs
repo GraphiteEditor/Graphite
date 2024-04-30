@@ -690,7 +690,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
-				self.backup(responses);
 				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
@@ -1183,15 +1182,15 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
 							.label(DocumentMode::SelectMode.to_string())
 							.icon(DocumentMode::SelectMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
 						MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
 							.label(DocumentMode::GuideMode.to_string())
 							.icon(DocumentMode::GuideMode.icon_name())
-							.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
+							.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
 					]])
 					.selected_index(Some(self.document_mode as u32))
-					.draw_icon( true)
-					.interactive( false) // TODO: set to true when dialogs are not spawned
+					.draw_icon(true)
+					.interactive(false) // TODO: set to true when dialogs are not spawned
 					.widget_holder(),
 				Separator::new(SeparatorType::Section).widget_holder(),
 			],
@@ -1533,6 +1532,7 @@ impl DocumentMessageHandler {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
 							.on_update(move |_| DocumentMessage::SetBlendModeForSelectedLayers { blend_mode }.into())
+							.on_commit(|_| DocumentMessage::StartTransaction.into())
 					})
 					.collect()
 			})

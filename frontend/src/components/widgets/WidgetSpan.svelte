@@ -96,7 +96,16 @@
 		{/if}
 		{@const dropdownInput = narrowWidgetProps(component.props, "DropdownInput")}
 		{#if dropdownInput}
-			<DropdownInput {...exclude(dropdownInput)} on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
+			<DropdownInput
+				{...exclude(dropdownInput)}
+				on:hoverInEntry={({ detail }) => {
+					return widgetValueUpdate(index, detail);
+				}}
+				on:hoverOutEntry={({ detail }) => {
+					return widgetValueUpdate(index, detail);
+				}}
+				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
+			/>
 		{/if}
 		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
 		{#if fontInput}

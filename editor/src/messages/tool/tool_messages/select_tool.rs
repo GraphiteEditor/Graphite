@@ -98,7 +98,7 @@ impl SelectTool {
 			.map(|mode| {
 				MenuListEntry::new(format!("{mode:?}"))
 					.label(mode.to_string())
-					.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
+					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
 			})
 			.collect();
 

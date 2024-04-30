@@ -19,7 +19,7 @@
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; naturalWidth: number }>();
+	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; hoverInEntry: MenuListEntry; hoverOutEntry: undefined; naturalWidth: number }>();
 
 	export let entries: MenuListEntry[][];
 	export let activeEntry: MenuListEntry | undefined = undefined;
@@ -164,7 +164,10 @@
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
-		if (!menuListEntry.children?.length) return;
+		if (!menuListEntry.children?.length) {
+			dispatch("hoverInEntry", menuListEntry);
+			return;
+		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
@@ -174,7 +177,10 @@
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
-		if (!menuListEntry.children?.length) return;
+		if (!menuListEntry.children?.length) {
+			dispatch("hoverOutEntry");
+			return;
+		}
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
@@ -346,9 +352,9 @@
 		highlighted = newHighlight;
 
 		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
-			dispatch("activeEntry", newHighlight);
-		}
+		// if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
+		// 	dispatch("activeEntry", newHighlight);
+		// }
 
 		// Scroll into view
 		let container = scroller?.div?.();
