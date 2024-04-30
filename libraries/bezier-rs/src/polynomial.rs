@@ -3,89 +3,89 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 /// A struct that represents a polynomial with a maximum degree of `N-1`.
 ///
-/// It provides basic mathematical operations for polynomals like addition, multiplication, differentiation, integration, etc.
+/// It provides basic mathematical operations for polynomials like addition, multiplication, differentiation, integration, etc.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Polynomial<const N: usize> {
-	coeffs: [f64; N],
+	coefficients: [f64; N],
 }
 
 impl<const N: usize> Polynomial<N> {
 	/// Create a new polynomial from the coefficients given in the array.
 	///
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
-	pub fn new(value: [f64; N]) -> Polynomial<N> {
-		Polynomial { coeffs: value }
+	pub fn new(coefficients: [f64; N]) -> Polynomial<N> {
+		Polynomial { coefficients }
 	}
 
 	/// Create a polynomial where all its coefficients are zero.
 	pub fn zero() -> Polynomial<N> {
-		Polynomial { coeffs: [0.; N] }
+		Polynomial { coefficients: [0.; N] }
 	}
 
 	/// Return an immutable reference to the coefficients.
 	///
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
-	pub fn coeffs(&self) -> &[f64; N] {
-		&self.coeffs
+	pub fn coefficients(&self) -> &[f64; N] {
+		&self.coefficients
 	}
 
 	/// Return a mutable reference to the coefficients.
 	///
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
-	pub fn coeffs_mut(&mut self) -> &mut [f64; N] {
-		&mut self.coeffs
+	pub fn coefficients_mut(&mut self) -> &mut [f64; N] {
+		&mut self.coefficients
 	}
 
 	/// Evaluate the polynomial at `value`.
 	pub fn eval(&self, value: f64) -> f64 {
-		self.coeffs.iter().rev().copied().reduce(|acc, x| acc * value + x).unwrap()
+		self.coefficients.iter().rev().copied().reduce(|acc, x| acc * value + x).unwrap()
 	}
 
 	/// Return the same polynomial but with a different maximum degree of `M-1`.\
 	///
 	/// Returns `None` if the polynomial cannot fit in the specified size.
 	pub fn as_size<const M: usize>(&self) -> Option<Polynomial<M>> {
-		let mut coeffs = [0.; M];
+		let mut coefficients = [0.; M];
 
 		if M >= N {
-			coeffs[..N].copy_from_slice(&self.coeffs);
-		} else if self.coeffs.iter().rev().take(N - M).all(|&x| x == 0.) {
-			coeffs.copy_from_slice(&self.coeffs[..M])
+			coefficients[..N].copy_from_slice(&self.coefficients);
+		} else if self.coefficients.iter().rev().take(N - M).all(|&x| x == 0.) {
+			coefficients.copy_from_slice(&self.coefficients[..M])
 		} else {
 			return None;
 		}
 
-		Some(Polynomial { coeffs })
+		Some(Polynomial { coefficients })
 	}
 
 	/// Computes the derivative in place.
 	pub fn derivative_mut(&mut self) {
-		self.coeffs.iter_mut().enumerate().for_each(|(index, x)| *x *= index as f64);
-		self.coeffs.rotate_left(1);
+		self.coefficients.iter_mut().enumerate().for_each(|(index, x)| *x *= index as f64);
+		self.coefficients.rotate_left(1);
 	}
 
-	/// Computes the antiderivative at $C = 0$ in place.
+	/// Computes the antiderivative at `C = 0` in place.
 	///
-	/// Returns `None` if the polynomial is not big enough to accomodate the extra degree.
+	/// Returns `None` if the polynomial is not big enough to accommodate the extra degree.
 	pub fn antiderivative_mut(&mut self) -> Option<()> {
-		if self.coeffs[N - 1] != 0. {
+		if self.coefficients[N - 1] != 0. {
 			return None;
 		}
-		self.coeffs.rotate_right(1);
-		self.coeffs.iter_mut().enumerate().skip(1).for_each(|(index, x)| *x /= index as f64);
+		self.coefficients.rotate_right(1);
+		self.coefficients.iter_mut().enumerate().skip(1).for_each(|(index, x)| *x /= index as f64);
 		Some(())
 	}
 
-	/// Computes the derivative.
+	/// Computes the polynomial's derivative.
 	pub fn derivative(&self) -> Polynomial<N> {
 		let mut ans = *self;
 		ans.derivative_mut();
 		ans
 	}
 
-	/// Computes the antiderivative at $C = 0$.
+	/// Computes the antiderivative at `C = 0`.
 	///
-	/// Returns `None` if the polynomial is not big enough to accomodate the extra degree.
+	/// Returns `None` if the polynomial is not big enough to accommodate the extra degree.
 	pub fn antiderivative(&self) -> Option<Polynomial<N>> {
 		let mut ans = *self;
 		ans.antiderivative_mut()?;
@@ -102,14 +102,14 @@ impl<const N: usize> Default for Polynomial<N> {
 impl<const N: usize> Display for Polynomial<N> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let mut first = true;
-		for (index, coeff) in self.coeffs.iter().enumerate().rev().filter(|(_, &coeff)| coeff != 0.) {
+		for (index, coefficient) in self.coefficients.iter().enumerate().rev().filter(|(_, &coefficient)| coefficient != 0.) {
 			if first {
 				first = false;
 			} else {
 				f.write_str(" + ")?
 			}
 
-			coeff.fmt(f)?;
+			coefficient.fmt(f)?;
 			if index == 0 {
 				continue;
 			}
@@ -127,7 +127,7 @@ impl<const N: usize> Display for Polynomial<N> {
 
 impl<const N: usize> AddAssign<&Polynomial<N>> for Polynomial<N> {
 	fn add_assign(&mut self, rhs: &Polynomial<N>) {
-		self.coeffs.iter_mut().zip(rhs.coeffs.iter()).for_each(|(a, b)| *a += b);
+		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a += b);
 	}
 }
 
@@ -146,7 +146,7 @@ impl<const N: usize> Neg for &Polynomial<N> {
 
 	fn neg(self) -> Polynomial<N> {
 		let mut output = *self;
-		output.coeffs.iter_mut().for_each(|x| *x = -*x);
+		output.coefficients.iter_mut().for_each(|x| *x = -*x);
 		output
 	}
 }
@@ -155,14 +155,14 @@ impl<const N: usize> Neg for Polynomial<N> {
 	type Output = Polynomial<N>;
 
 	fn neg(mut self) -> Polynomial<N> {
-		self.coeffs.iter_mut().for_each(|x| *x = -*x);
+		self.coefficients.iter_mut().for_each(|x| *x = -*x);
 		self
 	}
 }
 
 impl<const N: usize> SubAssign<&Polynomial<N>> for Polynomial<N> {
 	fn sub_assign(&mut self, rhs: &Polynomial<N>) {
-		self.coeffs.iter_mut().zip(rhs.coeffs.iter()).for_each(|(a, b)| *a -= b);
+		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a -= b);
 	}
 }
 
@@ -179,9 +179,9 @@ impl<const N: usize> Sub for &Polynomial<N> {
 impl<const N: usize> MulAssign<&Polynomial<N>> for Polynomial<N> {
 	fn mul_assign(&mut self, rhs: &Polynomial<N>) {
 		for i in (0..N).rev() {
-			self.coeffs[i] = self.coeffs[i] * rhs.coeffs[0];
+			self.coefficients[i] = self.coefficients[i] * rhs.coefficients[0];
 			for j in 0..i {
-				self.coeffs[i] += self.coeffs[j] * rhs.coeffs[i - j];
+				self.coefficients[i] += self.coefficients[j] * rhs.coefficients[i - j];
 			}
 		}
 	}
@@ -249,7 +249,7 @@ mod test {
 
 		assert_eq!(p.derivative(), p_deriv);
 
-		p.coeffs_mut()[0] = 0.;
+		p.coefficients_mut()[0] = 0.;
 		assert_eq!(p_deriv.antiderivative().unwrap(), p);
 
 		assert_eq!(p.antiderivative(), None);

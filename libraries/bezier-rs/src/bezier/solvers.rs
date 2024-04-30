@@ -429,11 +429,11 @@ impl Bezier {
 				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min_corner, max_corner, MAX_ABSOLUTE_DIFFERENCE).all())
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
-                .map(|t| {
-                    let y = translated_bezier.evaluate(TValue::Parametric(t)).y;
-                    let other_t = (y-y_start)/(y_end-y_start);
-                    [t, other_t]
-                })
+				.map(|t| {
+					let y = translated_bezier.evaluate(TValue::Parametric(t)).y;
+					let other_t = (y-y_start)/(y_end-y_start);
+					[t, other_t]
+				})
 				.collect::<Vec<[f64; 2]>>();
 		}
 
