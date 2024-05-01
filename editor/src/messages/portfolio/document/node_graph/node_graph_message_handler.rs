@@ -164,7 +164,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// that do not feed into the delete_nodes set or the output node will be deleted.
 						let mut stack = vec![upstream_id];
 						let mut can_delete = true;
-						//TODO: Add iteration limit to force break in case of infinite while loop
+						// TODO: Add iteration limit to force break in case of infinite while loop
 						while let Some(current_node) = stack.pop() {
 							if let Some(downstream_nodes) = outward_links.get(&current_node) {
 								for downstream_node in downstream_nodes {
@@ -414,7 +414,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
-				//Since document structure doesn't change, just update the nodes
+				// Since document structure doesn't change, just update the nodes
 				if graph_view_overlay_open {
 					let links = Self::collect_links(network);
 					let nodes = self.collect_nodes(&links, network);
@@ -1022,7 +1022,7 @@ impl NodeGraphMessageHandler {
 	fn send_graph(&self, network: &NodeNetwork, graph_open: bool, metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
-		//TODO: Move update_layer_panel into message so load structure here can be removed, since load structure is already called in DocumentStructureChanged
+		// TODO: Move update_layer_panel into message so load structure here can be removed, since load structure is already called in DocumentStructureChanged
 		metadata.load_structure(network, selected_nodes);
 		Self::update_layer_panel(network, metadata, collapsed, responses);
 		if graph_open {
@@ -1152,7 +1152,7 @@ impl NodeGraphMessageHandler {
 		let input_count = node_input_count + exposed_value_count;
 		let Some(definition) = resolve_document_node_type(&node.name) else { return false };
 		let output_count = definition.outputs.len();
-		//TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
+		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
 		if !node.has_primary_output || output_count != 1 || input_count == 0 || input_count > 2 {
 			return false;
 		}

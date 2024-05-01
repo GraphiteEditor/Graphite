@@ -104,10 +104,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::MoveUpstreamSiblingsToChild { new_parent, mut upstream_sibling_ids } => {
-				//Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
+				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
 				upstream_sibling_ids.reverse();
 				for node_to_move in upstream_sibling_ids.clone() {
-					//Connect pre node to post node, or disconnect pre node if post node doesn't exist
+					// Connect pre node to post node, or disconnect pre node if post node doesn't exist
 					let mut pre_node_id = new_parent;
 					loop {
 						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&pre_node_id).expect("Current node should always exist").inputs.get(0) else {
@@ -137,9 +137,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						return;
 					};
 
-					//Insert upstream_sibling_node at top of group stack
+					// Insert upstream_sibling_node at top of group stack
 					if let NodeInput::Node { node_id, .. } = parent_secondary_input {
-						//If there is already a node at the top of the stack, insert upstream_sibling_node in between
+						// If there is already a node at the top of the stack, insert upstream_sibling_node in between
 						let current_child = *node_id;
 						let Some(upstream_sibling_input) = document_network.nodes.get_mut(&node_to_move).expect("Upstream sibling should always exist").inputs.get_mut(0) else {
 							log::error!("Could not get upstream sibling node input");
