@@ -9,8 +9,10 @@
 	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -47,7 +49,9 @@
 	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
 	let nodeLinkPaths: LinkPath[] = [];
 	let searchTerm = "";
-	let nodeListLocation: { x: number; y: number } | undefined = undefined;
+	let contextMenuOpenCoordinates: { x: number; y: number } | undefined = undefined;
+	let toggleDisplayAsLayerNodeId: bigint | undefined = undefined;
+	let toggleDisplayAsLayerCurrentlyIsNode: boolean = false;
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
@@ -58,8 +62,8 @@
 	$: gridSpacing = calculateGridSpacing(transform.scale);
 	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-	$: nodeListX = ((nodeListLocation?.x || 0) + transform.x) * transform.scale;
-	$: nodeListY = ((nodeListLocation?.y || 0) + transform.y) * transform.scale;
+	$: contextMenuX = ((contextMenuOpenCoordinates?.x || 0) + transform.x) * transform.scale;
+	$: contextMenuY = ((contextMenuOpenCoordinates?.y || 0) + transform.y) * transform.scale;
 
 	let appearAboveMouse = false;
 	let appearRightOfMouse = false;
@@ -69,8 +73,8 @@
 		if (!bounds) return;
 		const { width, height } = bounds;
 
-		appearRightOfMouse = nodeListX > width - ADD_NODE_MENU_WIDTH;
-		appearAboveMouse = nodeListY > height - ADD_NODE_MENU_HEIGHT;
+		appearRightOfMouse = contextMenuX > width - ADD_NODE_MENU_WIDTH;
+		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
 	})();
 
 	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
@@ -127,7 +131,7 @@
 			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index !== 0) || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
 			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
 		}
 		return undefined;
@@ -169,7 +173,7 @@
 			if (disconnecting?.linkIndex === index) return [];
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && link.linkEndInputIndex !== 0n) || false;
+			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && Number(link.linkEndInputIndex) == 0) || false;
 
 			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
 		});
@@ -253,8 +257,9 @@
 
 	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
 		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
+		const outputPortRect = outputPort.getBoundingClientRect();
 
-		const pathString = buildWirePathString(outputPort.getBoundingClientRect(), inputPortRect, verticalOut, verticalIn);
+		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
 
 		return { pathString, dataType, thick: verticalIn && verticalOut };
@@ -310,7 +315,7 @@
 
 	function keydown(e: KeyboardEvent) {
 		if (e.key.toLowerCase() === "escape") {
-			nodeListLocation = undefined;
+			contextMenuOpenCoordinates = undefined;
 			document.removeEventListener("keydown", keydown);
 			linkInProgressFromConnector = undefined;
 			// linkInProgressFromLayerTop = undefined;
@@ -319,7 +324,7 @@
 	}
 
 	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
-		nodeListLocation = {
+		contextMenuOpenCoordinates = {
 			x: (e.clientX - graphBounds.x) / transform.scale - transform.x,
 			y: (e.clientY - graphBounds.y) / transform.scale - transform.y,
 		};
@@ -340,23 +345,33 @@
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeIdString = node?.getAttribute("data-node") || undefined;
 		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
-		const nodeList = (e.target as HTMLElement).closest("[data-node-list]") as HTMLElement | undefined;
+		const contextMenu = (e.target as HTMLElement).closest("[data-context-menu]") as HTMLElement | undefined;
 
 		// Create the add node popup on right click, then exit
 		if (rmb) {
+			toggleDisplayAsLayerNodeId = undefined;
+
+			if (node) {
+				toggleDisplayAsLayerNodeId = nodeId;
+				toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === nodeId)?.isLayer || false);
+			}
+
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
+
 			loadNodeList(e, graphBounds);
+
 			return;
 		}
 
-		// If the user is clicking on the add nodes list, exit here
-		if (lmb && nodeList) return;
+		// If the user is clicking on the add nodes list or context menu, exit here
+		if (lmb && contextMenu) return;
 
 		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 		if (lmb) {
-			nodeListLocation = undefined;
+			contextMenuOpenCoordinates = undefined;
 			linkInProgressFromConnector = undefined;
+			toggleDisplayAsLayerNodeId = undefined;
 			// linkInProgressFromLayerTop = undefined;
 			// linkInProgressFromLayerBottom = undefined;
 		}
@@ -474,7 +489,7 @@
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
 			transform.y += e.movementY / transform.scale;
-		} else if (linkInProgressFromConnector && !nodeListLocation) {
+		} else if (linkInProgressFromConnector && !contextMenuOpenCoordinates) {
 			const target = e.target as Element | undefined;
 			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
@@ -545,6 +560,20 @@
 		editor.handle.toggleLayerVisibility(id);
 	}
 
+	function toggleLayerDisplay(displayAsLayer: boolean) {
+		let node = $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId);
+		if (node !== undefined) {
+			contextMenuOpenCoordinates = undefined;
+			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
+			toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.isLayer || false);
+			toggleDisplayAsLayerNodeId = undefined;
+		}
+	}
+
+	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
+		return $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.canBeLayer || false;
+	}
+
 	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
 		const node = svg.closest("[data-node]");
 
@@ -568,7 +597,7 @@
 		const selectedNodeId = $nodeGraph.selected[0];
 		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
-		// Check that neither the input or output of the selected node are already connected.
+		// Check that neither the primary input or output of the selected node are already connected.
 		const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
 		const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
 		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
@@ -589,13 +618,16 @@
 			const selectedNodeBounds = selectedNode.getBoundingClientRect();
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
-			return editor.handle.rectangleIntersects(
-				new Float64Array(wireCurveLocations.map((loc) => loc.x)),
-				new Float64Array(wireCurveLocations.map((loc) => loc.y)),
-				selectedNodeBounds.top - containerBoundsBounds.y,
-				selectedNodeBounds.left - containerBoundsBounds.x,
-				selectedNodeBounds.bottom - containerBoundsBounds.y,
-				selectedNodeBounds.right - containerBoundsBounds.x,
+			return (
+				link.linkEnd != selectedNodeId &&
+				editor.handle.rectangleIntersects(
+					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
+					selectedNodeBounds.top - containerBoundsBounds.y,
+					selectedNodeBounds.left - containerBoundsBounds.x,
+					selectedNodeBounds.bottom - containerBoundsBounds.y,
+					selectedNodeBounds.right - containerBoundsBounds.x,
+				)
 			);
 		});
 
@@ -603,8 +635,7 @@
 		if (link) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
 
-			editor.handle.connectNodesByLink(link.linkStart, 0, selectedNodeId, isLayer ? 1 : 0);
-			editor.handle.connectNodesByLink(selectedNodeId, 0, link.linkEnd, Number(link.linkEndInputIndex));
+			editor.handle.insertNodeBetween(link.linkEnd, Number(link.linkEndInputIndex), 0, selectedNodeId, 0, Number(link.linkStartOutputIndex), link.linkStart);
 			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
 	}
@@ -629,17 +660,17 @@
 			}
 		} else if (linkInProgressFromConnector && !initialDisconnecting) {
 			// If the add node menu is already open, we don't want to open it again
-			if (nodeListLocation) return;
+			if (contextMenuOpenCoordinates) return;
 
 			const graphBounds = graph?.getBoundingClientRect();
 			if (!graphBounds) return;
 
 			// Create the node list, which should set nodeListLocation to a valid value
 			loadNodeList(e, graphBounds);
-			if (!nodeListLocation) return;
-			let nodeListLocation2: { x: number; y: number } = nodeListLocation;
+			if (!contextMenuOpenCoordinates) return;
+			let contextMenuLocation2: { x: number; y: number } = contextMenuOpenCoordinates;
 
-			linkInProgressToConnector = new DOMRect((nodeListLocation2.x + transform.x) * transform.scale + graphBounds.x, (nodeListLocation2.y + transform.y) * transform.scale + graphBounds.y);
+			linkInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
 
 			return;
 		} else if (draggingNodes) {
@@ -665,13 +696,13 @@
 	}
 
 	function createNode(nodeType: string) {
-		if (!nodeListLocation) return;
+		if (!contextMenuOpenCoordinates) return;
 
 		const inputNodeConnectionIndex = 0;
-		const x = Math.round(nodeListLocation.x / GRID_SIZE);
-		const y = Math.round(nodeListLocation.y / GRID_SIZE) - 1;
+		const x = Math.round(contextMenuOpenCoordinates.x / GRID_SIZE);
+		const y = Math.round(contextMenuOpenCoordinates.y / GRID_SIZE) - 1;
 		const inputConnectedNodeID = editor.handle.createNode(nodeType, x, y);
-		nodeListLocation = undefined;
+		contextMenuOpenCoordinates = undefined;
 
 		if (!linkInProgressFromConnector) return;
 		const from = connectorToNodeIndex(linkInProgressFromConnector);
@@ -702,17 +733,22 @@
 		return borderMask(boxes, nodeWidth, nodeHeight);
 	}
 
-	function layerBorderMask(nodeWidth: number): string {
+	function layerBorderMask(nodeWidthFromThumbnail: number, nodeChainAreaLeftExtension: number): string {
 		const NODE_HEIGHT = 2 * 24;
 		const THUMBNAIL_WIDTH = 72 + 8 * 2;
 		const FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT = 2;
 
+		const nodeWidth = nodeWidthFromThumbnail + nodeChainAreaLeftExtension;
+
 		const boxes: { x: number; y: number; width: number; height: number }[] = [];
+
 		// Left input
-		boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+		if (nodeChainAreaLeftExtension > 0) {
+			boxes.push({ x: -8, y: 16, width: 16, height: 16 });
+		}
 
 		// Thumbnail
-		boxes.push({ x: 28, y: -FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT * 2 });
+		boxes.push({ x: nodeChainAreaLeftExtension - 8, y: -FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT, width: THUMBNAIL_WIDTH, height: NODE_HEIGHT + FUDGE_HEIGHT_BEYOND_LAYER_HEIGHT * 2 });
 
 		// Right visibility button
 		boxes.push({ x: nodeWidth - 12, y: (NODE_HEIGHT - 24) / 2, width: 24, height: 24 });
@@ -745,33 +781,63 @@
 	style:--dot-radius={`${dotRadius}px`}
 >
 	<!-- Right click menu for adding nodes -->
-	{#if nodeListLocation}
+	{#if contextMenuOpenCoordinates}
 		<LayoutCol
-			class="node-list"
-			data-node-list
+			class="context-menu"
+			data-context-menu
 			styles={{
-				transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
-				left: `${nodeListX}px`,
-				top: `${nodeListY}px`,
-				width: `${ADD_NODE_MENU_WIDTH}px`,
-				height: `${ADD_NODE_MENU_HEIGHT}px`,
+				left: `${contextMenuX}px`,
+				top: `${contextMenuY}px`,
+				...(toggleDisplayAsLayerNodeId === undefined
+					? {
+							transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+							width: `${ADD_NODE_MENU_WIDTH}px`,
+							height: `${ADD_NODE_MENU_HEIGHT}px`,
+						}
+					: {}),
 			}}
 		>
-			<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
-			<div class="list-results" on:wheel|passive|stopPropagation>
-				{#each nodeCategories as nodeCategory}
-					<details open={nodeCategory[1].open}>
-						<summary>
-							<TextLabel>{nodeCategory[0]}</TextLabel>
-						</summary>
-						{#each nodeCategory[1].nodes as nodeType}
-							<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
-						{/each}
-					</details>
-				{:else}
-					<TextLabel>No search results</TextLabel>
-				{/each}
-			</div>
+			{#if toggleDisplayAsLayerNodeId === undefined}
+				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+				<div class="list-results" on:wheel|passive|stopPropagation>
+					{#each nodeCategories as nodeCategory}
+						<details open={nodeCategory[1].open}>
+							<summary>
+								<TextLabel>{nodeCategory[0]}</TextLabel>
+							</summary>
+							{#each nodeCategory[1].nodes as nodeType}
+								<TextButton label={nodeType.name} action={() => createNode(nodeType.name)} />
+							{/each}
+						</details>
+					{:else}
+						<TextLabel>No search results</TextLabel>
+					{/each}
+				</div>
+			{:else}
+				<LayoutRow class="toggle-layer-or-node">
+					<TextLabel>Display as</TextLabel>
+					<RadioInput
+						selectedIndex={toggleDisplayAsLayerCurrentlyIsNode ? 0 : 1}
+						entries={[
+							{
+								value: "node",
+								label: "Node",
+								action: () => {
+									toggleLayerDisplay(false);
+								},
+							},
+							{
+								value: "layer",
+								label: "Layer",
+								action: () => {
+									toggleLayerDisplay(true);
+								},
+							},
+						]}
+						disabled={!canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId)}
+					/>
+				</LayoutRow>
+			{/if}
 		</LayoutCol>
 	{/if}
 	<!-- Node connection links -->
@@ -801,6 +867,7 @@
 				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
 				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
 				style:--label-width={labelWidthGridCells}
+				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -808,29 +875,6 @@
 					<span class="node-error faded" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 					<span class="node-error hover" transition:fade={FADE_TRANSITION} data-node-error>{node.errors}</span>
 				{/if}
-				<div class="node-chain" />
-				<!-- Layer input port (from left) -->
-				<div class="input ports">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
-						class="port"
-						data-port="input"
-						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
-						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
-						bind:this={inputs[nodeIndex][0]}
-					>
-						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
-						{/if}
-						{#if node.primaryInput?.connected}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-						{:else}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
 						{@html $nodeGraph.thumbnails.get(node.id)}
@@ -847,10 +891,10 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
+								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -864,15 +908,17 @@
 						viewBox="0 0 8 12"
 						class="port bottom"
 						data-port="input"
-						data-datatype={stackDataInput.dataType}
-						style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
-						style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
-						bind:this={inputs[nodeIndex][1]}
+						data-datatype={node.primaryInput?.dataType}
+						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
+						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+						bind:this={inputs[nodeIndex][0]}
 					>
-						<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
-						{#if stackDataInput.connected}
+						{#if node.primaryInput}
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
+						{/if}
+						{#if node.primaryInput?.connected}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if $nodeGraph.nodes.find((n) => n.id === stackDataInput.connected)?.isLayer}
+							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connected)?.isLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
 							{/if}
 						{:else}
@@ -880,10 +926,32 @@
 						{/if}
 					</svg>
 				</div>
+				<!-- Layer input port (from left) -->
+				{#if node.exposedInputs.length > 0}
+					<div class="input ports">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 8 8"
+							class="port"
+							data-port="input"
+							data-datatype={stackDataInput.dataType}
+							style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
+							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
+							bind:this={inputs[nodeIndex][1]}
+						>
+							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
+							{#if stackDataInput.connected}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+							{:else}
+								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+							{/if}
+						</svg>
+					</div>
+				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
-						{node.alias || "Layer"}
+						{node.alias}
 					</span>
 				</div>
 				<IconButton
@@ -898,7 +966,10 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(36 + 72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple)} />
+							<path
+								clip-rule="evenodd"
+								d={layerBorderMask(72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple, node.exposedInputs.length === 0 ? 0 : 36)}
+							/>
 						</clipPath>
 					</defs>
 				</svg>
@@ -997,7 +1068,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${node.primaryOutput.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -1016,7 +1087,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${`${parameter.connected}, port index ${parameter.connectedIndex}` || "nothing"}`}</title>
 							{#if parameter.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -1077,13 +1148,14 @@
 			mix-blend-mode: screen;
 		}
 
-		.node-list {
+		.context-menu {
 			width: max-content;
 			position: absolute;
 			box-sizing: border-box;
 			padding: 5px;
 			z-index: 3;
 			background-color: var(--color-3-darkgray);
+			border-radius: 4px;
 
 			.text-input {
 				flex: 0 0 auto;
@@ -1093,11 +1165,15 @@
 			.list-results {
 				overflow-y: auto;
 				flex: 1 1 auto;
+				// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
+				margin-right: -4px;
 
 				details {
 					cursor: pointer;
 					display: flex;
 					flex-direction: column;
+					// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
+					margin-right: 4px;
 
 					&[open] summary .text-label::before {
 						transform: rotate(90deg);
@@ -1132,6 +1208,11 @@
 						margin: 4px 0;
 					}
 				}
+			}
+
+			.toggle-layer-or-node .text-label {
+				line-height: 24px;
+				margin-right: 8px;
 			}
 		}
 
@@ -1294,10 +1375,12 @@
 
 		.layer {
 			border-radius: 8px;
-			--half-visibility-button: 12px;
 			--extra-width-to-reach-grid-multiple: 8px;
+			--node-chain-area-left-extension: 0;
 			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
-			width: calc(36px + 72px + 8px + 24px * Max(3, var(--label-width)) + 8px + var(--half-visibility-button) + var(--extra-width-to-reach-grid-multiple));
+			width: calc(72px + 8px + 24px * Max(3, var(--label-width)) + 8px + 12px + var(--extra-width-to-reach-grid-multiple));
+			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
+			margin-left: calc((1.5 - var(--node-chain-area-left-extension)) * 24px);
 
 			&::after {
 				border: 1px solid var(--color-5-dullgray);
@@ -1307,10 +1390,6 @@
 			&.selected {
 				// This is the result of blending `rgba(255, 255, 255, 0.1)` over `rgba(0, 0, 0, 0.33)`
 				background: rgba(66, 66, 66, 0.4);
-			}
-
-			.node-chain {
-				width: 36px;
 			}
 
 			.thumbnail {
@@ -1368,7 +1447,7 @@
 
 			.visibility {
 				position: absolute;
-				right: calc(-1 * var(--half-visibility-button));
+				right: -12px;
 			}
 
 			.visibility,

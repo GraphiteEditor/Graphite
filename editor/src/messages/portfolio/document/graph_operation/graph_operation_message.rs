@@ -64,6 +64,10 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
 	},
+	MoveUpstreamSiblingsToChild {
+		new_parent: NodeId,
+		upstream_sibling_ids: Vec<NodeId>,
+	},
 	NewArtboard {
 		id: NodeId,
 		artboard: Artboard,
@@ -99,12 +103,6 @@ pub enum GraphOperationMessage {
 		id: NodeId,
 		location: IVec2,
 		dimensions: IVec2,
-	},
-	DeleteLayer {
-		id: NodeId,
-	},
-	DeleteArtboard {
-		id: NodeId,
 	},
 	ClearArtboards,
 	NewSvg {

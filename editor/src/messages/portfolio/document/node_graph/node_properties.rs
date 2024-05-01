@@ -2236,12 +2236,8 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
 }
 
-pub fn node_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Node has no properties")
-}
-
-pub fn layer_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Layer has no properties")
+pub fn node_no_properties(document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	string_properties(if document_node.is_layer { "Layer has no properties" } else { "Node has no properties" })
 }
 
 pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2423,12 +2419,11 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 3, "Background", ColorButton::default().allow_none(false), true);
-	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
-	};
+	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
+	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
+	let clip = bool_widget(document_node, node_id, 5, "Clip", true);
+	let clip = LayoutGroup::Row { widgets: clip };
 	vec![location, dimensions, background, clip]
 }
 

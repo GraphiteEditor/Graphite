@@ -113,7 +113,7 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="informational ongoing heading" title="Began February 2024" data-year="2024">
 			<h3>— Alpha 3 —</h3>
 		</div>
-		<div class="informational ongoing" title="Development Ongoing">
+		<div class="informational complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Stackable adjustment layers</span>
 		</div>

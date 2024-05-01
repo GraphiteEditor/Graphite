@@ -3,7 +3,8 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{GraphicGroup, ProtoNodeIdentifier, Type};
+use graphene_core::vector::VectorData;
+use graphene_core::{ArtboardGroup, GraphicGroup, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
@@ -76,8 +77,8 @@ pub struct DocumentNode {
 	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
 	///
 	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
-	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(G ∘ F)(x)`.
-	/// For flexability, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
+	/// The `ComposeNode` is basically a function composition operator: the parentheses in `F(G(x))` or circle math operator in `(F ∘ G)(x)`.
+	/// For flexibility, instead of being a language construct, Graphene splits out composition itself as its own low-level node so that behavior can be overridden.
 	/// The `ComposeNode`s are then inserted during the graph rewriting step for nodes that don't opt out with `manual_composition`.
 	/// Instead of node `G` feeding into node `F` feeding as the result back to the caller,
 	/// the graph is rewritten so nodes `G` and `F` both feed as lambdas into the parameters of a `ComposeNode` which calls `F(G(input))` and returns the result to the caller.
@@ -159,6 +160,9 @@ pub struct DocumentNode {
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer.
+	#[serde(default)]
+	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
@@ -212,6 +216,7 @@ impl Default for DocumentNode {
 			manual_composition: Default::default(),
 			has_primary_output: true,
 			implementation: Default::default(),
+			is_layer: false,
 			visible: true,
 			locked: Default::default(),
 			metadata: Default::default(),
@@ -348,21 +353,24 @@ impl DocumentNode {
 		self
 	}
 
-	pub fn is_layer(&self) -> bool {
-		// TODO: Use something more robust than checking against a string.
-		// TODO: Or, more fundamentally separate the concept of a layer from a node.
-		self.name == "Layer"
-	}
-
 	pub fn is_artboard(&self) -> bool {
 		// TODO: Use something more robust than checking against a string.
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
 	}
 
-	pub fn is_folder(&self, network: &NodeNetwork) -> bool {
-		let input_connection = self.inputs.get(0).and_then(|input| input.as_node()).and_then(|node_id| network.nodes.get(&node_id));
-		input_connection.map(|node| node.is_layer()).unwrap_or(false)
+	// TODO: Is this redundant with `LayerNodeIdentifier::has_children()`? Consider removing this in favor of that.
+	/// Determines if a document node acting as a layer has any nested children where its secondary input eventually leads to a layer along horizontal flow.
+	pub fn layer_has_child_layers(&self, network: &NodeNetwork) -> bool {
+		if !self.is_layer {
+			return false;
+		}
+
+		self.inputs.iter().skip(1).any(|input| {
+			input.as_node().map_or(false, |node_id| {
+				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
+			})
+		})
 	}
 }
 
@@ -536,6 +544,16 @@ pub struct NodeNetwork {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
+}
+
+#[derive(PartialEq)]
+pub enum FlowType {
+	/// Iterate over all upstream nodes from every input (the primary and all secondary).
+	UpstreamFlow,
+	/// Iterate over nodes connected to the primary input.
+	PrimaryFlow,
+	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
+	HorizontalFlow,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -741,18 +759,18 @@ impl NodeNetwork {
 		self.previous_outputs.as_ref().map(|outputs| outputs.iter().any(|output| output.node_id == node_id))
 	}
 
-	/// Gives an iterator to all nodes connected to the given nodes by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, only_follow_primary: bool) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
+	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
 			stack: node_ids,
 			network: self,
-			only_follow_primary,
+			flow_type,
 		}
 	}
 
 	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
-	pub fn is_node_upstream_of_another_by_primary_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
-		self.upstream_flow_back_from_nodes(vec![node], true).any(|(_, id)| id == potentially_upstream_node)
+	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
+		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
 	}
 
 	/// Check there are no cycles in the graph (this should never happen).
@@ -789,11 +807,14 @@ impl NodeNetwork {
 	}
 }
 
-/// Iterate over the primary inputs of nodes, so in the case of `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
+/// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
+/// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,
-	only_follow_primary: bool,
+	flow_type: FlowType,
 }
 impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
@@ -802,8 +823,9 @@ impl<'a> Iterator for FlowIter<'a> {
 			let node_id = self.stack.pop()?;
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let take = if self.only_follow_primary { 1 } else { usize::MAX };
-				let inputs = document_node.inputs.iter().take(take);
+				let skip = if self.flow_type == FlowType::HorizontalFlow && document_node.is_layer { 1 } else { 0 };
+				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
+				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
 
@@ -940,12 +962,8 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
-			if node.is_layer() {
-				// Connect layer node to the graphic group below
-				node.inputs.drain(..1);
-			} else {
-				node.inputs.drain(1..);
-			}
+			// Connect layer node to the graphic group below
+			node.inputs.drain(1..);
 			self.nodes.insert(id, node);
 
 			return;
@@ -1169,37 +1187,39 @@ impl NodeNetwork {
 	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty`, in order to satisfy the type system.
 	/// This is because the standard value node takes in `()`.
 	pub fn resolve_empty_stacks(&mut self) {
-		const EMPTY_STACK: &str = "Empty Stack";
+		for value in [
+			TaggedValue::GraphicGroup(GraphicGroup::EMPTY),
+			TaggedValue::VectorData(VectorData::empty()),
+			TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY),
+		] {
+			const EMPTY_STACK: &str = "Empty Stack";
 
-		let new_id = generate_uuid();
-		let mut used = false;
+			let new_id = generate_uuid();
+			let mut used = false;
 
-		// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
-		for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
-			for input in &mut node.inputs {
-				if let NodeInput::Value {
-					tagged_value: TaggedValue::GraphicGroup(graphic_group),
-					..
-				} = input
-				{
-					if *graphic_group == GraphicGroup::EMPTY {
-						*input = NodeInput::node(NodeId(new_id), 0);
-						used = true;
+			// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
+			for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
+				for input in &mut node.inputs {
+					if let NodeInput::Value { tagged_value, .. } = input {
+						if *tagged_value == value {
+							*input = NodeInput::node(NodeId(new_id), 0);
+							used = true;
+						}
 					}
 				}
 			}
-		}
 
-		// Only insert the node if necessary.
-		if used {
-			let new_node = DocumentNode {
-				name: EMPTY_STACK.to_string(),
-				implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
-				manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
-				inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), false)],
-				..Default::default()
-			};
-			self.nodes.insert(NodeId(new_id), new_node);
+			// Only insert the node if necessary.
+			if used {
+				let new_node = DocumentNode {
+					name: EMPTY_STACK.to_string(),
+					implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
+					manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
+					inputs: vec![NodeInput::value(value, false)],
+					..Default::default()
+				};
+				self.nodes.insert(NodeId(new_id), new_node);
+			}
 		}
 	}
 

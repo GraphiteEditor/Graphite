@@ -34,7 +34,7 @@ TypeScript files which serve as the JS interface to the WASM bindings for the ed
 
 Instantiates the WASM and editor backend instances. The function `initWasm()` asynchronously constructs and initializes an instance of the WASM bindings JS module provided by wasm-bindgen/wasm-pack. The function `createEditor()` constructs an instance of the editor backend. In theory there could be multiple editor instances sharing the same WASM module instance. The function returns an object where `raw` is the WASM module, `instance` is the editor, and `subscriptions` is the subscription router (described below).
 
-`initWasm()` occurs in `main.ts` right before the Svelte application exists, then `createEditor()` is run in `Editor.svelte` during the Svelte app's creation. Similarly to the state providers described above, the editor is given via `setContext()` so other components can get it via `getContext` and call functions on `editor.raw`, `editor.instance`, or `editor.subscriptions`.
+`initWasm()` occurs in `main.ts` right before the Svelte application exists, then `createEditor()` is run in `Editor.svelte` during the Svelte app's creation. Similarly to the state providers described above, the editor is given via `setContext()` so other components can get it via `getContext` and call functions on `editor.raw`, `editor.handle`, or `editor.subscriptions`.
 
 ### Message definitions: `messages.ts`
 

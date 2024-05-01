@@ -138,6 +138,8 @@
 			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px;
+		--color-transparent-checkered-background-size-mini: 8px 8px;
+		--color-transparent-checkered-background-position-mini: 0 0, 4px 4px;
 
 		--background-inactive-stripes: repeating-linear-gradient(
 			-45deg,

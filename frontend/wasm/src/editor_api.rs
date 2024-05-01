@@ -523,8 +523,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let insert_parent_id = insert_parent_id.map(NodeId);
-
 		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
+
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
@@ -564,6 +564,30 @@ impl EditorHandle {
 			output_node_connector_index,
 			input_node,
 			input_node_connector_index,
+		};
+		self.dispatch(message);
+	}
+
+	/// Inserts node in-between two other nodes
+	#[wasm_bindgen(js_name = insertNodeBetween)]
+	pub fn insert_node_between(
+		&self,
+		post_node_id: u64,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: u64,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: u64,
+	) {
+		let message = NodeGraphMessage::InsertNodeBetween {
+			post_node_id: NodeId(post_node_id),
+			post_node_input_index,
+			insert_node_output_index,
+			insert_node_id: NodeId(insert_node_id),
+			insert_node_input_index,
+			pre_node_output_index,
+			pre_node_id: NodeId(pre_node_id),
 		};
 		self.dispatch(message);
 	}
@@ -683,6 +707,14 @@ impl EditorHandle {
 	pub fn toggle_layer_expansion(&self, id: u64) {
 		let id = NodeId(id);
 		let message = DocumentMessage::ToggleLayerExpansion { id };
+		self.dispatch(message);
+	}
+
+	/// Toggle display type for a layer
+	#[wasm_bindgen(js_name = setToNodeOrLayer)]
+	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {
+		let node_id = NodeId(id);
+		let message = NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer };
 		self.dispatch(message);
 	}
 

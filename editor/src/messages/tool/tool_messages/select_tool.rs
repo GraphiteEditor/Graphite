@@ -325,7 +325,7 @@ impl SelectToolData {
 				document.network(),
 				&document
 					.network()
-					.upstream_flow_back_from_nodes(vec![node], false)
+					.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
 					.enumerate()
 					.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 					.collect(),
@@ -365,8 +365,9 @@ impl SelectToolData {
 
 		// Delete the duplicated layers
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			responses.add(GraphOperationMessage::DeleteLayer {
-				id: layer_ancestors.last().unwrap().to_node(),
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![layer_ancestors.last().unwrap().to_node()],
+				reconnect: true,
 			});
 		}
 

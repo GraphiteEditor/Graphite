@@ -3,7 +3,6 @@ use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
@@ -24,6 +23,7 @@ pub enum ArtboardToolMessage {
 	Overlays(OverlayContext),
 
 	// Tool-specific messages
+	UpdateSelectedArtboard,
 	DeleteSelected,
 	NudgeSelected { delta_x: f64, delta_y: f64 },
 	PointerDown,
@@ -125,7 +125,7 @@ impl ArtboardToolData {
 
 		let mut intersections = document
 			.click_xray(input.mouse.position)
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Artboard"));
+			.filter(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()));
 
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
@@ -135,6 +135,8 @@ impl ArtboardToolData {
 				bounding_box_manager.bounds = bounds;
 				bounding_box_manager.transform = document.metadata().document_to_viewport;
 			}
+
+			responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![intersection.to_node()] });
 
 			true
 		} else {
@@ -278,10 +280,8 @@ impl Fsm for ArtboardToolFsmState {
 					});
 				} else {
 					let id = NodeId(generate_uuid());
-					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
-					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
@@ -377,11 +377,13 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Ready
 			}
+			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
+				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.metadata().is_artboard(*layer));
+				self
+			}
 			(_, ArtboardToolMessage::DeleteSelected) => {
-				if let Some(artboard) = tool_data.selected_artboard.take() {
-					let id = artboard.to_node();
-					responses.add(GraphOperationMessage::DeleteArtboard { id });
-				}
+				tool_data.selected_artboard.take();
+				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
