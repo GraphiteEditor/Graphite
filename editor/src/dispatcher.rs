@@ -484,7 +484,7 @@ mod test {
 			let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 			let mut updated_nodes = HashSet::new();
 			document.metadata.load_structure(&document.network, &mut document.selected_nodes);
-			for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Layer").map(|(id, _)| *id).collect::<Vec<_>>() {
+			for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Merge").map(|(id, _)| *id).collect::<Vec<_>>() {
 				let layer = LayerNodeIdentifier::new(node, &document.network);
 				if document.metadata.is_folder(layer) {
 					continue;
