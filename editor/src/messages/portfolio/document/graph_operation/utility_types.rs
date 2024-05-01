@@ -124,16 +124,16 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index
-	///			-> Post node input_index: 0
-	///		↑		if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
-	///	->	Layer1	input_index: 1
-	///		↑		if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
-	///	->	Layer2	input_index: 2
-	///		↑
-	///	->	NLN
-	///		↑		if skip_layer_nodes == 2, return (NLN, Some(Layer3), 0)
-	///	->	Layer3	input_index: 3
-	///				if skip_layer_nodes == 3, return (Layer3, None, 0)
+	///      -> Post node input_index: 0
+	///     ↑       if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
+	/// ->  Layer1  input_index: 1
+	///     ↑       if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
+	/// -> Layer2  input_index: 2
+	///     ↑
+	///	->  NLN
+	///     ↑       if skip_layer_nodes == 2, return (NLN, Some(Layer3), 0)
+	/// ->  Layer3  input_index: 3
+	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
 	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
 		let mut post_node_input_index = 1; // Assume post node is a layer type.
 		if post_node_id == NodeId(0) {
@@ -616,18 +616,20 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn resize_artboard(&mut self, mut location: IVec2, mut dimensions: IVec2) {
+	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
 		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
+			let mut new_dimensions = dimensions;
+			let mut new_location = location;
 			if dimensions.x < 0 {
-				dimensions.x = -dimensions.x;
-				location.x -= dimensions.x;
+				new_dimensions.x = -dimensions.x;
+				new_location.x += dimensions.x;
 			}
 			if dimensions.y < 0 {
-				dimensions.y = -dimensions.y;
-				location.y -= dimensions.y;
+				new_dimensions.y = -dimensions.y;
+				new_location.y += dimensions.y;
 			}
-			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
-			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
+			inputs[2] = NodeInput::value(TaggedValue::IVec2(new_location), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(new_dimensions), false);
 		});
 	}
 }
