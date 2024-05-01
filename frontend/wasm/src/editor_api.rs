@@ -523,10 +523,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = moveLayerInTree)]
 	pub fn move_layer_in_tree(&self, insert_parent_id: Option<u64>, insert_index: Option<usize>) {
 		let insert_parent_id = insert_parent_id.map(NodeId);
-
 		let parent = insert_parent_id.map(LayerNodeIdentifier::new_unchecked).unwrap_or_default();
 
-		self.dispatch(DocumentMessage::StartTransaction);
 		let message = DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.map(|x| x as isize).unwrap_or(-1),
@@ -570,7 +568,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Inserts node between 2 other nodes
+	/// Inserts node in-between two other nodes
 	#[wasm_bindgen(js_name = insertNodeBetween)]
 	pub fn insert_node_between(
 		&self,
@@ -593,6 +591,7 @@ impl EditorHandle {
 		};
 		self.dispatch(message);
 	}
+
 	/// Shifts the node and its children to stop nodes going on top of each other
 	#[wasm_bindgen(js_name = shiftNode)]
 	pub fn shift_node(&self, node_id: u64) {
@@ -605,8 +604,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
 		let node_id = NodeId(node_id);
-
-		self.dispatch(DocumentMessage::StartTransaction);
 		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
 		self.dispatch(message);
 	}
@@ -712,6 +709,7 @@ impl EditorHandle {
 		let message = DocumentMessage::ToggleLayerExpansion { id };
 		self.dispatch(message);
 	}
+
 	/// Toggle display type for a layer
 	#[wasm_bindgen(js_name = setToNodeOrLayer)]
 	pub fn set_to_node_or_layer(&self, id: u64, is_layer: bool) {

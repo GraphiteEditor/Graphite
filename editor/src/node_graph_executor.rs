@@ -289,9 +289,9 @@ impl NodeRuntime {
 						.and_then(|io_data| Some(IntrospectedData::Artboard(&io_data.output)))
 				});
 
-			let graphic_element: Option<GraphicElement> = match introspected_data_output {
+			let graphic_element = match introspected_data_output {
 				Some(IntrospectedData::GraphicElement(graphic_element)) => Some(graphic_element.clone()),
-				Some(IntrospectedData::Artboard(artboard)) => Some(<graphene_core::Artboard as Into<graphene_core::GraphicElement>>::into(artboard.clone())),
+				Some(IntrospectedData::Artboard(artboard)) => Some(artboard.clone().into()),
 				_ => None,
 			};
 			// If this is `GraphicElement` data:

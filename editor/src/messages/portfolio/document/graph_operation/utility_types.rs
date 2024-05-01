@@ -123,22 +123,20 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index
-	///      -> Post node input_index: 0
-	///     ↑       if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
-	/// ->  Layer1  input_index: 1
-	///     ↑       if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
-	/// -> Layer2  input_index: 2
-	///     ↑
-	///	->  NLN
-	///     ↑       if skip_layer_nodes == 2, return (NLN, Some(Layer3), 0)
-	/// ->  Layer3  input_index: 3
+	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index.
+	///      -----> Post node input_index: 0
+	///      |      if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
+	/// -> Layer1   input_index: 1
+	///      ↑      if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
+	/// -> Layer2   input_index: 2
+	///      ↑
+	///	-> NonLayerNode
+	///      ↑      if skip_layer_nodes == 2, return (NonLayerNode, Some(Layer3), 0)
+	/// -> Layer3   input_index: 3
 	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
 	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
-		let mut post_node_input_index = 1; // Assume post node is a layer type.
-		if post_node_id == NodeId(0) {
-			post_node_input_index = 0; // Output node input index.
-		}
+		let mut post_node_input_index = if post_node_id == NodeId(0) { 0 } else { 1 };
+
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
 		loop {
@@ -159,13 +157,17 @@ impl<'a> ModifyInputsContext<'a> {
 				if next_node_in_stack.is_layer {
 					current_index += 1;
 				}
+
 				post_node_id = next_node_in_stack_id;
-				post_node_input_index = 0; //Input as a sibling to the Layer node above
+
+				// Input as a sibling to the Layer node above
+				post_node_input_index = 0;
 			} else {
 				log::error!("Error creating layer: insert_index out of bounds");
 				break;
 			};
 		}
+
 		// Move post_node to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at index 1 + insert_index
 		let mut post_node = network.nodes.get(&post_node_id).expect("Post node should always exist");
 		let mut pre_node_id = post_node
@@ -195,7 +197,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
-		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top most artboard,
+		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top-most artboard,
 		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
 		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
 
@@ -210,25 +212,21 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
+		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 		if let Some(pre_node_id) = pre_node_id {
-			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_between(
 				new_id,
 				new_layer_node,
 				NodeInput::node(pre_node_id, 0),
-				0, // Pre_node is a sibling so it connects to the first input.
+				0, // pre_node is a sibling so it connects to the first input
 				post_node_id,
 				NodeInput::node(new_id, 0),
 				post_node_input_index,
 				IVec2::new(0, 3),
 			);
 		} else {
-			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-			if post_node_input_index == 1 {
-				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(-8, 3));
-			} else {
-				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, IVec2::new(0, 3));
-			}
+			let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
+			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
 		}
 
 		Some(new_id)
@@ -248,7 +246,6 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Creates an artboard that outputs to the output node.
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
 		let output_node_id = self.document_network.original_outputs()[0].node_id;
-		let mut shift = IVec2::new(0, 3);
 
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
@@ -277,18 +274,17 @@ impl<'a> ModifyInputsContext<'a> {
 				output_node_id,
 				NodeInput::node(new_id, 0),
 				0,
-				shift,
+				IVec2::new(0, 3),
 			)
 		} else {
-			shift = IVec2::new(-8, 3);
-			self.insert_node_before(new_id, output_node_id, 0, artboard_node, shift)
+			self.insert_node_before(new_id, output_node_id, 0, artboard_node, IVec2::new(-8, 3))
 		};
 
 		if let Some(new_id) = created_node_id {
 			let new_child = LayerNodeIdentifier::new_unchecked(new_id);
 			LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
 		}
-		//self.responses.add(NodeGraphMessage::RunDocumentGraph);
+
 		created_node_id
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
@@ -357,6 +353,7 @@ impl<'a> ModifyInputsContext<'a> {
 		if shift_self {
 			shift_nodes.insert(node_id);
 		}
+
 		let mut stack = vec![node_id];
 		while let Some(node_id) = stack.pop() {
 			let Some(node) = self.document_network.nodes.get(&node_id) else { continue };
@@ -618,18 +615,20 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
 		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
-			let mut new_dimensions = dimensions;
-			let mut new_location = location;
+			let mut dimensions = dimensions;
+			let mut location = location;
+
 			if dimensions.x < 0 {
-				new_dimensions.x = -dimensions.x;
-				new_location.x += dimensions.x;
+				dimensions.x *= -1;
+				location.x += dimensions.x;
 			}
 			if dimensions.y < 0 {
-				new_dimensions.y = -dimensions.y;
-				new_location.y += dimensions.y;
+				dimensions.y *= -1;
+				location.y += dimensions.y;
 			}
-			inputs[2] = NodeInput::value(TaggedValue::IVec2(new_location), false);
-			inputs[3] = NodeInput::value(TaggedValue::IVec2(new_dimensions), false);
+
+			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
 	}
 }

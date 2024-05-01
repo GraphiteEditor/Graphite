@@ -171,6 +171,7 @@ impl DocumentMetadata {
 				if current_node.locked {
 					self.locked.insert(current_node_id);
 				}
+
 				if current_node.is_layer {
 					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
 					if !self.structure.contains_key(&current_layer_node) {
@@ -188,6 +189,7 @@ impl DocumentMetadata {
 					}
 				}
 			}
+
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
@@ -199,6 +201,7 @@ impl DocumentMetadata {
 					if current_node.locked {
 						self.locked.insert(current_node_id);
 					}
+
 					if current_node.is_layer {
 						// Create a new layer for the top of each stack, and add it as a child to the previous parent
 						let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);

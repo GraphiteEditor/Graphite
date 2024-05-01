@@ -160,7 +160,7 @@ pub struct DocumentNode {
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// User chosen state for displaying as left to right node or bottom top layer.
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer.
 	#[serde(default)]
 	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -548,7 +548,7 @@ pub struct NodeNetwork {
 
 #[derive(PartialEq)]
 pub enum FlowType {
-	/// Iterate over all upstream nodes.
+	/// Iterate over all upstream nodes from every input (the primary and all secondary).
 	UpstreamFlow,
 	/// Iterate over nodes connected to the primary input.
 	PrimaryFlow,
@@ -807,7 +807,10 @@ impl NodeNetwork {
 	}
 }
 
-/// Iterate over the horizontal inputs of nodes (if `only_follow_primary` is true), so in the case of `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
+/// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
+/// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
 struct FlowIter<'a> {
 	stack: Vec<NodeId>,
 	network: &'a NodeNetwork,

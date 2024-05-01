@@ -135,7 +135,9 @@ impl ArtboardToolData {
 				bounding_box_manager.bounds = bounds;
 				bounding_box_manager.transform = document.metadata().document_to_viewport;
 			}
+
 			responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![intersection.to_node()] });
+
 			true
 		} else {
 			self.selected_artboard = None;
@@ -280,8 +282,6 @@ impl Fsm for ArtboardToolFsmState {
 					let id = NodeId(generate_uuid());
 
 					tool_data.selected_artboard = Some(LayerNodeIdentifier::new_unchecked(id));
-					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,

@@ -106,8 +106,8 @@ impl Artboard {
 	}
 }
 
-/// Contains multiple artboards
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
+/// Contains multiple artboards.
+#[derive(Clone, Default, Debug, Hash, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArtboardGroup {
 	pub artboards: Vec<Artboard>,
@@ -115,12 +115,15 @@ pub struct ArtboardGroup {
 
 impl ArtboardGroup {
 	pub const EMPTY: Self = Self { artboards: Vec::new() };
+
 	pub fn new() -> Self {
-		ArtboardGroup { artboards: Vec::new() }
+		Default::default()
 	}
+
 	fn add_artboard(&mut self, artboard: Artboard) {
 		self.artboards.push(artboard);
 	}
+
 	pub fn get_graphic_group(&self) -> GraphicGroup {
 		let mut graphic_group = GraphicGroup::EMPTY;
 		for artboard in self.artboards.clone() {
@@ -186,6 +189,7 @@ pub struct AddArtboardNode<Artboard, ArtboardGroup> {
 	artboard: Artboard,
 	artboards: ArtboardGroup,
 }
+
 #[node_fn(AddArtboardNode)]
 async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: Future<Output = ArtboardGroup>>(
 	footprint: Footprint,
@@ -194,7 +198,9 @@ async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: F
 ) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;
+
 	artboards.add_artboard(artboard.into());
+
 	artboards
 }
 

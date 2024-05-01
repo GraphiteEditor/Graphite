@@ -190,8 +190,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 				alias,
 			} => {
-				//trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
-
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
@@ -232,7 +230,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					error!("Create failed");
+					error!("Creating new custom layer failed");
 				}
 
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);

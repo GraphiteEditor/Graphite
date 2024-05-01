@@ -385,6 +385,7 @@
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
+
 			// Output: Begin dragging out a new link
 			if (isOutput) {
 				// Disallow creating additional vertical output links from an already-connected layer
@@ -563,11 +564,12 @@
 		let node = $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId);
 		if (node !== undefined) {
 			contextMenuOpenCoordinates = undefined;
-			editor.instance.setToNodeOrLayer(node.id, displayAsLayer);
+			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
 			toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.isLayer || false);
 			toggleDisplayAsLayerNodeId = undefined;
 		}
 	}
+
 	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
 		return $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.canBeLayer || false;
 	}
@@ -617,6 +619,7 @@
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
 			return (
+				link.linkEnd != selectedNodeId &&
 				editor.handle.rectangleIntersects(
 					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
 					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
@@ -624,7 +627,7 @@
 					selectedNodeBounds.left - containerBoundsBounds.x,
 					selectedNodeBounds.bottom - containerBoundsBounds.y,
 					selectedNodeBounds.right - containerBoundsBounds.x,
-				) && link.linkEnd != selectedNodeId
+				)
 			);
 		});
 
