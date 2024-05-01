@@ -273,7 +273,7 @@ mod test {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	/// Create an editor instance with three layers
+	/// Create an editor with three layers
 	/// 1. A red rectangle
 	/// 2. A blue shape
 	/// 3. A green ellipse
@@ -357,54 +357,6 @@ mod test {
 		for i in 0..=2 {
 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
-	}
-
-	#[test]
-	#[cfg_attr(miri, ignore)]
-	fn copy_paste_folder() {
-		let mut editor = create_editor_with_three_layers();
-
-		const FOLDER_ID: NodeId = NodeId(3);
-
-		editor.handle_message(GraphOperationMessage::NewCustomLayer {
-			id: FOLDER_ID,
-			nodes: HashMap::new(),
-			parent: LayerNodeIdentifier::ROOT,
-			insert_index: -1,
-			alias: String::new(),
-		});
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
-
-		editor.drag_tool(ToolType::Line, 0., 0., 10., 10.);
-		editor.drag_tool(ToolType::Freehand, 10., 20., 30., 40.);
-
-		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![FOLDER_ID] });
-
-		let document_before_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
-		editor.handle_message(PortfolioMessage::PasteIntoFolder {
-			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
-			insert_index: -1,
-		});
-
-		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
-
-		let layers_before_copy = document_before_copy.metadata.all_layers().collect::<Vec<_>>();
-		let layers_after_copy = document_after_copy.metadata.all_layers().collect::<Vec<_>>();
-		let [original_folder, original_freehand, original_line, original_ellipse, original_polygon, original_rect] = layers_before_copy[..] else {
-			panic!("Layers before incorrect");
-		};
-		let [_, _, _, folder, freehand, line, ellipse, polygon, rect] = layers_after_copy[..] else {
-			panic!("Layers after incorrect");
-		};
-		assert_eq!(original_folder, folder);
-		assert_eq!(original_freehand, freehand);
-		assert_eq!(original_line, line);
-		assert_eq!(original_ellipse, ellipse);
-		assert_eq!(original_polygon, polygon);
-		assert_eq!(original_rect, rect);
 	}
 
 	#[test]

@@ -339,7 +339,7 @@ fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, 
 		return;
 	};
 
-	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).node_id("Spline") else {
+	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).upstream_node_id_from_name("Spline") else {
 		return;
 	};
 	responses.add_front(NodeGraphMessage::SetInputValue { node_id, input_index: 1, value });

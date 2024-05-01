@@ -9,8 +9,7 @@ pub mod helpers;
 
 use editor::messages::prelude::*;
 
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{OnceCell, RefCell};
 use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use wasm_bindgen::prelude::*;
@@ -19,9 +18,8 @@ use wasm_bindgen::prelude::*;
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
-	// TODO: Remove the concept of multiple editor instances to simplify all of this
-	pub static EDITOR_INSTANCES: RefCell<HashMap<u64, editor::application::Editor>> = RefCell::new(HashMap::new());
-	pub static JS_EDITOR_HANDLES: RefCell<HashMap<u64, editor_api::JsEditorHandle>> = RefCell::new(HashMap::new());
+	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = OnceCell::new();
+	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = OnceCell::new();
 }
 
 /// Initialize the backend
@@ -41,11 +39,12 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 
 	error!("{info}");
 
-	JS_EDITOR_HANDLES.with(|instances| {
-		instances
-			.borrow_mut()
-			.values_mut()
-			.for_each(|instance| instance.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() }))
+	EDITOR_HANDLE.with(|editor_handle| {
+		editor_handle.get().map(|handle| {
+			handle
+				.borrow_mut()
+				.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() })
+		})
 	});
 }
 

@@ -7,6 +7,7 @@ mod bezier;
 mod bezier_fit;
 mod consts;
 mod poisson_disk;
+mod polynomial;
 mod subpath;
 mod symmetrical_basis;
 mod utils;

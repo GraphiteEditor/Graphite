@@ -1,11 +1,10 @@
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -59,7 +58,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut document = Self::new(document_network, document_metadata, node_graph, responses);
 
 		let mut id = id;
-		while !document.document_network.nodes.get(&id)?.is_layer() {
+		while !document.document_network.nodes.get(&id)?.is_layer {
 			id = document.outwards_links.get(&id)?.first().copied()?;
 		}
 
@@ -73,18 +72,28 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
-	pub fn insert_between(&mut self, id: NodeId, pre: NodeOutput, post: NodeOutput, mut node: DocumentNode, input: usize, output: usize, shift_upstream: IVec2) -> Option<NodeId> {
+	pub fn insert_between(
+		&mut self,
+		id: NodeId,
+		mut new_node: DocumentNode,
+		new_node_input: NodeInput,
+		new_node_input_index: usize,
+		post_node_id: NodeId,
+		post_node_input: NodeInput,
+		post_node_input_index: usize,
+		shift_upstream: IVec2,
+	) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
-		let pre_node = self.document_network.nodes.get_mut(&pre.node_id)?;
-		node.metadata.position = pre_node.metadata.position;
+		let pre_node = self.document_network.nodes.get_mut(&new_node_input.as_node().expect("Input should reference a node"))?;
+		new_node.metadata.position = pre_node.metadata.position;
 
-		let post_node = self.document_network.nodes.get_mut(&post.node_id)?;
-		node.inputs[input] = NodeInput::node(pre.node_id, pre.node_output_index);
-		post_node.inputs[post.node_output_index] = NodeInput::node(id, output);
+		let post_node = self.document_network.nodes.get_mut(&post_node_id)?;
+		new_node.inputs[new_node_input_index] = new_node_input;
+		post_node.inputs[post_node_input_index] = post_node_input;
 
-		self.document_network.nodes.insert(id, node);
+		self.document_network.nodes.insert(id, new_node);
 
-		self.shift_upstream(id, shift_upstream);
+		self.shift_upstream(id, shift_upstream, false);
 
 		Some(id)
 	}
@@ -100,70 +109,113 @@ impl<'a> ModifyInputsContext<'a> {
 		Some(new_id)
 	}
 
-	pub fn skip_artboards(&self, output: &mut NodeOutput) -> Option<(NodeId, usize)> {
-		while let NodeInput::Node { node_id, output_index, .. } = &self.document_network.nodes.get(&output.node_id)?.inputs[output.node_output_index] {
-			let sibling_node = self.document_network.nodes.get(node_id)?;
-			if sibling_node.name != "Artboard" {
-				return Some((*node_id, *output_index));
+	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index.
+	///      -----> Post node input_index: 0
+	///      |      if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
+	/// -> Layer1   input_index: 1
+	///      ↑      if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
+	/// -> Layer2   input_index: 2
+	///      ↑
+	///	-> NonLayerNode
+	///      ↑      if skip_layer_nodes == 2, return (NonLayerNode, Some(Layer3), 0)
+	/// -> Layer3   input_index: 3
+	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
+	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
+		let mut post_node_input_index = if post_node_id == NodeId(0) { 0 } else { 1 };
+
+		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
+		let mut current_index = 0;
+		loop {
+			if current_index == insert_index {
+				break;
 			}
-			*output = NodeOutput::new(*node_id, *output_index)
+			let next_node_in_stack_id = network
+				.nodes
+				.get(&post_node_id)
+				.expect("Post node should always exist")
+				.inputs
+				.get(post_node_input_index)
+				.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+
+			if let Some(next_node_in_stack_id) = next_node_in_stack_id {
+				// Only increment index for layer nodes
+				let next_node_in_stack = network.nodes.get(&next_node_in_stack_id).expect("Stack node should always exist");
+				if next_node_in_stack.is_layer {
+					current_index += 1;
+				}
+
+				post_node_id = next_node_in_stack_id;
+
+				// Input as a sibling to the Layer node above
+				post_node_input_index = 0;
+			} else {
+				log::error!("Error creating layer: insert_index out of bounds");
+				break;
+			};
 		}
-		None
+
+		// Move post_node to the end of the non layer chain that feeds into post_node, such that pre_node is the layer node at index 1 + insert_index
+		let mut post_node = network.nodes.get(&post_node_id).expect("Post node should always exist");
+		let mut pre_node_id = post_node
+			.inputs
+			.get(post_node_input_index)
+			.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+
+		// Skip until pre_node is either a layer or does not exist
+		while let Some(pre_node_id_value) = pre_node_id {
+			let pre_node = network.nodes.get(&pre_node_id_value).expect("pre_node_id should be a layer");
+			if !pre_node.is_layer {
+				post_node = pre_node;
+				post_node_id = pre_node_id_value;
+				pre_node_id = post_node
+					.inputs
+					.get(0)
+					.and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id.clone()) } else { None });
+				post_node_input_index = 0;
+			} else {
+				break;
+			}
+		}
+
+		(post_node_id, pre_node_id, post_node_input_index)
 	}
 
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, input_index: usize, skip_layer_nodes: usize) -> Option<NodeId> {
+	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
 
-		let mut output = NodeOutput::new(output_node_id, input_index);
-		let mut sibling_layer = None;
-		let mut shift = IVec2::new(0, 3);
-		// Locate the node output of the first sibling layer to the new layer
-		if let Some((node_id, output_index)) = self.skip_artboards(&mut output) {
-			let sibling_node = self.document_network.nodes.get(&node_id)?;
-			if sibling_node.is_layer() {
-				// There is already a layer node
-				sibling_layer = Some(NodeOutput::new(node_id, 0));
-			} else {
-				// The user has connected another node to the output. Insert a layer node between the output and the node.
-				let node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-				let node_id = self.insert_between(NodeId(generate_uuid()), NodeOutput::new(node_id, output_index), output, node, 0, 0, IVec2::new(-8, 0))?;
-				sibling_layer = Some(NodeOutput::new(node_id, 0));
-			}
+		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top-most artboard,
+		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
+		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
 
-			// Skip some layer nodes
-			for _ in 0..skip_layer_nodes {
-				if let Some(old_sibling) = &sibling_layer {
-					output = NodeOutput::new(old_sibling.node_id, 1);
-					sibling_layer = self.document_network.nodes.get(&old_sibling.node_id)?.inputs[1].as_node().map(|node| NodeOutput::new(node, 0));
-					shift = IVec2::new(0, 3);
+		let mut post_node_id = output_node_id;
+		if post_node_id == NodeId(0) {
+			// Check if an artboard is connected, and switch post node to the artboard.
+			if let Some(NodeInput::Node { node_id, .. }) = &self.document_network.nodes.get(&post_node_id).expect("Output node should always exist").inputs.get(0) {
+				let input_node = self.document_network.nodes.get(&node_id).expect("First input node should exist");
+				if input_node.is_artboard() {
+					post_node_id = *node_id;
 				}
 			}
-
-		// Insert at top of stack
+		}
+		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
+		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
+		if let Some(pre_node_id) = pre_node_id {
+			self.insert_between(
+				new_id,
+				new_layer_node,
+				NodeInput::node(pre_node_id, 0),
+				0, // pre_node is a sibling so it connects to the first input
+				post_node_id,
+				NodeInput::node(new_id, 0),
+				post_node_input_index,
+				IVec2::new(0, 3),
+			);
 		} else {
-			shift = IVec2::new(-8, 3);
+			let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
+			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
 		}
 
-		// Create node
-		let layer_node = resolve_document_node_type("Layer").expect("Layer node").default_document_node();
-		let new_id = if let Some(sibling_layer) = sibling_layer {
-			self.insert_between(new_id, sibling_layer, output, layer_node, 1, 0, shift)
-		} else {
-			self.insert_node_before(new_id, output.node_id, output.node_output_index, layer_node, shift)
-		};
-
-		// Update the document metadata structure
-		if let Some(new_id) = new_id {
-			let parent = if self.document_network.nodes.get(&output_node_id).is_some_and(|node| node.is_layer()) {
-				LayerNodeIdentifier::new(output_node_id, self.document_network)
-			} else {
-				LayerNodeIdentifier::ROOT
-			};
-			let new_child = LayerNodeIdentifier::new(new_id, self.document_network);
-			parent.push_front_child(self.document_metadata, new_child);
-		}
-
-		new_id
+		Some(new_id)
 	}
 
 	pub fn create_layer_with_insert_index(&mut self, new_id: NodeId, insert_index: isize, parent: LayerNodeIdentifier) -> Option<NodeId> {
@@ -174,13 +226,17 @@ impl<'a> ModifyInputsContext<'a> {
 		} else {
 			parent.to_node()
 		};
-		self.create_layer(new_id, output_node_id, 0, skip_layer_nodes)
+		self.create_layer(new_id, output_node_id, skip_layer_nodes)
 	}
 
-	pub fn insert_artboard(&mut self, artboard: Artboard, layer: NodeId) -> Option<NodeId> {
+	/// Creates an artboard that outputs to the output node.
+	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
+		let output_node_id = self.document_network.original_outputs()[0].node_id;
+
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
-				None,
+				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
+				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -188,8 +244,34 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
-		self.insert_node_before(NodeId(generate_uuid()), layer, 0, artboard_node, IVec2::new(-8, 0))
+
+		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
+		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.inputs.get(0);
+		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
+			let pre_node = self.document_network.nodes.get(node_id)?;
+			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
+			let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
+
+			self.insert_between(
+				new_id,
+				artboard_node,
+				NodeInput::node(*node_id, 0),
+				artboard_input_index,
+				output_node_id,
+				NodeInput::node(new_id, 0),
+				0,
+				IVec2::new(0, 3),
+			)
+		} else {
+			self.insert_node_before(new_id, output_node_id, 0, artboard_node, IVec2::new(-8, 3))
+		};
+
+		if let Some(new_id) = created_node_id {
+			let new_child = LayerNodeIdentifier::new_unchecked(new_id);
+			LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
+		}
+
+		created_node_id
 	}
 
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<PointId>>, layer: NodeId) {
@@ -202,7 +284,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
+		self.insert_node_before(stroke_id, layer, 1, stroke, IVec2::new(-8, 0));
 		let fill_id = NodeId(generate_uuid());
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
 		let transform_id = NodeId(generate_uuid());
@@ -227,7 +309,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		self.insert_node_before(stroke_id, layer, 0, stroke, IVec2::new(-8, 0));
+		self.insert_node_before(stroke_id, layer, 1, stroke, IVec2::new(-8, 0));
 		let fill_id = NodeId(generate_uuid());
 		self.insert_node_before(fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
 		let transform_id = NodeId(generate_uuid());
@@ -245,7 +327,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 
 		let transform_id = NodeId(generate_uuid());
-		self.insert_node_before(transform_id, layer, 0, transform, IVec2::new(-8, 0));
+		self.insert_node_before(transform_id, layer, 1, transform, IVec2::new(-8, 0));
 
 		let image_id = NodeId(generate_uuid());
 		self.insert_node_before(image_id, transform_id, 0, image, IVec2::new(-8, 0));
@@ -253,8 +335,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2) {
+	pub fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2, shift_self: bool) {
 		let mut shift_nodes = HashSet::new();
+		if shift_self {
+			shift_nodes.insert(node_id);
+		}
+
 		let mut stack = vec![node_id];
 		while let Some(node_id) = stack.pop() {
 			let Some(node) = self.document_network.nodes.get(&node_id) else { continue };
@@ -281,11 +367,12 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
+		let input_index = if output_node.is_layer { 1 } else { 0 };
 		let metadata = output_node.metadata.clone();
-		let new_input = output_node.inputs.first().cloned().filter(|input| input.as_node().is_some());
+		let new_input = output_node.inputs.get(input_index).cloned().filter(|input| input.as_node().is_some());
 		let node_id = NodeId(generate_uuid());
 
-		output_node.inputs[0] = NodeInput::node(node_id, 0);
+		output_node.inputs[input_index] = NodeInput::node(node_id, 0);
 
 		let Some(node_type) = resolve_document_node_type(name) else {
 			warn!("Node type \"{name}\" doesn't exist");
@@ -295,7 +382,11 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
 		self.document_network.nodes.insert(node_id, new_document_node);
 
-		let upstream_nodes = self.document_network.upstream_flow_back_from_nodes(vec![node_id], true).map(|(_, id)| id).collect::<Vec<_>>();
+		let upstream_nodes = self
+			.document_network
+			.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow)
+			.map(|(_, id)| id)
+			.collect::<Vec<_>>();
 		for node_id in upstream_nodes {
 			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
 			node.metadata.position.x -= 8;
@@ -309,7 +400,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(
 				self.layer_node
 					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
-				true,
+				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.find(|(node, _)| node.name == name)
 			.map(|(_, id)| id);
@@ -334,7 +425,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(
 				self.layer_node
 					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
-				true,
+				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.filter(|(node, _)| node.name == name)
 			.map(|(_, id)| id)
@@ -498,159 +589,20 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
 		self.modify_inputs("Artboard", false, |inputs, _node_id, _metadata| {
-			inputs[1] = NodeInput::value(TaggedValue::IVec2(location), false);
-			inputs[2] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
+			let mut dimensions = dimensions;
+			let mut location = location;
+
+			if dimensions.x < 0 {
+				dimensions.x *= -1;
+				location.x += dimensions.x;
+			}
+			if dimensions.y < 0 {
+				dimensions.y *= -1;
+				location.y += dimensions.y;
+			}
+
+			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
-	}
-
-	pub fn delete_layer(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes, is_artboard_layer: bool) {
-		let Some(node) = self.document_network.nodes.get(&id) else {
-			warn!("Deleting layer node that does not exist");
-			return;
-		};
-
-		let layer_node = LayerNodeIdentifier::new(id, self.document_network);
-		let child_layers = layer_node.descendants(self.document_metadata).map(|layer| layer.to_node()).collect::<Vec<_>>();
-		layer_node.delete(self.document_metadata);
-
-		// An artboard layer is a layer node to which an artboard node was connected.
-		// However, since this method is called after `delete_artboard`, the artboard node is already deleted.
-		// So, instead of a single ordinary node, we have a stack of layers connected to the current artboard layer through `node_inputs[0]` (instead of `node_inputs[1]`).
-		let is_artboard_layer = if is_artboard_layer && matches!(&node.inputs[0], NodeInput::Value { .. }) {
-			false
-		} else {
-			is_artboard_layer
-		};
-
-		// For an artboard layer, the new input is the top of the stack of layers that is connected to it through `node_inputs[0]`.
-		// For an ordinary layer, the new input is the next layer in the current stack of layers, which is connected to it through `node_inputs[1]`.
-		let new_input = if is_artboard_layer && !matches!(&node.inputs[0], NodeInput::Value { .. }) {
-			node.inputs[0].clone()
-		} else {
-			node.inputs[1].clone()
-		};
-		let deleted_position = node.metadata.position;
-
-		if let Some(new_input_id) = is_artboard_layer.then(|| new_input.as_node()).flatten() {
-			// This is the artboard layer that will be connected to the bottom of the stack of layers that is connected to the current artboard layer to be deleted.
-			// This will move the stack into the "main stack" of layers that leads to the output.
-			let new_input_artboard_layer = node.inputs[1].clone();
-
-			// Find the last layer node in the stack of layers that is connected to the current artboard layer to be deleted.
-			let mut final_layer_node_id = new_input_id;
-
-			let nodes = &self.document_network.nodes;
-			while let Some(input_id) = nodes.get(&final_layer_node_id).and_then(|input_node| input_node.inputs.get(1).and_then(|x| x.as_node())) {
-				final_layer_node_id = input_id;
-			}
-
-			// Connect `new_input_artboard_layer` to `final_layer_node`
-			if let Some(final_layer_node) = self.document_network.nodes.get_mut(&final_layer_node_id) {
-				final_layer_node.inputs[1] = new_input_artboard_layer.clone();
-			}
-
-			// Shift the position of the stack of layers connected to `new_input_artboard_layer` to the bottom of `final_layer_node`
-			if let Some(final_layer_node) = self.document_network.nodes.get(&final_layer_node_id) {
-				if let Some(new_input_artboard_layer_id) = new_input_artboard_layer.as_node() {
-					if let Some(new_input_artboard_layer_node) = self.document_network.nodes.get(&new_input_artboard_layer_id) {
-						let shift = final_layer_node.metadata.position - new_input_artboard_layer_node.metadata.position + IVec2::new(0, 3);
-
-						let node_ids = self
-							.document_network
-							.upstream_flow_back_from_nodes(vec![new_input_artboard_layer_id], false)
-							.map(|(_, id)| id)
-							.collect::<Vec<_>>();
-
-						for node_id in node_ids {
-							let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
-							node.metadata.position += shift;
-						}
-					}
-				}
-			}
-		}
-
-		// Get all nodes that the layer to be deleted is connected to
-		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
-			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
-				continue;
-			};
-
-			// Update the inputs of these nodes by replacing the layer to be deleted with `new_input`
-			for input in &mut node.inputs {
-				if let NodeInput::Node { node_id, .. } = input {
-					if *node_id == id {
-						*input = new_input.clone();
-					}
-				}
-			}
-		}
-
-		let mut delete_nodes = vec![id];
-		for (_node, id) in self.document_network.upstream_flow_back_from_nodes([vec![id], child_layers].concat(), true) {
-			// Don't delete the node if it's an artboard layer or if other layers depend on it.
-			if is_artboard_layer || self.outwards_links.get(&id).is_some_and(|nodes| nodes.len() > 1) {
-				break;
-			}
-			// Delete the node if it is connected to only the current layer
-			if self.outwards_links.get(&id).is_some_and(|outwards| outwards.len() == 1) {
-				delete_nodes.push(id);
-			}
-		}
-
-		for node_id in &delete_nodes {
-			self.document_network.nodes.remove(node_id);
-		}
-
-		// Shift the position of the nodes that are connected to the deleted nodes
-		if let Some(node_id) = new_input.as_node() {
-			if let Some(shift) = self.document_network.nodes.get(&node_id).map(|node| deleted_position - node.metadata.position) {
-				for node_id in self.document_network.upstream_flow_back_from_nodes(vec![node_id], false).map(|(_, id)| id).collect::<Vec<_>>() {
-					let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
-					node.metadata.position += shift;
-				}
-			}
-		}
-
-		selected_nodes.retain_selected_nodes(|id| !delete_nodes.contains(id));
-
-		// Update the outwards links
-		self.outwards_links = self.document_network.collect_outwards_links();
-		self.responses.add(BroadcastEvent::SelectionChanged);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
-	}
-
-	pub fn delete_artboard(&mut self, id: NodeId, selected_nodes: &mut SelectedNodes) {
-		let Some(node) = self.document_network.nodes.get(&id) else {
-			warn!("Deleting artboard node that does not exist");
-			return;
-		};
-
-		let new_input = node.inputs[0].clone();
-
-		// Get all nodes that the artboard is connected to
-		for post_node in self.outwards_links.get(&id).unwrap_or(&Vec::new()) {
-			let Some(node) = self.document_network.nodes.get_mut(post_node) else {
-				continue;
-			};
-
-			// Update the inputs of these nodes by replacing the artboard with `new_input`
-			for input in &mut node.inputs {
-				if let NodeInput::Node { node_id, .. } = input {
-					if *node_id == id {
-						*input = new_input.clone();
-					}
-				}
-			}
-		}
-
-		// Delete the artboard node
-		self.document_network.nodes.remove(&id);
-		selected_nodes.retain_selected_nodes(|&node_id| id != node_id);
-
-		// Update the outwards links
-		self.outwards_links = self.document_network.collect_outwards_links();
-		self.responses.add(BroadcastEvent::SelectionChanged);
-		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 }

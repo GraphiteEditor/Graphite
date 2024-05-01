@@ -430,16 +430,16 @@ pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<Poin
 
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
+
 	if document.metadata().is_artboard(layer) {
-	} else if document.metadata().is_folder(layer) {
+		return;
+	}
+
+	if document.metadata().is_folder(layer) {
 		for child in layer.descendants(document.metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}
-	} else {
-		// Skip empty paths
-		if document.metadata.layer_outline(layer).next().is_none() {
-			return;
-		}
+	} else if document.metadata.layer_outline(layer).next().is_some() {
 		let to_document = document.metadata.transform_to_document(layer);
 		for subpath in document.metadata.layer_outline(layer) {
 			subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);

@@ -447,7 +447,7 @@ impl GraphicElementRendered for Artboard {
 	}
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		let subpath = Subpath::new_rect(self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget { stroke_width: 0., subpath });
 	}
 
@@ -456,6 +456,23 @@ impl GraphicElementRendered for Artboard {
 	}
 }
 
+impl GraphicElementRendered for crate::ArtboardGroup {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		self.get_graphic_group().render_svg(render, render_params);
+	}
+
+	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.get_graphic_group().bounding_box(transform)
+	}
+
+	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
+		self.get_graphic_group().add_click_targets(click_targets);
+	}
+
+	fn contains_artboard(&self) -> bool {
+		true
+	}
+}
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);

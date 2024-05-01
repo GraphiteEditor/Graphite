@@ -98,7 +98,7 @@ impl SelectTool {
 			.map(|mode| {
 				MenuListEntry::new(format!("{mode:?}"))
 					.label(mode.to_string())
-					.on_update(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
+					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
 			})
 			.collect();
 
@@ -325,7 +325,7 @@ impl SelectToolData {
 				document.network(),
 				&document
 					.network()
-					.upstream_flow_back_from_nodes(vec![node], false)
+					.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
 					.enumerate()
 					.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
 					.collect(),
@@ -365,8 +365,9 @@ impl SelectToolData {
 
 		// Delete the duplicated layers
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
-			responses.add(GraphOperationMessage::DeleteLayer {
-				id: layer_ancestors.last().unwrap().to_node(),
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![layer_ancestors.last().unwrap().to_node()],
+				reconnect: true,
 			});
 		}
 
@@ -494,7 +495,8 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection = document.click(input.mouse.position, &document.network);
+				let intersection_list = document.click_list(input.mouse.position, &document.network);
+				let intersection = document.find_deepest(&intersection_list, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -591,11 +593,11 @@ impl Fsm for SelectToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 
 						tool_data.layer_selected_on_start = Some(intersection);
-						selected = vec![intersection];
+						selected = intersection_list;
 
 						match tool_data.nested_selection_behavior {
 							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document),
-							_ => drag_deepest_manipulation(responses, selected, tool_data),
+							_ => drag_deepest_manipulation(responses, selected, tool_data, document),
 						}
 						tool_data.get_snap_candidates(document, input);
 						SelectToolFsmState::Dragging
@@ -1115,8 +1117,8 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	});
 }
 
-fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, mut selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData) {
-	tool_data.layers_dragging.append(&mut selected);
+fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
+	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or_default()]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});

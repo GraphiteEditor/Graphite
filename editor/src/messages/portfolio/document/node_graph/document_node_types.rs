@@ -81,6 +81,7 @@ pub struct NodePropertiesContext<'a> {
 pub struct DocumentNodeDefinition {
 	pub name: &'static str,
 	pub category: &'static str,
+	pub is_layer: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<DocumentOutputType>,
@@ -94,6 +95,7 @@ impl Default for DocumentNodeDefinition {
 		Self {
 			name: Default::default(),
 			category: Default::default(),
+			is_layer: false,
 			implementation: Default::default(),
 			inputs: Default::default(),
 			outputs: Default::default(),
@@ -191,10 +193,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Layer",
+			name: "Merge",
 			category: "General",
+			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(2)],
+				imports: vec![NodeId(2), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					(
@@ -207,6 +210,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						},
 					),
 					// The monitor node is used to display a thumbnail in the UI.
+					// TODO: Check if thumbnail is reversed
 					(
 						NodeId(1),
 						DocumentNode {
@@ -233,18 +237,64 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
-				DocumentInputType::value("Stack", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
-			properties: node_properties::layer_no_properties,
 			..Default::default()
 		},
 		DocumentNodeDefinition {
 			name: "Artboard",
 			category: "General",
-			implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+			is_layer: true,
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				nodes: [
+					(
+						NodeId(0),
+						DocumentNode {
+							name: "To Artboard".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
+							inputs: vec![
+								NodeInput::Network(concrete!(graphene_core::GraphicGroup)),
+								NodeInput::Network(concrete!(TaggedValue)),
+								NodeInput::Network(concrete!(TaggedValue)),
+								NodeInput::Network(concrete!(TaggedValue)),
+								NodeInput::Network(concrete!(TaggedValue)),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI.
+					// TODO: Check if thumbnail is reversed
+					(
+						NodeId(1),
+						DocumentNode {
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							..monitor_node()
+						},
+					),
+					(
+						NodeId(2),
+						DocumentNode {
+							name: "Add to Artboards".to_string(),
+							manual_composition: Some(concrete!(Footprint)),
+							inputs: vec![
+								NodeInput::node(NodeId(1), 0),
+								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup)))),
+							],
+							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
+							..Default::default()
+						},
+					),
+				]
+				.into(),
+				..Default::default()
+			}),
 			inputs: vec![
-				DocumentInputType::value("Graphic Group", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Artboards", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
+				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
@@ -252,7 +302,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
-			manual_composition: Some(concrete!(Footprint)),
 			..Default::default()
 		},
 		// TODO: Does this need an internal Cull node to be added to its implementation?
@@ -2967,6 +3016,7 @@ impl DocumentNodeDefinition {
 
 		DocumentNode {
 			name: self.name.to_string(),
+			is_layer: self.is_layer,
 			inputs,
 			manual_composition: self.manual_composition.clone(),
 			has_primary_output: self.has_primary_output,
@@ -2984,7 +3034,7 @@ impl DocumentNodeDefinition {
 		self.to_document_node(inputs, metadata)
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default
+	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default.
 	pub fn default_document_node(&self) -> DocumentNode {
 		self.to_document_node(self.inputs.iter().map(|input| input.default.clone()), DocumentNodeMetadata::default())
 	}

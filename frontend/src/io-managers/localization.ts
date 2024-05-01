@@ -20,6 +20,6 @@ export function createLocalizationManager(editor: Editor) {
 	// Subscribe to process backend event
 	editor.subscriptions.subscribeJsMessage(TriggerAboutGraphiteLocalizedCommitDate, (triggerAboutGraphiteLocalizedCommitDate) => {
 		const localized = localizeTimestamp(triggerAboutGraphiteLocalizedCommitDate.commitDate);
-		editor.instance.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
+		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
 }

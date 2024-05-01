@@ -1,4 +1,5 @@
 use super::*;
+use crate::polynomial::Polynomial;
 use crate::utils::{solve_cubic, solve_quadratic, TValue};
 use crate::{to_symmetrical_basis_pair, SymmetricalBasis};
 
@@ -38,6 +39,31 @@ impl Bezier {
 		}
 
 		de_casteljau_points
+	}
+
+	/// Returns two [`Polynomial`]s representing the parametric equations for x and y coordinates of the bezier curve respectively.
+	/// The domain of both the equations are from t=0.0 representing the start and t=1.0 representing the end of the bezier curve.
+	pub fn parametric_polynomial(&self) -> (Polynomial<4>, Polynomial<4>) {
+		match self.handles {
+			BezierHandles::Linear => {
+				let term1 = self.end - self.start;
+
+				(Polynomial::new([self.start.x, term1.x, 0., 0.]), Polynomial::new([self.start.y, term1.y, 0., 0.]))
+			}
+			BezierHandles::Quadratic { handle } => {
+				let term1 = 2. * (handle - self.start);
+				let term2 = self.start - 2. * handle + self.end;
+
+				(Polynomial::new([self.start.x, term1.x, term2.x, 0.]), Polynomial::new([self.start.y, term1.y, term2.y, 0.]))
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				let term1 = 3. * (handle_start - self.start);
+				let term2 = 3. * (handle_end - handle_start) - term1;
+				let term3 = self.end - self.start - term2 - term1;
+
+				(Polynomial::new([self.start.x, term1.x, term2.x, term3.x]), Polynomial::new([self.start.y, term1.y, term2.y, term3.y]))
+			}
+		}
 	}
 
 	/// Returns a [Bezier] representing the derivative of the original curve.
@@ -337,8 +363,34 @@ impl Bezier {
 		let mut intersection_t_values = self.unfiltered_intersections(other, error);
 		intersection_t_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+		intersection_t_values.iter().map(|x| x[0]).fold(Vec::new(), |mut accumulator, t| {
 			if !accumulator.is_empty() && (accumulator.last().unwrap() - t).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE) {
+				accumulator.pop();
+			}
+			accumulator.push(t);
+			accumulator
+		})
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of pairs of filtered parametric `t` values that correspond to intersection points between the current bezier curve and the provided one
+	/// such that the difference between adjacent `t` values in sorted order is greater than some minimum separation value. If the difference
+	/// between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// The first value in pair is with respect to the current bezier and the second value in pair is with respect to the provided parameter.
+	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
+	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+	pub fn all_intersections(&self, other: &Bezier, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
+		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
+		// Otherwise, use bounding box to determine intersections
+		let mut intersection_t_values = self.unfiltered_intersections(other, error);
+		intersection_t_values.sort_by(|a, b| (a[0] + a[1]).partial_cmp(&(b[0] + b[1])).unwrap());
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty()
+				&& (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+				&& (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			{
 				accumulator.pop();
 			}
 			accumulator.push(*t);
@@ -350,7 +402,7 @@ impl Bezier {
 	/// Returns a list of `t` values that correspond to intersection points between the current bezier curve and the provided one. The returned `t` values are with respect to the current bezier, not the provided parameter.
 	/// If the provided curve is linear, then zero intersection points will be returned along colinear segments.
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<f64> {
+	pub fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<[f64; 2]> {
 		let error = error.unwrap_or(0.5);
 		if other.handles == BezierHandles::Linear {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
@@ -363,6 +415,9 @@ impl Bezier {
 			let vertical_distance = (rotation_matrix * other.start).x;
 			let translated_bezier = rotated_bezier.translate(DVec2::new(-vertical_distance, 0.));
 
+			let y_start = (rotation_matrix * other.start).y;
+			let y_end = (rotation_matrix * other.end).y;
+
 			// Compute the roots of the resulting bezier curve
 			let list_intersection_t = translated_bezier.find_tvalues_for_x(0.);
 
@@ -374,12 +429,17 @@ impl Bezier {
 				.filter(|&t| utils::dvec2_approximately_in_range(self.unrestricted_parametric_evaluate(t), min_corner, max_corner, MAX_ABSOLUTE_DIFFERENCE).all())
 				// Ensure the returned value is within the correct range
 				.map(|t| t.clamp(0., 1.))
-				.collect::<Vec<f64>>();
+				.map(|t| {
+					let y = translated_bezier.evaluate(TValue::Parametric(t)).y;
+					let other_t = (y-y_start)/(y_end-y_start);
+					[t, other_t]
+				})
+				.collect::<Vec<[f64; 2]>>();
 		}
 
 		// TODO: Consider using the `intersections_between_vectors_of_curves` helper function here
 		// Otherwise, use bounding box to determine intersections
-		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).iter().map(|t_values| t_values[0]).collect()
+		self.intersections_between_subcurves(0. ..1., other, 0. ..1., error).to_vec()
 	}
 
 	/// Returns a list of `t` values that correspond to points on this Bezier segment where they intersect with the given line. (`direction_vector` does not need to be normalized.)
@@ -452,7 +512,7 @@ impl Bezier {
 	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
-	pub fn self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
+	fn unfiltered_self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
 		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
 			return vec![];
 		}
@@ -480,6 +540,27 @@ impl Bezier {
 			.enumerate()
 			.flat_map(|(index, (subcurve, t_pair))| Bezier::intersections_between_vectors_of_curves(&[(subcurve, t_pair)], &combined_list2[index + 2..], error))
 			.collect()
+	}
+
+	// TODO: Use an `impl Iterator` return type instead of a `Vec`
+	/// Returns a list of parametric `t` values that correspond to the self intersection points of the current bezier curve. For each intersection point, the returned `t` value is the smaller of the two that correspond to the point.
+	/// If the difference between 2 adjacent `t` values is less than the minimum difference, the filtering takes the larger `t` value and discards the smaller `t` value.
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation` - The minimum difference between adjacent `t` values in sorted order
+	pub fn self_intersections(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Vec<[f64; 2]> {
+		let mut intersection_t_values = self.unfiltered_self_intersections(error);
+		intersection_t_values.sort_by(|a, b| (a[0] + a[1]).partial_cmp(&(b[0] + b[1])).unwrap());
+
+		intersection_t_values.iter().fold(Vec::new(), |mut accumulator, t| {
+			if !accumulator.is_empty()
+				&& (accumulator.last().unwrap()[0] - t[0]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+				&& (accumulator.last().unwrap()[1] - t[1]).abs() < minimum_separation.unwrap_or(MIN_SEPARATION_VALUE)
+			{
+				accumulator.pop();
+			}
+			accumulator.push(*t);
+			accumulator
+		})
 	}
 
 	/// Returns a list of parametric `t` values that correspond to the intersection points between the curve and a rectangle defined by opposite corners.
@@ -1062,13 +1143,13 @@ mod tests {
 	#[test]
 	fn test_intersect_with_self() {
 		let bezier = Bezier::from_cubic_coordinates(160., 180., 170., 10., 30., 90., 180., 140.);
-		let intersections = bezier.self_intersections(Some(0.5));
+		let intersections = bezier.self_intersections(Some(0.5), None);
 		assert!(compare_vec_of_points(
 			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[0]))).collect(),
 			intersections.iter().map(|&t| bezier.evaluate(TValue::Parametric(t[1]))).collect(),
 			2.
 		));
-		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None).is_empty());
-		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None).is_empty());
+		assert!(Bezier::from_linear_coordinates(160., 180., 170., 10.).self_intersections(None, None).is_empty());
+		assert!(Bezier::from_quadratic_coordinates(160., 180., 170., 10., 30., 90.).self_intersections(None, None).is_empty());
 	}
 }

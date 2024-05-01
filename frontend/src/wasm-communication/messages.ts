@@ -4,7 +4,7 @@
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type WasmEditorInstance, type WasmRawInstance } from "@graphite/wasm-communication/editor";
+import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -100,10 +100,14 @@ export class FrontendGraphOutput {
 	readonly resolvedType!: string | undefined;
 
 	readonly connected!: bigint | undefined;
+
+	readonly connectedIndex!: bigint | undefined;
 }
 
 export class FrontendNode {
 	readonly isLayer!: boolean;
+
+	readonly canBeLayer!: boolean;
 
 	readonly id!: bigint;
 
@@ -606,16 +610,23 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 }
 
 export class LayerPanelEntry {
+	id!: bigint;
+
 	name!: string;
+
+	alias!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
-	layerClassification!: LayerClassification;
+	childrenAllowed!: boolean;
+
+	childrenPresent!: boolean;
 
 	expanded!: boolean;
 
-	hasChildren!: boolean;
+	@Transform(({ value }: { value: bigint }) => Number(value))
+	depth!: number;
 
 	visible!: boolean;
 
@@ -626,14 +637,7 @@ export class LayerPanelEntry {
 	parentsUnlocked!: boolean;
 
 	parentId!: bigint | undefined;
-
-	id!: bigint;
-
-	@Transform(({ value }: { value: bigint }) => Number(value))
-	depth!: number;
 }
-
-export type LayerClassification = "Folder" | "Artboard" | "Layer";
 
 export class DisplayDialogDismiss extends JsMessage {}
 
@@ -1275,7 +1279,7 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 
 // `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WasmRawInstance, instance: WasmEditorInstance) => JsMessage;
+type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {

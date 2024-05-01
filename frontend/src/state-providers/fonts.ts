@@ -52,9 +52,9 @@ export function createFontsState(editor: Editor) {
 		const url = await getFontFileUrl(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle);
 		if (url) {
 			const response = await (await fetch(url)).arrayBuffer();
-			editor.instance.onFontLoad(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle, url, new Uint8Array(response), triggerFontLoad.isDefault);
+			editor.handle.onFontLoad(triggerFontLoad.font.fontFamily, triggerFontLoad.font.fontStyle, url, new Uint8Array(response), triggerFontLoad.isDefault);
 		} else {
-			editor.instance.errorDialog("Failed to load font", `The font ${triggerFontLoad.font.fontFamily} with style ${triggerFontLoad.font.fontStyle} does not exist`);
+			editor.handle.errorDialog("Failed to load font", `The font ${triggerFontLoad.font.fontFamily} with style ${triggerFontLoad.font.fontStyle} does not exist`);
 		}
 	});
 

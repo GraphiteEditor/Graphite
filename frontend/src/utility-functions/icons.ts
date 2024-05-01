@@ -144,6 +144,7 @@ import Reload from "@graphite-frontend/assets/icon-16px-solid/reload.svg";
 import Rescale from "@graphite-frontend/assets/icon-16px-solid/rescale.svg";
 import Reset from "@graphite-frontend/assets/icon-16px-solid/reset.svg";
 import Settings from "@graphite-frontend/assets/icon-16px-solid/settings.svg";
+import Stack from "@graphite-frontend/assets/icon-16px-solid/stack.svg";
 import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
 import ViewModeNormal from "@graphite-frontend/assets/icon-16px-solid/view-mode-normal.svg";
 import ViewModeOutline from "@graphite-frontend/assets/icon-16px-solid/view-mode-outline.svg";
@@ -217,6 +218,7 @@ const SOLID_16PX = {
 	Rescale: { svg: Rescale, size: 16 },
 	Reset: { svg: Reset, size: 16 },
 	Settings: { svg: Settings, size: 16 },
+	Stack: { svg: Stack, size: 16 },
 	Trash: { svg: Trash, size: 16 },
 	ViewModeNormal: { svg: ViewModeNormal, size: 16 },
 	ViewModeOutline: { svg: ViewModeOutline, size: 16 },

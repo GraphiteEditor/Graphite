@@ -6,7 +6,7 @@
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { defaultWidgetLayout, patchWidgetLayout, UpdateDocumentLayerDetails, UpdateDocumentLayerStructureJs, UpdateLayersPanelOptionsLayout } from "@graphite/wasm-communication/messages";
-	import type { DataBuffer, LayerClassification, LayerPanelEntry } from "@graphite/wasm-communication/messages";
+	import type { DataBuffer, LayerPanelEntry } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -130,15 +130,15 @@
 	}
 
 	function toggleLayerVisibility(id: bigint) {
-		editor.instance.toggleLayerVisibility(id);
+		editor.handle.toggleLayerVisibility(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
-		editor.instance.toggleLayerLock(id);
+		editor.handle.toggleLayerLock(id);
 	}
 
 	function handleExpandArrowClick(id: bigint) {
-		editor.instance.toggleLayerExpansion(id);
+		editor.handle.toggleLayerExpansion(id);
 	}
 
 	async function onEditLayerName(listing: LayerListingInfo) {
@@ -164,8 +164,8 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.instance.setLayerName(listing.entry.id, name);
-		listing.entry.name = name;
+		editor.handle.setLayerName(listing.entry.id, name);
+		listing.entry.alias = name;
 	}
 
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
@@ -174,7 +174,7 @@
 		layers = layers;
 
 		// Set it back to the original name if the user didn't enter a new name
-		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.name;
+		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.alias;
 
 		// Deselect the text so it doesn't appear selected while the input field becomes disabled and styled to look like regular text
 		window.getSelection()?.removeAllRanges();
@@ -196,15 +196,11 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.instance.selectLayer(listing.entry.id, accel, shift);
+		editor.handle.selectLayer(listing.entry.id, accel, shift);
 	}
 
 	async function deselectAllLayers() {
-		editor.instance.deselectAllLayers();
-	}
-
-	function isNestingLayer(layerClassification: LayerClassification) {
-		return layerClassification === "Folder" || layerClassification === "Artboard";
+		editor.handle.deselectAllLayers();
 	}
 
 	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
@@ -248,7 +244,7 @@
 				}
 				// Inserting below current row
 				else if (distance > -closest && distance > -RANGE_TO_INSERT_WITHIN_BOTTOM_FOLDER_NOT_ROOT && distance < 0) {
-					if (isNestingLayer(layer.layerClassification)) {
+					if (layer.childrenAllowed) {
 						insertParentId = layer.id;
 						insertDepth = layer.depth;
 						insertIndex = 0;
@@ -322,7 +318,7 @@
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			select?.();
-			editor.instance.moveLayerInTree(insertParentId, insertIndex);
+			editor.handle.moveLayerInTree(insertParentId, insertIndex);
 		}
 		draggingData = undefined;
 		fakeHighlight = undefined;
@@ -381,7 +377,6 @@
 					classes={{
 						selected: fakeHighlight !== undefined ? fakeHighlight === listing.entry.id : $nodeGraph.selected.includes(listing.entry.id),
 						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.insertParentId === listing.entry.id,
-						"nesting-layer": isNestingLayer(listing.entry.layerClassification),
 					}}
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
@@ -391,32 +386,29 @@
 					on:dragstart={(e) => draggable && dragStart(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
-					{#if isNestingLayer(listing.entry.layerClassification)}
+					{#if listing.entry.childrenAllowed}
 						<button
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
-							disabled={!listing.entry.hasChildren}
+							disabled={!listing.entry.childrenPresent}
 							on:click|stopPropagation={() => handleExpandArrowClick(listing.entry.id)}
 							tabindex="0"
 						/>
-						{#if listing.entry.layerClassification === "Artboard"}
-							<IconLabel icon="Artboard" class={"layer-type-icon"} />
-						{:else if listing.entry.layerClassification === "Folder"}
-							<IconLabel icon="Folder" class={"layer-type-icon"} />
+					{/if}
+					<div class="thumbnail">
+						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
+							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
-					{:else}
-						<div class="thumbnail">
-							{#if $nodeGraph.thumbnails.has(listing.entry.id)}
-								{@html $nodeGraph.thumbnails.get(listing.entry.id)}
-							{/if}
-						</div>
+					</div>
+					{#if listing.entry.name === "Artboard"}
+						<IconLabel icon="Artboard" class={"layer-type-icon"} />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
-							value={listing.entry.name}
-							placeholder={listing.entry.layerClassification}
+							value={listing.entry.alias}
+							placeholder={listing.entry.name}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -503,11 +495,7 @@
 				border-radius: 2px;
 				height: 32px;
 				margin: 0 4px;
-				padding-left: calc(4px + var(--layer-indent-levels) * 16px);
-
-				&.nesting-layer {
-					padding-left: calc(var(--layer-indent-levels) * 16px);
-				}
+				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				&.selected {
 					background: var(--color-4-dimgray);
@@ -557,23 +545,31 @@
 					}
 				}
 
-				.layer-type-icon {
-					flex: 0 0 auto;
-					margin-left: 4px;
-				}
-
 				.thumbnail {
 					width: 36px;
 					height: 24px;
-					background: white;
+					margin-left: 4px;
 					border-radius: 2px;
 					flex: 0 0 auto;
+					background: var(--color-transparent-checkered-background);
+					background-size: var(--color-transparent-checkered-background-size-mini);
+					background-position: var(--color-transparent-checkered-background-position-mini);
+
+					&:first-child {
+						margin-left: 20px;
+					}
 
 					svg {
 						width: calc(100% - 4px);
 						height: calc(100% - 4px);
 						margin: 2px;
 					}
+				}
+
+				.layer-type-icon {
+					flex: 0 0 auto;
+					margin-left: 8px;
+					margin-right: -4px;
 				}
 
 				.layer-name {

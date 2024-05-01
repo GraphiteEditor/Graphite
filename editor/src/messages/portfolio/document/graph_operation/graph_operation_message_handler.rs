@@ -106,10 +106,72 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.brush_modify(strokes);
 				}
 			}
+			GraphOperationMessage::MoveUpstreamSiblingsToChild { new_parent, upstream_sibling_ids } => {
+				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
+				for node_to_move in upstream_sibling_ids.iter().rev() {
+					// Connect pre node to post node, or disconnect pre node if post node doesn't exist
+					let mut pre_node_id = new_parent;
+					loop {
+						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&pre_node_id).and_then(|node| node.inputs.get(0)) else {
+							log::error!("End of stack should never be reached");
+							return;
+						};
+						if *node_id == *node_to_move {
+							break;
+						}
+						pre_node_id = *node_id;
+					}
+
+					if let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&node_to_move).and_then(|node| node.inputs.get(0)) {
+						let post_node_id = *node_id;
+						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get_mut(&pre_node_id).and_then(|node| node.inputs.get_mut(0)) else {
+							log::error!("Pre node should always have primary input");
+							return;
+						};
+						*node_id = post_node_id;
+					} else {
+						DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&pre_node_id).expect("Upstream sibling should always exist"), 0);
+					}
+
+					// Connect upstream sibling to the secondary input of the parent
+					let Some(parent_secondary_input) = document_network.nodes.get(&new_parent).and_then(|node| node.inputs.get(1)) else {
+						log::error!("Could not get child node input for current node");
+						return;
+					};
+
+					// Insert upstream_sibling_node at top of group stack
+					if let NodeInput::Node { node_id, .. } = parent_secondary_input {
+						// If there is already a node at the top of the stack, insert upstream_sibling_node in between
+						let current_child = *node_id;
+						let Some(upstream_sibling_input) = document_network.nodes.get_mut(&node_to_move).and_then(|node| node.inputs.get_mut(0)) else {
+							log::error!("Could not get upstream sibling node input");
+							return;
+						};
+						*upstream_sibling_input = NodeInput::node(current_child, 0);
+					}
+
+					let Some(parent_secondary_input_mut) = document_network.nodes.get_mut(&new_parent).and_then(|node| node.inputs.get_mut(1)) else {
+						log::error!("Could not get child node input for current node");
+						return;
+					};
+
+					*parent_secondary_input_mut = NodeInput::node(*node_to_move, 0);
+				}
+
+				let Some(most_upstream_sibling) = upstream_sibling_ids.last() else {
+					return;
+				};
+				DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&most_upstream_sibling).expect("Upstream sibling should always exist"), 0);
+
+				let top_of_stack = upstream_sibling_ids.first().expect("Upstream nodes to move cannot be empty");
+				let upstream_shift = IVec2::new(-8, 0);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				modify_inputs.shift_upstream(*top_of_stack, upstream_shift, true);
+			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, modify_inputs.document_network.original_outputs()[0].node_id, 0, 0) {
-					modify_inputs.insert_artboard(artboard, layer);
+				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
+					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
@@ -131,8 +193,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 				alias,
 			} => {
-				trace!("Inserting new layer {id} as a child of {parent:?} at index {insert_index}");
-
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
@@ -167,11 +227,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&NodeId(0)) {
-							layer_node.inputs[0] = NodeInput::node(input, 0)
+							layer_node.inputs[1] = NodeInput::node(input, 0);
 						}
 					}
 
 					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else {
+					error!("Creating new custom layer failed");
 				}
 
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
@@ -202,37 +264,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
-			GraphOperationMessage::DeleteLayer { id } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.delete_layer(id, selected_nodes, false);
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
-			}
-			GraphOperationMessage::DeleteArtboard { id } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(artboard_id) = modify_inputs.document_network.nodes.get(&id).and_then(|node| node.inputs[0].as_node()) {
-					modify_inputs.delete_artboard(artboard_id, selected_nodes);
-				} else {
-					warn!("Artboard does not exist");
-				}
-				modify_inputs.delete_layer(id, selected_nodes, true);
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
-			}
 			GraphOperationMessage::ClearArtboards => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				let layer_nodes = modify_inputs.document_network.nodes.iter().filter(|(_, node)| node.is_layer()).map(|(id, _)| *id).collect::<Vec<_>>();
-				for layer in layer_nodes {
-					let artboards = modify_inputs
-						.document_network
-						.upstream_flow_back_from_nodes(vec![layer], true)
-						.filter_map(|(node, _id)| if node.is_artboard() { Some(_id) } else { None })
-						.collect::<Vec<_>>();
-					if artboards.is_empty() {
-						continue;
-					}
-					for artboard in artboards {
-						modify_inputs.delete_artboard(artboard, selected_nodes);
-					}
-					modify_inputs.delete_layer(layer, selected_nodes, true);
+				let modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let artboard_nodes = modify_inputs
+					.document_network
+					.nodes
+					.iter()
+					.filter(|(_, node)| node.is_artboard())
+					.map(|(id, _)| *id)
+					.collect::<Vec<_>>();
+				for artboard in artboard_nodes {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![artboard],
+						reconnect: true,
+					});
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}

@@ -165,7 +165,7 @@ impl LayoutHolder for BrushTool {
 					.map(|blend_mode| {
 						MenuListEntry::new(format!("{blend_mode:?}"))
 							.label(blend_mode.to_string())
-							.on_update(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
+							.on_commit(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
 					})
 					.collect()
 			})
@@ -267,8 +267,8 @@ impl BrushToolData {
 		};
 
 		self.layer = Some(layer);
-		for (node, node_id) in document.network().upstream_flow_back_from_nodes(vec![layer.to_node()], true) {
-			if node.name == "Brush" {
+		for (node, node_id) in document.network().upstream_flow_back_from_nodes(vec![layer.to_node()], graph_craft::document::FlowType::HorizontalFlow) {
+			if node.name == "Brush" && node_id != layer.to_node() {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {
 					tagged_value: TaggedValue::BrushStrokes(strokes),

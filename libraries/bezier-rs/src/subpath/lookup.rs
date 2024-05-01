@@ -30,6 +30,91 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		self.iter().map(|bezier| bezier.length(tolerance)).sum()
 	}
 
+	/// Return the area enclosed by the `Subpath` always considering it as a closed subpath. It will always give a positive value.
+	///
+	/// Because the calculation of area for self-intersecting path requires finding the intersections, the following parameters are used:
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+	///
+	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+	pub fn area(&self, error: Option<f64>, minimum_separation: Option<f64>) -> f64 {
+		let all_intersections = self.all_self_intersections(error, minimum_separation);
+		let mut current_sign: f64 = 1.;
+
+		let area: f64 = self
+			.iter_closed()
+			.enumerate()
+			.map(|(index, bezier)| {
+				let (f_x, f_y) = bezier.parametric_polynomial();
+				let (f_x, mut f_y) = (f_x.as_size::<7>().unwrap(), f_y.as_size::<7>().unwrap());
+				f_y.derivative_mut();
+				f_y *= &f_x;
+				f_y.antiderivative_mut();
+
+				let mut curve_sum = -current_sign * f_y.eval(0.);
+				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == index) {
+					curve_sum += 2. * current_sign * f_y.eval(*t);
+					current_sign *= -1.;
+				}
+				curve_sum += current_sign * f_y.eval(1.);
+				curve_sum
+			})
+			.sum();
+
+		area.abs()
+	}
+
+	/// Return the centroid of the `Subpath` always considering it as a closed subpath.
+	/// It will return `None` if no manipulator is present.
+	///
+	/// Because the calculation of area for self-intersecting path requires finding the intersections, the following parameters are used:
+	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
+	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+	///
+	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
+	pub fn centroid(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Option<DVec2> {
+		let all_intersections = self.all_self_intersections(error, minimum_separation);
+		let mut current_sign: f64 = 1.;
+
+		let (x_sum, y_sum, area) = self
+			.iter_closed()
+			.enumerate()
+			.map(|(index, bezier)| {
+				let (f_x, f_y) = bezier.parametric_polynomial();
+				let (f_x, f_y) = (f_x.as_size::<10>().unwrap(), f_y.as_size::<10>().unwrap());
+				let f_y_prime = f_y.derivative();
+				let f_x_prime = f_x.derivative();
+				let f_xy = &f_x * &f_y;
+
+				let mut x_part = &f_xy * &f_x_prime;
+				let mut y_part = &f_xy * &f_y_prime;
+				let mut area_part = &f_x * &f_y_prime;
+				x_part.antiderivative_mut();
+				y_part.antiderivative_mut();
+				area_part.antiderivative_mut();
+
+				let mut curve_sum_x = -current_sign * x_part.eval(0.);
+				let mut curve_sum_y = -current_sign * y_part.eval(0.);
+				let mut curve_sum_area = -current_sign * area_part.eval(0.);
+				for (_, t) in all_intersections.iter().filter(|(i, _)| *i == index) {
+					curve_sum_x += 2. * current_sign * x_part.eval(*t);
+					curve_sum_y += 2. * current_sign * y_part.eval(*t);
+					curve_sum_area += 2. * current_sign * area_part.eval(*t);
+					current_sign *= -1.;
+				}
+				curve_sum_x += current_sign * x_part.eval(1.);
+				curve_sum_y += current_sign * y_part.eval(1.);
+				curve_sum_area += current_sign * area_part.eval(1.);
+
+				(-curve_sum_x, curve_sum_y, curve_sum_area)
+			})
+			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
+
+		Some(DVec2::new(x_sum / area, y_sum / area))
+	}
+
 	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
 	/// The returned tuple represents the segment index and the `t` value along that segment.
 	/// Both the input global `t` value and the output `t` value are in euclidean space, meaning there is a constant rate of change along the arc length.
@@ -206,6 +291,72 @@ mod tests {
 
 		subpath.closed = true;
 		assert_eq!(subpath.length(None), linear_bezier.length(None) + quadratic_bezier.length(None) + cubic_bezier.length(None));
+	}
+
+	#[test]
+	fn area() {
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(1., 1.);
+		let handle = DVec2::new(0., 1.);
+
+		let mut subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: start,
+					in_handle: None,
+					out_handle: Some(handle),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: end,
+					in_handle: None,
+					out_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let expected_area = 1. / 3.;
+		let epsilon = 0.00001;
+
+		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
+
+		subpath.closed = true;
+		assert!((subpath.area(Some(0.001), Some(0.001)) - expected_area).abs() < epsilon);
+	}
+
+	#[test]
+	fn centroid() {
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(1., 1.);
+		let handle = DVec2::new(0., 1.);
+
+		let mut subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: start,
+					in_handle: None,
+					out_handle: Some(handle),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: end,
+					in_handle: None,
+					out_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let expected_centroid = DVec2::new(0.4, 0.6);
+		let epsilon = 0.00001;
+
+		assert!(subpath.centroid(Some(0.001), Some(0.001)).unwrap().abs_diff_eq(expected_centroid, epsilon));
+
+		subpath.closed = true;
+		assert!(subpath.centroid(Some(0.001), Some(0.001)).unwrap().abs_diff_eq(expected_centroid, epsilon));
 	}
 
 	#[test]

@@ -29,6 +29,7 @@ unsafe impl<PointId: crate::Identifier> dyn_any::StaticType for Subpath<PointId>
 pub struct SubpathIter<'a, PointId: crate::Identifier> {
 	index: usize,
 	subpath: &'a Subpath<PointId>,
+	is_always_closed: bool,
 }
 
 impl<PointId: crate::Identifier> Index<usize> for Subpath<PointId> {
@@ -55,8 +56,9 @@ impl<PointId: crate::Identifier> Iterator for SubpathIter<'_, PointId> {
 		if self.subpath.is_empty() {
 			return None;
 		}
+		let closed = if self.is_always_closed { true } else { self.subpath.closed };
 		let len = self.subpath.len() - 1
-			+ match self.subpath.closed {
+			+ match closed {
 				true => 1,
 				false => 0,
 			};

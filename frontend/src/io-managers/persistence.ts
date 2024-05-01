@@ -52,7 +52,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
 		orderedSavedDocuments?.forEach(async (doc: TriggerIndexedDbWriteDocument) => {
-			editor.instance.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
+			editor.handle.openAutoSavedDocument(BigInt(doc.details.id), doc.details.name, doc.details.isSaved, doc.document);
 		});
 	}
 
@@ -66,7 +66,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
 		if (!preferences) return;
 
-		editor.instance.loadPreferences(JSON.stringify(preferences));
+		editor.handle.loadPreferences(JSON.stringify(preferences));
 	}
 
 	// FRONTEND MESSAGE SUBSCRIPTIONS

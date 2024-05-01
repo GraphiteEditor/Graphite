@@ -27,11 +27,11 @@
 	}
 
 	function primaryColorChanged(color: Color) {
-		editor.instance.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.handle.updatePrimaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 
 	function secondaryColorChanged(color: Color) {
-		editor.instance.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
+		editor.handle.updateSecondaryColor(color.red, color.green, color.blue, color.alpha);
 	}
 </script>
 

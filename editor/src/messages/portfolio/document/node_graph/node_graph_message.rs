@@ -25,8 +25,8 @@ pub enum NodeGraphMessage {
 		y: i32,
 	},
 	Cut,
-	DeleteNode {
-		node_id: NodeId,
+	DeleteNodes {
+		node_ids: Vec<NodeId>,
 		reconnect: bool,
 	},
 	DeleteSelectedNodes {
@@ -40,6 +40,9 @@ pub enum NodeGraphMessage {
 		node: NodeId,
 	},
 	DuplicateSelectedNodes,
+	EnforceLayerHasNoMultiParams {
+		node_id: NodeId,
+	},
 	ExitNestedNetwork {
 		depth_of_nesting: usize,
 	},
@@ -51,6 +54,15 @@ pub enum NodeGraphMessage {
 	InsertNode {
 		node_id: NodeId,
 		document_node: DocumentNode,
+	},
+	InsertNodeBetween {
+		post_node_id: NodeId,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: NodeId,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: NodeId,
 	},
 	MoveSelectedNodes {
 		displacement_x: i32,
@@ -89,17 +101,9 @@ pub enum NodeGraphMessage {
 	ShiftNode {
 		node_id: NodeId,
 	},
-	ToggleSelectedVisibility,
-	ToggleVisibility {
-		node_id: NodeId,
-	},
 	SetVisibility {
 		node_id: NodeId,
 		visible: bool,
-	},
-	ToggleSelectedLocked,
-	ToggleLocked {
-		node_id: NodeId,
 	},
 	SetLocked {
 		node_id: NodeId,
@@ -113,10 +117,23 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		name: String,
 	},
+	SetToNodeOrLayer {
+		node_id: NodeId,
+		is_layer: bool,
+	},
+	ToggleLocked {
+		node_id: NodeId,
+	},
 	TogglePreview {
 		node_id: NodeId,
 	},
 	TogglePreviewImpl {
+		node_id: NodeId,
+	},
+	ToggleSelectedLayers,
+	ToggleSelectedLocked,
+	ToggleSelectedVisibility,
+	ToggleVisibility {
 		node_id: NodeId,
 	},
 	UpdateNewNodeGraph,

@@ -13,7 +13,7 @@ export function createDialogState(editor: Editor) {
 		buttons: defaultWidgetLayout(),
 		column1: defaultWidgetLayout(),
 		column2: defaultWidgetLayout(),
-		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor instance has panicked
+		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 		panicDetails: "",
 	});
 
@@ -27,7 +27,7 @@ export function createDialogState(editor: Editor) {
 	}
 
 	// Creates a crash dialog from JS once the editor has panicked.
-	// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor instance has panicked so it cannot respond to widget callbacks.
+	// Normal dialogs are created in the Rust backend, but for the crash dialog, the editor has panicked so it cannot respond to widget callbacks.
 	function createCrashDialog(panicDetails: string) {
 		update((state) => {
 			state.visible = true;

@@ -50,31 +50,31 @@ export function createPortfolioState(editor: Editor) {
 			const data = await fetch(url);
 			const content = await data.text();
 
-			editor.instance.openDocumentFile(name, content);
+			editor.handle.openDocumentFile(name, content);
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
-				editor.instance.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
+				editor.handle.errorDialog("Failed to open document", "The file could not be reached over the internet. You may be offline, or it may be missing.");
 			}, 0);
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.instance.fileSaveSuffix();
+		const extension = editor.handle.fileSaveSuffix();
 		const data = await upload(extension, "text");
-		editor.instance.openDocumentFile(data.filename, data.content);
+		editor.handle.openDocumentFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "data");
 
 		if (data.type.includes("svg")) {
 			const svg = new TextDecoder().decode(data.content);
-			editor.instance.pasteSvg(svg);
+			editor.handle.pasteSvg(svg);
 
 			return;
 		}
 
 		const imageData = await extractPixelData(new Blob([data.content], { type: data.type }));
-		editor.instance.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
+		editor.handle.pasteImage(new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerDownloadTextFile, (triggerFileDownload) => {
 		downloadFileText(triggerFileDownload.name, triggerFileDownload.document);

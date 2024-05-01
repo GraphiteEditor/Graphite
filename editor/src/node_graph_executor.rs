@@ -285,14 +285,28 @@ impl NodeRuntime {
 				continue;
 			};
 
+			enum IntrospectedData<'a> {
+				GraphicElement(&'a graphene_core::GraphicElement),
+				Artboard(&'a graphene_core::Artboard),
+			}
+
+			let introspected_data_output = introspected_data
+				.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>()
+				.and_then(|io_data| Some(IntrospectedData::GraphicElement(&io_data.output)))
+				.or_else(|| {
+					introspected_data
+						.downcast_ref::<IORecord<Footprint, graphene_core::Artboard>>()
+						.and_then(|io_data| Some(IntrospectedData::Artboard(&io_data.output)))
+				});
+
+			let graphic_element = match introspected_data_output {
+				Some(IntrospectedData::GraphicElement(graphic_element)) => Some(graphic_element.clone()),
+				Some(IntrospectedData::Artboard(artboard)) => Some(artboard.clone().into()),
+				_ => None,
+			};
 			// If this is `GraphicElement` data:
 			// Regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-			if let Some(io_data) = introspected_data.downcast_ref::<IORecord<Footprint, graphene_core::GraphicElement>>() {
-				let graphic_element = &io_data.output;
-
-				// UPDATE CLICK TARGETS
-
-				// Get the previously stored click targets and wipe them out, then regenerate them
+			if let Some(graphic_element) = graphic_element {
 				let click_targets = self.click_targets.entry(parent_network_node_id).or_default();
 				click_targets.clear();
 				graphic_element.add_click_targets(click_targets);

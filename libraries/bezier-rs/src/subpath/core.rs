@@ -105,7 +105,20 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
 	pub fn iter(&self) -> SubpathIter<PointId> {
-		SubpathIter { subpath: self, index: 0 }
+		SubpathIter {
+			subpath: self,
+			index: 0,
+			is_always_closed: false,
+		}
+	}
+
+	/// Returns an iterator of the [Bezier]s along the `Subpath` always considering it as a closed subpath.
+	pub fn iter_closed(&self) -> SubpathIter<PointId> {
+		SubpathIter {
+			subpath: self,
+			index: 0,
+			is_always_closed: true,
+		}
 	}
 
 	/// Returns a slice of the [ManipulatorGroup]s in the `Subpath`.
@@ -221,7 +234,7 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radii: [f64; 4]) -> Self {
 		use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
-		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
+		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<PointId>> {
 			let point1 = center + DVec2::from_angle(-PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			let point2 = center + DVec2::from_angle(PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			if radius == 0. {

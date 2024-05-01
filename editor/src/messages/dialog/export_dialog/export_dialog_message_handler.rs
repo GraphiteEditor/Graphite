@@ -103,7 +103,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.map(|(val, name, disabled)| {
 				MenuListEntry::new(format!("{val:?}"))
 					.label(name)
-					.on_update(move |_| ExportDialogMessage::ExportBounds(val).into())
+					.on_commit(move |_| ExportDialogMessage::ExportBounds(val).into())
 					.disabled(disabled)
 			})
 			.collect()];

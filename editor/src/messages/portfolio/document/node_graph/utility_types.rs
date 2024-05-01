@@ -41,7 +41,7 @@ impl FrontendGraphDataType {
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
-			TaggedValue::Artboard(_) => Self::Artboard,
+			TaggedValue::Artboard(_) | TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			TaggedValue::Palette(_) => Self::Palette,
 			_ => Self::General,
 		}
@@ -66,6 +66,8 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
 	pub connected: Option<NodeId>,
+	#[serde(rename = "connectedIndex")]
+	pub connected_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -73,6 +75,8 @@ pub struct FrontendNode {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
+	#[serde(rename = "canBeLayer")]
+	pub can_be_layer: bool,
 	pub alias: String,
 	pub name: String,
 	#[serde(rename = "primaryInput")]

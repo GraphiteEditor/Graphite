@@ -3,7 +3,8 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use super::nodes::SelectedNodes;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
+use graph_craft::document::FlowType;
+use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
@@ -76,7 +77,7 @@ impl DocumentMetadata {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network);
 
-		if let Some(vector_data) = graph_layer.node_id("Path Modify").and_then(|node| self.vector_modify.get(&node)) {
+		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path Modify").and_then(|node| self.vector_modify.get(&node)) {
 			let mut modified = vector_data.clone();
 			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path Modify", 1) {
 				modification.apply(&mut modified);
@@ -112,14 +113,14 @@ impl DocumentMetadata {
 		sorted_layers
 	}
 
-	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root.
+	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
 	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
 		layers
 			.map(|layer| {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
 				layer_path.reverse();
 
-				if include_self || !self.folders.contains(&layer) {
+				if !include_self || !self.is_artboard(layer) && !self.is_folder(layer) {
 					layer_path.pop();
 				}
 
@@ -167,43 +168,52 @@ impl DocumentMetadata {
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
-		fn first_child_layer<'a>(graph: &'a NodeNetwork, node: &DocumentNode) -> Option<(&'a DocumentNode, NodeId)> {
-			graph.upstream_flow_back_from_nodes(vec![node.inputs[0].as_node()?], true).find(|(node, _)| node.is_layer())
-		}
-
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
 		self.artboards = HashSet::new();
 		self.folders = HashSet::new();
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
 
-		let id = graph.exports[0].node_id;
-		let Some(output_node) = graph.nodes.get(&id) else {
-			return;
-		};
-		let Some((layer_node, node_id)) = first_child_layer(graph, output_node) else {
-			return;
-		};
-		let parent = LayerNodeIdentifier::ROOT;
-		let mut stack = vec![(layer_node, node_id, parent)];
-		while let Some((node, node_id, parent)) = stack.pop() {
-			let mut current = Some((node, node_id));
-			while let Some(&(current_node, current_node_id)) = current.as_ref() {
-				let current_layer_id = LayerNodeIdentifier::new_unchecked(current_node_id);
-				if !self.structure.contains_key(&current_layer_id) {
-					parent.push_child(self, current_layer_id);
+		// Refers to output node: NodeId(0)
+		let output_node_id = graph.exports[0].node_id;
 
-					if let Some((child_node, child_id)) = first_child_layer(graph, current_node) {
-						stack.push((child_node, child_id, current_layer_id));
-					}
+		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
+		let mut awaiting_primary_flow = vec![];
 
-					if is_artboard(current_layer_id, graph) {
-						self.artboards.insert(current_layer_id);
-					}
-					if is_folder(current_layer_id, graph) {
-						self.folders.insert(current_layer_id);
-					}
+		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
+			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
+			// Skip the horizontal_root_node_id node
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
+				if !current_node.visible {
+					self.hidden.insert(current_node_id);
+				}
 
+				if current_node.locked {
+					self.locked.insert(current_node_id);
+				}
+
+				if current_node.is_layer {
+					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
+					if !self.structure.contains_key(&current_layer_node) {
+						awaiting_primary_flow.push((current_node_id, parent_layer_node));
+						parent_layer_node.push_child(self, current_layer_node);
+						parent_layer_node = current_layer_node;
+
+						if is_artboard(current_layer_node, graph) {
+							self.artboards.insert(current_layer_node);
+						}
+
+						if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
+							self.folders.insert(current_layer_node);
+						}
+					}
+				}
+			}
+
+			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
+				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
+				// Skip the primary_root_node_id node
+				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
 					if !current_node.visible {
 						self.hidden.insert(current_node_id);
 					}
@@ -211,11 +221,26 @@ impl DocumentMetadata {
 					if current_node.locked {
 						self.locked.insert(current_node_id);
 					}
-				}
 
-				// Get the sibling below
-				let construct_layer_node = &current_node.inputs[1];
-				current = construct_layer_node.as_node().and_then(|id| graph.nodes.get(&id).filter(|node| node.is_layer()).map(|node| (node, id)));
+					if current_node.is_layer {
+						// Create a new layer for the top of each stack, and add it as a child to the previous parent
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
+						if !self.structure.contains_key(&current_layer_node) {
+							parent_layer_node.push_child(self, current_layer_node);
+
+							// The layer nodes for the horizontal flow is itself
+							awaiting_horizontal_flow.push((current_node_id, current_layer_node));
+
+							if is_artboard(current_layer_node, graph) {
+								self.artboards.insert(current_layer_node);
+							}
+
+							if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
+								self.folders.insert(current_layer_node);
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -244,7 +269,7 @@ impl DocumentMetadata {
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		layer
 			.ancestors(self)
-			.filter_map(|layer| self.upstream_transforms.get(&layer.to_node()))
+			.filter_map(|ancestor_layer| self.upstream_transforms.get(&ancestor_layer.to_node()))
 			.copied()
 			.map(|(footprint, transform)| footprint.transform * transform)
 			.next()
@@ -373,7 +398,7 @@ impl LayerNodeIdentifier {
 	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
-			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer()),
+			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
@@ -644,15 +669,8 @@ struct NodeRelations {
 // ================
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.upstream_flow_back_from_nodes(vec![layer.to_node()], true).any(|(node, _)| node.is_artboard())
-}
-
-pub fn is_folder(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	network.nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).is_some_and(|input| input.as_node().is_none())
-		|| network
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], true)
-			.skip(1)
-			.any(|(node, _)| node.is_artboard() || node.is_layer())
+	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
+	node.is_artboard()
 }
 
 #[test]

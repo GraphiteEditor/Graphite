@@ -37,6 +37,16 @@ const subpathFeatures = {
 		name: "Length",
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
+	area: {
+		name: "Area",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	centroid: {
+		name: "Centroid",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.centroid(options.error, options.minimum_separation),
+		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
 	evaluate: {
 		name: "Evaluate",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.evaluate(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),

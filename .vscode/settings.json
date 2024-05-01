@@ -40,6 +40,14 @@
 	"eslint.format.enable": true,
 	"eslint.workingDirectories": ["./frontend", "./website/other/bezier-rs-demos", "./website"],
 	"eslint.validate": ["javascript", "typescript", "svelte"],
+	// Svelte config
+	"svelte.plugin.svelte.compilerWarnings": {
+		// NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"css-unused-selector": "ignore",
+		"vite-plugin-svelte-css-no-scopable-elements": "ignore",
+		"a11y-no-static-element-interactions": "ignore",
+		"a11y-no-noninteractive-element-interactions": "ignore"
+	},
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",

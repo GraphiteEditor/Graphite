@@ -15,12 +15,12 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import type { createEditor } from "@graphite/wasm-communication/editor";
+	import { type Editor } from "@graphite/wasm-communication/editor";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
-	// Graphite WASM editor instance
-	export let editor: ReturnType<typeof createEditor>;
+	// Graphite WASM editor
+	export let editor: Editor;
 	setContext("editor", editor);
 
 	// State provider systems
@@ -48,7 +48,7 @@
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.instance.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady(operatingSystem());
 	});
 
 	onDestroy(() => {
@@ -138,6 +138,8 @@
 			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px;
+		--color-transparent-checkered-background-size-mini: 8px 8px;
+		--color-transparent-checkered-background-position-mini: 0 0, 4px 4px;
 
 		--background-inactive-stripes: repeating-linear-gradient(
 			-45deg,

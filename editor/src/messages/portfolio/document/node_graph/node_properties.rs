@@ -373,7 +373,7 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-//TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -428,7 +428,7 @@ fn rgba_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	LayoutGroup::Row { widgets }.with_tooltip("Color Channel")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -454,7 +454,7 @@ fn noise_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name:
 	LayoutGroup::Row { widgets }.with_tooltip("Style of noise pattern")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -480,7 +480,7 @@ fn fractal_type(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	LayoutGroup::Row { widgets }.with_tooltip("Style of layered levels of the noise pattern")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -509,7 +509,7 @@ fn cellular_distance_function(document_node: &DocumentNode, node_id: NodeId, ind
 	LayoutGroup::Row { widgets }.with_tooltip("Distance function used by the cellular noise")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -535,7 +535,7 @@ fn cellular_return_type(document_node: &DocumentNode, node_id: NodeId, index: us
 	LayoutGroup::Row { widgets }.with_tooltip("Return type of the cellular noise")
 }
 
-// TODO Generalize this instead of using a separate function per dropdown menu enum
+// TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn domain_warp_type(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 	if let &NodeInput::Value {
@@ -2236,12 +2236,8 @@ fn unknown_node_properties(document_node: &DocumentNode) -> Vec<LayoutGroup> {
 	string_properties(format!("Node '{}' cannot be found in library", document_node.name))
 }
 
-pub fn node_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Node has no properties")
-}
-
-pub fn layer_no_properties(_document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	string_properties("Layer has no properties")
+pub fn node_no_properties(document_node: &DocumentNode, _node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	string_properties(if document_node.is_layer { "Layer has no properties" } else { "Node has no properties" })
 }
 
 pub fn index_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -2423,12 +2419,11 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 1, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 2, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 3, "Background", ColorButton::default().allow_none(false), true);
-	let clip = LayoutGroup::Row {
-		widgets: bool_widget(document_node, node_id, 4, "Clip", true),
-	};
+	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
+	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
+	let clip = bool_widget(document_node, node_id, 5, "Clip", true);
+	let clip = LayoutGroup::Row { widgets: clip };
 	vec![location, dimensions, background, clip]
 }
 
