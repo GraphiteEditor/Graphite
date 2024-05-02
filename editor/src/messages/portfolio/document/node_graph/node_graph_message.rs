@@ -1,5 +1,6 @@
 use crate::messages::prelude::*;
 
+use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -35,6 +36,10 @@ pub enum NodeGraphMessage {
 	DisconnectNodes {
 		node_id: NodeId,
 		input_index: usize,
+	},
+	DisconnectLayerFromStack {
+		node_id: NodeId,
+		reconnect_to_sibling: bool,
 	},
 	EnterNestedNetwork {
 		node: NodeId,
@@ -92,6 +97,10 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		input: NodeInput,
 	},
+	SetNodePosition {
+		node_id: NodeId,
+		position: IVec2,
+	},
 	SetQualifiedInputValue {
 		node_path: Vec<NodeId>,
 		input_index: usize,
@@ -100,6 +109,11 @@ pub enum NodeGraphMessage {
 	/// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
 	ShiftNode {
 		node_id: NodeId,
+	},
+	ShiftUpstream {
+		node_id: NodeId,
+		shift: IVec2,
+		shift_self: bool,
 	},
 	SetVisibility {
 		node_id: NodeId,
