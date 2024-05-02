@@ -19,9 +19,23 @@ use glam::{DAffine2, DVec2, IVec2};
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
+	AddNodesAsChild {
+		nodes: HashMap<NodeId, DocumentNode>,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
+	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
+	},
+	InsertNodeBetween {
+		post_node_id: NodeId,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: NodeId,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: NodeId,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

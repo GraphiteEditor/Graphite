@@ -36,10 +36,119 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
+			GraphOperationMessage::AddNodesAsChild { nodes, parent, insert_index } => {
+				let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+
+				let shift = nodes
+					.get(&NodeId(0))
+					.and_then(|node| {
+						document_network
+							.nodes
+							.get(&parent.to_node())
+							.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
+					})
+					.unwrap_or_default();
+
+				let mut is_visible = true;
+				for (old_id, mut document_node) in nodes {
+					if !document_node.visible {
+						is_visible = false;
+					}
+					// Shift copied node
+					document_node.metadata.position += shift;
+
+					// Get the new, non-conflicting id
+					let node_id = *new_ids.get(&old_id).unwrap();
+					document_node = document_node.map_ids(NodeGraphMessageHandler::default_node_input, &new_ids);
+
+					// Insert node into network
+					document_network.nodes.insert(node_id, document_node);
+				}
+
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
+					log::error!("Could not get layer node when adding as child");
+					return;
+				};
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+				if !is_visible {
+					responses.add(NodeGraphMessage::SetVisibility {
+						node_id: *new_layer_id,
+						visible: false,
+					});
+				}
+				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
+				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent.to_node(), insert_index);
+				if let Some(upstream_node) = upstream_node {
+					responses.add(GraphOperationMessage::InsertNodeBetween {
+						post_node_id: downstream_node,
+						post_node_input_index: input_index,
+						insert_node_output_index: 0,
+						insert_node_id: *new_layer_id,
+						insert_node_input_index: 0,
+						pre_node_output_index: 0,
+						pre_node_id: upstream_node,
+					})
+				} else {
+					let downstream_input = NodeInput::node(*new_layer_id, 0);
+					responses.add(NodeGraphMessage::SetNodeInput {
+						node_id: downstream_node,
+						input_index: input_index,
+						input: downstream_input,
+					})
+				}
+				responses.add(NodeGraphMessage::ShiftUpstream {
+					node_id: *new_layer_id,
+					shift: IVec2::new(0, 3),
+					shift_self: true,
+				});
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				}
+			}
+			GraphOperationMessage::InsertNodeBetween {
+				post_node_id,
+				post_node_input_index,
+				insert_node_output_index,
+				insert_node_id,
+				insert_node_input_index,
+				pre_node_output_index,
+				pre_node_id,
+			} => {
+				let Some(post_node) = document_network.nodes.get(&post_node_id) else {
+					error!("Post node not found");
+					return;
+				};
+				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
+					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
+					return;
+				};
+				let Some(insert_node) = document_network.nodes.get(&insert_node_id) else {
+					error!("Insert node not found");
+					return;
+				};
+				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
+					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
+					return;
+				};
+
+				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: post_node_id,
+					input_index: post_node_input_index,
+					input: post_input,
+				});
+
+				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: insert_node_id,
+					input_index: insert_node_input_index,
+					input: insert_input,
+				});
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {

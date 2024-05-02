@@ -1,3 +1,4 @@
+use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
@@ -279,36 +280,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
-				self.backup(responses);
-				for layer_ancestors in self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata)) {
-					let Some(layer) = layer_ancestors.last().copied() else { continue };
-					let Some(parent) = layer.parent(&self.metadata) else { continue };
-					let Some(node) = self.network().nodes.get(&layer.to_node()).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
-						continue;
-					};
-
-					let nodes = NodeGraphMessageHandler::copy_nodes(
-						self.network(),
-						&self
-							.network()
-							.upstream_flow_back_from_nodes(vec![node], FlowType::UpstreamFlow)
-							.enumerate()
-							.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
-							.collect(),
-					)
-					.collect();
-
-					let id = NodeId(generate_uuid());
-					let selected_layer_index = parent.children(self.metadata()).collect::<Vec<_>>().iter().position(|&sibling| sibling == layer).unwrap_or(0);
-					let insert_index = if (selected_layer_index as i64 - 1) < 0 { -1 } else { selected_layer_index as isize };
-					responses.add(GraphOperationMessage::NewCustomLayer {
-						id,
-						nodes,
-						parent,
-						insert_index,
-						alias: String::new(),
-					});
-				}
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Device });
+				responses.add(FrontendMessage::TriggerPaste);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -414,7 +388,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						log::error!("Downstream node should always exist when inserting layer");
 						return;
 					};
-					responses.add(NodeGraphMessage::InsertNodeBetween {
+					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: folder_downstream_node_id,
 						post_node_input_index: folder_downstream_input_index,
 						insert_node_output_index: 0,
@@ -728,7 +702,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let image_frame = ImageFrame { image, ..Default::default() };
 
 				use crate::messages::tool::common_functionality::graph_modification_utils;
-				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
@@ -746,7 +720,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let viewport_location = mouse.map_or(ipp.viewport_bounds.center() + ipp.viewport_bounds.top_left, |pos| pos.into());
 				let center_in_viewport = DAffine2::from_translation(self.metadata().document_to_viewport.inverse().transform_point2(viewport_location - ipp.viewport_bounds.top_left));
-				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_svg_layer(svg, center_in_viewport, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
@@ -1466,9 +1440,9 @@ impl DocumentMessageHandler {
 	}
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
-	pub fn new_layer_parent(&self) -> LayerNodeIdentifier {
+	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
 		self.metadata()
-			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
+			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), include_self)
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 

@@ -411,37 +411,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("No network");
 					return;
 				};
-				let Some(post_node) = network.nodes.get(&post_node_id) else {
-					error!("Post node not found");
-					return;
-				};
-				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
-					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
-					return;
-				};
-				let Some(insert_node) = network.nodes.get(&insert_node_id) else {
-					error!("Insert node not found");
-					return;
-				};
-				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
-					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
-					return;
-				};
-
 				responses.add(DocumentMessage::StartTransaction);
 
-				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
-					node_id: post_node_id,
-					input_index: post_node_input_index,
-					input: post_input,
-				});
-
-				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
-					node_id: insert_node_id,
-					input_index: insert_node_input_index,
-					input: insert_input,
+				responses.add(GraphOperationMessage::InsertNodeBetween {
+					post_node_id,
+					post_node_input_index,
+					insert_node_output_index,
+					insert_node_id,
+					insert_node_input_index,
+					pre_node_output_index,
+					pre_node_id,
 				});
 
 				if network.connected_to_output(insert_node_id) {

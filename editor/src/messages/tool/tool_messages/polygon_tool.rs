@@ -247,7 +247,7 @@ impl Fsm for PolygonToolFsmState {
 					PolygonType::Convex => bezier_rs::Subpath::new_regular_polygon(DVec2::ZERO, tool_options.vertices as u64, 1.),
 					PolygonType::Star => bezier_rs::Subpath::new_star_polygon(DVec2::ZERO, tool_options.vertices as u64, 1., 0.5),
 				};
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
 				polygon_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();

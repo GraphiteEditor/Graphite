@@ -181,7 +181,7 @@ impl Fsm for LineToolFsmState {
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
 				responses.add(GraphOperationMessage::StrokeSet {
 					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
