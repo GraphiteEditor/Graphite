@@ -24,9 +24,18 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},
+	DisconnectInput {
+		node_id: NodeId,
+		input_index: usize,
+	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
+	},
+	InsertLayerAtStackIndex {
+		layer_id: NodeId,
+		parent: NodeId,
+		insert_index: usize,
 	},
 	InsertNodeBetween {
 		post_node_id: NodeId,
@@ -36,6 +45,9 @@ pub enum GraphOperationMessage {
 		insert_node_input_index: usize,
 		pre_node_output_index: usize,
 		pre_node_id: NodeId,
+	},
+	MoveSelectedSiblingsToChild {
+		new_parent: NodeId,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -77,10 +89,6 @@ pub enum GraphOperationMessage {
 	Brush {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
-	},
-	MoveUpstreamSiblingsToChild {
-		new_parent: NodeId,
-		upstream_sibling_ids: Vec<NodeId>,
 	},
 	NewArtboard {
 		id: NodeId,

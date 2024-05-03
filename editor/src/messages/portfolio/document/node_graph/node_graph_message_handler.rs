@@ -235,29 +235,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index });
+
 				let Some(network) = document_network.nested_network(&self.network) else {
 					warn!("No network");
 					return;
 				};
-				let Some(node) = network.nodes.get(&node_id) else {
-					warn!("Invalid node");
-					return;
-				};
-				let Some(node_type) = resolve_document_node_type(&node.name) else {
-					warn!("Node {} not in library", node.name);
-					return;
-				};
-				let Some((input_index, existing_input)) = node.inputs.iter().enumerate().filter(|(_, input)| input.is_exposed()).nth(input_index) else {
-					return;
-				};
-
-				let mut input = node_type.inputs[input_index].default.clone();
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = existing_input.is_exposed();
-				}
-
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -280,7 +264,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Downstream node should always exist when moving layer");
 					return;
 				};
-
 				let layer_to_move_sibling_input = network.nodes.get(&layer_to_disconnect.to_node()).and_then(|node| node.inputs.get(0));
 				if let Some(NodeInput::Node { node_id, .. }) = layer_to_move_sibling_input.and_then(|node_input| if reconnect_to_sibling { Some(node_input) } else { None }) {
 					let upstream_sibling_id = *node_id;
@@ -297,13 +280,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					});
 				} else {
 					// Disconnect node directly downstream if upstream sibling doesn't exist
-					responses.add(NodeGraphMessage::DisconnectNodes {
+					responses.add(GraphOperationMessage::DisconnectInput {
 						node_id: downstream_node_id,
 						input_index: downstream_input_index,
 					});
 				}
 
-				responses.add(NodeGraphMessage::DisconnectNodes {
+				responses.add(GraphOperationMessage::DisconnectInput {
 					node_id: layer_to_disconnect.to_node(),
 					input_index: 0,
 				});
