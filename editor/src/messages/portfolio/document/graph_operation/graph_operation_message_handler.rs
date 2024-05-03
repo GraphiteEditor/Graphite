@@ -50,11 +50,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					})
 					.unwrap_or_default();
 
-				let mut is_visible = true;
 				for (old_id, mut document_node) in nodes {
-					if !document_node.visible {
-						is_visible = false;
-					}
 					// Shift copied node
 					document_node.metadata.position += shift;
 
@@ -71,12 +67,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				};
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
-				if !is_visible {
-					responses.add(NodeGraphMessage::SetVisibility {
-						node_id: *new_layer_id,
-						visible: false,
-					});
-				}
 				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent.to_node(), insert_index);
 				if let Some(upstream_node) = upstream_node {

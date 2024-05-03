@@ -383,26 +383,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-						let id = NodeId(generate_uuid());
-						responses.add(GraphOperationMessage::NewCustomLayer {
-							id,
-							nodes: entry.nodes.clone(),
+						responses.add(GraphOperationMessage::AddNodesAsChild {
+							nodes: entry.clone().nodes,
 							parent,
-							insert_index,
-							alias: entry.alias.clone(),
+							insert_index: insert_index,
 						});
-						if entry.selected {
-							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
-						}
-						if !entry.visible {
-							responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
-						}
-						if entry.locked {
-							responses.add(NodeGraphMessage::SetLocked { node_id: id, locked: true });
-						}
 					}
 				};
-
+				responses.add(DocumentMessage::DeselectAllLayers);
 				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 					paste(entry, responses)
 				}

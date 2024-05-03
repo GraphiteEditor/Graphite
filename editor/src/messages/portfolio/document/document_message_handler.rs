@@ -278,9 +278,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
+				let parent = self.new_layer_parent(false);
+				let calculated_insert_index = self.get_calculated_insert_index(parent);
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Device });
-				responses.add(FrontendMessage::TriggerPaste);
+				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
+				responses.add(PortfolioMessage::PasteIntoFolder {
+					clipboard: Clipboard::Internal,
+					parent: parent,
+					insert_index: calculated_insert_index,
+				});
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				self.backup(responses);
@@ -405,26 +411,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 
-				let calculated_insert_index = parent.children(self.metadata()).enumerate().find_map(|(index, direct_child)| {
-					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
-						return Some(index as isize);
-					}
-
-					for descendant in direct_child.descendants(self.metadata()) {
-						if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
-							return Some(index as isize);
-						}
-					}
-
-					None
-				});
+				let calculated_insert_index = self.get_calculated_insert_index(parent);
 
 				let folder_id = NodeId(generate_uuid());
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
-					insert_index: calculated_insert_index.unwrap_or(-1),
+					insert_index: calculated_insert_index,
 					alias: String::new(),
 				});
 
@@ -1299,6 +1293,26 @@ impl DocumentMessageHandler {
 		self.metadata()
 			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), include_self)
 			.unwrap_or_else(|| self.metadata().active_artboard())
+	}
+
+	fn get_calculated_insert_index(&self, parent: LayerNodeIdentifier) -> isize {
+		parent
+			.children(self.metadata())
+			.enumerate()
+			.find_map(|(index, direct_child)| {
+				if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
+					return Some(index as isize);
+				}
+
+				for descendant in direct_child.descendants(self.metadata()) {
+					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
+						return Some(index as isize);
+					}
+				}
+
+				None
+			})
+			.unwrap_or(-1)
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
