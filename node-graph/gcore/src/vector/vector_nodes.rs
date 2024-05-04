@@ -530,6 +530,26 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	result
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct AreaNode<VectorData> {
+	vector_data: VectorData,
+}
+
+#[node_macro::node_fn(AreaNode)]
+async fn area_node<Fut: Future<Output = VectorData>>(
+	footprint: Footprint,
+	vector_data: impl Node<Footprint, Output = Fut>
+) -> f64 {
+	let mut area = 10.0;
+
+	let vector_data = self.vector_data.eval(footprint).await;
+
+	// for (_, subpath) in vector_data.region_bezier_paths() {
+	// 	area += subpath.area(None, None);
+	// }
+	area
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
