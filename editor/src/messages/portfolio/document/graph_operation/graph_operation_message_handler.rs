@@ -66,9 +66,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Could not get layer node when adding as child");
 					return;
 				};
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+
 				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent.to_node(), insert_index);
+
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+
 				if let Some(upstream_node) = upstream_node {
 					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: downstream_node,
@@ -80,13 +83,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						pre_node_id: upstream_node,
 					})
 				} else {
-					let downstream_input = NodeInput::node(*new_layer_id, 0);
 					responses.add(NodeGraphMessage::SetNodeInput {
 						node_id: downstream_node,
 						input_index: input_index,
-						input: downstream_input,
+						input: NodeInput::node(*new_layer_id, 0),
 					})
 				}
+
 				responses.add(NodeGraphMessage::ShiftUpstream {
 					node_id: *new_layer_id,
 					shift: IVec2::new(0, 3),
@@ -122,11 +125,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::InsertLayerAtStackIndex { layer_id, parent, insert_index } => {
 				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(&document_network, parent, insert_index);
-				// Layer_to_move should always correspond to a node.
+
+				// `layer_to_move` should always correspond to a node.
 				let Some(layer_to_move_node) = document_network.nodes.get(&layer_id) else {
 					log::error!("Layer node not found when inserting node {} at index {}", layer_id, insert_index);
 					return;
 				};
+
 				// Move current layer to post node.
 				let post_node = document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
 				let current_position = layer_to_move_node.metadata.position;
@@ -157,12 +162,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						pre_node_id: upstream_node,
 					})
 				} else {
-					let downstream_input = NodeInput::node(layer_id, 0);
-
 					responses.add(NodeGraphMessage::SetNodeInput {
 						node_id: post_node_id,
 						input_index: post_node_input_index,
-						input: downstream_input,
+						input: NodeInput::node(layer_id, 0),
 					})
 				}
 
@@ -281,6 +284,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Could not find parent for layer {:?}", group_layer);
 					return;
 				};
+
 				// Create a vec of nodes to move with all selected layers in the parent layer child stack, as well as each non layer sibling directly upstream of the selected layer
 				let mut selected_siblings = Vec::new();
 

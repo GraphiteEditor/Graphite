@@ -163,7 +163,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					for (_, upstream_id) in document_network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 						// This does a downstream traversal starting from the current node, and ending at either a node in the delete_nodes set or the output.
-						// If the traversal find a child node of a node in the delete_nodes set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
+						// If the traversal find as child node of a node in the delete_nodes set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
 						let mut stack = vec![upstream_id];
 						let mut can_delete = true;
 
@@ -253,11 +253,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
+
 				// Ensure node is a layer and create LayerNodeIdentifier
 				if network.nodes.get(&node_id).is_some_and(|node| !node.is_layer) {
 					log::error!("Non layer node passed to DisconnectLayer");
 					return;
 				}
+
 				let layer_to_disconnect = LayerNodeIdentifier::new(node_id, &network);
 
 				let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&network, &document_metadata, layer_to_disconnect) else {
@@ -272,6 +274,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
 						*node_id = upstream_sibling_id;
 					}
+
 					let upstream_shift = IVec2::new(0, -3);
 					responses.add(NodeGraphMessage::ShiftUpstream {
 						node_id: upstream_sibling_id,
@@ -619,6 +622,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
+
 				let mut modify_inputs = ModifyInputsContext::new(network, document_metadata, self, responses);
 				modify_inputs.shift_upstream(node_id, shift, shift_self);
 			}

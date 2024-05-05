@@ -280,11 +280,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
 				let calculated_insert_index = self.get_calculated_insert_index(parent);
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 				responses.add(PortfolioMessage::PasteIntoFolder {
 					clipboard: Clipboard::Internal,
-					parent: parent,
+					parent,
 					insert_index: calculated_insert_index,
 				});
 			}
@@ -877,11 +878,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						shift: offset,
 						shift_self: true,
 					});
+
 					// Set the primary input for the node downstream of folder to the first layer node
 					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
 					};
+
 					// Output_index must be 0 since layers only have 1 output
 					let downstream_input = NodeInput::node(child_layer_node_id, 0);
 					responses.add(NodeGraphMessage::SetNodeInput {
