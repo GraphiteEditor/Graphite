@@ -15,7 +15,7 @@ use crate::messages::tool::common_functionality::pivot::Pivot;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::Quad;
 
 use std::fmt;
@@ -315,23 +315,6 @@ impl SelectToolData {
 			let Some(layer) = layer_ancestors.last().copied() else { continue };
 			let Some(parent) = layer.parent(&document.metadata) else { continue };
 
-			// Copy the layer
-			let node = layer.to_node();
-			let Some(node) = document.network().nodes.get(&node).and_then(|node| node.inputs.first()).and_then(|input| input.as_node()) else {
-				continue;
-			};
-
-			let nodes = NodeGraphMessageHandler::copy_nodes(
-				document.network(),
-				&document
-					.network()
-					.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
-					.enumerate()
-					.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
-					.collect(),
-			)
-			.collect();
-
 			// Moves the layer back to its starting position.
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
@@ -340,17 +323,34 @@ impl SelectToolData {
 				skip_rerender: true,
 			});
 
-			let id = NodeId(generate_uuid());
-			let insert_index = -1;
-			let layer = LayerNodeIdentifier::new_unchecked(id);
-			responses.add(GraphOperationMessage::NewCustomLayer {
-				id,
-				nodes,
-				parent,
-				insert_index,
-				alias: String::new(),
-			});
-			new_dragging.push(layer);
+			// Copy the layer
+			let mut copy_ids = HashMap::new();
+			let node = layer.to_node();
+			copy_ids.insert(node, NodeId(0 as u64));
+			if let Some(input_node) = document
+				.network()
+				.nodes
+				.get(&node)
+				.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
+				.and_then(|input| input.as_node())
+			{
+				document
+					.network()
+					.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
+					.enumerate()
+					.for_each(|(index, (_, node_id))| {
+						copy_ids.insert(node_id, NodeId((index + 1) as u64));
+					});
+			};
+			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(document.network(), &copy_ids).collect();
+
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.selected_nodes, parent);
+
+			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+
+			let layer_id = new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer").clone();
+			responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
+			new_dragging.push(LayerNodeIdentifier::new_unchecked(layer_id));
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });

@@ -100,7 +100,7 @@ impl DocumentMetadata {
 				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
 				layer_path.reverse();
 
-				if !include_self || !self.is_artboard(layer) && !self.is_folder(layer) {
+				if !include_self || !self.is_artboard(layer) {
 					layer_path.pop();
 				}
 

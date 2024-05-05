@@ -21,6 +21,7 @@ use glam::{DAffine2, DVec2, IVec2};
 pub enum GraphOperationMessage {
 	AddNodesAsChild {
 		nodes: HashMap<NodeId, DocumentNode>,
+		new_ids: HashMap<NodeId, NodeId>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},
