@@ -230,7 +230,7 @@ impl Fsm for FreehandToolFsmState {
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
-					let parent = document.new_layer_parent();
+					let parent = document.new_layer_parent(true);
 					let transform = document.metadata().transform_to_viewport(parent);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 					let subpath = bezier_rs::Subpath::from_anchors([pos], false);

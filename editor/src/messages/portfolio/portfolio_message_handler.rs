@@ -183,30 +183,29 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					let ordered_last_elements: Vec<_> = active_document.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect();
 
 					for layer in ordered_last_elements {
-						let node = layer.to_node();
-						let previous_alias = active_document.network().nodes.get(&node).map(|node| node.alias.clone()).unwrap_or_default();
+						let layer_node_id = layer.to_node();
+						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
 
-						let Some(node) = active_document
+						let mut copy_ids = HashMap::new();
+						copy_ids.insert(layer_node_id, NodeId(0 as u64));
+						if let Some(input_node) = active_document
 							.network()
 							.nodes
-							.get(&node)
+							.get(&layer_node_id)
 							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
 							.and_then(|input| input.as_node())
-						else {
-							continue;
+						{
+							active_document
+								.network()
+								.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
+								.enumerate()
+								.for_each(|(index, (_, node_id))| {
+									copy_ids.insert(node_id, NodeId((index + 1) as u64));
+								});
 						};
 
 						buffer.push(CopyBufferEntry {
-							nodes: NodeGraphMessageHandler::copy_nodes(
-								active_document.network(),
-								&active_document
-									.network()
-									.upstream_flow_back_from_nodes(vec![node], graph_craft::document::FlowType::UpstreamFlow)
-									.enumerate()
-									.map(|(index, (_, node_id))| (node_id, NodeId(index as u64)))
-									.collect(),
-							)
-							.collect(),
+							nodes: NodeGraphMessageHandler::copy_nodes(active_document.network(), &copy_ids).collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
@@ -384,25 +383,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-						let id = NodeId(generate_uuid());
-						responses.add(GraphOperationMessage::NewCustomLayer {
-							id,
-							nodes: entry.nodes.clone(),
+
+						responses.add(GraphOperationMessage::AddNodesAsChild {
+							nodes: entry.clone().nodes,
 							parent,
 							insert_index,
-							alias: entry.alias.clone(),
 						});
-						if entry.selected {
-							responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
-						}
-						if !entry.visible {
-							responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
-						}
-						if entry.locked {
-							responses.add(NodeGraphMessage::SetLocked { node_id: id, locked: true });
-						}
 					}
 				};
+
+				responses.add(DocumentMessage::DeselectAllLayers);
 
 				for entry in self.copy_buffer[clipboard as usize].iter().rev() {
 					paste(entry, responses)
@@ -411,30 +401,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::PasteSerializedData { data } => {
 				if let Some(document) = self.active_document() {
 					if let Ok(data) = serde_json::from_str::<Vec<CopyBufferEntry>>(&data) {
-						let parent = document.new_layer_parent();
+						let parent = document.new_layer_parent(false);
 
 						responses.add(DocumentMessage::DeselectAllLayers);
 						responses.add(DocumentMessage::StartTransaction);
 
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
-							let id = NodeId(generate_uuid());
-							responses.add(GraphOperationMessage::NewCustomLayer {
-								id,
+							responses.add(GraphOperationMessage::AddNodesAsChild {
 								nodes: entry.nodes,
 								parent,
 								insert_index: -1,
-								alias: entry.alias,
 							});
-							if entry.selected {
-								responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
-							}
-							if !entry.visible {
-								responses.add(NodeGraphMessage::SetVisibility { node_id: id, visible: false });
-							}
 						}
-
-						responses.add(DocumentMessage::CommitTransaction);
 					}
 				}
 			}

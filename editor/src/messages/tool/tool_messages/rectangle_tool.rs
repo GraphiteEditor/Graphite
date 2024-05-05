@@ -209,7 +209,7 @@ impl Fsm for RectangleToolFsmState {
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
 				shape_data.layer = Some(layer);
 
 				let fill_color = tool_options.fill.active_color();

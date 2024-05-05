@@ -232,7 +232,7 @@ impl PenToolData {
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
-		let parent = document.new_layer_parent();
+		let parent = document.new_layer_parent(true);
 		// Deselect layers because we are now creating a new layer
 		responses.add(DocumentMessage::DeselectAllLayers);
 
