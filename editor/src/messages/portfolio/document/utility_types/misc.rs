@@ -53,7 +53,7 @@ impl DocumentMode {
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 /// SnappingState determines the current individual snapping states
 pub struct SnappingState {
 	pub snapping_enabled: bool,

@@ -536,16 +536,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			ToggleRulers,
 		);
 
+		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
+			common.extend(document.actions());
+
+			// Extend with actions that must have a selected layer
 			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
-				let select = actions!(PortfolioMessageDiscriminant;
+				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,
-				);
-				common.extend(select);
+				));
 			}
-
-			common.extend(document.actions_with_graph_open());
 		}
 
 		common

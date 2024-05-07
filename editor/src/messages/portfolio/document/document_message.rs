@@ -62,7 +62,7 @@ pub enum DocumentMessage {
 	GraphViewOverlayToggle,
 	GridOptions(GridSnapping),
 	GridOverlays(OverlayContext),
-	GridVisible(bool),
+	GridVisibility(bool),
 	GroupSelectedLayers,
 	ImaginateGenerate,
 	ImaginateRandom {
@@ -138,6 +138,9 @@ pub enum DocumentMessage {
 	ToggleLayerExpansion {
 		id: NodeId,
 	},
+	ToggleGridVisibility,
+	ToggleOverlaysVisibility,
+	ToggleSnapping,
 	Undo,
 	UndoFinished,
 	UngroupSelectedLayers,

@@ -46,6 +46,7 @@ pub struct DocumentMessageHandler {
 	// ======================
 	// Child message handlers
 	// ======================
+	//
 	#[serde(skip)]
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
@@ -54,49 +55,78 @@ pub struct DocumentMessageHandler {
 	overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
 	properties_panel_message_handler: PropertiesPanelMessageHandler,
+
 	// ============================================
 	// Fields that are saved in the document format
 	// ============================================
+	//
+	/// The node graph that generates this document's artwork.
+	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	#[serde(default = "default_network")]
 	pub network: NodeNetwork,
+	/// List of the [`NodeId`]s that are currently selected by the user.
 	#[serde(default = "default_selected_nodes")]
 	pub selected_nodes: SelectedNodes,
+	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
+	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	#[serde(default = "default_collapsed")]
 	pub collapsed: CollapsedLayers,
+	/// The name of the document, which is displayed in the tab and title bar of the editor.
 	#[serde(default = "default_name")]
 	pub name: String,
+	/// The full Git commit hash of the Graphite repository that was used to build the editor.
+	/// We save this to provide a hint about which version of the editor was used to create the document.
 	#[serde(default = "default_commit_hash")]
 	commit_hash: String,
+	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	#[serde(default = "default_pan_tilt_zoom")]
 	pub navigation: PTZ,
+	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	#[serde(default = "default_document_mode")]
 	document_mode: DocumentMode,
+	/// The current view mode that the user has set for rendering the document within the viewport.
+	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
 	#[serde(default = "default_view_mode")]
 	pub view_mode: ViewMode,
+	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
+	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
 	#[serde(default = "default_overlays_visible")]
 	overlays_visible: bool,
+	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
 	#[serde(default = "default_rulers_visible")]
 	pub rulers_visible: bool,
+	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
+	#[serde(default = "default_graph_view_overlay_open")]
+	graph_view_overlay_open: bool,
+	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
+	#[serde(default = "default_snapping_state")]
+	pub snapping_state: SnappingState,
+
 	// =============================================
 	// Fields omitted from the saved document format
 	// =============================================
+	//
+	/// Stack of document network snapshots for previous history states.
 	#[serde(skip)]
 	document_undo_history: VecDeque<NodeNetwork>,
+	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetwork>,
+	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
+	/// Hash of the document snapshot that was most recently auto-saved to the IndexedDB storage that will reopen when the editor is reloaded.
 	#[serde(skip)]
 	auto_saved_hash: Option<u64>,
-	/// Don't allow aborting transactions whilst undoing to avoid #559
+	/// Disallow aborting transactions whilst undoing to avoid #559.
 	#[serde(skip)]
 	undo_in_progress: bool,
-	#[serde(skip)]
-	graph_view_overlay_open: bool,
-	#[serde(skip)]
-	pub snapping_state: SnappingState,
+	/// The ID of the layer at the start of a range selection in the Layers panel.
+	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// Stores stateful information about the document's network such as the graph's structural topology and which layers are hidden, locked, etc.
+	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
 }
@@ -330,7 +360,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			DocumentMessage::GridVisible(enabled) => {
+			DocumentMessage::GridVisibility(enabled) => {
 				self.snapping_state.grid_snapping = enabled;
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -844,6 +874,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::ToggleGridVisibility => {
+				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::ToggleOverlaysVisibility => {
+				self.overlays_visible = !self.overlays_visible;
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::ToggleSnapping => {
+				self.snapping_state.snapping_enabled = !self.snapping_state.snapping_enabled;
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
 			DocumentMessage::Undo => {
 				self.undo_in_progress = true;
 				responses.add(ToolMessage::PreUndo);
@@ -967,7 +1011,52 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 	}
 
 	fn actions(&self) -> ActionList {
-		unimplemented!("Must use `actions_with_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+		let mut common = actions!(DocumentMessageDiscriminant;
+			CreateEmptyFolder,
+			DebugPrintDocument,
+			DeselectAllLayers,
+			GraphViewOverlayToggle,
+			Noop,
+			Redo,
+			SaveDocument,
+			SelectAllLayers,
+			SetSnapping,
+			ToggleGridVisibility,
+			ToggleOverlaysVisibility,
+			ToggleSnapping,
+			Undo,
+			ZoomCanvasTo100Percent,
+			ZoomCanvasTo200Percent,
+			ZoomCanvasToFitAll,
+		);
+
+		// Additional actions if there are any selected layers
+		if self.selected_nodes.selected_layers(self.metadata()).next().is_some() {
+			let select = actions!(DocumentMessageDiscriminant;
+				DeleteSelectedLayers,
+				DuplicateSelectedLayers,
+				GroupSelectedLayers,
+				NudgeSelectedLayers,
+				SelectedLayersLower,
+				SelectedLayersLowerToBack,
+				SelectedLayersRaise,
+				SelectedLayersRaiseToFront,
+				UngroupSelectedLayers,
+			);
+			common.extend(select);
+		}
+		// Additional actions if the node graph is open
+		if self.graph_view_overlay_open {
+			common.extend(actions!(DocumentMessageDiscriminant;
+				GraphViewOverlay,
+			));
+			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
+		}
+		// More additional actions
+		common.extend(self.node_graph_handler.actions());
+		common.extend(self.navigation_handler.actions());
+
+		common
 	}
 }
 
@@ -1377,6 +1466,7 @@ impl DocumentMessageHandler {
 			CheckboxInput::new(self.overlays_visible)
 				.icon("Overlays")
 				.tooltip("Overlays")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::SetOverlaysVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
@@ -1393,6 +1483,7 @@ impl DocumentMessageHandler {
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip("Snapping")
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSnapping))
 				.on_update(move |optional_input: &CheckboxInput| {
 					let snapping_enabled = optional_input.checked;
 					DocumentMessage::SetSnapping {
@@ -1508,7 +1599,8 @@ impl DocumentMessageHandler {
 			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
 				.tooltip("Grid")
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisible(optional_input.checked).into())
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility(optional_input.checked).into())
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(overlay_options(&self.snapping_state.grid))
@@ -1819,47 +1911,6 @@ impl DocumentMessageHandler {
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 } as isize;
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
-
-	pub fn actions_with_graph_open(&self) -> ActionList {
-		let mut common = actions!(DocumentMessageDiscriminant;
-			Noop,
-			Undo,
-			Redo,
-			SelectAllLayers,
-			DeselectAllLayers,
-			SaveDocument,
-			SetSnapping,
-			DebugPrintDocument,
-			ZoomCanvasToFitAll,
-			ZoomCanvasTo100Percent,
-			ZoomCanvasTo200Percent,
-			GraphViewOverlayToggle,
-			CreateEmptyFolder,
-		);
-
-		if self.graph_view_overlay_open {
-			let escape = actions!(DocumentMessageDiscriminant; GraphViewOverlay);
-			common.extend(escape);
-		}
-
-		if self.selected_nodes.selected_layers(self.metadata()).next().is_some() {
-			let select = actions!(DocumentMessageDiscriminant;
-				DeleteSelectedLayers,
-				DuplicateSelectedLayers,
-				NudgeSelectedLayers,
-				SelectedLayersLower,
-				SelectedLayersLowerToBack,
-				SelectedLayersRaise,
-				SelectedLayersRaiseToFront,
-				GroupSelectedLayers,
-				UngroupSelectedLayers,
-			);
-			common.extend(select);
-		}
-		common.extend(self.navigation_handler.actions());
-		common.extend(self.node_graph_handler.actions_with_node_graph_open(self.graph_view_overlay_open));
-		common
-	}
 }
 
 impl Default for DocumentMessageHandler {
@@ -1940,6 +1991,14 @@ fn default_overlays_visible() -> bool {
 #[inline(always)]
 fn default_rulers_visible() -> bool {
 	DocumentMessageHandler::default().rulers_visible
+}
+#[inline(always)]
+fn default_graph_view_overlay_open() -> bool {
+	DocumentMessageHandler::default().graph_view_overlay_open
+}
+#[inline(always)]
+fn default_snapping_state() -> SnappingState {
+	DocumentMessageHandler::default().snapping_state
 }
 
 fn root_network() -> NodeNetwork {

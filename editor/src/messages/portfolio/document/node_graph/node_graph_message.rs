@@ -144,7 +144,7 @@ pub enum NodeGraphMessage {
 	TogglePreviewImpl {
 		node_id: NodeId,
 	},
-	ToggleSelectedLayers,
+	ToggleSelectedAsLayersOrNodes,
 	ToggleSelectedLocked,
 	ToggleSelectedVisibility,
 	ToggleVisibility {

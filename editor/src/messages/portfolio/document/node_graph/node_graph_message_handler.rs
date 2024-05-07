@@ -702,7 +702,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
-			NodeGraphMessage::ToggleSelectedLayers => {
+			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
 				for node_id in selected_nodes.selected_nodes() {
@@ -788,16 +788,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		unimplemented!("Must use `actions_with_node_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+		if self.has_selection {
+			actions!(NodeGraphMessageDiscriminant;
+				ToggleSelectedLocked,
+				ToggleSelectedVisibility,
+			)
+		} else {
+			actions!(NodeGraphMessageDiscriminant;)
+		}
 	}
 }
 
 impl NodeGraphMessageHandler {
-	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
-		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, ToggleSelectedLayers, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
-		} else if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
+	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
+	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
+		if self.has_selection {
+			actions!(NodeGraphMessageDiscriminant;
+				Copy,
+				Cut,
+				DeleteSelectedNodes,
+				DuplicateSelectedNodes,
+				ToggleSelectedAsLayersOrNodes,
+			)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}

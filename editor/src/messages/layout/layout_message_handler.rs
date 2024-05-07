@@ -296,7 +296,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!()
+		actions!(LayoutMessageDiscriminant;)
 	}
 }
 
