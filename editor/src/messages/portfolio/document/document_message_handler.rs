@@ -279,7 +279,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
-				let calculated_insert_index = self.get_calculated_insert_index(parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -412,7 +412,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 
-				let calculated_insert_index = self.get_calculated_insert_index(parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
 				responses.add(GraphOperationMessage::NewCustomLayer {
@@ -1298,17 +1298,17 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
-	fn get_calculated_insert_index(&self, parent: LayerNodeIdentifier) -> isize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
 		parent
-			.children(self.metadata())
+			.children(metadata)
 			.enumerate()
 			.find_map(|(index, direct_child)| {
-				if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == direct_child) {
+				if selected_nodes.selected_layers(metadata).any(|selected| selected == direct_child) {
 					return Some(index as isize);
 				}
 
-				for descendant in direct_child.descendants(self.metadata()) {
-					if self.selected_nodes.selected_layers(self.metadata()).any(|selected| selected == descendant) {
+				for descendant in direct_child.descendants(metadata) {
+					if selected_nodes.selected_layers(metadata).any(|selected| selected == descendant) {
 						return Some(index as isize);
 					}
 				}

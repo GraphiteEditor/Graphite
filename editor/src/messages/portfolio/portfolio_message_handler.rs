@@ -383,12 +383,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
 					if self.active_document().is_some() {
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
-
-						responses.add(GraphOperationMessage::AddNodesAsChild {
-							nodes: entry.clone().nodes,
-							parent,
-							insert_index,
-						});
+						let nodes = entry.clone().nodes;
+						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
+						responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
 					}
 				};
 
@@ -408,8 +405,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
+							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 							responses.add(GraphOperationMessage::AddNodesAsChild {
 								nodes: entry.nodes,
+								new_ids,
 								parent,
 								insert_index: -1,
 							});

@@ -37,9 +37,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
-			GraphOperationMessage::AddNodesAsChild { nodes, parent, insert_index } => {
-				let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-
+			GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index } => {
 				let shift = nodes
 					.get(&NodeId(0))
 					.and_then(|node| {
