@@ -1,8 +1,10 @@
-use dyn_any::StaticType;
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
+
+use dyn_any::StaticType;
+
 use std::marker::PhantomData;
 
 pub struct DynAnyNode<I, O, Node> {
@@ -19,12 +21,21 @@ where
 	#[inline]
 	fn eval(&'input self, input: Any<'input>) -> Self::Output {
 		let node_name = core::any::type_name::<N>();
-		let input: Box<_I> = dyn_any::downcast(input).unwrap_or_else(|e| panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name));
-		let output = async move {
-			let result = self.node.eval(*input).await;
+		let output = |input| async move {
+			let result = self.node.eval(input).await;
 			Box::new(result) as Any<'input>
 		};
-		Box::pin(output)
+		match dyn_any::downcast(input) {
+			Ok(input) => Box::pin(output(*input)),
+			// If the input type of the node is `()` and we supply an invalid type, we can still call the
+			// node and just ignore the input and call it with the unit type instead.
+			Err(_) if core::any::TypeId::of::<_I::Static>() == core::any::TypeId::of::<()>() => {
+				assert_eq!(std::mem::size_of::<_I>(), 0);
+				// Rust can't know, that `_I` and `()` are the same size, so we have to use a `transmute_copy()` here
+				Box::pin(output(unsafe { std::mem::transmute_copy(&()) }))
+			}
+			Err(e) => panic!("DynAnyNode Input, {0} in:\n{1}", e, node_name),
+		}
 	}
 
 	fn reset(&self) {
@@ -66,6 +77,9 @@ where
 	}
 	fn reset(&self) {
 		self.node.reset();
+	}
+	fn serialize(&self) -> Option<std::sync::Arc<dyn core::any::Any>> {
+		self.node.serialize()
 	}
 }
 

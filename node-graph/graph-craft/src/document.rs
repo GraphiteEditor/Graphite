@@ -969,7 +969,7 @@ impl NodeNetwork {
 			return;
 		}
 
-		// replace value inputs with value nodes
+		// Replace value inputs with value nodes
 		for input in node.inputs.iter_mut() {
 			// Skip inputs that are already value nodes
 			if node.implementation == DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()) {
