@@ -53,6 +53,12 @@
 		}
 	}
 
+	@media print {
+		aside {
+			display: none;
+		}
+	}
+
 	// Page contents right sidebar is removed on smaller screens
 	@media screen and (max-width: 1200px) {
 		.contents {

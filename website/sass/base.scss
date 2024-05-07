@@ -48,7 +48,7 @@
 		--border-thickness: 1px;
 	}
 
-	@media screen and (max-width: 500px) {
+	@media print, screen and (max-width: 500px) {
 		--font-size-intro-heading: 32px;
 		--font-size-intro-body: 16px;
 		--font-size-link: 16px;
@@ -151,47 +151,19 @@ p {
 	-webkit-hyphens: auto;
 	hyphens: auto;
 	text-align: justify;
-}
 
-p ~ img,
-p ~ iframe {
-	width: 100%;
-	height: auto;
-}
-
-p ~ p {
-	margin-top: 1.5em;
-}
-
-h1,
-h2,
-h3,
-h4 {
-	& ~ p,
-	& ~ ol li p,
-	& ~ img {
-		margin-top: 20px;
+	& ~ img,
+	& ~ iframe {
+		width: 100%;
+		height: auto;
 	}
 }
 
-h1 ~ .informational-group,
-p ~ h1,
-p ~ h2,
-p ~ h3,
-p ~ h4,
-p ~ details summary,
-p ~ blockquote,
-p ~ .informational-group,
-p ~ .image-comparison,
-p + .link,
-p + section,
-p + table,
-p + style + table,
-p ~ .video-background,
-p ~ .video-embed,
-.video-embed + p,
-.video-embed + .link,
-.video-embed + .button,
+:is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ol li p, img),
+:is(h1, p) ~ .informational-group,
+p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .video-embed),
+.video-embed + :is(p, .link, .button),
+p + :is(.link, section),
 img + .link {
 	margin-top: 20px;
 }
@@ -213,18 +185,24 @@ li {
 	margin-top: 0.5em;
 }
 
+img {
+	vertical-align: top;
+}
+
 table {
-	margin: -20px;
+	margin: 20px -20px;
+	width: calc(100% + 40px);
 
 	th,
 	td {
+		border: 20px solid transparent;
+		vertical-align: top;
 		margin: 0;
 		padding: 0;
 	}
-	
-	td {
-		vertical-align: top;
-		border: 20px solid transparent;
+
+	th:empty {
+		border: none;
 	}
 }
 
@@ -352,8 +330,6 @@ pre {
 }
 
 kbd {
-	background: var(--color-fog);
-	border-radius: calc(var(--variable-px) * 2);
 	outline: calc(var(--border-thickness) / 2) solid var(--color-navy);
 	padding: 0 8px;
 	margin: 0 4px;
@@ -411,6 +387,11 @@ summary {
 			&:first-child {
 				margin-top: 0;
 			}
+		}
+
+		// Captions below images in blog posts
+		p:has(> img) + center:has(> em) {
+			margin-top: 10px;
 		}
 	}
 }
@@ -1152,7 +1133,7 @@ body > .page {
 						}
 					}
 
-					@media screen and (max-width: 880px) {
+					@media print, screen and (max-width: 880px) {
 						gap: 20px;
 
 						a {

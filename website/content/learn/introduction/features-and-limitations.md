@@ -40,6 +40,10 @@ Starting from the left, the <img src="https://static.graphite.rs/content/learn/i
 Next, that is fed into the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width /= 2" style="vertical-align: middle" alt="Circular Repeat" /> node which has several *parameters* you can modify and get different output data based on your choices, like in these examples:
 
 <style class="table-1-style">
+.table-1-style + table {
+	width: auto;
+}
+
 .table-1-style + table td {
 	vertical-align: middle;
 	text-align: center;
