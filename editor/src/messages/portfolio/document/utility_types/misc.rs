@@ -1,7 +1,7 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 use glam::DVec2;
 use graphene_core::raster::Color;
-use std::{fmt, path::Display};
+use std::fmt;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]

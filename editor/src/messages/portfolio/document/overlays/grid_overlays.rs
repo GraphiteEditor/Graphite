@@ -43,6 +43,44 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 	}
 }
 
+//TODO: Potentially create an image and render the image onto the canvas a single time
+fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
+	let origin = document.snapping_state.grid.origin;
+	let grid_color: Color = document.snapping_state.grid.grid_color;
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+		return;
+	};
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+
+	let min = bounds.0.iter().map(|&corner| corner[1]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let max = bounds.0.iter().map(|&corner| corner[1]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let mut primary_start = bounds.0.iter().map(|&corner| corner[0]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let mut primary_end = bounds.0.iter().map(|&corner| corner[0]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+
+	primary_start = (primary_start / spacing.x).ceil() * spacing.x;
+	primary_end = (primary_end / spacing.x).ceil() * spacing.x;
+
+	let spacing = spacing[0];
+
+	let total_dots = ((primary_end - primary_start) / spacing).ceil();
+
+	for line_index in 0..=((max - min) / spacing).ceil() as i32 {
+		let secondary_pos = (((min - origin[1]) / spacing).ceil() + line_index as f64) * spacing + origin[1];
+		let start = DVec2::new(primary_start, secondary_pos);
+		let end = DVec2::new(primary_end, secondary_pos);
+
+		let x_per_dot = (end.x - start.x) / total_dots;
+		for dot_index in 0..total_dots as usize {
+			let exact_x = x_per_dot * dot_index as f64;
+			overlay_context.pixel(
+				document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(),
+				Some(&("#".to_owned() + &grid_color.rgb_hex())),
+			)
+		}
+	}
+}
+
 fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
 	let grid_color: Color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
@@ -87,35 +125,6 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			overlay_context.line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				Some(&("#".to_owned() + &grid_color.rgb_hex())),
-			);
-		}
-	}
-}
-
-fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
-	let origin = document.snapping_state.grid.origin;
-	let grid_color: Color = document.snapping_state.grid.grid_color;
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
-		return;
-	};
-	let document_to_viewport = document.metadata().document_to_viewport;
-	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
-
-	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
-	let min_x = bounds.0.iter().map(|&corner| corner.x).min_by(cmp).unwrap_or_default();
-	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
-	let min_y = bounds.0.iter().map(|&corner| corner.y).min_by(cmp).unwrap_or_default();
-	let max_y = bounds.0.iter().map(|&corner| corner.y).max_by(cmp).unwrap_or_default();
-	for line_index in 0..=((max_x - min_x) / spacing.x).ceil() as i32 {
-		let x_pos = (((min_x - origin.x) / spacing.x).ceil() + line_index as f64) * spacing.x + origin.x;
-		for line_index in 0..=((max_y - min_y) / spacing.y).ceil() as i32 {
-			let y_pos = (((min_y - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
-			let circle_pos = DVec2::new(x_pos, y_pos);
-			overlay_context.circle(
-				document_to_viewport.transform_point2(circle_pos),
-				1.,
-				Some(&("#".to_owned() + &grid_color.rgb_hex())),
 				Some(&("#".to_owned() + &grid_color.rgb_hex())),
 			);
 		}
@@ -269,14 +278,18 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		}
 	}
 	match grid.grid_type {
-		GridType::Rectangle { spacing } => widgets.push(LayoutGroup::Row {
+		GridType::Rectangle { .. } => widgets.push(LayoutGroup::Row {
 			widgets: vec![
 				TextLabel::new("Dot display").table_align(true).widget_holder(),
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				CheckboxInput::new(grid.dot_display).on_update(update_display(grid, |grid| Some(&mut grid.dot_display))).widget_holder(),
 			],
 		}),
-		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {}
+		GridType::Isometric {
+			y_axis_spacing: _,
+			angle_a: _,
+			angle_b: _,
+		} => {}
 	}
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
