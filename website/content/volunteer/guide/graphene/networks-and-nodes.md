@@ -19,4 +19,6 @@ The graph shown above represents the full artwork, meaning it's the root-level g
 
 ## Networks
 
-A node network can be thought of as a box containing a finite set of nodes that are connected together. The network is only concerned with its own node-to-node data flow. But to interact with the outside world, data can be imported into the network and exported out of it. From the inside, those imported/exported data sources/destinations are connected to the other nodes in the network. From the outside, a network can be considered a "black box" that is simply fed inputs and can be executed to produce outputs.
+A node network can be thought of as a box containing a finite set of nodes that are connected together as a directed acyclic graph (DAG). The network is only concerned with its own node-to-node data flow. But to interact with the outside world, data can be imported into the network and exported out of it. From the inside, those imported/exported data sources/destinations are connected to the other nodes in the network. From the outside, a network can be considered a "black box" that is simply fed inputs and can be executed to produce outputs.
+
+***More coming soon...***

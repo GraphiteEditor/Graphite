@@ -35,33 +35,37 @@ A procedural graph executor, in its basic form, is a simple system that executes
 
 Crucially, the execution flow is handled at runtime so there is some overhead during every run. By analogy to programming languages, this traditional execution model acts like an interpreted language. But interpreted languages are famously slow, and we don't want Graphite leaving performance on the table.
 
-In designing Graphene, we decided to take a more advanced approach that could yield many of the benefits of a compiled language— code inlining, compiler optimizations, and a philosophy of offloading invariant enforcement to the type system. Instead of building a simple graph interpreter, we designed a system that dynamically executes the graph with a variable degree of pre-compiled optimizations. Graphene can range between an interpreted language, a JIT-optimized language, and a fully compiled language.
+In designing Graphene, we decided to take a more advanced approach that could yield many of the benefits of a compiled language— code inlining, compiler optimizations, and a philosophy of offloading invariant enforcement to the type system. Instead of building a simple graph interpreter where functions (nodes) are run as user input changes, we designed a system that dynamically executes the graph with a variable degree of pre-compiled optimizations where bits and pieces are recompiled and patched in while the user modifies the artwork (and graph) every frame. Thereby, Graphene can dynamically range between an interpreted language, a JIT-optimized language, and a fully compiled language.
 
 ## Technical overview
 
 ### The latency/performance tradeoff
 
-While working in Graphite, multiple needs arise for speed in different contexts. While making interactive changes, the user needs feedback as quickly as possible. While panning and zooming the canvas or playing an animation, the user cares about smoothness and responsiveness. When procedural artwork is exported as a standalone program that processes data at runtime, performance is the sole concern.
+While working in Graphite, multiple needs arise for speed in different contexts. While making interactive changes, the user needs feedback as quickly as possible. While panning and zooming the canvas or playing an animation, the user cares about smoothness and responsiveness. When procedural artwork is exported as a standalone program that processes data at runtime (like as part of an image processing web server or embedded within a game engine), performance is the sole concern.
 
 This sliding scale of latency/performance concerns maps directly to programming language concepts. Interpreted languages run immediately, but with slow runtime performance. JIT-optimized languages also run nearly without delay, but with less overhead than an interpreter since it can dynamically balance its effort towards optimizing and executing code. Compiled languages take upfront time to compile, but run with less overhead. A choice of optimization levels can be applied to further trade initial compilation time for runtime performance.
 
-We designed Graphene to operate in interpreted, JIT, and compiled regimes.
+We designed Graphene to operate in all three regimes:
+
+| Regime      | Usage                                                                 |
+|:------------|:----------------------------------------------------------------------|
+| Interpreted | While editing. Simple and currently the only mode that's implemented. |
+| JIT         | While editing. Dynamically bridges the gap between both other regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
+| Compiled    | When exported. The entire graph is compiled as a standalone program.  |
 
 ### Building upon the Rust compiler
 
-Nodes are functions written in Rust and every function has precompiled bytecode that ships with Graphite for use in the interpreted regime. The graph `input` → `A` → `B` → `C` → `output` is equivalent to the Rust statement `let output = C(B(A(input)));`. Graphene can either execute `A`, `B`, and `C` sequentially in its interpreted regime, or its JIT and compiled regimes can generate that Rust statement and compile it with the Rust compiler, `rustc`. The inlined and optimized bytecode can then be substituted for the chain of nodes in the JIT regime.
+Nodes are functions written in Rust and every node has precompiled bytecode that ships with Graphite for use in the interpreted regime. The graph `input` → `A` → `B` → `C` → `output` is equivalent to the Rust statement `let output = C(B(A(input)));`. Graphene can either execute `A`, `B`, and `C` sequentially in its interpreted regime, or its JIT and compiled regimes can generate that Rust statement and compile it with the Rust compiler, `rustc`. The inlined and optimized bytecode can then be substituted for those three nodes in the JIT regime.
 
 Graphene figures out which branches of the graph to compile and substitute as part of the JIT process while the user is authoring content in Graphite. While editing the graph, as changes occur to specific nodes, their surrounding graph branches drop back down to using the slower interpreted nodes. Then the JIT system works its way back up to faster execution over time by gradually compiling and swapping in larger optimized parts of the overall graph.
 
 The fully compiled regime is used only when the user exports the procedural artwork as a standalone program. For example, a CLI program may read a string input argument (like a name) and procedurally generate an output image file (like a birthday card).
 
-The interpreted regime is currently the only mode implemented in Graphene. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature.
+### Compile server
 
-| Regime      | Usage                                                                 |
-|:------------|:----------------------------------------------------------------------|
-| Interpreted | While editing. Simple and currently the only mode that's implemented. |
-| JIT         | While editing. Dynamically bridges the gap between both regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
-| Compiled    | When exported. The entire graph is compiled as a standalone program.  |
+The three regimes have thus far been only a description of the eventual architecture direction. The interpreted regime is currently the only mode implemented in Graphene. The other two will require access to `rustc` which will necessitate the compile server that we will finish building and then publicly host for Graphite users in the future. Users of the desktop version of Graphite, utilizing [Tauri](https://tauri.app/), will be able to use an embedded `rustc` if the user has opted to download the Rust toolchain while installing Graphite.
+
+Without a compile server, all the nodes are precompiled when Graphite is built. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature. Nodes support generics, so it's currently necessary to list every forseeable concrete type signature in the registry until the compile server can generate bytecode for less common type combinations on-the-fly.
 
 ### GPU compute shaders
 
@@ -84,7 +88,8 @@ Since Graphene is fundamentally a programming language, throughout this document
 | Graph compilation | Linking/JIT optimization/compilation |
 | Graph execution   | Program execution                    |
 
-<!-- The philosophy of building your own language features in the language itself -->
+<!-- Our philosophy of building (bootstrapping) our own higher-level language features from the language itself -->
+<!-- Primary inputs/outputs, secondary inputs/outputs, `.eval()`, recompiling when secondary input values are updated but not when primary input data is updated -->
 <!-- Compose nodes and automatic/manual composition -->
 <!-- Extract/inject nodes and metaprogramming -->
 <!-- Cache nodes and stable node IDs -->
