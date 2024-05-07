@@ -44,6 +44,10 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 }
 
 //TODO: Potentially create an image and render the image onto the canvas a single time
+//TODO: Implement this with a dashed line (`set_line_dash`), with integer spacing which is continuously adjusted to correct the accumulated error.
+// In the best case, where the x distance/total dots is an integer, this will reduce draw requests from the current m(horizontal dots)*n(vertical dots) to m(horizontal lines) * 1(line changes).
+// In the worst case, where the x distance/total dots is an integer+0.5, then each pixel will require a new line, and requests will be m(horizontal lines)*n(line changes = horizontal dots)
+// The draw dashed line method will also be not grid aligned for tilted grids
 fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color: Color = document.snapping_state.grid.grid_color;
