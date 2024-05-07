@@ -735,12 +735,12 @@ impl TypingContext {
 		}) {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, parameters })]);
 		}
-		fn covariant(from: &Type, to: &Type) -> bool {
+		fn valid_subtype(from: &Type, to: &Type) -> bool {
 			match (from, to) {
 				(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
-				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => covariant(a1, a2) && covariant(b1, b2),
+				// Functions are covariant in their input arguments. This allows us to supply anything to a function that is satisfied with ()
+				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => (valid_subtype(a1, a2) || **a1 == concrete!(())) && valid_subtype(b1, b2),
 				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), Type::Generic(_)) => true,
 				(Type::Generic(_), _) => true,
 				(_, Type::Generic(_)) => true,
 				_ => false,
@@ -750,7 +750,7 @@ impl TypingContext {
 		// List of all implementations that match the input and parameter types
 		let valid_output_types = impls
 			.keys()
-			.filter(|node_io| covariant(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| covariant(p1, p2)))
+			.filter(|node_io| valid_subtype(&input, &node_io.input) && parameters.iter().zip(node_io.parameters.iter()).all(|(p1, p2)| valid_subtype(p1, p2)))
 			.collect::<Vec<_>>();
 
 		// Attempt to substitute generic types with concrete types and save the list of results
@@ -785,7 +785,7 @@ impl TypingContext {
 						.cloned()
 						.zip([&node_io.input].into_iter().chain(&node_io.parameters).cloned())
 						.enumerate()
-						.filter(|(_, (p1, p2))| !covariant(p1, p2))
+						.filter(|(_, (p1, p2))| !valid_subtype(p1, p2))
 						.map(|(index, ty)| (node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index), ty))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {

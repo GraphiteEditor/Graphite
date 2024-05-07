@@ -31,7 +31,7 @@ let
   rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
     targets = [ "wasm32-unknown-unknown" ];
     # wasm-pack needs this
-    extensions = [ "rust-src" ];
+    extensions = [ "rust-src" "rust-analyzer" "clippy" ];
   };
 in
   # Make a shell with the dependencies we need
