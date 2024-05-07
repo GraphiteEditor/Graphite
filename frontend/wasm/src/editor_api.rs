@@ -683,11 +683,22 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Toggle visibility of a layer from the layer list
-	#[wasm_bindgen(js_name = toggleLayerVisibility)]
-	pub fn toggle_layer_visibility(&self, id: u64) {
+	/// Toggle visibility of a layer or node given its node ID
+	#[wasm_bindgen(js_name = toggleNodeVisibility)]
+	pub fn toggle_node_visibility(&self, id: u64) {
 		let node_id = NodeId(id);
 		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		self.dispatch(message);
+	}
+
+	/// Delete a layer or node given its node ID
+	#[wasm_bindgen(js_name = deleteNode)]
+	pub fn delete_node(&self, id: u64) {
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
+
+		let id = NodeId(id);
+		let message = DocumentMessage::DeleteLayer { id };
 		self.dispatch(message);
 	}
 

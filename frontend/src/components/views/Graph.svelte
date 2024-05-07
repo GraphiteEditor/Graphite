@@ -556,8 +556,8 @@
 		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
-	function toggleLayerVisibility(id: bigint) {
-		editor.handle.toggleLayerVisibility(id);
+	function toggleNodeVisibility(id: bigint) {
+		editor.handle.toggleNodeVisibility(id);
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean) {
@@ -956,7 +956,7 @@
 				</div>
 				<IconButton
 					class={"visibility"}
-					action={(e) => (toggleLayerVisibility(node.id), e?.stopPropagation())}
+					action={(e) => (toggleNodeVisibility(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
 					tooltip={node.visible ? "Visible" : "Hidden"}

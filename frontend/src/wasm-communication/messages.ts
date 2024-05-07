@@ -1176,7 +1176,7 @@ export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpan
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetSection = { name: string; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; visible: boolean; id: bigint; layout: LayoutGroup[] };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
@@ -1216,7 +1216,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	}
 
 	if (layoutGroup.section) {
-		const result: WidgetSection = { name: layoutGroup.section.name, layout: layoutGroup.section.layout.map(createLayoutGroup) };
+		const result: WidgetSection = { name: layoutGroup.section.name, visible: layoutGroup.section.visible, id: layoutGroup.section.id, layout: layoutGroup.section.layout.map(createLayoutGroup) };
 		return result;
 	}
 

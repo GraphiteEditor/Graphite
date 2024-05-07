@@ -2252,7 +2252,12 @@ pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, c
 		Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
 		None => unknown_node_properties(document_node),
 	};
-	LayoutGroup::Section { name, layout }
+	LayoutGroup::Section {
+		name,
+		visible: document_node.visible,
+		id: node_id.0,
+		layout,
+	}
 }
 
 pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
