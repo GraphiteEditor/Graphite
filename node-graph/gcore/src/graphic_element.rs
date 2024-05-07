@@ -158,6 +158,13 @@ fn to_graphic_element<Data: Into<GraphicElement>>(data: Data) -> GraphicElement 
 	data.into()
 }
 
+pub struct ToGraphicGroupNode {}
+
+#[node_fn(ToGraphicGroupNode)]
+fn to_graphic_group<Data: Into<GraphicGroup>>(data: Data) -> GraphicGroup {
+	data.into()
+}
+
 pub struct ConstructArtboardNode<Contents, Location, Dimensions, Background, Clip> {
 	contents: Contents,
 	location: Location,

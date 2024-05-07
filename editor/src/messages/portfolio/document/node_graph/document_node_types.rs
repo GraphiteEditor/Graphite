@@ -197,9 +197,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(2), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				imports: vec![NodeId(1), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
+					// Secondary (left) input type coercion
 					(
 						NodeId(0),
 						DocumentNode {
@@ -209,24 +210,30 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							..Default::default()
 						},
 					),
-					// The monitor node is used to display a thumbnail in the UI.
-					// TODO: Check if thumbnail is reversed
+					// Primary (bottom) input type coercion
 					(
 						NodeId(1),
+						DocumentNode {
+							name: "To Graphic Group".to_string(),
+							inputs: vec![NodeInput::Network(generic!(T))],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI
+					(
+						NodeId(2),
 						DocumentNode {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							..monitor_node()
 						},
 					),
 					(
-						NodeId(2),
+						NodeId(3),
 						DocumentNode {
 							name: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
-							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
-								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
-							],
+							inputs: vec![NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
 							..Default::default()
 						},
