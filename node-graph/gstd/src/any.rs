@@ -1,8 +1,10 @@
-use dyn_any::{DynAny, StaticType};
 pub use graph_craft::proto::{Any, NodeContainer, TypeErasedBox, TypeErasedNode};
 use graph_craft::proto::{DynFuture, FutureAny, SharedNodeContainer};
 use graphene_core::NodeIO;
 pub use graphene_core::{generic, ops, Node};
+
+use dyn_any::StaticType;
+
 use std::marker::PhantomData;
 
 pub struct DynAnyNode<I, O, Node> {
@@ -28,7 +30,7 @@ where
 			// If the input type of the node is `()` and we supply an invalid type, we can still call the
 			// node and just ignore the input and call it with the unit type instead.
 			Err(_) if core::any::TypeId::of::<_I::Static>() == core::any::TypeId::of::<()>() => {
-				debug_assert_eq!(std::mem::size_of::<_I>(), 0);
+				assert_eq!(std::mem::size_of::<_I>(), 0);
 				// Rust can't know, that `_I` and `()` are the same size, so we have to use a `transmute_copy()` here
 				Box::pin(output(unsafe { std::mem::transmute_copy(&()) }))
 			}

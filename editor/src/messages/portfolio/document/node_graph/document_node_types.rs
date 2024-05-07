@@ -881,6 +881,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
 					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
 					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
+					// TODO: Remove this limitation by either making the `imports` above into a double-vec or making each of these DocumentNodes request their imported data based on its index.
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],

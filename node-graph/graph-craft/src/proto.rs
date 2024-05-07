@@ -735,14 +735,28 @@ impl TypingContext {
 		}) {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, parameters })]);
 		}
+
+		/// Checks if a proposed input to a particular (primary or secondary) input is valid for its type signature.
+		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
 		fn valid_subtype(from: &Type, to: &Type) -> bool {
 			match (from, to) {
-				(Type::Concrete(t1), Type::Concrete(t2)) => t1 == t2,
-				// Functions are covariant in their input arguments. This allows us to supply anything to a function that is satisfied with ()
-				(Type::Fn(a1, b1), Type::Fn(a2, b2)) => (valid_subtype(a1, a2) || **a1 == concrete!(())) && valid_subtype(b1, b2),
+				// Direct comparison of two concrete types.
+				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+				// Loose comparison of function types, where loose means that functions are considered on a "greater than or equal to" basis of its function type's generality.
+				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
+				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
+				// This allows us to supply anything to a function that is satisfied with `()`.
+				// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
+				// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
+				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
+				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
+				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
+				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_subtype(out1, out2) && (valid_subtype(in1, in2) || **in1 == concrete!(())),
+				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
 				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), _) => true,
-				(_, Type::Generic(_)) => true,
+				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
+				// Reject unknown type relationships.
 				_ => false,
 			}
 		}
