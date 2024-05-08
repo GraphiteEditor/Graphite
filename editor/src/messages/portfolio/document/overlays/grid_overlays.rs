@@ -167,6 +167,10 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y).ceil() as i32;
 
 	let cos_a = angle_a.to_radians().cos();
+	// If cos_a is 0 then there will be no intersections and thus no dots should be drawn
+	if cos_a.abs() <= 0.00001 {
+		return;
+	}
 	let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
 	for line_index in 0..=lines {
 		let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
