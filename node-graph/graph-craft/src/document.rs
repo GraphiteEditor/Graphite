@@ -1182,47 +1182,6 @@ impl NodeNetwork {
 		self.nodes.extend(extraction_nodes);
 	}
 
-	/// Due to the adaptive resolution system, nodes that take a `GraphicGroup` as input must call the upstream node with the `Footprint` parameter.
-	///
-	/// However, in the case of the default input, we must insert a node that takes an input of `Footprint` and returns `GraphicGroup::Empty`, in order to satisfy the type system.
-	/// This is because the standard value node takes in `()`.
-	pub fn resolve_empty_stacks(&mut self) {
-		for value in [
-			TaggedValue::GraphicGroup(GraphicGroup::EMPTY),
-			TaggedValue::VectorData(VectorData::empty()),
-			TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY),
-		] {
-			const EMPTY_STACK: &str = "Empty Stack";
-
-			let new_id = generate_uuid();
-			let mut used = false;
-
-			// We filter out the newly inserted empty stack in case `resolve_empty_stacks` runs multiple times.
-			for node in self.nodes.values_mut().filter(|node| node.name != EMPTY_STACK) {
-				for input in &mut node.inputs {
-					if let NodeInput::Value { tagged_value, .. } = input {
-						if *tagged_value == value {
-							*input = NodeInput::node(NodeId(new_id), 0);
-							used = true;
-						}
-					}
-				}
-			}
-
-			// Only insert the node if necessary.
-			if used {
-				let new_node = DocumentNode {
-					name: EMPTY_STACK.to_string(),
-					implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
-					manual_composition: Some(concrete!(graphene_core::transform::Footprint)),
-					inputs: vec![NodeInput::value(value, false)],
-					..Default::default()
-				};
-				self.nodes.insert(NodeId(new_id), new_node);
-			}
-		}
-	}
-
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();

@@ -333,7 +333,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Load Resource".to_string(),
@@ -345,6 +345,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Decode Image".to_string(),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cull".to_string(),
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
+						manual_composition: Some(concrete!(Footprint)),
 						..Default::default()
 					},
 				]
@@ -2752,7 +2759,6 @@ impl DocumentNodeDefinition {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
-	network.resolve_empty_stacks();
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);
