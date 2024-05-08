@@ -5,7 +5,7 @@ use crate::messages::prelude::Message;
 use bezier_rs::Subpath;
 use graphene_core::renderer::Quad;
 
-use core::f64::consts::PI;
+use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -53,7 +53,7 @@ impl OverlayContext {
 		let position = position.round() - DVec2::splat(0.5);
 
 		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU).expect("draw circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
@@ -85,7 +85,7 @@ impl OverlayContext {
 	}
 
 	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.0;
+		let size = 1.;
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
 		let position = position.round() - DVec2::splat(0.5);
@@ -98,12 +98,11 @@ impl OverlayContext {
 	}
 
 	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
-		//let radius = radius.unwrap_or(DEFAULT_RADIUS); //DEFAULT_RADIUS has to be added to consts in order to use an option
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 		let position = position.round();
 		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0.0, 2.0 * PI).expect("draw circle");
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
 		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
 		self.render_context.fill();
@@ -115,7 +114,7 @@ impl OverlayContext {
 		// Circle
 
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
 		self.render_context.fill();
 

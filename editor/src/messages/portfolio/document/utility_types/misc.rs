@@ -1,6 +1,8 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
-use glam::DVec2;
+
 use graphene_core::raster::Color;
+
+use glam::DVec2;
 use std::fmt;
 
 #[repr(transparent)]
