@@ -18,6 +18,7 @@ import Empty12px from "@graphite-frontend/assets/icon-12px-solid/empty-12px.svg"
 import Failure from "@graphite-frontend/assets/icon-12px-solid/failure.svg";
 import FullscreenEnter from "@graphite-frontend/assets/icon-12px-solid/fullscreen-enter.svg";
 import FullscreenExit from "@graphite-frontend/assets/icon-12px-solid/fullscreen-exit.svg";
+import GridDotted from "@graphite-frontend/assets/icon-12px-solid/grid-dotted.svg";
 import Grid from "@graphite-frontend/assets/icon-12px-solid/grid.svg";
 import Info from "@graphite-frontend/assets/icon-12px-solid/info.svg";
 import KeyboardArrowDown from "@graphite-frontend/assets/icon-12px-solid/keyboard-arrow-down.svg";
@@ -58,6 +59,7 @@ const SOLID_12PX = {
 	FullscreenEnter: { svg: FullscreenEnter, size: 12 },
 	FullscreenExit: { svg: FullscreenExit, size: 12 },
 	Grid: { svg: Grid, size: 12 },
+	GridDotted: { svg: GridDotted, size: 12 },
 	Info: { svg: Info, size: 12 },
 	KeyboardArrowDown: { svg: KeyboardArrowDown, size: 12 },
 	KeyboardArrowLeft: { svg: KeyboardArrowLeft, size: 12 },
