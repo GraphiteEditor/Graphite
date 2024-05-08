@@ -697,6 +697,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
 						..Default::default()
 					},
+					// TODO: Make noise pattern node resolution aware and remove the cull node
 					DocumentNode {
 						name: "Cull".to_string(),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
