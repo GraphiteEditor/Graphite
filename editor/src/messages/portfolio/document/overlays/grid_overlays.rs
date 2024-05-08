@@ -39,7 +39,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			overlay_context.line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgb_hex())),
+				Some(&("#".to_string() + &grid_color.rgba_hex())),
 				None,
 			);
 		}
@@ -57,7 +57,6 @@ fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut Ove
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
 		return;
 	};
-	let spacing = spacing.x;
 	let document_to_viewport = document.metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
@@ -67,22 +66,23 @@ fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut Ove
 	let mut primary_start = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 	let mut primary_end = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 
-	primary_start = (primary_start / spacing).ceil() * spacing;
-	primary_end = (primary_end / spacing).ceil() * spacing;
+	primary_start = (primary_start / spacing.x).floor() * spacing.x + origin.x % spacing.x;
+	primary_end = (primary_end / spacing.x).floor() * spacing.x + origin.x % spacing.x;
 
-	let total_dots = ((primary_end - primary_start) / spacing).ceil();
+	// Round to avoid floating point errors
+	let total_dots = ((primary_end - primary_start) / spacing.x).round();
 
-	for line_index in 0..=((max - min) / spacing).ceil() as i32 {
-		let secondary_pos = (((min - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
+	for line_index in 0..=((max - min) / spacing.y).ceil() as i32 {
+		let secondary_pos = (((min - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
 		let start = DVec2::new(primary_start, secondary_pos);
 		let end = DVec2::new(primary_end, secondary_pos);
 
 		let x_per_dot = (end.x - start.x) / total_dots;
-		for dot_index in 0..total_dots as usize {
+		for dot_index in 0..=total_dots as usize {
 			let exact_x = x_per_dot * dot_index as f64;
 			overlay_context.pixel(
 				document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(),
-				Some(&("#".to_string() + &grid_color.rgb_hex())),
+				Some(&("#".to_string() + &grid_color.rgba_hex())),
 			)
 		}
 	}
@@ -114,7 +114,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		overlay_context.line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
-			Some(&("#".to_string() + &grid_color.rgb_hex())),
+			Some(&("#".to_string() + &grid_color.rgba_hex())),
 			None,
 		);
 	}
@@ -133,7 +133,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			overlay_context.line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgb_hex())),
+				Some(&("#".to_string() + &grid_color.rgba_hex())),
 				None,
 			);
 		}
@@ -180,7 +180,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 		overlay_context.line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
-			Some(&("#".to_string() + &grid_color.rgb_hex())),
+			Some(&("#".to_string() + &grid_color.rgba_hex())),
 			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length()),
 		);
 	}
