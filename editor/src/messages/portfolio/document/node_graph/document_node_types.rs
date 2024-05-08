@@ -333,7 +333,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeOutput::new(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Load Resource".to_string(),
@@ -345,6 +345,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Decode Image".to_string(),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::DecodeImageNode")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cull".to_string(),
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
+						manual_composition: Some(concrete!(Footprint)),
 						..Default::default()
 					},
 				]
@@ -646,7 +653,65 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Noise Pattern",
 			category: "General",
-			implementation: DocumentNodeImplementation::proto("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				imports: vec![
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+				],
+				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						name: "Noise Pattern".to_string(),
+						inputs: vec![
+							NodeInput::Network(concrete!(())),
+							NodeInput::Network(concrete!(UVec2)),
+							NodeInput::Network(concrete!(u32)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::NoiseType)),
+							NodeInput::Network(concrete!(graphene_core::raster::FractalType)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::FractalType)),
+							NodeInput::Network(concrete!(u32)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::CellularDistanceFunction)),
+							NodeInput::Network(concrete!(graphene_core::raster::CellularReturnType)),
+							NodeInput::Network(concrete!(f64)),
+						],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
+						..Default::default()
+					},
+					// TODO: Make noise pattern node resolution aware and remove the cull node
+					DocumentNode {
+						name: "Cull".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
+						manual_composition: Some(concrete!(Footprint)),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("None", TaggedValue::None, false),
 				// All
@@ -2752,7 +2817,6 @@ impl DocumentNodeDefinition {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
-	network.resolve_empty_stacks();
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);
