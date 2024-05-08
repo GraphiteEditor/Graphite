@@ -393,6 +393,13 @@ summary {
 		p:has(> img) + center:has(> em) {
 			margin-top: 10px;
 		}
+
+		p {
+			& ~ img {
+				width: auto;
+				max-width: 100%;
+			}
+		}
 	}
 }
 
@@ -409,6 +416,28 @@ summary {
 	font-feature-settings: "lnum";
 	line-height: 1.2;
 	font-weight: 500;
+}
+
+.demo-artwork {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-top: 20px;
+
+	img {
+		height: 128px;
+		border: 12px solid var(--color-walnut);
+		vertical-align: top;
+		flex: 0 0 auto;
+	}
+
+	p {
+		display: flex;
+		flex-direction: column;
+		max-width: 300px;
+		margin-left: 40px;
+		text-align: left;
+	}
 }
 
 .video-embed {

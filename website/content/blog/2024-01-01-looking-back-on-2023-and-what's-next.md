@@ -20,6 +20,7 @@ I am grateful to everyone who has placed their faith in my vision for Graphite s
 
 <div class="video-background" style="text-align: center">
 	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
 		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
 	</video>
 </div>
