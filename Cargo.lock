@@ -2376,6 +2376,7 @@ dependencies = [
  "graphite-proc-macros",
  "image 0.24.9",
  "interpreted-executor",
+ "js-sys",
  "log",
  "num_enum 0.6.1",
  "once_cell",

@@ -40,6 +40,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				Some(&("#".to_string() + &grid_color.rgb_hex())),
+				None,
 			);
 		}
 	}
@@ -114,6 +115,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgb_hex())),
+			None,
 		);
 	}
 
@@ -132,8 +134,51 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				Some(&("#".to_string() + &grid_color.rgb_hex())),
+				None,
 			);
 		}
+	}
+}
+
+fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, y_axis_spacing: f64, angle_a: f64, angle_b: f64) {
+	let grid_color = document.snapping_state.grid.grid_color;
+	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
+	let origin = document.snapping_state.grid.origin;
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
+	let tan_a = angle_a.to_radians().tan();
+	let tan_b = angle_b.to_radians().tan();
+	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
+		return;
+	};
+	let isometric_spacing = spacing * spacing_multiplier;
+
+	let min_x = bounds.0.iter().map(|&corner| corner.x).min_by(cmp).unwrap_or_default();
+	let max_x = bounds.0.iter().map(|&corner| corner.x).max_by(cmp).unwrap_or_default();
+	let spacing_x = isometric_spacing.x;
+	let tan = tan_a;
+	let multiply = -1.0;
+	let project = |corner: &DVec2| corner.y + multiply * tan * (corner.x - origin.x);
+	let inverse_project = |corner: &DVec2| corner.y - tan * multiply * (corner.x - origin.x);
+	let min_y = bounds.0.into_iter().min_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+	let max_y = bounds.0.into_iter().max_by(|a, b| inverse_project(a).partial_cmp(&inverse_project(b)).unwrap()).unwrap_or_default();
+	let spacing_y = isometric_spacing.y;
+	let lines = ((inverse_project(&max_y) - inverse_project(&min_y)) / spacing_y).ceil() as i32;
+
+	let cos_a = angle_a.to_radians().cos();
+	let x_offset = (((min_x - origin.x) / spacing_x).ceil()) * spacing_x + origin.x - min_x;
+	for line_index in 0..=lines {
+		let y_pos = (((inverse_project(&min_y) - origin.y) / spacing_y).ceil() + line_index as f64) * spacing_y + origin.y;
+		let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
+		let end = DVec2::new(max_x + x_offset, project(&DVec2::new(max_x + x_offset, y_pos)));
+
+		overlay_context.line(
+			document_to_viewport.transform_point2(start),
+			document_to_viewport.transform_point2(end),
+			Some(&("#".to_string() + &grid_color.rgb_hex())),
+			Some((spacing_x / cos_a) * document_to_viewport.matrix2.x_axis.length()),
+		);
 	}
 }
 
@@ -146,7 +191,13 @@ pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ove
 				grid_overlay_rectangular(document, overlay_context, spacing)
 			}
 		}
-		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => grid_overlay_isometric(document, overlay_context, y_axis_spacing, angle_a, angle_b),
+		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
+			if document.snapping_state.grid.dot_display {
+				grid_overlay_isometric_dot(document, overlay_context, y_axis_spacing, angle_a, angle_b)
+			} else {
+				grid_overlay_isometric(document, overlay_context, y_axis_spacing, angle_a, angle_b)
+			}
+		}
 	}
 }
 
@@ -212,16 +263,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	});
 
 	let mut color_widgets = vec![TextLabel::new("Display").table_align(true).widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-	if matches!(grid.grid_type, GridType::Rectangle { .. }) {
-		color_widgets.extend([
-			CheckboxInput::new(grid.dot_display)
-				.icon("GridDotted")
-				.tooltip("Display as dotted grid")
-				.on_update(update_display(grid, |grid| Some(&mut grid.dot_display)))
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
-		]);
-	}
+	color_widgets.extend([
+		CheckboxInput::new(grid.dot_display)
+			.icon("GridDotted")
+			.tooltip("Display as dotted grid")
+			.on_update(update_display(grid, |grid| Some(&mut grid.dot_display)))
+			.widget_holder(),
+		Separator::new(SeparatorType::Related).widget_holder(),
+	]);
 	color_widgets.push(
 		ColorButton::new(Some(grid.grid_color))
 			.tooltip("Grid display color")

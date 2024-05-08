@@ -4,6 +4,7 @@ use crate::messages::prelude::Message;
 
 use bezier_rs::Subpath;
 use graphene_core::renderer::Quad;
+use wasm_bindgen::JsValue;
 
 use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
@@ -38,10 +39,24 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
-
+		if let Some(dash_width) = dash_width {
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(1));
+			array.push(&JsValue::from(dash_width - 1.));
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.ok();
+		} else {
+			let array = js_sys::Array::new();
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
