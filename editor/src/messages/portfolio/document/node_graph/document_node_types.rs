@@ -653,7 +653,64 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Noise Pattern",
 			category: "General",
-			implementation: DocumentNodeImplementation::proto("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				imports: vec![
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+					NodeId(0),
+				],
+				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						name: "Noise Pattern".to_string(),
+						inputs: vec![
+							NodeInput::Network(concrete!(())),
+							NodeInput::Network(concrete!(UVec2)),
+							NodeInput::Network(concrete!(u32)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::NoiseType)),
+							NodeInput::Network(concrete!(graphene_core::raster::FractalType)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::FractalType)),
+							NodeInput::Network(concrete!(u32)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(f64)),
+							NodeInput::Network(concrete!(graphene_core::raster::CellularDistanceFunction)),
+							NodeInput::Network(concrete!(graphene_core::raster::CellularReturnType)),
+							NodeInput::Network(concrete!(f64)),
+						],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cull".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
+						manual_composition: Some(concrete!(Footprint)),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("None", TaggedValue::None, false),
 				// All
