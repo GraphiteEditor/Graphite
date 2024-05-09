@@ -356,19 +356,6 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.on_commit(commit_value)
 				.widget_holder(),
 		])
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::F32(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		])
 	}
 	widgets
 }

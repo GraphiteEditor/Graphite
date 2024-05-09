@@ -42,6 +42,7 @@ pub struct DocumentMessageData<'a> {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct DocumentMessageHandler {
 	// ======================
 	// Child message handlers
@@ -62,44 +63,32 @@ pub struct DocumentMessageHandler {
 	//
 	/// The node graph that generates this document's artwork.
 	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
-	#[serde(default = "default_network")]
 	pub network: NodeNetwork,
 	/// List of the [`NodeId`]s that are currently selected by the user.
-	#[serde(default = "default_selected_nodes")]
 	pub selected_nodes: SelectedNodes,
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
-	#[serde(default = "default_collapsed")]
 	pub collapsed: CollapsedLayers,
 	/// The name of the document, which is displayed in the tab and title bar of the editor.
-	#[serde(default = "default_name")]
 	pub name: String,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
-	#[serde(default = "default_commit_hash")]
 	commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
-	#[serde(default = "default_pan_tilt_zoom")]
 	pub navigation: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-	#[serde(default = "default_document_mode")]
 	document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	#[serde(default = "default_view_mode")]
 	pub view_mode: ViewMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
-	#[serde(default = "default_overlays_visible")]
 	overlays_visible: bool,
 	/// Sets whether or not the rulers should be drawn along the top and left edges of the viewport area.
-	#[serde(default = "default_rulers_visible")]
 	pub rulers_visible: bool,
 	/// Sets whether or not the node graph is drawn (as an overlay) on top of the viewport area, or otherwise if it's hidden.
-	#[serde(default = "default_graph_view_overlay_open")]
 	graph_view_overlay_open: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
-	#[serde(default = "default_snapping_state")]
 	pub snapping_state: SnappingState,
 
 	// =============================================
@@ -129,6 +118,45 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
+}
+
+impl Default for DocumentMessageHandler {
+	fn default() -> Self {
+		Self {
+			// ======================
+			// Child message handlers
+			// ======================
+			navigation_handler: NavigationMessageHandler::default(),
+			node_graph_handler: NodeGraphMessageHandler::default(),
+			overlays_message_handler: OverlaysMessageHandler::default(),
+			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			// ============================================
+			// Fields that are saved in the document format
+			// ============================================
+			network: root_network(),
+			selected_nodes: SelectedNodes::default(),
+			collapsed: CollapsedLayers::default(),
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
+			navigation: PTZ::default(),
+			document_mode: DocumentMode::DesignMode,
+			view_mode: ViewMode::default(),
+			overlays_visible: true,
+			rulers_visible: true,
+			graph_view_overlay_open: false,
+			snapping_state: SnappingState::default(),
+			// =============================================
+			// Fields omitted from the saved document format
+			// =============================================
+			document_undo_history: VecDeque::new(),
+			document_redo_history: VecDeque::new(),
+			saved_hash: None,
+			auto_saved_hash: None,
+			undo_in_progress: false,
+			layer_range_selection_reference: None,
+			metadata: Default::default(),
+		}
+	}
 }
 
 impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessageHandler {
@@ -1911,94 +1939,6 @@ impl DocumentMessageHandler {
 		let insert_index = if relative_index_offset < 0 { neighbor_index } else { neighbor_index + 1 } as isize;
 		responses.add(DocumentMessage::MoveSelectedLayersTo { parent, insert_index });
 	}
-}
-
-impl Default for DocumentMessageHandler {
-	fn default() -> Self {
-		Self {
-			// ======================
-			// Child message handlers
-			// ======================
-			navigation_handler: NavigationMessageHandler::default(),
-			node_graph_handler: NodeGraphMessageHandler::default(),
-			overlays_message_handler: OverlaysMessageHandler::default(),
-			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
-			// ============================================
-			// Fields that are saved in the document format
-			// ============================================
-			network: root_network(),
-			selected_nodes: SelectedNodes::default(),
-			collapsed: CollapsedLayers::default(),
-			name: DEFAULT_DOCUMENT_NAME.to_string(),
-			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			navigation: PTZ::default(),
-			document_mode: DocumentMode::DesignMode,
-			view_mode: ViewMode::default(),
-			overlays_visible: true,
-			rulers_visible: true,
-			// =============================================
-			// Fields omitted from the saved document format
-			// =============================================
-			document_undo_history: VecDeque::new(),
-			document_redo_history: VecDeque::new(),
-			saved_hash: None,
-			auto_saved_hash: None,
-			undo_in_progress: false,
-			graph_view_overlay_open: false,
-			snapping_state: SnappingState::default(),
-			layer_range_selection_reference: None,
-			metadata: Default::default(),
-		}
-	}
-}
-
-#[inline(always)]
-fn default_network() -> NodeNetwork {
-	DocumentMessageHandler::default().network
-}
-#[inline(always)]
-fn default_selected_nodes() -> SelectedNodes {
-	DocumentMessageHandler::default().selected_nodes
-}
-#[inline(always)]
-fn default_collapsed() -> CollapsedLayers {
-	DocumentMessageHandler::default().collapsed
-}
-#[inline(always)]
-fn default_name() -> String {
-	DocumentMessageHandler::default().name
-}
-#[inline(always)]
-fn default_commit_hash() -> String {
-	DocumentMessageHandler::default().commit_hash
-}
-#[inline(always)]
-fn default_pan_tilt_zoom() -> PTZ {
-	DocumentMessageHandler::default().navigation
-}
-#[inline(always)]
-fn default_document_mode() -> DocumentMode {
-	DocumentMessageHandler::default().document_mode
-}
-#[inline(always)]
-fn default_view_mode() -> ViewMode {
-	DocumentMessageHandler::default().view_mode
-}
-#[inline(always)]
-fn default_overlays_visible() -> bool {
-	DocumentMessageHandler::default().overlays_visible
-}
-#[inline(always)]
-fn default_rulers_visible() -> bool {
-	DocumentMessageHandler::default().rulers_visible
-}
-#[inline(always)]
-fn default_graph_view_overlay_open() -> bool {
-	DocumentMessageHandler::default().graph_view_overlay_open
-}
-#[inline(always)]
-fn default_snapping_state() -> SnappingState {
-	DocumentMessageHandler::default().snapping_state
 }
 
 fn root_network() -> NodeNetwork {

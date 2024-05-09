@@ -56,8 +56,9 @@ impl DocumentMode {
 	}
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 /// SnappingState determines the current individual snapping states
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SnappingState {
 	pub snapping_enabled: bool,
 	pub grid_snapping: bool,
@@ -67,39 +68,21 @@ pub struct SnappingState {
 	pub tolerance: f64,
 	pub artboards: bool,
 }
+
 impl Default for SnappingState {
 	fn default() -> Self {
 		Self {
 			snapping_enabled: true,
 			grid_snapping: false,
-			bounds: BoundsSnapping {
-				edges: true,
-				corners: true,
-				edge_midpoints: false,
-				centers: true,
-			},
-			nodes: PointSnapping {
-				paths: true,
-				path_intersections: true,
-				anchors: true,
-				line_midpoints: true,
-				normals: true,
-				tangents: true,
-			},
-			grid: GridSnapping {
-				origin: DVec2::ZERO,
-				grid_type: GridType::RECTANGLE,
-				grid_color: COLOR_OVERLAY_GRAY
-					.strip_prefix("#")
-					.and_then(|value| Color::from_rgb_str(value))
-					.expect("Should create Color from prefixed hex string"),
-				dot_display: false,
-			},
+			bounds: Default::default(),
+			nodes: Default::default(),
+			grid: Default::default(),
 			tolerance: 8.,
 			artboards: true,
 		}
 	}
 }
+
 impl SnappingState {
 	pub const fn target_enabled(&self, target: SnapTarget) -> bool {
 		if !self.snapping_enabled {
@@ -127,13 +110,27 @@ impl SnappingState {
 		}
 	}
 }
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct BoundsSnapping {
 	pub edges: bool,
 	pub corners: bool,
 	pub edge_midpoints: bool,
 	pub centers: bool,
 }
+
+impl Default for BoundsSnapping {
+	fn default() -> Self {
+		Self {
+			edges: true,
+			corners: true,
+			edge_midpoints: false,
+			centers: true,
+		}
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OptionBoundsSnapping {
 	pub edges: Option<bool>,
@@ -141,7 +138,9 @@ pub struct OptionBoundsSnapping {
 	pub edge_midpoints: Option<bool>,
 	pub centers: Option<bool>,
 }
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PointSnapping {
 	pub paths: bool,
 	pub path_intersections: bool,
@@ -150,6 +149,20 @@ pub struct PointSnapping {
 	pub normals: bool,
 	pub tangents: bool,
 }
+
+impl Default for PointSnapping {
+	fn default() -> Self {
+		Self {
+			paths: true,
+			path_intersections: true,
+			anchors: true,
+			line_midpoints: true,
+			normals: true,
+			tangents: true,
+		}
+	}
+}
+
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct OptionPointSnapping {
 	pub paths: Option<bool>,
@@ -159,11 +172,19 @@ pub struct OptionPointSnapping {
 	pub normals: Option<bool>,
 	pub tangents: Option<bool>,
 }
+
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
 	Rectangle { spacing: DVec2 },
 	Isometric { y_axis_spacing: f64, angle_a: f64, angle_b: f64 },
 }
+
+impl Default for GridType {
+	fn default() -> Self {
+		Self::RECTANGLE
+	}
+}
+
 impl GridType {
 	pub const RECTANGLE: Self = GridType::Rectangle { spacing: DVec2::ONE };
 	pub const ISOMETRIC: Self = GridType::Isometric {
@@ -196,13 +217,30 @@ impl GridType {
 		}
 	}
 }
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+#[serde(default)]
 pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
 	pub grid_color: Color,
 	pub dot_display: bool,
 }
+
+impl Default for GridSnapping {
+	fn default() -> Self {
+		Self {
+			origin: DVec2::ZERO,
+			grid_type: Default::default(),
+			grid_color: COLOR_OVERLAY_GRAY
+				.strip_prefix("#")
+				.and_then(|value| Color::from_rgb_str(value))
+				.expect("Should create Color from prefixed hex string"),
+			dot_display: false,
+		}
+	}
+}
+
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
 	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> Option<DVec2> {
@@ -240,11 +278,13 @@ pub enum BoundingBoxSnapSource {
 	Corner,
 	EdgeMidpoint,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoardSnapSource {
 	Center,
 	Corner,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeometrySnapSource {
 	AnchorWithColinearHandles,
@@ -253,6 +293,7 @@ pub enum GeometrySnapSource {
 	LineMidpoint,
 	Intersection,
 }
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapSource {
 	#[default]
@@ -261,6 +302,7 @@ pub enum SnapSource {
 	Board(BoardSnapSource),
 	Geometry(GeometrySnapSource),
 }
+
 impl SnapSource {
 	pub fn is_some(&self) -> bool {
 		self != &Self::None
@@ -269,6 +311,7 @@ impl SnapSource {
 		matches!(self, Self::BoundingBox(_) | Self::Board(_))
 	}
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoundingBoxSnapTarget {
 	Center,
@@ -319,12 +362,14 @@ pub enum BoardSnapTarget {
 	Corner,
 	Center,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GridSnapTarget {
 	Line,
 	LineNormal,
 	Intersection,
 }
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapTarget {
 	#[default]
@@ -334,6 +379,7 @@ pub enum SnapTarget {
 	Board(BoardSnapTarget),
 	Grid(GridSnapTarget),
 }
+
 impl SnapTarget {
 	pub fn is_some(&self) -> bool {
 		self != &Self::None
@@ -342,6 +388,7 @@ impl SnapTarget {
 		matches!(self, Self::BoundingBox(_) | Self::Board(_))
 	}
 }
+
 // TODO: implement icons for SnappingOptions eventually
 pub enum SnappingOptions {
 	BoundingBoxes,
@@ -358,9 +405,11 @@ impl fmt::Display for SnappingOptions {
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PTZ {
 	pub pan: DVec2,
 	pub tilt: f64,
+	// TODO: Make this private and add getter/setter methods which ensure zoom is always positive and greater than the smallest zoom level in `VIEWPORT_ZOOM_LEVELS`.
 	pub zoom: f64,
 }
 

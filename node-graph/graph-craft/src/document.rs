@@ -3,8 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::VectorData;
-use graphene_core::{ArtboardGroup, GraphicGroup, ProtoNodeIdentifier, Type};
+use graphene_core::{ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
@@ -51,6 +50,15 @@ fn return_true() -> bool {
 	true
 }
 
+// TODO: Eventually remove this (probably starting late 2024)
+fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+	let mut s: String = serde::Deserialize::deserialize(deserializer)?;
+	if s == "Layer" {
+		s = "Merge".to_string();
+	}
+	Ok(s)
+}
+
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -62,6 +70,7 @@ pub struct DocumentNode {
 	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
+	#[serde(deserialize_with = "migrate_layer_to_merge")]
 	pub name: String,
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
@@ -467,6 +476,7 @@ pub enum DocumentNodeImplementation {
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
+	#[serde(alias = "Unresolved")] // TODO: Eventually remove this alias (probably starting late 2024)
 	ProtoNode(ProtoNodeIdentifier),
 	/// The Extract variant is a tag which tells the compilation process to do something special. It invokes language-level functionality built for use by the ExtractNode to enable metaprogramming.
 	/// When the ExtractNode is compiled, it gets replaced by a value node containing a representation of the source code for the function/lambda of the document node that's fed into the ExtractNode
@@ -536,12 +546,15 @@ pub struct NodeNetwork {
 	/// The list of nodes that are imported into this network from the parent network.
 	/// Each import is a reference to which node within this network that the input is connected to.
 	/// Presently, only one is supported— use an Identity node to split an input to multiple user nodes (although this could, and should, be changed in the future).
+	#[serde(alias = "inputs")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub imports: Vec<NodeId>,
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
+	#[serde(alias = "outputs")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub exports: Vec<NodeOutput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
+	#[serde(skip)]
 	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
 	pub previous_outputs: Option<Vec<NodeOutput>>,
 }
@@ -1536,7 +1549,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						name: "Nested network".into(),
-						inputs: vec![NodeInput::value(TaggedValue::F32(1.), false), NodeInput::value(TaggedValue::F32(2.), false)],
+						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
 						implementation: DocumentNodeImplementation::Network(two_node_identity()),
 						..Default::default()
 					},

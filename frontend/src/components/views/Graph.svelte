@@ -100,7 +100,11 @@
 		const categories = new Map<string, NodeCategoryDetails>();
 
 		nodeTypes.forEach((node) => {
-			const nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+			// Quick and dirty hack to alias "Layer" to "Merge" in the search
+			if (node.name === "Merge") {
+				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
+			}
 
 			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
 				return;

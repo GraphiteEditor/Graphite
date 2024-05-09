@@ -419,7 +419,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				Box::pin(async move {
 					let background: DowncastBothNode<(), ImageFrame<Color>> = DowncastBothNode::new(args[0].clone());
 					let blend_mode: DowncastBothNode<(), BlendMode> = DowncastBothNode::new(args[1].clone());
-					let opacity: DowncastBothNode<(), f32> = DowncastBothNode::new(args[2].clone());
+					let opacity: DowncastBothNode<(), f64> = DowncastBothNode::new(args[2].clone());
 					let node = graphene_std::gpu_nodes::BlendGpuImageNode::new(background, blend_mode, opacity);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 
@@ -429,7 +429,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			NodeIOTypes::new(
 				concrete!(ImageFrame<Color>),
 				concrete!(ImageFrame<Color>),
-				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f32)],
+				vec![fn_type!(ImageFrame<Color>), fn_type!(BlendMode), fn_type!(f64)],
 			),
 		)],
 		vec![(
