@@ -540,7 +540,7 @@ fn area_node(vector_data: VectorData) -> f64 {
 	for (_, subpath) in vector_data.region_bezier_paths() {
 		area += subpath.area(None, None);
 	}
-	area*scale[0]*scale[1]
+	area * scale[0] * scale[1]
 }
 
 #[derive(Debug, Clone, Copy)]

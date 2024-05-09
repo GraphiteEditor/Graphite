@@ -125,7 +125,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
 	pub fn centroid(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Option<DVec2> {
-		self.area_centroid(error, minimum_separation).map(|(_,centroid)| centroid)
+		self.area_centroid(error, minimum_separation).map(|(_, centroid)| centroid)
 	}
 
 	/// Converts from a subpath (composed of multiple segments) to a point along a certain segment represented.
