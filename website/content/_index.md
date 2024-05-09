@@ -342,6 +342,7 @@ Proceduralism lets you create sophisticated design elements that are easy to edi
 
 <div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
 		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
 	</video>
 </div>
@@ -350,12 +351,12 @@ Proceduralism lets you create sophisticated design elements that are easy to edi
 		<img src="https://static.graphite.rs/content/index/procedural-string-lights-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Procedural String Lights" />
 	</a>
 	<p>
-		<span class="balance-text">
+		<span>
 			<em>Procedural String Lights</em>
 		</span>
 		<br />
-		<span class="balance-text">
-			<a href="https://editor.graphite.rs/#demo/procedural-string-lights">Open this artwork</a> to explore it yourself.
+		<span>
+			<a href="https://editor.graphite.rs/#demo/procedural-string-lights">Open this artwork</a> to<br />explore it yourself.
 		</span>
 	</p>
 </div>
@@ -452,6 +453,7 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 
 <div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
+		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.webm" type="video/webm" />
 		<source src="https://static.graphite.rs/content/index/just-a-potted-cactus-timelapse.mp4" type="video/mp4" />
 	</video>
 </div>
@@ -460,12 +462,12 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 		<img src="https://static.graphite.rs/content/index/just-a-potted-cactus-thumbnail.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Just of Potted Cactus" />
 	</a>
 	<p>
-		<span class="balance-text">
+		<span>
 			<em>Just a Potted Cactus</em>
 		</span>
 		<br />
-		<span class="balance-text">
-			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to explore it yourself.
+		<span>
+			<a href="https://editor.graphite.rs/#demo/just-a-potted-cactus">Open this artwork</a> to<br />explore it yourself.
 		</span>
 	</p>
 </div>
