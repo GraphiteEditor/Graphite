@@ -32,7 +32,7 @@
 		<IconLabel icon={$dialog.icon} class={$dialog.icon.toLowerCase()} />
 		<TextLabel>{$dialog.title}</TextLabel>
 	</LayoutRow>
-	<LayoutRow class="content">
+	<LayoutRow class={`content ${$dialog.title === "Demo Artwork" ? "center" : "" /* TODO: Replace this with a less hacky approach that's compatible with localization/translation */}`}>
 		<LayoutCol class="column-1">
 			{#if $dialog.column1.layout.length > 0}
 				<WidgetLayout layout={$dialog.column1} class="details" />
@@ -113,6 +113,10 @@
 
 		.content {
 			margin: -4px 0;
+
+			&.center .row {
+				justify-content: center;
+			}
 
 			.column-1 + .column-2 {
 				margin-left: 48px;

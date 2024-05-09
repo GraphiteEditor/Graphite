@@ -322,6 +322,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
 
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
 
 	widgets
