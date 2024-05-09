@@ -531,10 +531,14 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct AreaNode;
+pub struct AreaNode<VectorData> {
+	vector_data: VectorData,
+}
 
 #[node_macro::node_fn(AreaNode)]
-fn area_node(vector_data: VectorData) -> f64 {
+async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
+	let vector_data = self.vector_data.eval(footprint).await;
+
 	let mut area = 0.0;
 	let scale = vector_data.transform.decompose_scale();
 	for (_, subpath) in vector_data.region_bezier_paths() {
@@ -544,10 +548,14 @@ fn area_node(vector_data: VectorData) -> f64 {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CentroidNode;
+pub struct CentroidNode<VectorData> {
+	vector_data: VectorData,
+}
 
 #[node_macro::node_fn(CentroidNode)]
-fn area_node(vector_data: VectorData) -> DVec2 {
+async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> DVec2 {
+	let vector_data = self.vector_data.eval(footprint).await;
+
 	let mut area = 0.0;
 	let mut centroid = DVec2::ZERO;
 	for (_, subpath) in vector_data.region_bezier_paths() {
