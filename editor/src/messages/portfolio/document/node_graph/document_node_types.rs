@@ -2601,34 +2601,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Area",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: [
-					DocumentNode {
-						inputs: vec![NodeInput::Network(concrete!(VectorData))],
-						..monitor_node()
-					},
-					DocumentNode {
-						name: "Area".to_string(),
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-					    ],
-						manual_composition: Some(concrete!(Footprint)),
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::AreaNode<_>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-			],
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::AreaNode"),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::node_no_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Centroid",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode"),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Vector)],
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
