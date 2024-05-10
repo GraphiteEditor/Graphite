@@ -256,7 +256,9 @@ impl Bezier {
 
 				utils::solve_cubic(a, b, c, d)
 			}
-			BezierHandles::Linear => { unreachable!() }
+			BezierHandles::Linear => {
+				unreachable!()
+			}
 		}
 		.into_iter()
 		.flatten()

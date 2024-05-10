@@ -229,10 +229,8 @@ impl Bezier {
 
 		match self.handles {
 			BezierHandles::Linear => true,
-			BezierHandles::Quadratic { handle } => { is_colinear(self.start, handle, self.end) },
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				is_colinear(self.start, handle_start, self.end) && is_colinear(self.start, handle_end, self.end)
-			}
+			BezierHandles::Quadratic { handle } => is_colinear(self.start, handle, self.end),
+			BezierHandles::Cubic { handle_start, handle_end } => is_colinear(self.start, handle_start, self.end) && is_colinear(self.start, handle_end, self.end),
 		}
 	}
 }
