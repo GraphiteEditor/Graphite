@@ -209,7 +209,13 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let size = 1. / size;
 				let new_scale = size.min_element();
 
-				ptz.pan += center;
+				let viewport_change = metadata.document_to_viewport.transform_vector2(center);
+
+				// Don't change the pan if the change won't be visible in the viewport.
+				if viewport_change.x.abs() > 0.5 || viewport_change.y.abs() > 0.5 {
+					ptz.pan += center;
+				}
+
 				ptz.zoom *= new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
 
 				// Keep the canvas filling less than the full available viewport bounds if requested.
