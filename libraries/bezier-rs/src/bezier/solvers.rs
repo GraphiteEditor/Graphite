@@ -231,7 +231,7 @@ impl Bezier {
 	pub fn find_tvalues_for_x(&self, x: f64) -> impl Iterator<Item = f64> {
 		// Compute the roots of the resulting bezier curve
 		match self.handles {
-			BezierHandles::Linear => {
+			_ if self.is_linear() => {
 				// If the transformed linear bezier is on the x-axis, `a` and `b` will both be zero and `solve_linear` will return no roots
 				let a = self.end.x - self.start.x;
 				let b = self.start.x - x;
@@ -256,6 +256,7 @@ impl Bezier {
 
 				utils::solve_cubic(a, b, c, d)
 			}
+			BezierHandles::Linear => { unreachable!() }
 		}
 		.into_iter()
 		.flatten()
@@ -404,7 +405,7 @@ impl Bezier {
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<[f64; 2]> {
 		let error = error.unwrap_or(0.5);
-		if other.handles == BezierHandles::Linear {
+		if other.is_linear() {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(0., 1.));
@@ -513,7 +514,7 @@ impl Bezier {
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// <iframe frameBorder="0" width="100%" height="325px" src="https://graphite.rs/libraries/bezier-rs#bezier/intersect-self/solo" title="Self Intersection Demo"></iframe>
 	fn unfiltered_self_intersections(&self, error: Option<f64>) -> Vec<[f64; 2]> {
-		if self.handles == BezierHandles::Linear || matches!(self.handles, BezierHandles::Quadratic { .. }) {
+		if self.is_linear() || matches!(self.handles, BezierHandles::Quadratic { .. }) {
 			return vec![];
 		}
 
