@@ -1,13 +1,30 @@
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
-	{% set this = section | default(value = page | default(value = false)) %}
+	{%- block head -%}{%- endblock head -%}
+	{%- set page = page | default(value = section | default(value = false)) -%}
 	<meta charset="utf-8">
+	<title>Graphite | {{ title | safe }}</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
-	<title>Graphite | {% block title %}{% endblock title %}</title>
-	{% block rss %}
-	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path = 'blog/rss.xml', trailing_slash = false) }}">
-	{% endblock %}
+	{% if current_path -%}
+	<meta property="og:url" content="https://graphite.rs{{ current_path | safe }}">
+	{%- endif %}
+	{% if meta_description -%}
+	<meta name="description" content="{{ meta_description | safe }}">
+	<meta property="og:description" content="{{ meta_description | safe }}" />
+	<meta name="twitter:description" content="{{ meta_description | safe }}" />
+	{%- endif %}
+	<meta property="og:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}">
+	<meta name="twitter:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}" />
+	<meta property="og:title" content="{{ meta_title | default(value = title | safe) | safe }}">
+	<meta name="twitter:title" content="{{ meta_title | default(value = title | safe) | safe }}" />
+	<meta property="og:type" content="{% if meta_article_type %}article{% else %}website{% endif %}" />
+	<meta property="og:site_name" content="Graphite" />
+	<meta name="twitter:site" content="@GraphiteEditor" />
+	<meta name="twitter:card" content="summary_large_image" />
+	{% block rss -%}
+	<link rel="alternate" type="application/rss+xml" title="RSS" href="{{ get_url(path = 'blog/rss.xml', trailing_slash = false) | safe }}">
+	{%- endblock %}
 	<link rel="preconnect" href="https://rsms.me/">
 	<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,17 +32,14 @@
 	<link href="https://fonts.googleapis.com/css2?family=Bona+Nova:wght@700&family=EB+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="/base.css">
 	<link rel="stylesheet" href="/syntax-highlighting.css">
-	{% if this and this.extra.css %}
-	{% for css in this.extra.css %}
-	<link rel="stylesheet" href="/{{ css | safe }}">
+	{%- set extra_css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
+	{% for css_path in extra_css %}
+	<link rel="stylesheet" href="/{{ css_path | safe }}">
 	{% endfor %}
-	{% endif %}
-	{% block head %}{% endblock head %}
-	{% if this and this.extra.js %}
-	{% for js in this.extra.js %}
-	<script src="/js/{{ js | safe }}"></script>
+	{%- set extra_js = page.extra.js | default(value = []) | concat(with = js | default(value = [])) -%}
+	{% for js_path in extra_js %}
+	<script src="/js/{{ js_path | safe }}"></script>
 	{% endfor %}
-	{% endif %}
 	<script src="/js/text-justification.js"></script>
 	<script src="/js/navbar.js"></script>
 	<!-- INDEX_HTML_HEAD_REPLACEMENT -->
@@ -78,7 +92,7 @@
 		</header>
 		<main>
 			<div class="content">
-				{% block content %}{% endblock %}
+				{%- block content -%}{%- endblock -%}
 			</div>
 		</main>
 		<footer>

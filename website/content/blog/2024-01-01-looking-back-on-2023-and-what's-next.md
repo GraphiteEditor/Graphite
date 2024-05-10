@@ -6,6 +6,7 @@ date = 2024-01-01
 banner = "https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.avif"
 banner_png = "https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.png"
 author = "Keavon Chambers"
+summary = "Looking back on 2023, we reflect on our significant achievements and milestones. As we move forward, we're excited to share what's next, promising a year filled with innovation and progress."
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 

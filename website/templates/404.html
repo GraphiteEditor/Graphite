@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Page not found{% endblock title %}
+{%- block head -%}
+{%- set title = "Page not found" -%}
+{%- endblock head -%}
 
-{% block content %}
+{%- block content -%}
 <section id="404">
 	<div class="section">
 		<h1>Page not found</h1>
@@ -11,4 +13,4 @@
 		<a href="/" class="button arrow">Home Page</a>
 	</div>
 </section>
-{% endblock content %}
+{%- endblock content -%}

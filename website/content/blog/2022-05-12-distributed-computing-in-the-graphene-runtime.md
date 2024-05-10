@@ -6,6 +6,7 @@ date = 2022-05-12
 banner = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.avif"
 banner_png = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.png"
 author = "Keavon Chambers"
+summary = "Graphite's 2D editor is built upon Graphene, a node-based editing system for nondestructive design across various data types designed to render artwork faster using multiple machines. The system optimizes execution paths, minimizes latency, and uses a distributed runtime for quick data processing."
 reddit = "https://www.reddit.com/r/graphite/comments/unw45k/blog_post_distributed_computing_in_the_graphene/"
 twitter = "https://twitter.com/GraphiteEditor/status/1524664083554791424"
 +++

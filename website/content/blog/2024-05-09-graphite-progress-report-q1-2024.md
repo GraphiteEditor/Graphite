@@ -5,6 +5,7 @@ date = 2024-05-09
 banner = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.avif"
 banner_png = "https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024.png"
 author = "Keavon Chambers & Hypercube"
+summary = "Graphite's Q1 2024 update introduces a precise snapping system and a customizable grid for enhanced design control. The update also includes improved procedural scattering with the 'Copy to Points' node, demonstrated in new demo artwork."
 reddit = "https://www.reddit.com/r/graphite/comments/1coa0if/blog_post_graphite_progress_report_q1_2024/"
 twitter = "https://twitter.com/GraphiteEditor/status/1788698448348266946"
 +++

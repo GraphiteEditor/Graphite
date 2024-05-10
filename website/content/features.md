@@ -126,12 +126,12 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<span>Imaginate (Stable Diffusion node/tool)</span>
 		</div>
 		<div class="informational ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Editable nested node subgraphs</span>
+		</div>
+		<div class="informational ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
-		</div>
-		<div class="informational">
-			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Custom subgraph nodes</span>
 		</div>
 		<div class="informational">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />

@@ -6,6 +6,7 @@ date = 2022-02-12
 banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.avif"
 banner_png = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"
 author = "Keavon Chambers"
+summary = "The Graphite open source team announces the alpha release of their next-generation graphics editor, a web-based SVG editor with vector-based tools. Future plans include a node-based procedural workflow, a raster graphics compositing engine, and a native desktop client."
 reddit = "https://www.reddit.com/r/graphite/comments/unw3hi/blog_post_announcing_graphite_alpha/"
 twitter = "https://twitter.com/GraphiteEditor/status/1524663930697568256"
 +++
