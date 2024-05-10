@@ -586,7 +586,7 @@ impl Bezier {
 		Bezier::from_cubic_dvec2(self.end, handle1, handle2, other.start)
 	}
 
-	/// Compute the winding order (number of times crossing an infinate line to the left of the point)
+	/// Compute the winding order (number of times crossing an infinite line to the left of the point)
 	///
 	/// Assumes curve is split at the extrema.
 	fn pre_split_winding_number(&self, target_point: DVec2) -> i32 {
