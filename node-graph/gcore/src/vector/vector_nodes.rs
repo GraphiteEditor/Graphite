@@ -564,6 +564,17 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 			centroid += subpath_area * subpath_centroid;
 		}
 	}
+
+	if area == 0.0 {
+		let positions = vector_data.point_domain.positions();
+
+		return if positions.is_empty() {
+			DVec2::ZERO
+		} else {
+			positions.iter().sum::<DVec2>() / (positions.len() as f64)
+		};
+	}
+
 	centroid /= area;
 	vector_data.transform().transform_point2(centroid)
 }
