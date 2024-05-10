@@ -32,6 +32,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Return the area enclosed by the `Subpath` always considering it as a closed subpath. It will always give a positive value.
 	///
+	/// It will return `0.0` if the area is smaller than `error`.
 	/// Because the calculation of area for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
@@ -61,6 +62,10 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				curve_sum
 			})
 			.sum();
+
+		if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
+			return 0.0;
+		}
 
 		area.abs()
 	}
