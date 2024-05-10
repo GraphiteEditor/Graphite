@@ -1,5 +1,5 @@
 use super::*;
-use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE};
+use crate::consts::{DEFAULT_EUCLIDEAN_ERROR_BOUND, DEFAULT_LUT_STEP_SIZE, MAX_ABSOLUTE_DIFFERENCE};
 use crate::utils::{SubpathTValue, TValue, TValueType};
 use glam::DVec2;
 
@@ -34,7 +34,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	///
 	/// Because the calculation of area for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
@@ -65,12 +65,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		area.abs()
 	}
 
-	/// Return the area and centroid of the `Subpath` always considering it as a closed subpath.
-	/// The area will always be a positive value. It will return `None` if no manipulator is present.
+	/// Return the area and centroid of the `Subpath` always considering it as a closed subpath. The area will always be a positive value.
 	///
+	/// It will return `None` if the area is smaller than `error` or if no manipulator is present.
 	/// Because the calculation of area and centroid for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
@@ -112,15 +112,19 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			})
 			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 
+		if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
+			return None;
+		}
+
 		Some((area.abs(), DVec2::new(x_sum / area, y_sum / area)))
 	}
 
 	/// Return the centroid of the `Subpath` always considering it as a closed subpath.
-	/// It will return `None` if no manipulator is present.
 	///
+	/// It will return `None` if the area is smaller than `error` or if no manipulator is present.
 	/// Because the calculation of centroid for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
-	/// - `minimum_separation`: the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
+	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
