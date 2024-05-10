@@ -565,6 +565,7 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 		}
 	}
 
+	// TODO: Find some better way to calculate centroid of shapes with zero area.
 	if area == 0.0 {
 		let positions = vector_data.point_domain.positions();
 
