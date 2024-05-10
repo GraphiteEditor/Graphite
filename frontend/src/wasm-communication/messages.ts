@@ -54,6 +54,10 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: FrontendDocumentDetails[];
 }
 
+export class UpdateSubgraphPath extends JsMessage {
+	readonly subgraphPath!: string[];
+}
+
 export class UpdateZoomWithScroll extends JsMessage {
 	readonly zoomWithScroll!: boolean;
 }
@@ -1335,6 +1339,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateSubgraphPath,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

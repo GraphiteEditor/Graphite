@@ -649,6 +649,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Go back a certain number of nested levels
+	#[wasm_bindgen(js_name = exitNestedNetwork)]
+	pub fn exit_nested_network(&self, depth_of_nesting: usize) {
+		let message = NodeGraphMessage::ExitNestedNetwork { depth_of_nesting };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the selected nodes have been moved
 	#[wasm_bindgen(js_name = moveSelectedNodes)]
 	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {

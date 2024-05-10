@@ -6,10 +6,11 @@ import {
 	type FrontendNodeLink,
 	type FrontendNodeType,
 	UpdateNodeGraph,
+	UpdateNodeGraphSelection,
 	UpdateNodeTypes,
 	UpdateNodeThumbnail,
+	UpdateSubgraphPath,
 	UpdateZoomWithScroll,
-	UpdateNodeGraphSelection,
 } from "@graphite/wasm-communication/messages";
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -21,6 +22,7 @@ export function createNodeGraphState(editor: Editor) {
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
+		subgraphPath: [] as string[],
 	});
 
 	// Set up message subscriptions on creation
@@ -38,6 +40,12 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
+		update((state) => {
+			state.selected = updateNodeGraphSelection.selected;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeTypes, (updateNodeTypes) => {
 		update((state) => {
 			state.nodeTypes = updateNodeTypes.nodeTypes;
@@ -50,15 +58,15 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateZoomWithScroll, (updateZoomWithScroll) => {
+	editor.subscriptions.subscribeJsMessage(UpdateSubgraphPath, (UpdateSubgraphPath) => {
 		update((state) => {
-			state.zoomWithScroll = updateZoomWithScroll.zoomWithScroll;
+			state.subgraphPath = UpdateSubgraphPath.subgraphPath;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
+	editor.subscriptions.subscribeJsMessage(UpdateZoomWithScroll, (updateZoomWithScroll) => {
 		update((state) => {
-			state.selected = updateNodeGraphSelection.selected;
+			state.zoomWithScroll = updateZoomWithScroll.zoomWithScroll;
 			return state;
 		});
 	});

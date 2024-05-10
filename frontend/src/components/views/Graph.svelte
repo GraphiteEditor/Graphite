@@ -10,13 +10,13 @@
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -480,13 +480,13 @@
 		panning = true;
 	}
 
-	function doubleClick(_e: MouseEvent) {
-		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		// const nodeId = node?.getAttribute("data-node") || undefined;
-		// if (nodeId !== undefined) {
-		// 	const id = BigInt(nodeId);
-		// 	editor.handle.enterNestedNetwork(id);
-		// }
+	function doubleClick(e: MouseEvent) {
+		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+		const nodeId = node?.getAttribute("data-node") || undefined;
+		if (nodeId !== undefined) {
+			const id = BigInt(nodeId);
+			editor.handle.enterNestedNetwork(id);
+		}
 	}
 
 	function pointerMove(e: PointerEvent) {
@@ -784,6 +784,7 @@
 	style:--grid-offset-y={`${transform.y * transform.scale}px`}
 	style:--dot-radius={`${dotRadius}px`}
 >
+	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
 	{#if contextMenuOpenCoordinates}
 		<LayoutCol

@@ -193,6 +193,49 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "To Graphic Element",
+			category: "General",
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::Network(generic!(T)),
+			}],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "To Graphic Group",
+			category: "General",
+			inputs: vec![DocumentInputType {
+				name: "In",
+				data_type: FrontendGraphDataType::General,
+				default: NodeInput::Network(generic!(T)),
+			}],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "ConstructLayer",
+			category: "General",
+			inputs: vec![
+				DocumentInputType {
+					name: "Graphic Element",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(generic!(T)),
+				},
+				DocumentInputType {
+					name: "Graphic Group Stack",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(generic!(T)),
+				},
+			],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Merge",
 			category: "General",
 			is_layer: true,
@@ -207,6 +250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Graphic Element".to_string(),
 							inputs: vec![NodeInput::Network(generic!(T))],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-4, 6) },
 							..Default::default()
 						},
 					),
@@ -217,6 +261,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Graphic Group".to_string(),
 							inputs: vec![NodeInput::Network(generic!(T))],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-8, 0) },
 							..Default::default()
 						},
 					),
@@ -225,6 +270,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeId(2),
 						DocumentNode {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(0, 3) },
+							is_layer: true,
 							..monitor_node()
 						},
 					),
@@ -235,6 +282,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(0, 0) },
+							is_layer: true,
 							..Default::default()
 						},
 					),
