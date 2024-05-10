@@ -541,7 +541,7 @@ async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vecto
 
 	let mut area = 0.0;
 	let scale = vector_data.transform.decompose_scale();
-	for (_, subpath) in vector_data.region_bezier_paths() {
+	for subpath in vector_data.stroke_bezier_paths() {
 		area += subpath.area(None, None);
 	}
 	area * scale[0] * scale[1]
@@ -558,7 +558,7 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 
 	let mut area = 0.0;
 	let mut centroid = DVec2::ZERO;
-	for (_, subpath) in vector_data.region_bezier_paths() {
+	for subpath in vector_data.stroke_bezier_paths() {
 		if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
 			area += subpath_area;
 			centroid += subpath_area * subpath_centroid;
