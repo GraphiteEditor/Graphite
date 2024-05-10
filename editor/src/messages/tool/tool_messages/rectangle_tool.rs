@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, graph_operation::utility_types::TransformIn};
+use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
