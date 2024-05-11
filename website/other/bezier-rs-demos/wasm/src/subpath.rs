@@ -98,7 +98,7 @@ impl WasmSubpath {
 	}
 
 	pub fn centroid(&self, error: f64, minimum_separation: f64) -> String {
-		let point_text = draw_circle(self.0.centroid(Some(error), Some(minimum_separation)).unwrap(), 4., RED, 1.5, WHITE);
+		let point_text = draw_circle(self.0.centroid(Some(error), Some(minimum_separation), None).unwrap(), 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
 	}
 

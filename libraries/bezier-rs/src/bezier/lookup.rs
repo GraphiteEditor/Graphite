@@ -179,6 +179,60 @@ impl Bezier {
 		}
 	}
 
+	/// Return an approximation of the length and 1D centroid of the bezier curve.
+	/// - `tolerance` - Tolerance used to approximate the curve.
+	pub fn length_centroid(&self, tolerance: Option<f64>) -> (f64, DVec2) {
+		match self.handles {
+			BezierHandles::Linear => ((self.start - self.end).length(), (self.start + self.end()) / 2.),
+			BezierHandles::Quadratic { handle } => {
+				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+				fn recurse(a0: DVec2, a1: DVec2, a2: DVec2, tolerance: f64, level: u8) -> (f64, DVec2) {
+					let lower = a0.distance(a2);
+					let upper = a0.distance(a1) + a1.distance(a2);
+					if upper - lower <= 2. * tolerance || level >= 8 {
+						let length = (lower + upper) / 2.;
+						return (length, length * (a0 + a1 + a2) / 3.);
+					}
+
+					let b1 = 0.5 * (a0 + a1);
+					let c1 = 0.5 * (a1 + a2);
+					let b2 = 0.5 * (b1 + c1);
+
+					let (length1, centroid_part1) = recurse(a0, b1, b2, 0.5 * tolerance, level + 1);
+					let (length2, centroid_part2) = recurse(b2, c1, a2, 0.5 * tolerance, level + 1);
+					(length1 + length2, centroid_part1 + centroid_part2)
+				}
+
+				let (length, centroid_parts) = recurse(self.start, handle, self.end, tolerance.unwrap_or_default(), 0);
+				(length, centroid_parts / length)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+				fn recurse(a0: DVec2, a1: DVec2, a2: DVec2, a3: DVec2, tolerance: f64, level: u8) -> (f64, DVec2) {
+					let lower = a0.distance(a3);
+					let upper = a0.distance(a1) + a1.distance(a2) + a2.distance(a3);
+					if upper - lower <= 2. * tolerance || level >= 8 {
+						let length = (lower + upper) / 2.;
+						return (length, length * (a0 + a1 + a2 + a3) / 4.);
+					}
+
+					let b1 = 0.5 * (a0 + a1);
+					let t0 = 0.5 * (a1 + a2);
+					let c1 = 0.5 * (a2 + a3);
+					let b2 = 0.5 * (b1 + t0);
+					let c2 = 0.5 * (t0 + c1);
+					let b3 = 0.5 * (b2 + c2);
+
+					let (length1, centroid_part1) = recurse(a0, b1, b2, b3, 0.5 * tolerance, level + 1);
+					let (length2, centroid_part2) = recurse(b3, c2, c1, a3, 0.5 * tolerance, level + 1);
+					(length1 + length2, centroid_part1 + centroid_part2)
+				}
+				let (length, centroid_parts) = recurse(self.start, handle_start, handle_end, self.end, tolerance.unwrap_or_default(), 0);
+				(length, centroid_parts / length)
+			}
+		}
+	}
+
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/project/solo" title="Project Demo"></iframe>
 	pub fn project(&self, point: DVec2) -> f64 {

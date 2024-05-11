@@ -560,24 +560,34 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 	let mut centroid = DVec2::ZERO;
 	for subpath in vector_data.stroke_bezier_paths() {
 		if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
+			if subpath_area == 0.0 {
+				continue;
+			}
 			area += subpath_area;
 			centroid += subpath_area * subpath_centroid;
 		}
 	}
 
-	// TODO: Find some better way to calculate centroid of shapes with zero area.
-	if area == 0.0 {
-		let positions = vector_data.point_domain.positions();
-
-		return if positions.is_empty() {
-			DVec2::ZERO
-		} else {
-			positions.iter().sum::<DVec2>() / (positions.len() as f64)
-		};
+	if area != 0.0 {
+		centroid /= area;
+		return vector_data.transform().transform_point2(centroid);
 	}
 
-	centroid /= area;
-	vector_data.transform().transform_point2(centroid)
+	let mut length = 0.0;
+	let mut centroid = DVec2::ZERO;
+	for subpath in vector_data.stroke_bezier_paths() {
+		if let Some((subpath_length, subpath_centroid)) = subpath.length_centroid(None, true) {
+			length += subpath_length;
+			centroid += subpath_length * subpath_centroid;
+		}
+	}
+
+	if length != 0.0 {
+		centroid /= length;
+		return vector_data.transform().transform_point2(centroid);
+	}
+
+	DVec2::ZERO
 }
 
 #[cfg(test)]
