@@ -181,7 +181,7 @@ impl Bezier {
 
 	/// Return an approximation of the length and perimeter centroid of the bezier curve.
 	/// - `tolerance` - Tolerance used to approximate the curve.
-	pub fn length_centroid(&self, tolerance: Option<f64>) -> (f64, DVec2) {
+	pub fn perimeter_centroid(&self, tolerance: Option<f64>) -> (f64, DVec2) {
 		match self.handles {
 			BezierHandles::Linear => ((self.start - self.end).length(), (self.start + self.end()) / 2.),
 			BezierHandles::Quadratic { handle } => {

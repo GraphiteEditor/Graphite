@@ -16,14 +16,18 @@ const subpathFeatures = {
 		name: "Length",
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
+	"perimeter-centroid": {
+		name: "Perimeter Centroid",
+		callback: (subpath: WasmSubpathInstance): string => subpath.perimeter_centroid(),
+	},
 	area: {
 		name: "Area",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area(options.error, options.minimum_separation),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
-	centroid: {
-		name: "Centroid",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.centroid(options.error, options.minimum_separation),
+	"area-centroid": {
+		name: "Area Centroid",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area_centroid(options.error, options.minimum_separation),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
 	evaluate: {

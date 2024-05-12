@@ -35,9 +35,9 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	/// It will return `None` if no manipulator is present.
 	/// - `tolerance` - Tolerance used to approximate the curve.
 	/// - `always_closed` - consider the subpath as closed always.
-	pub fn length_centroid(&self, tolerance: Option<f64>, always_closed: bool) -> Option<(f64, DVec2)> {
+	pub fn perimeter_centroid(&self, tolerance: Option<f64>, always_closed: bool) -> Option<(f64, DVec2)> {
 		if always_closed { self.iter_closed() } else { self.iter() }
-			.map(|bezier| bezier.length_centroid(tolerance))
+			.map(|bezier| bezier.perimeter_centroid(tolerance))
 			.map(|(length, centroid)| (length, length * centroid))
 			.reduce(|(length1, centroid_part1), (length2, centroid_part2)| (length1 + length2, centroid_part1 + centroid_part2))
 			.map(|(length, centroid_part)| (length, centroid_part / length))
@@ -153,7 +153,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		if area != 0. {
 			Some(centroid)
 		} else {
-			self.length_centroid(tolerance, true).map(|(_, centroid)| centroid)
+			self.perimeter_centroid(tolerance, true).map(|(_, centroid)| centroid)
 		}
 	}
 
