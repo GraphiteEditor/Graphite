@@ -1,3 +1,4 @@
+use super::misc::CentroidType;
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
@@ -548,29 +549,32 @@ async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vecto
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct CentroidNode<VectorData> {
+pub struct CentroidNode<VectorData, CentroidType> {
 	vector_data: VectorData,
+	centroid_type: CentroidType,
 }
 
 #[node_macro::node_fn(CentroidNode)]
-async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> DVec2 {
+async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
 	let vector_data = self.vector_data.eval(footprint).await;
 
-	let mut area = 0.;
-	let mut centroid = DVec2::ZERO;
-	for subpath in vector_data.stroke_bezier_paths() {
-		if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
-			if subpath_area == 0. {
-				continue;
+	if centroid_type == CentroidType::Area {
+		let mut area = 0.;
+		let mut centroid = DVec2::ZERO;
+		for subpath in vector_data.stroke_bezier_paths() {
+			if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
+				if subpath_area == 0. {
+					continue;
+				}
+				area += subpath_area;
+				centroid += subpath_area * subpath_centroid;
 			}
-			area += subpath_area;
-			centroid += subpath_area * subpath_centroid;
 		}
-	}
 
-	if area != 0. {
-		centroid /= area;
-		return vector_data.transform().transform_point2(centroid);
+		if area != 0. {
+			centroid /= area;
+			return vector_data.transform().transform_point2(centroid);
+		}
 	}
 
 	let mut length = 0.;

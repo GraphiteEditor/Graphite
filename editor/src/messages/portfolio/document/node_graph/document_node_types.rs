@@ -2611,10 +2611,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Centroid",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode<_>"),
-			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Centroid Type", TaggedValue::CentroidType(graphene_core::vector::misc::CentroidType::Area), false),
+			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Vector)],
-			properties: node_properties::node_no_properties,
+			properties: node_properties::centroid_properties,
 			manual_composition: Some(concrete!(Footprint)),
 			..Default::default()
 		},

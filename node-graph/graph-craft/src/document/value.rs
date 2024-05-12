@@ -77,6 +77,7 @@ pub enum TaggedValue {
 	Footprint(graphene_core::transform::Footprint),
 	RenderOutput(RenderOutput),
 	Palette(Vec<Color>),
+	CentroidType(graphene_core::vector::misc::CentroidType),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -156,6 +157,7 @@ impl Hash for TaggedValue {
 			Self::Footprint(x) => x.hash(state),
 			Self::RenderOutput(x) => x.hash(state),
 			Self::Palette(x) => x.hash(state),
+			Self::CentroidType(x) => x.hash(state),
 		}
 	}
 }
@@ -222,6 +224,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(x) => Box::new(x),
 			TaggedValue::RenderOutput(x) => Box::new(x),
 			TaggedValue::Palette(x) => Box::new(x),
+			TaggedValue::CentroidType(x) => Box::new(x),
 		}
 	}
 
@@ -299,6 +302,7 @@ impl<'a> TaggedValue {
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 			TaggedValue::Palette(_) => concrete!(Vec<Color>),
+			TaggedValue::CentroidType(_) => concrete!(graphene_core::vector::misc::CentroidType),
 		}
 	}
 
