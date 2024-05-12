@@ -30,7 +30,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.length(tolerance)).sum()
 	}
 
-	/// Return the approximation of the length and 1D centroid of the `Subpath`.
+	/// Return the approximation of the length and perimeter centroid of the `Subpath`.
 	///
 	/// It will return `None` if no manipulator is present.
 	/// - `tolerance` - Tolerance used to approximate the curve.
@@ -83,7 +83,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		area.abs()
 	}
 
-	/// Return the area and 2D centroid of the `Subpath` always considering it as a closed subpath. The area will always be a positive value.
+	/// Return the area and area centroid of the `Subpath` always considering it as a closed subpath. The area will always be a positive value.
 	///
 	/// It will return `None` if no manipulator is present. If the area is less than `error`, it will return (zero, Nan).
 	/// Because the calculation of area and centroid for self-intersecting path requires finding the intersections, the following parameters are used:
@@ -137,13 +137,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		Some((area.abs(), DVec2::new(x_sum / area, y_sum / area)))
 	}
 
-	/// Attempts to return the 2D centroid of the `Subpath` always considering it as a closed subpath. Falls back to 1D centoid if the area is zero.
+	/// Attempts to return the area centroid of the `Subpath` always considering it as a closed subpath. Falls back to perimeter centroid if the area is zero.
 	///
 	/// It will return `None` if no manipulator is present.
 	/// Because the calculation of centroid for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
-	/// - `tolerance` - Tolerance used to approximate the curve if it falls back to 1D centroid.
+	/// - `tolerance` - Tolerance used to approximate the curve if it falls back to perimeter centroid.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
