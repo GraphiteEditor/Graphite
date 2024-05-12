@@ -336,6 +336,39 @@ mod tests {
 	}
 
 	#[test]
+	fn perimeter_centroid() {
+		let start = DVec2::new(0., 0.);
+		let end = DVec2::new(1., 1.);
+		let handle = DVec2::new(0., 1.);
+
+		let mut subpath = Subpath::new(
+			vec![
+				ManipulatorGroup {
+					anchor: start,
+					in_handle: None,
+					out_handle: Some(handle),
+					id: EmptyId,
+				},
+				ManipulatorGroup {
+					anchor: end,
+					in_handle: None,
+					out_handle: None,
+					id: EmptyId,
+				},
+			],
+			false,
+		);
+
+		let expected_centroid = DVec2::new(0.4153039799983826, 0.5846960200016174);
+		let epsilon = 0.00001;
+
+		assert!(subpath.perimeter_centroid(None, true).unwrap().1.abs_diff_eq(expected_centroid, epsilon));
+
+		subpath.closed = true;
+		assert!(subpath.perimeter_centroid(None, true).unwrap().1.abs_diff_eq(expected_centroid, epsilon));
+	}
+
+	#[test]
 	fn area() {
 		let start = DVec2::new(0., 0.);
 		let end = DVec2::new(1., 1.);

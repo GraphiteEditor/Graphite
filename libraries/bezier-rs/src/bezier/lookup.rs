@@ -315,6 +315,25 @@ mod tests {
 	}
 
 	#[test]
+	fn test_perimeter_centroid() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let p4 = DVec2::new(77., 129.);
+
+		let bezier_linear = Bezier::from_linear_dvec2(p1, p2);
+		assert!(bezier_linear.perimeter_centroid(None).1.abs_diff_eq((p1 + p2) / 2., MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let expected = DVec2::new(112.81017736920136, 87.98713052477228);
+		assert!(bezier_quadratic.perimeter_centroid(None).1.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+		let expected = DVec2::new(95.23597072432115, 88.0645175770206);
+		assert!(bezier_cubic.perimeter_centroid(None).1.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
+	}
+
+	#[test]
 	fn test_project() {
 		let bezier1 = Bezier::from_cubic_coordinates(4., 4., 23., 45., 10., 30., 56., 90.);
 		assert_eq!(bezier1.project(DVec2::ZERO), 0.);
