@@ -77,7 +77,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.sum();
 
 		if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
-			return 0.0;
+			return 0.;
 		}
 
 		area.abs()
@@ -131,7 +131,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 
 		if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
-			return Some((0.0, DVec2::NAN));
+			return Some((0., DVec2::NAN));
 		}
 
 		Some((area.abs(), DVec2::new(x_sum / area, y_sum / area)))
@@ -150,7 +150,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	pub fn centroid(&self, error: Option<f64>, minimum_separation: Option<f64>, tolerance: Option<f64>) -> Option<DVec2> {
 		let (area, centroid) = self.area_centroid(error, minimum_separation)?;
 
-		if area != 0.0 {
+		if area != 0. {
 			Some(centroid)
 		} else {
 			self.length_centroid(tolerance, true).map(|(_, centroid)| centroid)

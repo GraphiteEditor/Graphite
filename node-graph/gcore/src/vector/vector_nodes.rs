@@ -539,7 +539,7 @@ pub struct AreaNode<VectorData> {
 async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
 	let vector_data = self.vector_data.eval(footprint).await;
 
-	let mut area = 0.0;
+	let mut area = 0.;
 	let scale = vector_data.transform.decompose_scale();
 	for subpath in vector_data.stroke_bezier_paths() {
 		area += subpath.area(None, None);
@@ -556,11 +556,11 @@ pub struct CentroidNode<VectorData> {
 async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> DVec2 {
 	let vector_data = self.vector_data.eval(footprint).await;
 
-	let mut area = 0.0;
+	let mut area = 0.;
 	let mut centroid = DVec2::ZERO;
 	for subpath in vector_data.stroke_bezier_paths() {
 		if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
-			if subpath_area == 0.0 {
+			if subpath_area == 0. {
 				continue;
 			}
 			area += subpath_area;
@@ -568,12 +568,12 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 		}
 	}
 
-	if area != 0.0 {
+	if area != 0. {
 		centroid /= area;
 		return vector_data.transform().transform_point2(centroid);
 	}
 
-	let mut length = 0.0;
+	let mut length = 0.;
 	let mut centroid = DVec2::ZERO;
 	for subpath in vector_data.stroke_bezier_paths() {
 		if let Some((subpath_length, subpath_centroid)) = subpath.length_centroid(None, true) {
@@ -582,7 +582,7 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 		}
 	}
 
-	if length != 0.0 {
+	if length != 0. {
 		centroid /= length;
 		return vector_data.transform().transform_point2(centroid);
 	}
