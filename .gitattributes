@@ -4,3 +4,6 @@
 # The `eol=lf` sets the conversion to an LF line ending
 # https://git-scm.com/docs/gitattributes
 * text=auto eol=lf
+
+# Adds syntax highlighting to Graphite files on GitHub and minimizes diffs both locally and on GitHub
+*.graphite binary linguist-generated linguist-language=JSON
