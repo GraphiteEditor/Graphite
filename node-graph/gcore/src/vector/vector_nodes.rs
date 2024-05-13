@@ -562,7 +562,7 @@ async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, v
 		let mut area = 0.;
 		let mut centroid = DVec2::ZERO;
 		for subpath in vector_data.stroke_bezier_paths() {
-			if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(None, None) {
+			if let Some((subpath_area, subpath_centroid)) = subpath.area_centroid(Some(1e-3), Some(1e-3)) {
 				if subpath_area == 0. {
 					continue;
 				}

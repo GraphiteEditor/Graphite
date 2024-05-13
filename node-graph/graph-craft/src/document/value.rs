@@ -370,6 +370,7 @@ impl<'a> TaggedValue {
 			}
 			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<Color>>() => Ok(TaggedValue::Palette(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::misc::CentroidType>() => Ok(TaggedValue::CentroidType(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}
