@@ -543,7 +543,7 @@ async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vecto
 	let mut area = 0.;
 	let scale = vector_data.transform.decompose_scale();
 	for subpath in vector_data.stroke_bezier_paths() {
-		area += subpath.area(None, None);
+		area += subpath.area(Some(1e-3), Some(1e-3));
 	}
 	area * scale[0] * scale[1]
 }
