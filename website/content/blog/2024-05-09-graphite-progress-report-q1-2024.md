@@ -14,7 +14,7 @@ twitter = "https://twitter.com/GraphiteEditor/status/1788698448348266946"
 
 <!-- more -->
 
-Starting in 2024, we are now publishing quarterly reports to summarize the new features and improvements made to Graphite. If you missed the [2023 year in review](../looking-back-on-2023-and-what-s-next), be sure to check it out after this. We anticipate sending our first email newsletter (with more to follow roughly quarterly) in the near future as well, so be sure to [subscribe](/#community) if you haven't already.
+Starting in 2024, we are now publishing quarterly reports to summarize the new features and improvements made to Graphite. If you missed the [2023 year in review](../looking-back-on-2023-and-what-s-next), be sure to check it out after this. We anticipate sending our first email newsletter (with more to follow roughly quarterly) in the near future as well, so be sure to [subscribe](/#newsletter) if you haven't already.
 
 Over the first three months of the year, we are delighted to have seen many contributions both from new and recurrent contributors, including substantial interest by students through [Google Summer of Code](/blog/graphite-internships-announcing-participation-in-gsoc-2024/). We would like to send a big thanks to all of the contributors who made this progress happen. If you are interested in getting involved or just following development, see the [contributor guide](/volunteer/guide) and join [our Discord](https://discord.graphite.rs).
 

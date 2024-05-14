@@ -18,8 +18,6 @@
 	--color-storm: #627088;
 	--color-sage: #91b99a;
 
-	--font-size-intro-heading: calc(var(--font-size-heading-h1) * 1.25);
-	--font-size-intro-body: 22px;
 	--font-size-link: 24px;
 	--font-size-heading-h1: 48px;
 	--font-size-heading-h2: 42px;
@@ -29,16 +27,15 @@
 	--font-size-article-h3: 22px;
 	--font-size-article-h4: 18px;
 
-	--max-width: 1600px;
+	--max-width: 1200px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
+	--max-width-reading-material: 800px;
 
 	--variable-px: Min(1px, 0.15vw);
 	--page-edge-padding: 40px;
 	--border-thickness: 2px;
 
 	@media screen and (max-width: 760px) {
-		--font-size-intro-heading: 40px;
-		--font-size-intro-body: 18px;
 		--font-size-link: 20px;
 		--font-size-heading-h1: 38px;
 		--font-size-heading-h2: 36px;
@@ -49,8 +46,6 @@
 	}
 
 	@media print, screen and (max-width: 500px) {
-		--font-size-intro-heading: 32px;
-		--font-size-intro-body: 16px;
 		--font-size-link: 16px;
 		--font-size-heading-h1: 34px;
 		--font-size-heading-h2: 32px;
@@ -60,8 +55,6 @@
 	}
 
 	@media screen and (max-width: 400px) {
-		--font-size-intro-heading: 24px;
-		--font-size-intro-body: 14px;
 		--font-size-link: 14px;
 		--font-size-heading-h1: 28px;
 		--font-size-heading-h2: 26px;
@@ -125,11 +118,11 @@ h1 {
 }
 
 h2 {
-	font-family: "EB Garamond", Garamond, serif;
-	font-feature-settings: "lnum";
-	line-height: 1.2;
-	font-weight: 500;
-	font-size: var(--font-size-heading-h2);
+	font-family: "Inter", sans-serif;
+	line-height: 1.5;
+	font-weight: 800;
+	font-size: var(--font-size-article-h2);
+	margin-top: 80px;
 }
 
 h3 {
@@ -151,18 +144,19 @@ p {
 	-webkit-hyphens: auto;
 	hyphens: auto;
 	text-align: justify;
-
-	& ~ img,
-	& ~ iframe {
-		width: 100%;
-		height: auto;
-	}
 }
 
-:is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ol li p, img),
+:is(h1, h2, p) ~ :is(img, iframe),
+:is(h1, h2, p) ~ a > img:only-child {
+	width: 100%;
+	height: auto;
+}
+
+:is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ol li p, img, a:has(> img:only-child)),
 :is(h1, p) ~ .informational-group,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .video-embed),
 .video-embed + :is(p, .link, .button),
+p + p > .button,
 p + :is(.link, section),
 img + .link {
 	margin-top: 20px;
@@ -342,7 +336,7 @@ summary {
 }
 
 .reading-material.reading-material.reading-material {
-	max-width: 800px;
+	max-width: var(--max-width-reading-material);
 
 	hr {
 		margin-top: 40px;
@@ -350,6 +344,7 @@ summary {
 	}
 
 	article {
+		width: 100%;
 		margin-top: 20px;
 		
 		h1,
@@ -394,11 +389,9 @@ summary {
 			margin-top: 10px;
 		}
 
-		p {
-			& ~ img {
-				width: auto;
-				max-width: 100%;
-			}
+		p ~ img {
+			width: auto;
+			max-width: 100%;
 		}
 	}
 }
@@ -407,13 +400,10 @@ summary {
 	background: var(--color-crimson);
 	white-space: nowrap;
 	color: white;
-	font-size: 0.4em;
-	padding: 0.2em 0.4em;
-	padding-top: 0.1em;
-	position: relative;
-	top: -0.2em;
-	font-family: "EB Garamond", Garamond, serif;
-	font-feature-settings: "lnum";
+	font-size: var(--font-size-body);
+	padding: 0.25em 0.5em;
+	vertical-align: middle;
+	font-family: "Bona Nova", Palatino, serif;
 	line-height: 1.2;
 	font-weight: 500;
 }
@@ -610,8 +600,15 @@ summary {
 		img {
 			position: relative;
 			display: inline-block;
+			user-select: none;
 			flex: 0 0 auto;
 			padding: 0 20px;
+
+			&:first-child,
+			&:last-child {
+				// Fade to white (`Invert(factor / 2) Brightness(1 + factor)`) and desaturate (`Grayscale(factor)`)
+				filter: Invert(calc(var(--over-slide-factor) / 2)) Brightness(calc(1 + var(--over-slide-factor))) Grayscale(var(--over-slide-factor));
+			}
 
 			&:first-child {
 				margin-left: -20px;
@@ -623,7 +620,7 @@ summary {
 		}
 	}
 
-	&:not(.dragging) .carousel-slide img {
+	&:not(.dragging, .jostling) .carousel-slide img {
 		transition: transform 500ms;
 	}
 
@@ -642,8 +639,8 @@ summary {
 		mask-size: contain;
 
 		&.left {
-			padding-left: 80px;
-			margin-left: -80px;
+			padding-left: 160px;
+			margin-left: -160px;
 			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png"); // TODO: Switch PNG to AVIF when Edge support has rolled out
 			mask-image: url("https://static.graphite.rs/textures/torn-edge-left.png");
 			-webkit-mask-position: top left;
@@ -651,8 +648,8 @@ summary {
 		}
 
 		&.right {
-			padding-right: 120px;
-			margin-right: -120px;
+			padding-right: 160px;
+			margin-right: -160px;
 			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png"); // TODO: Switch PNG to AVIF when Edge support has rolled out
 			mask-image: url("https://static.graphite.rs/textures/torn-edge-right.png");
 			-webkit-mask-position: top right;
@@ -777,8 +774,7 @@ summary {
 		}
 	}
 
-	// 1600px is var(--max-width)
-	@media screen and (max-width: 1600px) {
+	@media screen and (max-width: /* The value of --max-width-plus-padding: */ 1280px) {
 		.carousel-slide.torn {
 			display: none;
 		}

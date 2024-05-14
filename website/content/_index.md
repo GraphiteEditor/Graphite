@@ -13,44 +13,58 @@ js = ["image-interaction.js", "video-embed.js"]
 </section>
 <!-- ▙ LOGO ▟ -->
 
-<img class="pencil-texture" src="https://static.graphite.rs/textures/pencil-texture.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" />
-
-<!-- ▛ QUICK LINKS ▜ -->
-<section id="quick-links">
-	<div>
-		<a href="#community" class="button arrow">Subscribe to the newsletter</a>
-		<a href="/donate" class="button arrow">&hearts; Support the mission</a>
-	</div>
-	<div>
-		<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
-			<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
-		</a>
-		<a href="https://www.reddit.com/r/graphite/" target="_blank">
-			<img src="https://static.graphite.rs/icons/reddit.svg" alt="Reddit" />
-		</a>
-		<a href="https://twitter.com/graphiteeditor" target="_blank">
-			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
-		</a>
-		<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
-			<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
-		</a>
-		<a href="https://discord.graphite.rs" target="_blank">
-			<img src="https://static.graphite.rs/icons/discord.svg" alt="Discord" />
-		</a>
-	</div>
-</section>
-<!-- ▙ QUICK LINKS ▟ -->
-<!--                -->
 <!-- ▛ TAGLINE ▜ -->
 <section id="tagline">
 
 <h1 class="balance-text">Redefining state&#8209;of&#8209;the&#8209;art graphics editing</h1>
 
-<p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, bringing a procedural approach to your design workflow.</p>
-<!-- <p class="balance-text"><strong>Graphite</strong> is an in-development raster and vector graphics package that's free and open source. It is powered by a node graph compositing engine that fuses layers with nodes, providing a fully nondestructive editing experience.</p> -->
+<p class="balance-text"><strong>Graphite</strong> is an in-development vector and raster graphics editor that's free and open source. It is powered by a node graph compositor that fuses layers with nodes and brings a unique procedural approach to your 2D design workflow.</p>
 
 </section>
 <!-- ▙ TAGLINE ▟ -->
+<!--                -->
+<!-- ▛ QUICK LINKS ▜ -->
+<section id="quick-links">
+	<div class="call-to-action-buttons">
+		<a href="https://github.com/GraphiteEditor/Graphite" class="button github-stars">
+			<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
+			<span class="arrow">Star</span>
+			<div data-github-stars></div>
+		</a>
+		<a href="#newsletter" class="button arrow">Subscribe to newsletter</a>
+	</div>
+	<div class="social-media-buttons">
+		<a href="https://discord.graphite.rs" target="_blank">
+			<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
+		</a>
+		<a href="https://twitter.com/graphiteeditor" target="_blank">
+			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
+		</a>
+		<a href="https://www.reddit.com/r/graphite/" target="_blank">
+			<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
+		</a>
+		<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
+			<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
+		</a>
+	</div>
+</section>
+<script>
+(async () => {
+	const element = document.querySelector("[data-github-stars]");
+	try {
+		const response = await fetch("https://api.github.com/repos/graphiteeditor/graphite?per_page=1");
+		const json = await response.json();
+		const stars = parseInt(json.stargazers_count);
+		if (!stars) throw new Error();
+		let quantity = stars.toLocaleString("en-US");
+		if (quantity.length === 5) quantity = quantity.replace(",", "");
+		element.innerText = quantity;
+	} catch {
+		element.remove();
+	}
+})();
+</script>
+<!-- ▙ QUICK LINKS ▟ -->
 
 <div class="hexagons">
 	<div>
@@ -66,27 +80,17 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <!-- ▛ SCREENSHOTS ▜ -->
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
-	<div class="carousel-slide">
-		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #4" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #5" data-carousel-image />
+	<div class="carousel-slide" data-carousel-slide>
+		<!-- Copy of last --><img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #1" style="transform: translateX(-100%)" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #2" style="transform: translateX(-100%)" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #3" style="transform: translateX(-100%)" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #4" style="transform: translateX(-100%)" data-carousel-image />
+		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite UI image #5" style="transform: translateX(-100%)" data-carousel-image />
+		<!-- Copy of first --><img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	</div>
-	<div class="carousel-slide torn left">
-		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-	</div>
-	<div class="carousel-slide torn right">
-		<img src="https://static.graphite.rs/content/index/gui-demo-red-dress.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-valley-of-spires__4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-demo-procedural-string-lights.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-		<img src="https://static.graphite.rs/content/index/gui-mockup-viewport__5.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" data-carousel-image />
-	</div>
+	<div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
+	<div class="carousel-slide torn right" data-carousel-slide-torn-right></div>
 	<div class="screenshot-details">
 		<div class="carousel-controls">
 			<button class="direction prev" data-carousel-prev>
@@ -135,12 +139,12 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <div class="section">
 
-# Graphite today <span class="status-flag">alpha release</span>
+# Graphite today <span class="status-flag">public alpha</span>
 
 <div class="informational-group features">
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Vector graphics editing</span>
+		<span>Vector art editing</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
@@ -151,15 +155,16 @@ js = ["image-interaction.js", "video-embed.js"]
 		<!-- <img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
 		<!-- <span>AI-assisted art creation</span> -->
 		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Procedural design workflow</span>
+		<span>Procedural graphic design workflow</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Open source and free forever</span>
+		<span>Forever free and open source</span>
 	</div>
 </div>
 
-Graphite is a lightweight vector graphics editor that runs offline in your browser (no sign up required) and offers the unique feature of a node-driven procedural vector workflow.
+<!-- Presently, Graphite is a lightweight vector graphics editor that runs offline in your browser (no sign up or download required). -->
+Presently, Graphite is a lightweight offline web app with features primarily oriented around procedural vector graphics editing.
 
 </div>
 <div class="section">
@@ -169,19 +174,19 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 <div class="informational-group features">
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 4" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>All-in-one creative tools for animation, art, and design</span>
+		<span>All-in-one creative tool for all things 2D</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Clean, familiar interface built by designers, for designers</span>
+		<span>Clean, familiar, designer-centric UI</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Multiplatform desktop app</span>
+		<span>Multiplatform app for desktop + iPad</span>
 	</div>
 	<div class="informational">
 		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
-		<span>Real-time collaborative editing</span>
+		<span>Live collaborative editing</span>
 	</div>
 </div>
 
@@ -232,25 +237,28 @@ Graphite is a lightweight vector graphics editor that runs offline in your brows
 </section>
 <!-- ▙ DISCIPLINES ▟ -->
 <!--                  -->
-<!-- ▛ COMMUNITY ▜ -->
-<section id="community" class="feature-box">
+<!-- ▛ NEWSLETTER ▜ -->
+<section id="newsletter" class="feature-box">
+<div id="newsletter-success"><!-- Used only as URL hash fragment anchor --></div>
 <div class="box">
+
+<h1 class="box-header">Stay in the loop</h1>
+
+---
+
 <div class="diptych">
 
-<div id="newsletter" class="section">
+<div class="section newsletter-signup">
 
-# Stay in the loop
+**Subscribe to the newsletter** for quarterly updates on major development progress. And follow along—or join the conversation—on social media.
 
-Subscribe to the newsletter for quarterly updates on major development progress.
-
-<div id="newsletter-success">
+<div class="newsletter-success">
 
 ## Thanks!
 
 You'll receive your first newsletter email with the next major Graphite news.
 
 </div>
-
 <form action="https://graphite.rs/newsletter-signup" method="post">
 	<div class="same-line">
 		<div class="column name">
@@ -272,40 +280,32 @@ You'll receive your first newsletter email with the next major Graphite news.
 </form>
 
 </div>
-<div id="social" class="section">
+<div class="section social-media-links">
 
-# Follow along
-
-<div class="social-links">
-	<div class="column">
-		<a href="https://discord.graphite.rs" target="_blank">
-			<img src="https://static.graphite.rs/icons/discord.svg" alt="Discord" />
-			<span class="link arrow">Join on Discord</span>
-		</a>
-		<a href="https://www.reddit.com/r/graphite/" target="_blank">
-			<img src="https://static.graphite.rs/icons/reddit.svg" alt="Reddit" />
-			<span class="link not-uppercase arrow">/r/Graphite</span>
-		</a>
-	</div>
-	<div class="column">
-		<a href="https://github.com/GraphiteEditor/Graphite" target="_blank">
-			<img src="https://static.graphite.rs/icons/github.svg" alt="GitHub" />
-			<span class="link arrow">Star on GitHub</span>
-		</a>
-		<a href="https://twitter.com/graphiteeditor" target="_blank">
-			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
-			<span class="link not-uppercase arrow">@GraphiteEditor</span>
-		</a>
-	</div>
-</div>
+<a href="https://discord.graphite.rs" target="_blank">
+	<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
+	<span class="link not-uppercase arrow">Discord</span>
+</a>
+<a href="https://twitter.com/graphiteeditor" target="_blank">
+	<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
+	<span class="link not-uppercase arrow">@GraphiteEditor</span>
+</a>
+<a href="https://www.reddit.com/r/graphite/" target="_blank">
+	<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
+	<span class="link not-uppercase arrow">/r/Graphite</span>
+</a>
+<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
+	<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
+	<span class="link not-uppercase arrow">YouTube</span>
+</a>
 
 </div>
 
 </div>
 </div>
 </section>
-<!-- ▙ COMMUNITY ▟ -->
-<!--                  -->
+<!-- ▙ NEWSLETTER ▟ -->
+<!--                   -->
 <!-- ▛ JUMP RIGHT IN ▜ -->
 <!-- <section id="jump-right-in">
 <div class="section"> -->
@@ -328,9 +328,7 @@ You'll receive your first newsletter email with the next major Graphite news.
 
 # Powerful proceduralism
 
-**Graphite is the first and only graphic design app to offer procedural vector editing.**
-
-This new capability has just recently shown its potential. Now, expanding Graphite's procedural powers is the focus of development in 2024.
+**Graphite is the first and only graphic design package to offer procedural vector editing.**
 
 </div>
 </section>
@@ -396,42 +394,22 @@ Graphite's procedural, data-driven approach to graphic design affords unique cap
 <!-- ▛ FUNDRAISING ▜ -->
 <section id="fundraising" class="feature-box">
 <div class="box">
-<div>
+
+<h1 class="box-header">Support the mission</h1>
+
+---
 
 <div class="section">
 
-# Support the mission
-
 <p class="balance-text">
 You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
-Graphite is built by a small, dedicated crew of volunteers in need of resources to grow.
+Graphite is built by a small, dedicated crew of volunteers in need of the resources to grow.
 </p>
-
-<!-- [Re-include the import for `"fundraising.js"` when re-enabling this.]
-
-### Summer 2023 fundraising goal:
-
-<div class="fundraising loading" data-fundraising>
-	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
-		<div class="fundraising-bar-progress"></div>
-	</div>
-	<div class="goal-metrics">
-		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
-		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
-	</div>
-</div>
-
-[Become a monthly supporter](https://github.com/sponsors/GraphiteEditor) this summer to collect an exclusive 💚 badge. Each season you support, a new heart design is yours to keep. In the future, they'll be shown on Graphite account profiles and community areas like forums and in-app collaboration. -->
 
 <a href="https://github.com/sponsors/GraphiteEditor" class="button arrow">Donate</a>
 
 </div>
 
-<!-- <div class="graphic">
-	<a href="https://github.com/sponsors/GraphiteEditor"><img src="https://files.keavon.com/-/OtherDroopyBoto/Spring_Heart.png" /></a>
-</div> -->
-
-</div>
 </div>
 </section>
 <!-- ▙ FUNDRAISING ▟ -->
@@ -576,26 +554,3 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 </div>
 </section>
 <!-- ▙ DEMO VIDEO ▟ -->
-<!--                   -->
-<!-- ▛ GET INVOLVED ▜ -->
-<section id="get-involved-box" class="feature-box">
-<div class="box">
-<div class="diptych">
-
-<div class="section">
-
-# Get involved
-
-<p class="balance-text">The Graphite project could not exist without its community. Building its ambitious and versatile feature set will require contributions from artists, designers, developers, technical experts, and eagle-eyed bug hunters. Help build the future of digital art.</p>
-
-<a href="/volunteer" class="button arrow">Volunteer</a>
-
-</div>
-<div class="graphic">
-	<img src="https://static.graphite.rs/content/index/volunteer.svg" alt="" />
-</div>
-
-</div>
-</div>
-</section>
-<!-- ▙ GET INVOLVED ▟ -->

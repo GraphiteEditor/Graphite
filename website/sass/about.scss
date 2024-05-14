@@ -16,27 +16,28 @@
 	background-color: var(--color-parchment);
 	background-blend-mode: color-burn;
 
-	h2,
-	h2 + p,
-	h3,
-	h3 + p {
-		width: 100%;
+	h2 {
+		font-weight: bold;
 		text-align: center;
+		width: 100%;
 	}
 
 	h2 + p {
+		text-align: center;
+		width: 100%;
 		margin-top: 4px;
 		opacity: 0.75;
 	}
 
-	h3 + p {
-		margin-top: 0;
+	h2 + p + p {
+		text-align: center;
 	}
 
-	h2 .flag {
+	.flag {
 		font-family: "Noto Color Emoji", sans-serif;
-		font-size: 0.8em;
-		margin-left: 0.2em;
+		vertical-align: middle;
+		font-size: 1.5em;
+		margin-left: 0.25em;
 		cursor: default;
 	}
 

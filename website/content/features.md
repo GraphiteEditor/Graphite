@@ -23,7 +23,7 @@ Stay tuned for major performance uplifts, a multiplatform native desktop app, an
 
 <div class="section">
 
-## Layers & nodes: hybrid compositing
+## Layers & nodes: hybrid editing
 
 Graphite combines the best ideas from multiple categories of digital content creation software to redefine the workflows of 2D graphics editing. It is influenced by the core editing experience of traditional layer-based raster and vector apps, the nondestructive approaches of VFX compositing programs used by film studios, and the boundless creative possibilities of procedural production tools daily-driven by the 3D industry.
 
@@ -34,15 +34,15 @@ The hybrid workflow of Graphite offers a classic tool-centric, layer-based editi
 </div>
 <div class="section">
 
-## Raster & vector: sharp at all sizes <span class="status-flag">not fully implemented yet</span>
+## Raster & vector: sharp at all sizes
 
 Digital 2D art commonly takes two forms. Raster artwork is made out of pixels which means it can look like anything imaginable, but it becomes blurry or pixelated when upscaling to a higher resolution. Vector artwork is made out of curved shapes which is perfect for some art styles but limiting to others. The magic of vector is that its mathematically-described curves can be enlarged to any size and remain crisp.
 
-Other apps usually focus on just raster or vector, forcing artists to buy and learn both products. Mixing art styles requires shuttling content back and forth between programs. And since picking a raster document resolution is a one-time deal, artists may choose to start really big, resulting in sluggish editing performance and multi-gigabyte documents.
+Other apps usually focus on just raster or vector, forcing artists to buy and learn both products. Mixing art styles requires shuttling content back and forth between programs. And since picking a raster document resolution is a one-time deal, artists often choose to start really big, resulting in sluggish editing performance and multi-gigabyte documents.
 
-Graphite reinvents raster rendering so it stays sharp at any scale. Artwork is treated as data, not pixels, and is always redrawn at the current viewing resolution. Zoom the viewport and export images at any size— the document's paint brushes, masks, filters, and effects will all be rendered at the native resolution.
+Graphite reinvents raster rendering so it stays sharp at any scale. Artwork is treated as data, not pixels, and is always redrawn at the current viewing resolution. Zoom the viewport and export images at any size— the document's paint brushes, masks, filters, and effects will all be rendered at the current native resolution.
 
-Marrying vector and raster under one roof enables both art forms to complement each other in a cohesive content creation workflow.
+Marrying vector and raster under one roof enables both art forms to complement each other in a cohesive content creation workflow. *(Scalable raster compositing is still in-development.)*
 
 </div>
 
