@@ -153,11 +153,12 @@
 				.open-chapter-selection {
 					display: inline-block;
 					vertical-align: top;
-					height: calc(var(--font-size-heading-h1) * 1.25);
+					height: calc(var(--font-size-h1) * 1.25);
 					padding-top: 0;
 					padding-bottom: 0;
 					margin-left: -6px;
 					margin-right: calc(20px - 6px);
+					flex: 0 0 auto;
 				}
 
 				h1 {

@@ -162,8 +162,6 @@
 		justify-content: center;
 
 		.newsletter-signup {
-			min-width: 360px;
-			
 			.newsletter-success {
 				margin-top: 40px;
 				padding: 40px;
@@ -176,10 +174,9 @@
 					font-family: "Inter", sans-serif;
 					line-height: 1.5;
 					font-weight: 800;
-					font-size: var(--font-size-article-h2);
+					font-size: var(--font-size-h2);
 				}
 			}
-
 
 			form {
 				width: 100%;

@@ -37,11 +37,11 @@ js = ["image-interaction.js", "video-embed.js"]
 		<a href="https://discord.graphite.rs" target="_blank">
 			<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
 		</a>
-		<a href="https://twitter.com/graphiteeditor" target="_blank">
-			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
-		</a>
 		<a href="https://www.reddit.com/r/graphite/" target="_blank">
 			<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
+		</a>
+		<a href="https://twitter.com/graphiteeditor" target="_blank">
+			<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
 		</a>
 		<a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
 			<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />
@@ -204,7 +204,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 # One app to rule them all
 
-**Stop jumping between programs. Planned features will make Graphite a first-class design tool for all these disciplines** *(listed by priority)*.
+**Stop jumping between programs. Planned features will make Graphite a first-class design tool for all these disciplines.** <small>*(Listed by priority.)*</small>
 
 <div class="informational-group concepts">
 	<div class="informational">
@@ -286,13 +286,13 @@ You'll receive your first newsletter email with the next major Graphite news.
 	<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
 	<span class="link not-uppercase arrow">Discord</span>
 </a>
-<a href="https://twitter.com/graphiteeditor" target="_blank">
-	<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
-	<span class="link not-uppercase arrow">@GraphiteEditor</span>
-</a>
 <a href="https://www.reddit.com/r/graphite/" target="_blank">
 	<img src="https://static.graphite.rs/icons/reddit__2.svg" alt="Reddit" />
 	<span class="link not-uppercase arrow">/r/Graphite</span>
+</a>
+<a href="https://twitter.com/graphiteeditor" target="_blank">
+	<img src="https://static.graphite.rs/icons/twitter.svg" alt="Twitter" />
+	<span class="link not-uppercase arrow">@GraphiteEditor</span>
 </a>
 <a href="https://www.youtube.com/@GraphiteEditor" target="_blank">
 	<img src="https://static.graphite.rs/icons/youtube.svg" alt="YouTube" />

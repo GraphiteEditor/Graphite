@@ -58,11 +58,13 @@ Develop the engine that powers Graphite's node graph and rendering. Graphene is 
 
 <div class="info-box">
 
-<img src="https://files.keavon.com/-/NeighboringDecentShorebird/keavon_httpss.mj.runystAKbmsUKQ_Old-style_fountain_pen_with_n_e4847f9d-6aa7-413c-bc3b-077b77565f1c_3.png" />
+<a href="https://discord.graphite.rs">
+	<img src="https://files.keavon.com/-/NeighboringDecentShorebird/keavon_httpss.mj.runystAKbmsUKQ_Old-style_fountain_pen_with_n_e4847f9d-6aa7-413c-bc3b-077b77565f1c_3.png" />
+</a>
 
-**Reach out to a [core team member](/about#core-team) to get started:**
+**Ask how to get started by reaching out to a [core team member](/about#core-team) on Discord:**
 
-<a href="https://discord.graphite.rs" class="button arrow">Ask how to begin (Discord)</a>
+<a href="https://discord.graphite.rs" class="button arrow">Reach out on Discord</a>
 
 </div>
 

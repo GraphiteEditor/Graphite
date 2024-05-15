@@ -1,30 +1,20 @@
-.code-contributions .info-box {
-	&:nth-of-type(1) {
-		background-color: var(--color-seaside);
-	}
-
-	&:nth-of-type(2) {
-		background-color: var(--color-cove);
-	}
-}
-
-.creative-contributions .info-box {
-	&:nth-of-type(1) {
-		background-color: var(--color-mustard);
-	}
-
-	&:nth-of-type(2) {
-		background-color: var(--color-ale);
-	}
-}
-
 .creative-contributions,
 .code-contributions {
+	gap: 0 calc(80* var(--variable-px));
+
 	.button.button.button {
 		height: auto;
 		text-align: left;
 		white-space: normal;
 	}
+}
+
+.code-contributions .info-box {
+	background-color: var(--color-seaside);
+}
+
+.creative-contributions .info-box {
+	background-color: var(--color-lemon);
 }
 
 .info-box > img:first-child,
