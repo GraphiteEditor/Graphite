@@ -22,7 +22,7 @@ mod tests {
 						NodeId(0),
 						DocumentNode {
 							name: "Cons".into(),
-							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(&u32))],
+							inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(&u32), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
 							..Default::default()
 						},
@@ -51,7 +51,7 @@ mod tests {
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
-						NodeInput::Network(concrete!(u32)),
+						NodeInput::network(concrete!(u32), 0),
 						NodeInput::Value {
 							tagged_value: graph_craft::document::value::TaggedValue::U32(1u32),
 							exposed: false,
@@ -92,7 +92,7 @@ mod tests {
 					NodeId(0),
 					DocumentNode {
 						name: "id".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::Network(concrete!(u32), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},

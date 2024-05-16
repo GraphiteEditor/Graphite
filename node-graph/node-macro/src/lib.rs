@@ -202,8 +202,8 @@ fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) ->
 		quote::quote!(#(let #parameter_mutability #parameter_idents = self.#parameter_idents.eval(());)*)
 	};
 	let mut body_with_inputs = quote::quote!(
-			#parameters
-			{#body}
+		#parameters
+		{#body}
 	);
 	if async_out {
 		body_with_inputs = quote::quote!(Box::pin(async move { #body_with_inputs }));

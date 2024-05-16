@@ -201,7 +201,7 @@ pub struct AddArtboardNode<Artboard, ArtboardGroup> {
 async fn add_artboard<Data: Into<Artboard>, Fut1: Future<Output = Data>, Fut2: Future<Output = ArtboardGroup>>(
 	footprint: Footprint,
 	artboard: impl Node<Footprint, Output = Fut1>,
-	mut artboards: impl Node<Footprint, Output = Fut2>,
+	artboards: impl Node<Footprint, Output = Fut2>,
 ) -> ArtboardGroup {
 	let artboard = self.artboard.eval(footprint).await;
 	let mut artboards = self.artboards.eval(footprint).await;

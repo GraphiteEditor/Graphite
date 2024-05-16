@@ -104,7 +104,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let mut input_type = None;
 	for (id, node) in network.nodes.iter() {
 		for input in node.inputs.iter() {
-			if let NodeInput::Network(_) = input {
+			if let NodeInput::Network {..} = input {
 				if input_type.is_none() {
 					input_type = Some(input.clone());
 				}
@@ -181,7 +181,7 @@ fn begin_scope() -> DocumentNode {
 
 			..Default::default()
 		}),
-		inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+		inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
 		..Default::default()
 	}
 }

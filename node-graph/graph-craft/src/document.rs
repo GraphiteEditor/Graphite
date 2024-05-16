@@ -82,7 +82,7 @@ pub struct DocumentNode {
 	///
 	/// Through the usual node composition flow, the upstream node providing the primary input for a node is evaluated before the node itself is run.
 	/// - Abstract example: upstream node `G` is evaluated and its data feeds into the primary input of downstream node `F`,
-	///   just like function composition where function `F` is evaluated and its result is fed into function `F`.
+	///   just like function composition where function `G` is evaluated and its result is fed into function `F`.
 	/// - Concrete example: a node that takes an image as primary input will get that image data from an upstream node that produces image output data and is evaluated first before being fed downstream.
 	///
 	/// This is achieved by automatically inserting `ComposeNode`s, which run the first node with the overall input and then feed the resulting output into the second node.
@@ -119,12 +119,12 @@ pub struct DocumentNode {
 	/// With the default composition flow (no manual composition), `ComposeNode`s would be automatically inserted during the graph rewriting step like this:
 	///
 	/// ```text
-	///                                           ┌───────────────┐    ┌───────────────┐
-	///                                           │               │◄───┤               │◄─── EVAL (START)
-	///                                           │  ComposeNode  │    │       F       │
-	///                      ┌───────────────┐    │               ├───►│               │───► RESULT (END)
-	///                      │               │◄─┐ ├───────────────┤    └───────────────┘
-	///                      │       F       │  └─┤               │
+	///                                           ┌───────────────┐
+	///                                           │               │◄─── EVAL (START)
+	///                                           │  ComposeNode  │
+	///                      ┌───────────────┐    │               ├───► RESULT (END)
+	///                      │               │◄─┐ ├───────────────┤
+	///                      │       G       │  └─┤               │
 	///                      │               ├─┐  │     First     │
 	///                      └───────────────┘ └─►│               │
 	///                      ┌───────────────┐    ├───────────────┤
@@ -132,12 +132,12 @@ pub struct DocumentNode {
 	///                      │  ComposeNode  │    │     Second    │
 	/// ┌───────────────┐    │               ├───►│               │
 	/// │               │◄─┐ ├───────────────┤    └───────────────┘
-	/// │       G       │  └─┤               │
+	/// │PassThroughNode│  └─┤               │
 	/// │               ├─┐  │     First     │
 	/// └───────────────┘ └─►│               │
 	/// ┌───────────────┐    ├───────────────┤
 	/// |               │◄───┤               │
-	/// │PassThroughNode│    │     Second    │
+	/// │       F       │    │     Second    │
 	/// │               ├───►│               │
 	/// └───────────────┘    └───────────────┘
 	/// ```
@@ -271,7 +271,6 @@ impl DocumentNode {
 			.inputs
 			.iter()
 			.enumerate()
-			.filter(|(_, input)| matches!(input, NodeInput::Network(_)))
 			.nth(offset)
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
@@ -301,11 +300,11 @@ impl DocumentNode {
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
-				NodeInput::Network(ty) => (ProtoNodeInput::ManualComposition(ty), ConstructionArgs::Nodes(vec![])),
+				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
 			}
 		};
-		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network(_))), "received non resolved parameter");
+		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non resolved parameter");
 		assert!(
 			!self.inputs.iter().any(|input| matches!(input, NodeInput::Value { .. })),
 			"received value as parameter. inputs: {:#?}, construction_args: {:#?}",
@@ -394,7 +393,7 @@ pub enum NodeInput {
 	Value { tagged_value: TaggedValue, exposed: bool },
 
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network(Type),
+	Network { import_type: Type, import_index: usize },
 
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
 	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
@@ -424,6 +423,9 @@ impl NodeInput {
 	pub const fn value(tagged_value: TaggedValue, exposed: bool) -> Self {
 		Self::Value { tagged_value, exposed }
 	}
+	pub const fn network(import_type: Type, import_index: usize) -> Self {
+		Self::Network { import_type, import_index }
+	}
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
 		if let &mut NodeInput::Node { node_id, output_index, lambda } = self {
 			*self = NodeInput::Node {
@@ -437,7 +439,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Network(_) => false,
+			NodeInput::Network { .. } => false,
 			NodeInput::Inline(_) => false,
 		}
 	}
@@ -445,7 +447,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			NodeInput::Network(ty) => ty.clone(),
+			NodeInput::Network { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 		}
 	}
@@ -596,13 +598,16 @@ impl NodeNetwork {
 		self.previous_outputs.as_ref().unwrap_or(&self.exports)
 	}
 
+	// Unused
 	pub fn input_types(&self) -> impl Iterator<Item = Type> + '_ {
-		self.imports.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty()).unwrap_or(concrete!(())))
+		// self.imports.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty()).unwrap_or(concrete!(())))
+		// New implementation would iterate through all nodes, and get type for all NodeInput::Network inputs
+		std::iter::empty()
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
-			imports: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network(_))).map(|_| NodeId(0)).collect(),
+			imports: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network { .. })).map(|_| NodeId(0)).collect(),
 			exports: vec![NodeOutput::new(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
 			previous_outputs: None,
@@ -677,7 +682,7 @@ impl NodeNetwork {
 						DocumentNode {
 							name: "MemoNode".to_string(),
 							manual_composition: Some(concrete!(())),
-							inputs: vec![NodeInput::Network(ty)],
+							inputs: vec![NodeInput::network(ty, 0)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
 							..Default::default()
 						},
@@ -953,7 +958,7 @@ impl NodeNetwork {
 		// Check if inputs are used and store for return value
 		let are_inputs_used = self.imports.iter().map(|input| self.nodes.contains_key(input)).collect();
 		// Remove unused inputs from graph
-		self.imports.retain(|input| self.nodes.contains_key(input));
+		self.imports.retain(|input: &NodeId| self.nodes.contains_key(input));
 
 		are_inputs_used
 	}
@@ -989,7 +994,7 @@ impl NodeNetwork {
 				break;
 			}
 
-			let previous_input = std::mem::replace(input, NodeInput::Network(concrete!(())));
+			let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
 			if let NodeInput::Value { tagged_value, exposed } = previous_input {
 				let value_node_id = gen_id();
 				let merged_node_id = map_ids(id, value_node_id);
@@ -1021,45 +1026,31 @@ impl NodeNetwork {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
-			// Copy nodes from the inner network into the parent network
-			self.nodes.extend(inner_network.nodes);
-
-			let mut network_offsets = HashMap::new();
-			assert_eq!(
-				node.inputs.len(),
-				inner_network.imports.len(),
-				"\n\nThe number of inputs to the node and the inner network must be the same for \"{}\". The node has {} inputs, the network has {} inputs.\n\nNode inputs:\n\n{:?}\n\nNetwork inputs:\n\n{:?}\n",
-				node.name,
-				node.inputs.len(),
-				inner_network.imports.len(),
-				node.inputs,
-				inner_network.imports
-			);
-			assert_eq!(
-				node.inputs.len(),
-				inner_network.imports.len(),
-				"Document Nodes with a Network implementation should have the same number of inner network inputs as inputs declared on the Document Node"
-			);
-			// Match the document node input and the inputs of the inner network
-			for (input_index, (document_input, network_input)) in node.inputs.into_iter().zip(inner_network.imports.iter()).enumerate() {
-				// Keep track of how many network inputs we have already connected for each node
-				let offset = network_offsets.entry(network_input).or_insert(0);
-				match document_input {
-					// If the input to self is a node, connect the corresponding output of the inner network to it
-					NodeInput::Node { node_id, output_index, lambda } => {
-						let network_input = self.nodes.get_mut(network_input).unwrap();
-						let skip = node.original_location.skip_inputs;
-						network_input.populate_first_network_input(node_id, output_index, *offset, lambda, node.original_location.inputs(input_index), skip);
-					}
-					NodeInput::Network(_) => {
-						*network_offsets.get_mut(network_input).unwrap() += 1;
-						if let Some(index) = self.imports.iter().position(|i| *i == id) {
-							self.imports[index] = *network_input;
+			//Match the document node input and the inputs of the inner network
+			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
+				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
+					if let NodeInput::Network { import_index, .. } = nested_input {
+						let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+						match *parent_input {
+							// If the input to self is a node, connect the corresponding output of the inner network to it
+							NodeInput::Node { node_id, output_index, lambda } => {
+								let skip = node.original_location.skip_inputs;
+								nested_node.populate_first_network_input(node_id, output_index, nested_input_index, lambda, node.original_location.inputs(*import_index), skip);
+							}
+							NodeInput::Network { import_index, .. } => {
+								let parent_input_index = import_index;
+								let Some(NodeInput::Network { import_index, .. }) = nested_node.inputs.get_mut(nested_input_index) else {
+									log::error!("Nested node should have a network input");
+									continue;
+								};
+								*import_index = parent_input_index;
+							}
+							NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
+							NodeInput::Inline(_) => (),
 						}
 					}
-					NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-					NodeInput::Inline(_) => (),
 				}
+				self.nodes.insert(nested_node_id, nested_node);
 			}
 
 			// Connect all nodes that were previously connected to this node to the nodes of the inner network
@@ -1180,14 +1171,14 @@ impl NodeNetwork {
 			node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into());
 			if let Some(input) = input_node.inputs.get_mut(0) {
 				*input = match &input {
-					NodeInput::Node { .. } => NodeInput::Network(generic!(T)),
-					ni => NodeInput::Network(ni.ty()),
+					NodeInput::Node { .. } => NodeInput::network(generic!(T), 0),
+					ni => NodeInput::network(ni.ty(), 0),
 				};
 			}
 
 			for input in input_node.inputs.iter_mut() {
 				if let NodeInput::Node { .. } = input {
-					*input = NodeInput::Network(generic!(T))
+					*input = NodeInput::network(generic!(T), 0)
 				}
 			}
 			node.inputs = vec![NodeInput::value(TaggedValue::DocumentNode(input_node), false)];
@@ -1197,12 +1188,15 @@ impl NodeNetwork {
 
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
+		//let input_node = self.nodes.iter().find_map(|(node_id, node)| if node.name == "SetNode" { Some(node_id.clone()) } else { None });
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 		nodes.sort_unstable_by_key(|(i, _)| *i);
 
 		// Create a network to evaluate each output
 		self.exports.into_iter().map(move |output| ProtoNetwork {
-			inputs: self.imports.clone(),
+			inputs: Vec::new(), // Inputs field is not used. Should be deleted
+			//inputs: vec![input_node.expect("Set node should always exist")],
+			//inputs: self.imports.clone(),
 			output: output.node_id,
 			nodes: nodes.clone(),
 		})
@@ -1254,7 +1248,7 @@ mod test {
 					NodeId(0),
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						..Default::default()
 					},
@@ -1287,7 +1281,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						..Default::default()
 					},
@@ -1353,7 +1347,7 @@ mod test {
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
-						NodeInput::Network(concrete!(u32)),
+						NodeInput::network(concrete!(u32), 0),
 						NodeInput::Value {
 							tagged_value: TaggedValue::U32(2),
 							exposed: false,
@@ -1380,7 +1374,7 @@ mod test {
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
 			name: "Cons".into(),
-			inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(NodeId(0), 0)],
+			inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(0), 0)],
 			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 			..Default::default()
 		};
@@ -1456,7 +1450,7 @@ mod test {
 					NodeId(10),
 					DocumentNode {
 						name: "Cons".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::node(NodeId(14), 0)],
+						inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1519,7 +1513,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						name: "Identity 1".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::network(concrete!(u32), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
@@ -1528,7 +1522,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						name: "Identity 2".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::network(concrete!(u32), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},

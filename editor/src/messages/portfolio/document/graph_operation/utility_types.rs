@@ -310,7 +310,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: NodeId) {
 		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
 			[
-				NodeInput::Network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi)),
+				NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
@@ -620,11 +620,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 			if dimensions.x < 0 {
 				dimensions.x *= -1;
-				location.x += dimensions.x;
+				location.x -= dimensions.x;
 			}
 			if dimensions.y < 0 {
 				dimensions.y *= -1;
-				location.y += dimensions.y;
+				location.y -= dimensions.y;
 			}
 
 			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);

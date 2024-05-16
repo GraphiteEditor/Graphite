@@ -1950,14 +1950,14 @@ fn root_network() -> NodeNetwork {
 		let mut network = NodeNetwork::default();
 		let node = graph_craft::document::DocumentNode {
 			name: "Output".into(),
-			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
+			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::network(concrete!(WasmEditorApi), 0)],
 			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(3), NodeId(0)],
 				exports: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
 						name: "EditorApi".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},
@@ -1979,7 +1979,7 @@ fn root_network() -> NodeNetwork {
 						name: "RenderNode".to_string(),
 						inputs: vec![
 							NodeInput::node(NodeId(0), 0),
-							NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
+							NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 							NodeInput::node(NodeId(2), 0),
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),

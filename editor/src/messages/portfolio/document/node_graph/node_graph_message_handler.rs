@@ -205,7 +205,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 				}
-				log::debug!("delete_nodes: {:?}", delete_nodes);
 				for delete_node_id in delete_nodes {
 					let Some(delete_node) = network.nodes.get(&delete_node_id) else {
 						continue;
@@ -216,7 +215,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						let layer_node = LayerNodeIdentifier::new(delete_node_id, network);
 						layer_node.delete(document_metadata);
 					}
-					log::debug!("removing node");
 					self.remove_node(network, selected_nodes, delete_node_id, responses, reconnect);
 				}
 
@@ -563,7 +561,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(node_id) {
 						// Extend number of inputs if not already large enough
 						if input_index >= node.inputs.len() {
-							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::Network(generic!(T))));
+							node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::network(generic!(T), 0)));
 						}
 						node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 						if network.connected_to_output(*node_id) {

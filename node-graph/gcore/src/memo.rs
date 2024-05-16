@@ -177,7 +177,7 @@ impl<T> LetNode<T> {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EndLetNode<Input, Parameter> {
 	input: Input,
-	paramenter: PhantomData<Parameter>,
+	parameter: PhantomData<Parameter>,
 }
 impl<'i, T: 'i, Parameter: 'i + From<T>, Input> Node<'i, T> for EndLetNode<Input, Parameter>
 where
@@ -192,7 +192,7 @@ where
 
 impl<Input, Parameter> EndLetNode<Input, Parameter> {
 	pub const fn new(input: Input) -> EndLetNode<Input, Parameter> {
-		EndLetNode { input, paramenter: PhantomData }
+		EndLetNode { input, parameter: PhantomData }
 	}
 }
 
