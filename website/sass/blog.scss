@@ -81,7 +81,7 @@
 				margin-top: -0.5em;
 
 				a {
-					font-weight: bold;
+					font-weight: 700;
 					text-decoration: none;
 					color: var(--color-navy);
 				}
@@ -104,7 +104,7 @@
 				-webkit-line-clamp: 3;
 
 				// Safari workaround: https://stackoverflow.com/a/72170897/775283
-				// There is still an issue where the ellipsis is rendered inside the text but there doesn't appear to be a fix, or even a way to disable the ellipsis in Safari
+				// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
 				p {
 					display: inline;
 

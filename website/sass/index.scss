@@ -169,13 +169,6 @@
 				box-sizing: border-box;
 				background: var(--color-ale);
 				border: 2px solid var(--color-navy);
-
-				h2 {
-					font-family: "Inter", sans-serif;
-					line-height: 1.5;
-					font-weight: 800;
-					font-size: var(--font-size-h2);
-				}
 			}
 
 			form {
@@ -415,3 +408,50 @@
 	max-width: 1000px;
 }
 // ▙ DEMO VIDEO ▟
+
+// ▛ RECENT NEWS ▜
+#recent-news {
+	background-color: var(--color-walnut);
+	color: var(--color-white);
+	
+	a {
+		color: var(--color-mustard);
+	}
+
+	.banner img {
+		width: 100%;
+		height: auto;
+		margin-bottom: 20px;
+	}
+
+	.headline a {
+		text-decoration: none;
+		font-weight: 700;
+	}
+
+	.summary {
+		margin: 20px 0;
+		flex-direction: column;
+		gap: 20px;
+		text-align: justify;
+		-webkit-hyphens: auto;
+		hyphens: auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 6;
+
+		// Safari workaround: https://stackoverflow.com/a/72170897/775283
+		// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
+		p {
+			display: inline;
+
+			&::after {
+				content: "\A\A"; // Double new line
+				white-space: pre;
+			}
+		}
+	}
+}
+// ▙ RECENT NEWS ▟

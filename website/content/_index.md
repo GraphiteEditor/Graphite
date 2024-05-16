@@ -239,7 +239,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 <!--                  -->
 <!-- ▛ NEWSLETTER ▜ -->
 <section id="newsletter" class="feature-box">
-<div id="newsletter-success"><!-- Used only as URL hash fragment anchor --></div>
+<div id="newsletter-success"><!-- Used only as a URL hash fragment anchor --></div>
 <div class="box">
 
 <h1 class="box-header">Stay in the loop</h1>
@@ -554,3 +554,15 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 </div>
 </section>
 <!-- ▙ DEMO VIDEO ▟ -->
+<!--                 -->
+<!-- ▛ RECENT NEWS ▜ -->
+<section id="recent-news" class="feature-box">
+	<div class="box">
+		<h1 class="box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
+		<hr />
+		<div class="diptych">
+		<!-- replacements::blog_posts(count = 2) -->
+		</div>
+	</div>
+</section>
+<!-- ▙ RECENT NEWS ▟ -->

@@ -17,7 +17,6 @@
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
 			<img class="banner" src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
-		<hr />
 		<article>
 			{{ page.content | safe }}
 		</article>
@@ -26,7 +25,7 @@
 		<div class="social">
 			{% if page.extra.reddit %}
 			<a href="{{ page.extra.reddit | safe }}" target="_blank" class="button arrow">
-				<img src="https://static.graphite.rs/icons/reddit.svg" /><span>Comment on Reddit</span>
+				<img src="https://static.graphite.rs/icons/reddit__2.svg" /><span>Comment on Reddit</span>
 			</a>
 			{% endif %}
 			{% if page.extra.twitter %}

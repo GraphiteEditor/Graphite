@@ -8,8 +8,6 @@ book = true
 js = ["video-embed.js"]
 +++
 
-<br />
-
 **Welcome to the Graphite user manual.** Get ready to learn how the software can help bring your 2D creative ideas to life.
 
 You may choose to read this sequentially and learn from the structured introduction and sample projects. Or you may jump to chapters of interest that also serve as quick reference.
