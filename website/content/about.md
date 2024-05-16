@@ -6,7 +6,7 @@ css = ["about.css"]
 +++
 
 <section>
-<div class="section">
+<div class="block">
 
 # About Graphite
 
@@ -16,7 +16,7 @@ Graphite is a community-built free software project. If you find it valuable, co
 </section>
 
 <section>
-<div class="section">
+<div class="block">
 
 ## Project
 
@@ -29,7 +29,7 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 
 <div class="diptych">
 
-<div class="section">
+<div class="block">
 
 ## Mission
 
@@ -38,7 +38,7 @@ Graphite strives to unshackle the creativity of every budding artist and seasone
 Mission success will come when Graphite is an industry standard. A cohesive product vision and focus on innovation over imitation is the strategy that will make that possible.
 
 </div>
-<div class="section">
+<div class="block">
 
 ## Funding
 
@@ -91,7 +91,7 @@ Long-term, donations will be supplemented by revenue from cloud storage/sync and
 </script> -->
 
 <!-- <section id="opener-message">
-<div class="section">
+<div class="block">
 
 ## A 2D creative tool made for everyone
 
@@ -107,16 +107,16 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 </div>
 </section> -->
 
-<section id="core-team" class="feature-box">
-<div class="box">
+<section id="core-team" class="feature-box-outer">
+<div class="feature-box-inner">
 
-<h1 class="box-header">Meet the core team</h1>
+<h1 class="feature-box-header">Meet the core team</h1>
 
 ---
 
 <div class="triptych">
 
-<div class="section" id="keavon">
+<div class="block" id="keavon">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
@@ -129,7 +129,7 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 Keavon is a creative generalist with a love for the fusion of arts and technology. UX and graphic designer, photographer, game developer, technical artist, and everything in between— he is equal parts designer and engineer. His multidisciplinary background in the digital arts is aptly suited for concocting the unique vision needed to bring Graphite to fruition.
 
 </div>
-<div class="section" id="dennis">
+<div class="block" id="dennis">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
@@ -142,7 +142,7 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 Dennis is a mix between a mathematician and a mad scientist. While still enjoying the art of photography and image editing (which drew him to the project early on), he thrives when challenged with designing complex systems and pushing boundaries. His method of building generalized solutions wrapped in elegant layers of abstraction led to his creation of the Graphene engine.
 
 </div>
-<div class="section" id="hypercube">
+<div class="block" id="hypercube">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
@@ -166,7 +166,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <div class="triptych">
 
-<div class="section">
+<div class="block">
 
 ## Credits
 
@@ -175,7 +175,7 @@ In addition to the work of the Core Team listed above, over a hundred other cont
 <a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="button arrow">Credits</a>
 
 </div>
-<div class="section">
+<div class="block">
 
 ## License
 
@@ -184,7 +184,7 @@ The Graphite editor source code is published under the terms of the Apache Licen
 <a href="/license" class="button arrow">License</a>
 
 </div>
-<div class="section">
+<div class="block">
 
 ## Logo
 

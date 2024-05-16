@@ -6,7 +6,7 @@ css = ["volunteer.css"]
 +++
 
 <section>
-<div class="section">
+<div class="block">
 
 # Volunteer
 
@@ -33,14 +33,14 @@ css = ["volunteer.css"]
 
 <div class="diptych code-contributions">
 
-<div class="section info-box">
+<div class="block info-box">
 
 ### EDITOR TEAM
 
 Write code to build and maintain the Graphite editor itself, ranging from the TypeScript/Svelte frontend UI to the tooling business logic written in Rust.
 
 </div>
-<div class="section info-box">
+<div class="block info-box">
 
 ### GRAPHENE TEAM
 
@@ -70,14 +70,14 @@ Develop the engine that powers Graphite's node graph and rendering. Graphene is 
 
 <div class="diptych creative-contributions">
 
-<div class=" section info-box">
+<div class="block info-box">
 
 ### ART TEAM
 
 Use your artistic talents to plan and produce ambitious open art projects published by the Graphite project to stress-test and showcase the editor's capabilities.
 
 </div>
-<div class=" section info-box">
+<div class="block info-box">
 
 ### PUBLICITY TEAM
 

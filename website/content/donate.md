@@ -7,7 +7,7 @@ css = ["donate.css"]
 +++
 
 <section>
-<div class="section">
+<div class="block">
 
 # Donate
 
@@ -24,11 +24,11 @@ Your monthly support (or one-off contribution) helps provide the resources neede
 </div>
 </section>
 
-<!-- <section id="fundraising" class="feature-box">
-<div class="box">
+<!-- <section id="fundraising" class="feature-box-outer">
+<div class="feature-box-inner">
 <div>
 
-<div class="section">
+<div class="block">
 
 # Support the mission
 

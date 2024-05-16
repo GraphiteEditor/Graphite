@@ -92,11 +92,9 @@
 			<hr />
 		</header>
 		<main>
-			<div class="content">
-				{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
-				{%- block content -%}{%- endblock -%}
-				{%- endfilter -%}
-			</div>
+			{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
+			{%- block content -%}{%- endblock -%}
+			{%- endfilter -%}
 		</main>
 		<footer>
 			<hr />

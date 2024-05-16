@@ -3,7 +3,7 @@ title = "Contact the team"
 +++
 
 <section class="reading-material">
-<div class="section">
+<div class="block">
 
 # Contact the team
 

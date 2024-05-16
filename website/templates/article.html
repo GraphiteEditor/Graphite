@@ -11,7 +11,7 @@
 
 {%- block content -%}{%- set page = page | default(value = section) -%}
 <section class="reading-material">
-	<div class="section">
+	<div class="block">
 		<div class="details">
 			<h1 class="headline">{{ page.title }}</h2>
 			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>

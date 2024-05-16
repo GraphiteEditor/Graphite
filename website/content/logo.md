@@ -6,7 +6,7 @@ css = ["logo.css"]
 +++
 
 <section class="reading-material">
-<div class="section">
+<div class="block">
 
 # Graphite logo
 
@@ -42,8 +42,8 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 
 <br />
 
-<section class="feature-box logo-view color">
-	<div class="box">
+<section class="feature-box-outer logo-view color">
+	<div class="feature-box-inner">
 		<div>
 			<img src="https://static.graphite.rs/logos/graphite-logotype-color.svg" height="160" />
 			<span>Graphite Logotype (Color)</span>
@@ -61,8 +61,8 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 	</div>
 </section>
 
-<section class="feature-box logo-view light">
-	<div class="box">
+<section class="feature-box-outer logo-view light">
+	<div class="feature-box-inner">
 		<div>
 			<img src="https://static.graphite.rs/logos/graphite-logotype-solid.svg" height="160" />
 			<span>Graphite Logotype (Solid)</span>
@@ -80,8 +80,8 @@ Download the complete [logo kit](https://static.graphite.rs/logos/graphite-logo-
 	</div>
 </section>
 
-<section class="feature-box logo-view dark">
-	<div class="box">
+<section class="feature-box-outer logo-view dark">
+	<div class="feature-box-inner">
 		<div>
 			<img src="https://static.graphite.rs/logos/graphite-logotype-solid-white.svg" height="160" />
 			<span>Graphite Logotype (Solid, White)</span>

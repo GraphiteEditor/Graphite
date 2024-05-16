@@ -7,7 +7,7 @@ generate_feed = true
 +++
 
 <section id="intro">
-<div class="section">
+<div class="block">
 
 # Blog
 

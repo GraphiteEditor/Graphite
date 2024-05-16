@@ -9,17 +9,21 @@ js = ["image-interaction.js", "video-embed.js"]
 
 <!-- ▛ LOGO ▜ -->
 <section id="logo">
+<div class="block">
 	<img src="https://static.graphite.rs/logos/graphite-logotype-color.svg" alt="Graphite Logo" />
+</div>
 </section>
 <!-- ▙ LOGO ▟ -->
 
 <!-- ▛ TAGLINE ▜ -->
 <section id="tagline">
+<div class="block">
 
 <h1 class="balance-text">Redefining state&#8209;of&#8209;the&#8209;art graphics editing</h1>
 
 <p class="balance-text"><strong>Graphite</strong> is an in-development vector and raster graphics editor that's free and open source. It is powered by a node graph compositor that fuses layers with nodes and brings a unique procedural approach to your 2D design workflow.</p>
 
+</div>
 </section>
 <!-- ▙ TAGLINE ▟ -->
 <!--                -->
@@ -137,27 +141,27 @@ js = ["image-interaction.js", "video-embed.js"]
 <section id="today-and-tomorrow">
 <div class="diptych">
 
-<div class="section">
+<div class="block">
 
 # Graphite today <span class="status-flag">public alpha</span>
 
-<div class="informational-group features">
-	<div class="informational">
+<div class="feature-icons">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Vector art editing</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Node-based layers</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<!-- TODO: Reenable when Imaginate is properly working again -->
 		<!-- <img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
 		<!-- <span>AI-assisted art creation</span> -->
 		<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Procedural graphic design workflow</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Forever free and open source</span>
 	</div>
@@ -167,24 +171,24 @@ js = ["image-interaction.js", "video-embed.js"]
 Presently, Graphite is a lightweight offline web app with features primarily oriented around procedural vector graphics editing.
 
 </div>
-<div class="section">
+<div class="block">
 
 # Graphite tomorrow
 
-<div class="informational-group features">
-	<div class="informational">
+<div class="feature-icons">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 4" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>All-in-one creative tool for all things 2D</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Clean, familiar, designer-centric UI</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Multiplatform app for desktop + iPad</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 6" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Live collaborative editing</span>
 	</div>
@@ -200,34 +204,34 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 <!--                     -->
 <!-- ▛ DISCIPLINES ▜ -->
 <section id="disciplines">
-<div class="section">
+<div class="block">
 
 # One app to rule them all
 
 **Stop jumping between programs. Planned features will make Graphite a first-class design tool for all these disciplines.** <small>*(Listed by priority.)*</small>
 
-<div class="informational-group concepts">
-	<div class="informational">
+<div class="feature-icons stacked no-background">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Graphic Design</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Image Editing</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Motion Graphics</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Digital Painting</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 16" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>VFX Compositing</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 15" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span>Desktop Publishing</span>
 	</div>
@@ -238,17 +242,17 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 <!-- ▙ DISCIPLINES ▟ -->
 <!--                  -->
 <!-- ▛ NEWSLETTER ▜ -->
-<section id="newsletter" class="feature-box">
+<section id="newsletter" class="feature-box-outer">
 <div id="newsletter-success"><!-- Used only as a URL hash fragment anchor --></div>
-<div class="box">
+<div class="feature-box-inner">
 
-<h1 class="box-header">Stay in the loop</h1>
+<h1 class="feature-box-header">Stay in the loop</h1>
 
 ---
 
 <div class="diptych">
 
-<div class="section newsletter-signup">
+<div class="block newsletter-signup">
 
 **Subscribe to the newsletter** for quarterly updates on major development progress. And follow along—or join the conversation—on social media.
 
@@ -261,26 +265,26 @@ You'll receive your first newsletter email with the next major Graphite news.
 </div>
 <form action="https://graphite.rs/newsletter-signup" method="post">
 	<div class="same-line">
-		<div class="column name">
+		<div class="input-column name">
 			<label for="newsletter-name">First + last name:</label>
 			<input id="newsletter-name" name="name" type="text" required />
 		</div>
-		<div class="column phone">
+		<div class="input-column phone">
 			<label for="newsletter-phone">Phone:</label>
 			<input id="newsletter-phone" name="phone" type="text" tabindex="-1" autocomplete="off" />
 		</div>
-		<div class="column email">
+		<div class="input-column email">
 			<label for="newsletter-email">Email address:</label>
 			<input id="newsletter-email" name="email" type="email" required />
 		</div>
 	</div>
-	<div class="column submit">
+	<div class="input-column submit">
 		<input type="submit" value="Subscribe" class="button" />
 	</div>
 </form>
 
 </div>
-<div class="section social-media-links">
+<div class="block social-media-links">
 
 <a href="https://discord.graphite.rs" target="_blank">
 	<img src="https://static.graphite.rs/icons/discord__2.svg" alt="Discord" />
@@ -308,7 +312,7 @@ You'll receive your first newsletter email with the next major Graphite news.
 <!--                   -->
 <!-- ▛ JUMP RIGHT IN ▜ -->
 <!-- <section id="jump-right-in">
-<div class="section"> -->
+<div class="block"> -->
 
 <!-- # Jump right in -->
 
@@ -324,7 +328,7 @@ You'll receive your first newsletter email with the next major Graphite news.
 <!--                    -->
 <!-- ▛ PROCEDURALISM ▜ -->
 <section id="proceduralism">
-<div class="section">
+<div class="block">
 
 # Powerful proceduralism
 
@@ -334,9 +338,9 @@ You'll receive your first newsletter email with the next major Graphite news.
 </section>
 
 <section id="proceduralism-demo">
-<div class="section">
+<div class="block">
 
-Proceduralism lets you create sophisticated design elements that are easy to edit and reuse. The holiday string lights shown below are built from a simple group of nodes, allowing you to effortlessly reshape the wire and update the bulb appearance and spacing. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> and try dragging the wire layer's points with the Path tool (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="vertical-align: middle"><polygon fill="#aaa" points="5,0 5,17 10,12 17,12" /><path fill="#78bae5" d="M20.77,14.36c-0.35-0.42-0.98-0.48-1.41-0.13c-1.04,0.87-2.19,1.6-3.36,2.24V16h-6v2.9c-2.88,0.84-5.07,1.1-5.11,1.11c-0.55,0.06-0.94,0.56-0.88,1.11C4.06,21.62,4.5,22,5,22c0.04,0,0.07,0,0.11-0.01c0.17-0.02,2.18-0.26,4.89-1.01V22h6v-3.28c1.6-0.79,3.2-1.75,4.64-2.95C21.06,15.42,21.12,14.78,20.77,14.36z M14,20h-2v-2h2V20z" /></svg>).
+Proceduralism lets you create sophisticated design elements that are easy to edit and reuse. The holiday string lights shown below are built from a simple group of nodes, allowing you to effortlessly reshape the wire and update the bulb appearance and spacing. <a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> and try dragging the wire layer's points with the Path tool <span style="white-space: nowrap">(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" style="vertical-align: middle"><polygon fill="#aaa" points="5,0 5,17 10,12 17,12" /><path fill="#78bae5" d="M20.77,14.36c-0.35-0.42-0.98-0.48-1.41-0.13c-1.04,0.87-2.19,1.6-3.36,2.24V16h-6v2.9c-2.88,0.84-5.07,1.1-5.11,1.11c-0.55,0.06-0.94,0.56-0.88,1.11C4.06,21.62,4.5,22,5,22c0.04,0,0.07,0,0.11-0.01c0.17-0.02,2.18-0.26,4.89-1.01V22h6v-3.28c1.6-0.79,3.2-1.75,4.64-2.95C21.06,15.42,21.12,14.78,20.77,14.36z M14,20h-2v-2h2V20z" /></svg>).</span>
 
 <div class="video-background">
 	<video loop muted playsinline disablepictureinpicture disableremoteplayback data-auto-play>
@@ -363,25 +367,24 @@ Proceduralism lets you create sophisticated design elements that are easy to edi
 </section>
 
 <section id="proceduralism-features">
-<div class="section">
+<div class="block">
 
 Graphite's procedural, data-driven approach to graphic design affords unique capabilities *(while in alpha, these remain a work in progress)*:
 
-<div class="informational-group features four-wide">
-	<div class="informational">
+<div class="feature-icons four-wide">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Fully nondestructive editing with node-driven layers</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Infinitely scalable raster content with no pixelation</span>
 	</div>
-	<div class="informational">
-		<!-- <img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" /> -->
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Versatile modularity of node-based generative AI models</span>
 	</div>
-	<div class="informational">
+	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features.png" alt="" />
 		<span class="balance-text">Procedural pipelines for studio production environments</span>
 	</div>
@@ -392,14 +395,14 @@ Graphite's procedural, data-driven approach to graphic design affords unique cap
 <!-- ▙ PROCEDURALISM ▟ -->
 <!--                   -->
 <!-- ▛ FUNDRAISING ▜ -->
-<section id="fundraising" class="feature-box">
-<div class="box">
+<section id="fundraising" class="feature-box-outer">
+<div class="feature-box-inner">
 
-<h1 class="box-header">Support the mission</h1>
+<h1 class="feature-box-header">Support the mission</h1>
 
 ---
 
-<div class="section">
+<div class="block">
 
 <p class="balance-text">
 You can help realize Graphite's ambitious vision of building the ultimate 2D creative tool.
@@ -416,7 +419,7 @@ Graphite is built by a small, dedicated crew of volunteers in need of the resour
 <!--                 -->
 <!-- ▛ VECTOR ART ▜ -->
 <section id="vector-art">
-<div class="section">
+<div class="block">
 
 # Taking shape
 
@@ -462,7 +465,7 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 
 <section id="imaginate">
 
-<div class="section">
+<div class="block">
 
 <h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
 
@@ -472,7 +475,7 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 </div>
 <div class="diptych">
 
-<div class="section">
+<div class="block">
 
 <h2 class="balance-text">Add a touch of style</h2>
 
@@ -501,7 +504,7 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 <blockquote class="balance-text require-polyfill"><strong>Watercolor painting</strong> of a light bulb gleaming with an exclamation mark inside</blockquote>
 
 </div>
-<div class="section">
+<div class="block">
 
 ## Work fast and sloppy
 
@@ -541,7 +544,7 @@ Style shapes with strokes, fills, and gradients. Mix layers with blend modes. Th
 <!--                 -->
 <!-- ▛ DEMO VIDEO ▜ -->
 <section id="demo-video">
-<div class="section">
+<div class="block">
 
 Watch this timelapse showing the process of mixing traditional vector art (tracing a physical sketch and colorizing it, first two minutes) with using Imaginate to generate a background (last 45 seconds).
 
@@ -556,9 +559,9 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 <!-- ▙ DEMO VIDEO ▟ -->
 <!--                 -->
 <!-- ▛ RECENT NEWS ▜ -->
-<section id="recent-news" class="feature-box">
-	<div class="box">
-		<h1 class="box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
+<section id="recent-news" class="feature-box-outer">
+	<div class="feature-box-inner">
+		<h1 class="feature-box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
 		<hr />
 		<div class="diptych">
 		<!-- replacements::blog_posts(count = 2) -->

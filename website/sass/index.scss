@@ -47,8 +47,6 @@
 
 // ▛ LOGO ▜
 #logo {
-	display: flex;
-
 	img {
 		width: auto;
 		max-width: 100%;
@@ -63,7 +61,7 @@
 		font-size: calc((10 / 9) * var(--font-size-body));
 
 		@media screen and (max-width: 1400px) {
-			max-width: unset !important;
+			max-width: unset;
 		}
 	}
 }
@@ -108,9 +106,11 @@
 		}
 
 		div {
+			display: inline-flex;
 			background: var(--color-fog);
 			padding: 0 calc(var(--font-size-link) / 2);
 			border-left: var(--border-thickness) solid var(--color-crimson);
+			align-items: center;
 
 			&:empty {
 				display: none;
@@ -134,10 +134,10 @@
 // ▙ TODAY AND TOMORROW ▟
 
 // ▛ DISCIPLINES ▜
-#disciplines .section {
+#disciplines .block {
 	align-items: center;
 
-	.informational-group .informational {
+	.feature-icons .feature-icon {
 		margin-top: 40px;
 	}
 }
@@ -152,8 +152,8 @@
 		position: absolute;
 		top: 0;
 
-		&:not(:target) ~ .box .diptych .newsletter-success,
-		&:target ~ .box .diptych form {
+		&:not(:target) ~ .feature-box-inner .diptych .newsletter-success,
+		&:target ~ .feature-box-inner .diptych form {
 			display: none;
 		}
 	}
@@ -190,7 +190,7 @@
 					}
 				}
 
-				.column {
+				.input-column {
 					display: flex;
 					flex-direction: column;
 					justify-content: flex-end;
@@ -219,6 +219,10 @@
 
 					&.submit {
 						flex: 1 0 auto;
+
+						.button {
+							text-align: center;
+						}
 					}
 
 					label,
@@ -301,16 +305,16 @@
 // #jump-right-in {
 // 	max-width: 1000px;
 
-// 	.section {
+// 	.block {
 // 		align-items: center;
 // 	}
 // }
 // ▙ JUMP RIGHT IN ▟
 
 // ▛ PROCEDURALISM ▜
-#proceduralism .section,
-#proceduralism-demo .section,
-#proceduralism-features .section {
+#proceduralism .block,
+#proceduralism-demo .block,
+#proceduralism-features .block {
 	align-items: center;
 }
 // ▙ PROCEDURALISM ▟
@@ -327,7 +331,7 @@
 
 // ▛ VECTOR ART ▜
 #vector-art {
-	.section {
+	.block {
 		align-items: center;
 	}
 }
@@ -335,7 +339,7 @@
 
 // ▛ IMAGINATE ▜
 // #imaginate {
-// 	> .section {
+// 	> .block {
 // 		align-items: center;
 
 // 		h1 {
@@ -380,7 +384,7 @@
 // 	> .diptych {
 // 		margin-top: calc(80 * var(--variable-px));
 
-// 		.section {
+// 		.block {
 // 			align-items: center;
 
 // 			h2 {

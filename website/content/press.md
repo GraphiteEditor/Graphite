@@ -3,7 +3,7 @@ title = "Press resources"
 +++
 
 <section class="reading-material">
-<div class="section">
+<div class="block">
 
 # Press resources
 

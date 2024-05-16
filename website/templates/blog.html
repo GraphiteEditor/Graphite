@@ -9,7 +9,7 @@
 {%- block content -%}{%- set page = page | default(value = section) -%}
 {{ page.content | safe }}
 
-<section id="articles" class="section">
+<section id="articles" class="block">
 	{% for page in page.pages %}
 	<section>
 		<div class="banner">

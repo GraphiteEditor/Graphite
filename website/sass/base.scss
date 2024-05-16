@@ -76,7 +76,7 @@ a {
 	color: var(--color-crimson);
 }
 
-h1.box-header {
+h1.feature-box-header {
 	font-family: "Inter", sans-serif;
 	line-height: 1.5;
 	font-size: var(--font-size-link);
@@ -140,7 +140,7 @@ p {
 }
 
 :is(h1, h2, h3, h4, article > :first-child) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
-:is(h1, p) ~ .informational-group,
+:is(h1, p) ~ .feature-icons,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .video-embed),
 .video-embed + :is(p, .link, .button),
 p + p > .button,
@@ -786,18 +786,22 @@ summary {
 	}
 }
 
-.button.button.button.button {
-	color: var(--color-crimson);
+.button {
 	display: inline-block;
 	border: var(--border-thickness) solid currentColor;
-	height: calc(var(--font-size-link) * 2);
-	line-height: calc(var(--font-size-link) * 2 - 2 * var(--border-thickness));
+	min-height: calc(var(--font-size-link) * 2);
 	font-size: var(--font-size-link);
 	padding: 0 var(--font-size-link);
 	box-sizing: border-box;
+	text-align: left;
 	text-decoration: none;
 	font-weight: 800;
-	white-space: nowrap;
+	color: var(--color-crimson);
+
+	&::before {
+		content: "";
+		line-height: calc(var(--font-size-link) * 2 - 2 * var(--border-thickness));
+	}
 
 	img {
 		height: calc(var(--font-size-link) * 1.5);
@@ -867,7 +871,7 @@ hr,
 	}
 }
 
-.section {
+.block {
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
@@ -878,26 +882,17 @@ hr,
 	}
 }
 
-.info-box {
-	margin-top: calc(40 * var(--variable-px));
+.info-box,
+.feature-box-outer {
 	padding: calc(80 * var(--variable-px));
 	background-image: url("https://static.graphite.rs/textures/noise.png");
 	background-blend-mode: overlay;
 	background-position: center;
 }
 
-.feature-box {
-	padding: calc(80 * var(--variable-px));
-	background-image: url("https://static.graphite.rs/textures/noise.png");
-	background-blend-mode: overlay;
-	background-position: center;
-
-	&.feature-box.feature-box {
-		max-width: unset;
-	}
-
+.feature-box-outer {
 	@media screen and (max-width: 1000px) {
-		&.feature-box.feature-box {
+		&.feature-box-outer {
 			margin-left: calc(-1 * var(--page-edge-padding));
 			margin-right: calc(-1 * var(--page-edge-padding));
 			padding-left: var(--page-edge-padding);
@@ -905,17 +900,13 @@ hr,
 		}
 	}
 
-	.box {
+	&.feature-box-outer {
+		max-width: unset;
+	}
+
+	.feature-box-inner {
 		max-width: var(--max-width);
 		margin: 0 auto;
-
-		.section h2 + .graphic {
-			margin-top: 20px;
-
-			img {
-				margin: auto;
-			}
-		}
 	}
 }
 
@@ -925,7 +916,7 @@ hr,
 	flex-wrap: wrap;
 	gap: calc(80 * var(--variable-px));
 
-	.section {
+	.block {
 		flex: 1 1 0;
 	}
 
@@ -942,67 +933,77 @@ hr,
 	}
 }
 
-.diptych .section {
+.diptych .block {
 	min-width: 320px;
 }
 
-.triptych .section {
+.triptych .block {
 	min-width: 280px;
 }
 
-@media screen and (max-width: 400px) {
-	.diptych .section {
+@media screen and (max-width: 520px) {
+	.diptych .block {
 		min-width: 200px;
 	}
 	
-	.triptych .section {
+	.triptych .block {
 		min-width: 280px;
 	}
 }
 
-.informational-group {
+.feature-icons {
 	display: flex;
 	flex-wrap: wrap;
-	width: 100%;
 	margin-bottom: 20px;
+	width: 100%;
+	gap: 16px;
 
-	&.features {
-		gap: 16px;
+	.feature-icon {
+		display: flex;
+		align-items: center;
 
-		.informational {
-			padding: 16px;
-			gap: 16px;
-			background: rgba(0, 0, 0, 0.0625);
-			// Half width, minus own padding on both sides, minus half a gap
-			flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
-
-			@media screen and (max-width: 1100px) {
-				// Quarter width, minus own padding on both sides
-				flex: 1 0 calc(100% - (16px * 2));
-			}
-		}
-
-		&.four-wide .informational {
-			flex: 1 0 calc(25% - (16px * 4) - (16px / 4));
-
-			@media screen and (max-width: 1100px) {
-				// Half width, minus own padding on both sides, minus half a gap
-				flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
-			}
-
-			@media screen and (max-width: 840px) {
-				// Quarter width, minus own padding on both sides
-				flex: 1 0 calc(100% - (16px * 2));
-			}
+		img {
+			flex: 0 0 auto;
 		}
 	}
 
-	&.concepts {
+	&:not(.stacked) .feature-icon {
+		padding: 16px;
+		gap: 16px;
+		// Half width, minus own padding on both sides, minus half a gap
+		flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
+
+		@media screen and (max-width: 1100px) {
+			// Quarter width, minus own padding on both sides
+			flex: 1 0 calc(100% - (16px * 2));
+		}
+	}
+	
+	&:not(.no-background) .feature-icon {
+		background: rgba(0, 0, 0, 0.0625);
+	}
+
+	&.four-wide .feature-icon {
+		flex: 1 0 calc(25% - (16px * 4) - (16px / 4));
+
+		@media screen and (max-width: 1200px) {
+			// Half width, minus own padding on both sides, minus half a gap
+			flex: 1 0 calc(50% - (16px * 2) - (16px / 2));
+		}
+
+		@media screen and (max-width: 840px) {
+			// Quarter width, minus own padding on both sides
+			flex: 1 0 calc(100% - (16px * 2));
+		}
+	}
+
+	&.stacked {
 		justify-content: space-between;
 		margin: 0 -10px;
 		width: calc(100% + 20px);
+		gap: 0;
 
-		.informational {
+		.feature-icon {
 			flex-direction: column;
 			flex: 0 1 auto;
 			margin: 0 10px;
@@ -1025,15 +1026,6 @@ hr,
 			span {
 				text-align: center;
 			}
-		}
-	}
-
-	.informational {
-		display: flex;
-		align-items: center;
-
-		img {
-			flex: 0 0 auto;
 		}
 	}
 }
@@ -1103,7 +1095,6 @@ body > .page {
 					gap: 40px;
 
 					a {
-						color: inherit;
 						font-family: "Bona Nova", Palatino, serif;
 						font-feature-settings: "lnum";
 						line-height: 1.25;
@@ -1114,12 +1105,21 @@ body > .page {
 						--nav-font-size: 28px; // Keep up to date with `NAV_BUTTON_INITIAL_FONT_SIZE` in navbar.js
 						font-size: var(--nav-font-size);
 
-						&.button.button {
+						&.button {
+							min-height: 0;
 							height: var(--height);
 							padding-left: var(--button-padding);
 							padding-right: var(--button-padding);
 							line-height: calc(var(--height) - 2 * var(--border-thickness));
 							font-size: var(--nav-font-size);
+
+							&::before {
+								content: none;
+							}
+						}
+
+						&:not(.button) {
+							color: inherit;
 						}
 
 						img {
@@ -1274,35 +1274,31 @@ body > .page {
 	}
 
 	main {
-		padding: 0 var(--page-edge-padding);
+		padding: calc(120 * var(--variable-px)) var(--page-edge-padding);
 
-		.content {
-			padding: calc(120 * var(--variable-px)) 0;
+		section {
+			max-width: var(--max-width);
+			margin-left: auto;
+			margin-right: auto;
+			// Puts the content in front of the hexagon decoration
+			position: relative;
+			z-index: 1;
 
-			section {
-				max-width: var(--max-width);
-				margin-left: auto;
-				margin-right: auto;
-				// Puts the content in front of the hexagon decoration
-				position: relative;
-				z-index: 1;
+			~ section {
+				margin-top: calc(120 * var(--variable-px));
+			}
 
-				~ section {
-					margin-top: calc(120 * var(--variable-px));
-				}
+			p img {
+				max-width: 100%;
+			}
 
-				p img {
-					max-width: 100%;
-				}
+			pre {
+				box-sizing: border-box;
+				overflow: auto;
+			}
 
-				pre {
-					box-sizing: border-box;
-					overflow: auto;
-				}
-
-				details {
-					width: 100%;
-				}
+			details {
+				width: 100%;
 			}
 		}
 	}

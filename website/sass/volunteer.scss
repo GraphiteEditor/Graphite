@@ -1,12 +1,6 @@
-.creative-contributions,
-.code-contributions {
+.code-contributions,
+.creative-contributions {
 	gap: 0 calc(80* var(--variable-px));
-
-	.button.button.button {
-		height: auto;
-		text-align: left;
-		white-space: normal;
-	}
 }
 
 .code-contributions .info-box {
@@ -17,22 +11,15 @@
 	background-color: var(--color-lemon);
 }
 
-.info-box > img:first-child,
-.info-box > a:first-child > img:only-child {
-	width: calc(100% + 2 * 80 * var(--variable-px));
-	margin-left: calc(-80 * var(--variable-px));
-	margin-top: calc(-80 * var(--variable-px));
-	margin-bottom: calc(40 * var(--variable-px));
-	display: block;
-}
+.info-box {
+	margin-top: calc(40 * var(--variable-px));
 
-h2 ~ img,
-h2 ~ a > img:only-child,
-h2 ~ a:has(> img:only-child) {
-	display: block;
-}
-
-:is(a:has(> img:only-child), img) + .info-box {
-	margin-top: 0;
-	padding-top: calc(40 * var(--variable-px));
+	> img:first-child,
+	> a:first-child > img:only-child {
+		width: calc(100% + 2 * 80 * var(--variable-px));
+		margin-left: calc(-80 * var(--variable-px));
+		margin-top: calc(-80 * var(--variable-px));
+		margin-bottom: calc(40 * var(--variable-px));
+		display: block;
+	}
 }

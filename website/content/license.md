@@ -3,7 +3,7 @@ title = "Graphite license"
 +++
 
 <section class="reading-material">
-<div class="section">
+<div class="block">
 
 # Graphite license
 
