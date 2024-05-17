@@ -236,7 +236,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
 
 		let output_node_id = if parent == LayerNodeIdentifier::ROOT {
-			self.document_network.original_outputs()[0].node_id
+			let NodeInput::Node { node_id, .. } = self.document_network.original_outputs()[0] else {
+				log::error!("Could not get node_id from original outputs when creating layer");
+				return None;
+			};
+			node_id
 		} else {
 			parent.to_node()
 		};
@@ -245,8 +249,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Creates an artboard that outputs to the output node.
 	pub fn create_artboard(&mut self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
-		let output_node_id = self.document_network.original_outputs()[0].node_id;
-
 		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
 			[
 				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
@@ -259,33 +261,43 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 
-		// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
-		let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.inputs.get(0);
-		let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
-			let pre_node = self.document_network.nodes.get(node_id)?;
-			// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
-			let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
+		if let Some(output_node_id) = self
+			.document_network
+			.original_outputs()
+			.get(0)
+			.and_then(|node_output| if let NodeInput::Node { node_id, .. } = node_output { Some(*node_id) } else { None })
+		{
+			// Get node that feeds into output. If it exists, connect the new artboard node in between. Else connect the new artboard directly to output.
+			let output_node_primary_input = self.document_network.nodes.get(&output_node_id)?.inputs.get(0);
+			let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
+				let pre_node = self.document_network.nodes.get(node_id)?;
+				// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
+				let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
 
-			self.insert_between(
-				new_id,
-				artboard_node,
-				NodeInput::node(*node_id, 0),
-				artboard_input_index,
-				output_node_id,
-				NodeInput::node(new_id, 0),
-				0,
-				IVec2::new(0, 3),
-			)
+				self.insert_between(
+					new_id,
+					artboard_node,
+					NodeInput::node(*node_id, 0),
+					artboard_input_index,
+					output_node_id,
+					NodeInput::node(new_id, 0),
+					0,
+					IVec2::new(0, 3),
+				)
+			} else {
+				self.insert_node_before(new_id, output_node_id, 0, artboard_node, IVec2::new(-8, 3))
+			};
+
+			if let Some(new_id) = created_node_id {
+				let new_child = LayerNodeIdentifier::new_unchecked(new_id);
+				LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
+			}
+
+			created_node_id
 		} else {
-			self.insert_node_before(new_id, output_node_id, 0, artboard_node, IVec2::new(-8, 3))
-		};
-
-		if let Some(new_id) = created_node_id {
-			let new_child = LayerNodeIdentifier::new_unchecked(new_id);
-			LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
+			log::debug!("creating artboard node with no output");
+			Some(NodeId(0))
 		}
-
-		created_node_id
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
@@ -374,7 +386,19 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Inserts a new node and modifies the inputs
 	pub fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let output_node_id = self.layer_node.unwrap_or(self.document_network.exports[0].node_id);
+		let output_node_id = self.layer_node.or_else(|| {
+			if let Some(NodeInput::Node { node_id, .. }) = self.document_network.exports.get(0) {
+				Some(*node_id)
+			} else {
+				log::error!("Could not modify new node with empty network");
+				None
+			}
+		});
+		let Some(output_node_id) = output_node_id else {
+			warn!("Output node id doesn't exist");
+			return;
+		};
+
 		let Some(output_node) = self.document_network.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
 			return;
@@ -411,8 +435,17 @@ impl<'a> ModifyInputsContext<'a> {
 		let existing_node_id = self
 			.document_network
 			.upstream_flow_back_from_nodes(
-				self.layer_node
-					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+				self.layer_node.map_or_else(
+					|| {
+						//TODO: maybe self.document_network.original_outputs since exports is the node that is currently being previewed
+						self.document_network
+							.exports
+							.iter()
+							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
+							.collect()
+					},
+					|id| vec![id],
+				),
 				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.find(|(node, _)| node.name == name)
@@ -436,8 +469,16 @@ impl<'a> ModifyInputsContext<'a> {
 		let existing_nodes: Vec<_> = self
 			.document_network
 			.upstream_flow_back_from_nodes(
-				self.layer_node
-					.map_or_else(|| self.document_network.exports.iter().map(|output| output.node_id).collect(), |id| vec![id]),
+				self.layer_node.map_or_else(
+					|| {
+						self.document_network
+							.exports
+							.iter()
+							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id.clone()) } else { None })
+							.collect()
+					},
+					|id| vec![id],
+				),
 				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.filter(|(node, _)| node.name == name)

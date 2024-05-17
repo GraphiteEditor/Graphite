@@ -1959,7 +1959,20 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 		.introspect_node_in_network(
 			context.network,
 			&imaginate_node,
-			|network| network.imports.first().copied(),
+			|network| {
+				network
+					.nodes
+					.iter()
+					.find(|node| {
+						node.1
+							.inputs
+							.iter()
+							.find(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
+							.is_some()
+					})
+					.map(|(node_id, _)| node_id)
+					.copied()
+			},
 			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
 		)
 		.unwrap_or_default();

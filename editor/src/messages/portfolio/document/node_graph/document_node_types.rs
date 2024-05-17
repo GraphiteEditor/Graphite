@@ -241,7 +241,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(3), 0)],
+				exports: vec![NodeInput::node(NodeId(3), 0)],
 				nodes: [
 					// Secondary (left) input type coercion
 					(
@@ -304,7 +304,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					(
 						NodeId(0),
@@ -382,7 +382,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Load Resource".to_string(),
@@ -434,7 +434,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
@@ -473,7 +473,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(2)],
-				exports: vec![NodeOutput::new(NodeId(3), 0)],
+				exports: vec![NodeInput::node(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Convert Image Frame".to_string(),
@@ -532,7 +532,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Ignore",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "SetNode".to_string(),
@@ -606,18 +606,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Output",
 			category: "Ignore",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(3), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(4), 0)],
+				exports: vec![NodeInput::node(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
-						name: "EditorApi".to_string(),
-						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -625,7 +618,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
@@ -637,7 +630,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0), NodeInput::node(NodeId(2), 0)],
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _>")),
 						..Default::default()
 					},
@@ -669,7 +662,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Image Frame".to_string(),
@@ -721,7 +714,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					NodeId(0),
 					NodeId(0),
 				],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Noise Pattern".to_string(),
@@ -993,10 +986,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0)],
 				exports: vec![
-					NodeOutput::new(NodeId(1), 0),
-					NodeOutput::new(NodeId(2), 0),
-					NodeOutput::new(NodeId(3), 0),
-					NodeOutput::new(NodeId(4), 0),
+					NodeInput::node(NodeId(1), 0),
+					NodeInput::node(NodeId(2), 0),
+					NodeInput::node(NodeId(3), 0),
+					NodeInput::node(NodeId(4), 0),
 				],
 				nodes: [
 					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
@@ -1056,7 +1049,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Brush",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Brush".to_string(),
@@ -1129,7 +1122,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Ignore",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -1162,7 +1155,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1214,7 +1207,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1266,7 +1259,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1324,7 +1317,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0), NodeId(1), NodeId(1)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1426,7 +1419,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1478,7 +1471,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1530,7 +1523,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Create Gpu Surface".to_string(),
@@ -1569,7 +1562,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -1623,7 +1616,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(1), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Extract Executor".to_string(),
@@ -2258,7 +2251,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
 						name: "Circle Generator".to_string(),
@@ -2423,7 +2416,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Transform",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(1), NodeId(1), NodeId(1), NodeId(1), NodeId(1)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
 						inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
@@ -2579,7 +2572,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				imports: vec![NodeId(0), NodeId(2), NodeId(2), NodeId(2), NodeId(2)], // First is given to Identity, the rest are given to Sample Points
-				exports: vec![NodeOutput::new(NodeId(2), 0)],                         // Taken from output 0 of Sample Points
+				exports: vec![NodeInput::node(NodeId(2), 0)],                         // Taken from output 0 of Sample Points
 				nodes: [
 					DocumentNode {
 						name: "Identity".to_string(),
@@ -2751,7 +2744,7 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 			NodeId(1),
 			NodeId(1),
 		],
-		exports: vec![NodeOutput::new(NodeId(1), 0)],
+		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: [
 			(
 				NodeId(0),
@@ -2866,10 +2859,11 @@ impl DocumentNodeDefinition {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
-	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
-	for id in node_ids {
-		//network.flatten(id);
-	}
+	// let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
+	// // Flatten is not necessary since the network is flattened during the compilation process
+	// for id in node_ids {
+	// 	network.flatten(id);
+	// }
 
 	let mut network_inputs = Vec::new();
 	let mut input_type = None;
@@ -2922,7 +2916,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 
 	NodeNetwork {
 		imports: vec![NodeId(0)],
-		exports: vec![NodeOutput::new(NodeId(2), 0)],
+		exports: vec![NodeInput::node(NodeId(2), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}

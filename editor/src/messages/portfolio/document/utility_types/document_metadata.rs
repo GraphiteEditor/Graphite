@@ -154,10 +154,13 @@ impl DocumentMetadata {
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
 
-		// Refers to output node: NodeId(0)
-		let output_node_id = graph.exports[0].node_id;
+		// Should refer to output node
+		let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = graph.original_outputs().get(0) else {
+			return;
+		};
+		let output_node_id = *node_id;
 
-		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
+		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::new(output_node_id, graph))];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {

@@ -1,4 +1,4 @@
-use graph_craft::document::{DocumentNode, FlowType, NodeId, NodeInput, NodeNetwork, NodeOutput, Source};
+use graph_craft::document::{DocumentNode, FlowType, NodeId, NodeInput, NodeNetwork, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -652,18 +652,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				(|| {
 					let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
-					let input_or_output = network.imports.contains(&node_id) || network.original_outputs().iter().any(|output| output.node_id == node_id);
-					let visibility = if visible {
-						true
-					} else if !input_or_output {
-						false
-					} else {
-						return;
-					};
-
 					// Set what we determined shall be the visibility of the node
 					let Some(node) = network.nodes.get_mut(&node_id) else { return };
-					node.visible = visibility;
+					node.visible = visible;
 
 					// Only generate node graph if one of the selected nodes is connected to the output
 					if network.connected_to_output(node_id) {
@@ -693,15 +684,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
-					let is_locked = if !locked {
-						false
-					} else if !network.imports.contains(&node_id) && !network.original_outputs().iter().any(|output| output.node_id == node_id) {
-						true
-					} else {
-						return;
-					};
 					let Some(node) = network.nodes.get_mut(&node_id) else { return };
-					node.locked = is_locked;
+					node.locked = locked;
 
 					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -764,7 +748,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// Check if the node is not already being previewed
 					if !network.outputs_contain(node_id) {
 						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.exports.clone()));
-						network.exports[0] = NodeOutput::new(node_id, 0);
+						network.exports[0] = NodeInput::node(node_id, 0);
 					} else if let Some(outputs) = network.previous_outputs.take() {
 						network.exports = outputs
 					} else {
@@ -838,7 +822,7 @@ impl NodeGraphMessageHandler {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selection = selected_nodes.selected_nodes().filter(|&&id| !network.imports.contains(&id) && !network.original_outputs_contain(id));
+			let mut selection = selected_nodes.selected_nodes();
 
 			// If there is at least one other selected node then show the hide or show button
 			if selection.next().is_some() {
@@ -1128,15 +1112,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
-		if network.imports.contains(&deleting_node_id) {
-			warn!("Deleting input node!");
-			return false;
-		}
-		if network.outputs_contain(deleting_node_id) {
-			warn!("Deleting the output node!");
-			return false;
-		}
-
 		let mut reconnect_to_input: Option<NodeInput> = None;
 
 		if reconnect {

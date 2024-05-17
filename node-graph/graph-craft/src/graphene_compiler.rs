@@ -15,7 +15,7 @@ impl Compiler {
 			network.flatten(id);
 		}
 		network.remove_redundant_id_nodes();
-		network.remove_dead_nodes();
+		network.remove_dead_nodes(0);
 		let proto_networks = network.into_proto_networks();
 
 		let proto_networks_result: Vec<ProtoNetwork> = proto_networks

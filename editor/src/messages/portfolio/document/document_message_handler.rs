@@ -21,7 +21,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::FlowType;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::ClickTarget;
@@ -1952,18 +1952,12 @@ fn root_network() -> NodeNetwork {
 			name: "Output".into(),
 			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::network(concrete!(WasmEditorApi), 0)],
 			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(3), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(3), 0)],
+				imports: vec![NodeId(2), NodeId(0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
-						name: "EditorApi".to_string(),
-						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -1971,16 +1965,16 @@ fn root_network() -> NodeNetwork {
 					DocumentNode {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "RenderNode".to_string(),
 						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
+							NodeInput::network(concrete!(WasmEditorApi), 1),
 							NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
-							NodeInput::node(NodeId(2), 0),
+							NodeInput::node(NodeId(1), 0),
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
 						..Default::default()

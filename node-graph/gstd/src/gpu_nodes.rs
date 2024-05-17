@@ -171,9 +171,9 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	let network = NodeNetwork {
 		imports: vec![NodeId(2), NodeId(1)], //vec![0, 1],
 		#[cfg(feature = "quantization")]
-		exports: vec![NodeOutput::new(NodeId(5), 0)],
+		exports: vec![NodeInput::node(NodeId(5), 0)],
 		#[cfg(not(feature = "quantization"))]
-		exports: vec![NodeOutput::new(NodeId(3), 0)],
+		exports: vec![NodeInput::node(NodeId(3), 0)],
 		nodes: [
 			DocumentNode {
 				name: "Slice".into(),
@@ -391,7 +391,7 @@ fn map_gpu_single_image(input: Image<Color>, node: String) -> Image<Color> {
 		inputs: vec![NodeId(0)],
 		disabled: vec![],
 		previous_outputs: None,
-		outputs: vec![NodeOutput::new(NodeId(0), 0)],
+		outputs: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: [(
 			NodeId(0),
 			DocumentNode {
@@ -435,7 +435,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 
 	let network = NodeNetwork {
 		imports: vec![],
-		exports: vec![NodeOutput::new(NodeId(0), 0)],
+		exports: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: [DocumentNode {
 			name: "BlendOp".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(

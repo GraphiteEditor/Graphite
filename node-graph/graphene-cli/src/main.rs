@@ -104,7 +104,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	let mut input_type = None;
 	for (id, node) in network.nodes.iter() {
 		for input in node.inputs.iter() {
-			if let NodeInput::Network {..} = input {
+			if let NodeInput::Network { .. } = input {
 				if input_type.is_none() {
 					input_type = Some(input.clone());
 				}
@@ -141,7 +141,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
 	];
 	NodeNetwork {
 		imports: vec![NodeId(0)],
-		exports: vec![NodeOutput::new(NodeId(2), 0)],
+		exports: vec![NodeInput::node(NodeId(2), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
@@ -152,7 +152,7 @@ fn begin_scope() -> DocumentNode {
 		name: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
 			imports: vec![NodeId(0)],
-			exports: vec![NodeOutput::new(NodeId(1), 0), NodeOutput::new(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				DocumentNode {
 					name: "SetNode".to_string(),
