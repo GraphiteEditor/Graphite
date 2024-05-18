@@ -403,7 +403,7 @@ h1 {
 	~ h2 {
 		margin-top: 40px;
 	}
-	
+
 	~ hr {
 		margin-top: 40px;
 		margin-bottom: 20px;
@@ -529,7 +529,7 @@ pre {
 
 		.z-path {
 			color: #679f70;
-	
+
 			span {
 				color: #e6e1dc;
 			}
@@ -730,7 +730,7 @@ hr,
 // 	max-width: 200px;
 // 	flex: 1 1 100%;
 // 	display: flex;
-	
+
 // 	img {
 // 		display: block;
 // 		width: 100%;
@@ -834,7 +834,7 @@ hr,
 	.diptych .block {
 		min-width: 200px;
 	}
-	
+
 	.triptych .block {
 		min-width: 280px;
 	}
@@ -973,7 +973,7 @@ hr,
 // 	background: rgba(0, 0, 0, 0.0625);
 // 	position: relative;
 // 	border-left: 4px solid var(--color-navy);
-	
+
 // 	&::before,
 // 	&::after {
 // 		content: "";
@@ -1008,7 +1008,7 @@ hr,
 
 	.crop-container {
 		height: 100%;
-		
+
 		&:nth-child(2) {
 			overflow: hidden;
 			width: calc(100% - var(--comparison-percent));
@@ -1052,7 +1052,7 @@ hr,
 			height: 0;
 			opacity: 1;
 			transition: opacity 0.25s;
-	
+
 			svg {
 				position: absolute;
 				width: 6.5px;
@@ -1137,7 +1137,7 @@ hr,
 
 			&:first-child,
 			&:last-child {
-				// Fade to white (`Invert(factor / 2) Brightness(1 + factor)`) and desaturate (`Grayscale(factor)`)
+				// Fade to white (combining invert and brightness, see <https://stackoverflow.com/a/78478074/775283>) and desaturate
 				filter: Invert(calc(var(--over-slide-factor) / 2)) Brightness(calc(1 + var(--over-slide-factor))) Grayscale(var(--over-slide-factor));
 			}
 
@@ -1340,7 +1340,7 @@ hr,
 			flex: 1 0 calc(100% - (16px * 2));
 		}
 	}
-	
+
 	&:not(.no-background) .feature-icon {
 		background: rgba(0, 0, 0, 0.0625);
 	}

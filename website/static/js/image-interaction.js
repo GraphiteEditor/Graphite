@@ -1,6 +1,6 @@
-// ================================================================================================
+// ========
 // CAROUSEL
-// ================================================================================================
+// ========
 
 const FLING_VELOCITY_THRESHOLD = 10;
 const FLING_VELOCITY_WINDOW_SIZE = 20;
@@ -26,7 +26,7 @@ function initializeCarousel() {
 				insertInsideElement.insertAdjacentElement("beforeend", clonedImage);
 			});
 		});
-		
+
 		const images = carouselContainer.querySelectorAll("[data-carousel-image]");
 		const directionPrev = carouselContainer.querySelector("[data-carousel-prev]");
 		const directionNext = carouselContainer.querySelector("[data-carousel-next]");
@@ -144,7 +144,7 @@ function setCurrentTransform(carousel, x, unit, smooth, doNotTerminateJostle = f
 	let xValue = x;
 	if (unit === "%") xValue = x - 100;
 	if (unit === "px") xValue = x - carousel.images[1].getBoundingClientRect().width;
-	
+
 	Array.from(carousel.images).forEach((image) => {
 		image.style.transitionTimingFunction = smooth ? "ease-in-out" : "cubic-bezier(0, 0, 0.2, 1)";
 		image.style.transform = `translateX(${xValue}${unit})`;
@@ -175,14 +175,14 @@ function updateOverSlide(carousel) {
 		images.forEach((image) => {
 			image.style.setProperty("--over-slide-factor", overSlideFactor);
 		});
-	
+
 		carousel.requestAnimationFrameActive = true;
 		requestAnimationFrame(() => updateOverSlide(carousel));
 	} else {
 		images.forEach((image) => {
 			image.style.removeProperty("--over-slide-factor");
 		});
-		
+
 		carousel.requestAnimationFrameActive = false;
 	}
 }
@@ -203,7 +203,7 @@ function dragBegin(event) {
 	const carouselContainer = event.target.closest("[data-carousel]");
 	const carousel = carousels.find((carousel) => carousel.carouselContainer === carouselContainer);
 	if (!carousel) return;
-	
+
 	event.preventDefault();
 
 	carousel.dragLastClientX = event.clientX;
@@ -215,7 +215,7 @@ function dragBegin(event) {
 function dragEnd(dropWithoutVelocity) {
 	const carousel = carousels.find((carousel) => carousel.dragLastClientX !== undefined);
 	if (!carousel) return;
-	
+
 	if (!carousel.images) return;
 
 	carousel.dragLastClientX = undefined;
@@ -290,9 +290,9 @@ function clamp(value, min, max) {
 	return Math.min(Math.max(value, min), max);
 }
 
-// ================================================================================================
+// ================
 // IMAGE COMPARISON
-// ================================================================================================
+// ================
 
 const RECENTER_DELAY = 1;
 const RECENTER_ANIMATION_DURATION = 0.25;
@@ -334,7 +334,7 @@ function initializeImageComparison() {
 				element.dataset.lastInteraction = "";
 				return;
 			}
-			
+
 			const factor = smootherstep(completionFactor);
 			const newLocation = lerp(element.dataset.recenterStartValue, 50, factor);
 			element.style.setProperty("--comparison-percent", `${newLocation}%`);
@@ -344,7 +344,7 @@ function initializeImageComparison() {
 
 		const lerp = (a, b, t) => (1 - t) * a + t * b;
 		const smootherstep = (x) => x * x * x * (x * (x * 6 - 15) + 10);
-		
+
 		element.addEventListener("pointermove", moveHandler);
 		element.addEventListener("pointerenter", moveHandler);
 		element.addEventListener("pointerleave", leaveHandler);
@@ -352,9 +352,10 @@ function initializeImageComparison() {
 	});
 }
 
-// ================================================================================================
+// ==================
 // AUTO-PLAYING VIDEO
-// ================================================================================================
+// ==================
+
 window.addEventListener("DOMContentLoaded", initializeVideoAutoPlay);
 
 function initializeVideoAutoPlay() {
@@ -365,12 +366,12 @@ function initializeVideoAutoPlay() {
 		if (!(player instanceof HTMLVideoElement)) return;
 
 		let loaded = false;
-		
+
 		new IntersectionObserver((entries) => {
 			entries.forEach((entry) => {
 				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
 					player.play();
-					
+
 					loaded = true;
 				};
 			});
