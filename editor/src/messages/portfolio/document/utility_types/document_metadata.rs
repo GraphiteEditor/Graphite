@@ -154,7 +154,7 @@ impl DocumentMetadata {
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
 		// Should refer to output node
-		let Some(output_node_id) = graph.root_node else {
+		let Some(output_node_id) = graph.root_node.map(|root_node| root_node.id) else {
 			return;
 		};
 

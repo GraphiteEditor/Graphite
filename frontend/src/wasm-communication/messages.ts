@@ -103,9 +103,9 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint | undefined;
+	readonly connected!: bigint[];
 
-	readonly connectedIndex!: bigint | undefined;
+	readonly connectedIndex!: bigint[];
 }
 
 export class FrontendNode {
@@ -137,6 +137,8 @@ export class FrontendNode {
 	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
+
+	readonly uiOnly!: boolean;
 }
 
 export class FrontendNodeLink {

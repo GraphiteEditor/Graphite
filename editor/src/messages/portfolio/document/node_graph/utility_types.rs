@@ -65,9 +65,9 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Option<NodeId>,
+	pub connected: Vec<NodeId>,
 	#[serde(rename = "connectedIndex")]
-	pub connected_index: Option<usize>,
+	pub connected_index: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -92,6 +92,8 @@ pub struct FrontendNode {
 	pub locked: bool,
 	pub previewed: bool,
 	pub errors: Option<String>,
+	#[serde(rename = "uiOnly")]
+	pub ui_only: bool,
 }
 
 // (link_start, link_end, link_end_input_index)

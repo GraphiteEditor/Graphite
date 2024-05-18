@@ -528,7 +528,14 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, DynAny)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI only export node, and for restoring the default preview node.
+pub struct RootNode {
+	pub id: NodeId,
+	pub output_index: usize,
+}
+#[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
@@ -538,19 +545,11 @@ pub struct NodeNetwork {
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	#[serde(skip)]
-	/// Stores the node which will be used as the root in document metadata and restoring the default preview node. If it is none, then exports must be disconnected
-	pub root_node: Option<NodeId>,
-}
-
-#[derive(PartialEq)]
-pub enum FlowType {
-	/// Iterate over all upstream nodes from every input (the primary and all secondary).
-	UpstreamFlow,
-	/// Iterate over nodes connected to the primary input.
-	PrimaryFlow,
-	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
-	HorizontalFlow,
+	/// If the root node is none, then exports must be disconnected
+	pub root_node: Option<RootNode>,
+	/// Temporary fields to store metadata for import/export UI only nodes
+	pub imports_metadata: (NodeId, IVec2),
+	pub exports_metadata: (NodeId, IVec2),
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -565,7 +564,17 @@ impl std::hash::Hash for NodeNetwork {
 		self.root_node.hash(state);
 	}
 }
-
+impl Default for NodeNetwork {
+	fn default() -> Self {
+		NodeNetwork {
+			exports: Default::default(),
+			nodes: Default::default(),
+			root_node: Default::default(),
+			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-20, -4))),
+			exports_metadata: (NodeId(generate_uuid()), IVec2::new(8, -4)),
+		}
+	}
+}
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
@@ -586,6 +595,7 @@ impl NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
 			root_node: None,
+			..Default::default()
 		}
 	}
 
@@ -614,7 +624,7 @@ impl NodeNetwork {
 		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
-			if let Some(pos) = self.root_node.and_then(|root_node| self.nodes.get(&root_node)).map(|n| n.metadata.position) {
+			if let Some(pos) = self.root_node.and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
 				node.metadata.position = pos + IVec2::new(8, 0);
 			}
 		}
@@ -741,6 +751,15 @@ impl NodeNetwork {
 	}
 }
 
+#[derive(PartialEq)]
+pub enum FlowType {
+	/// Iterate over all upstream nodes from every input (the primary and all secondary).
+	UpstreamFlow,
+	/// Iterate over nodes connected to the primary input.
+	PrimaryFlow,
+	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
+	HorizontalFlow,
+}
 /// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
 /// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
 /// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
@@ -780,8 +799,8 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		if let Some(root_node) = &mut self.root_node {
-			*root_node = f(*root_node);
+		if let Some(root_node) = self.root_node.as_mut() {
+			root_node.id = f(root_node.id);
 		}
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes

@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, RootNode};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -133,11 +133,15 @@ impl<'a> ModifyInputsContext<'a> {
 		*export = NodeInput::node(id, 0);
 
 		if let Some(root_node) = self.document_network.root_node {
-			new_node.inputs[node_input_index] = NodeInput::node(root_node, 0);
+			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, 0);
 		}
 
 		self.document_network.nodes.insert(id, new_node);
-		self.document_network.root_node = Some(id);
+		if let Some(root_node) = self.document_network.root_node.as_mut() {
+			root_node.id = id;
+		} else {
+			self.document_network.root_node = Some(RootNode { id, output_index: 0 });
+		}
 
 		self.shift_upstream(id, IVec2::new(-8, 3), false);
 		Some(id)
@@ -259,7 +263,7 @@ impl<'a> ModifyInputsContext<'a> {
 			&& self
 				.document_network
 				.root_node
-				.map_or(true, |root_node| self.document_network.nodes.get(&root_node).map_or(false, |node| !node.is_layer))
+				.map_or(true, |root_node| self.document_network.nodes.get(&root_node.id).map_or(false, |node| !node.is_layer))
 		{
 			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 			self.insert_node_as_primary_export(new_id, new_layer_node, 0)
@@ -285,13 +289,13 @@ impl<'a> ModifyInputsContext<'a> {
 		if self
 			.document_network
 			.root_node
-			.map_or(true, |root_node| self.document_network.nodes.get(&root_node).map_or(false, |node| !node.is_artboard()))
+			.map_or(true, |root_node| self.document_network.nodes.get(&root_node.id).map_or(false, |node| !node.is_artboard()))
 		{
 			self.insert_node_as_primary_export(new_id, artboard_node, 0)
 		} else {
 			let root_node = self.document_network.root_node.unwrap();
 			// Get node that feeds into the root node. If it exists, connect the new artboard node in between.
-			let output_node_primary_input = self.document_network.nodes.get(&root_node)?.inputs.get(0);
+			let output_node_primary_input = self.document_network.nodes.get(&root_node.id)?.inputs.get(0);
 			let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
 				let pre_node = self.document_network.nodes.get(node_id)?;
 				// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
@@ -302,14 +306,14 @@ impl<'a> ModifyInputsContext<'a> {
 					artboard_node,
 					NodeInput::node(*node_id, 0),
 					artboard_input_index,
-					root_node,
+					root_node.id,
 					NodeInput::node(new_id, 0),
 					0,
 					IVec2::new(0, 3),
 				)
 			} else {
 				//Else connect the new artboard directly to the root node.
-				self.insert_node_before(new_id, root_node, 0, artboard_node, IVec2::new(-8, 3))
+				self.insert_node_before(new_id, root_node.id, 0, artboard_node, IVec2::new(-8, 3))
 			};
 
 			if let Some(new_id) = created_node_id {

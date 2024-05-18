@@ -769,6 +769,14 @@
 		const dataTypeCapitalized = `${value.dataType[0].toUpperCase()}${value.dataType.slice(1)}`;
 		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${dataTypeCapitalized}`;
 	}
+
+	function connectedToText(output: FrontendGraphOutput): string {
+		if (output.connected.length == 0) {
+			return "Connected to nothing";
+		} else {
+			return output.connected.map((nodeId, index) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
+		}
+	}
 </script>
 
 <div
@@ -896,10 +904,10 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
+								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => node.primaryOutput?.connected.includes(n.id))?.isLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -1073,7 +1081,7 @@
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -1092,7 +1100,7 @@
 							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${`${parameter.connected}, port index ${parameter.connectedIndex}` || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(parameter)}\n${connectedToText(parameter)}`}</title>
 							{#if parameter.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}

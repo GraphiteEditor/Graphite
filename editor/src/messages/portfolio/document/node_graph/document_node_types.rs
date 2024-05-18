@@ -193,49 +193,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "To Graphic Element",
-			category: "General",
-			inputs: vec![DocumentInputType {
-				name: "In",
-				data_type: FrontendGraphDataType::General,
-				default: NodeInput::network(generic!(T), 0),
-			}],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
-			..Default::default()
-		},
-		DocumentNodeDefinition {
-			name: "To Graphic Group",
-			category: "General",
-			inputs: vec![DocumentInputType {
-				name: "In",
-				data_type: FrontendGraphDataType::General,
-				default: NodeInput::network(generic!(T), 0),
-			}],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
-			..Default::default()
-		},
-		DocumentNodeDefinition {
-			name: "ConstructLayer",
-			category: "General",
-			inputs: vec![
-				DocumentInputType {
-					name: "Graphic Element",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(generic!(T), 0),
-				},
-				DocumentInputType {
-					name: "Graphic Group Stack",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(generic!(T), 0),
-				},
-			],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
-			implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
-			..Default::default()
-		},
-		DocumentNodeDefinition {
 			name: "Merge",
 			category: "General",
 			is_layer: true,
