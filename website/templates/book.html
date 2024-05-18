@@ -72,16 +72,18 @@
 	</aside>
 
 	<section class="reading-material">
-		<div class="section">
+		<div class="block">
 			<div class="article-title">
-				<button title="Open chapter selection" class="open-chapter-selection" data-open-chapter-selection>
-					<svg viewBox="0 0 24 24">
-						<rect x="2" y="4" width="20" height="2"/>
-						<rect x="2" y="18" width="20" height="2"/>
-						<rect x="2" y="11" width="20" height="2"/>
-					</svg>
-				</button>
-				<h1>{{ page.title }}</h1>
+				<h1>
+					<button title="Open chapter selection" class="open-chapter-selection" data-open-chapter-selection>
+						<svg viewBox="0 0 24 24">
+							<rect x="2" y="4" width="20" height="2"/>
+							<rect x="2" y="18" width="20" height="2"/>
+							<rect x="2" y="11" width="20" height="2"/>
+						</svg>
+					</button>
+					<span>{{ page.title }}</span>
+				</h1>
 			</div>
 			<article>
 			{{ page.content | safe }}

@@ -1,5 +1,5 @@
 .reading-material {
-	max-width: 800px;
+	width: 100%;
 	flex: 0 1 auto;
 
 	.details {
@@ -17,6 +17,10 @@
 			width: 100%;
 			height: auto;
 		}
+	}
+
+	article {
+		margin-top: calc(80 * var(--variable-px));
 	}
 
 	.social {

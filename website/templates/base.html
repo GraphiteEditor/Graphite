@@ -1,3 +1,4 @@
+{% import "macros/replacements.html" as replacements %}
 <!DOCTYPE html>
 <html lang="en-US">
 <head>
@@ -91,14 +92,13 @@
 			<hr />
 		</header>
 		<main>
-			<div class="content">
-				{%- block content -%}{%- endblock -%}
-			</div>
+			{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
+			{%- block content -%}{%- endblock -%}
+			{%- endfilter -%}
 		</main>
 		<footer>
 			<hr />
 			<nav class="balance-text require-polyfill">
-				<a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="link not-uppercase">Credits</a>
 				<a href="/license" class="link not-uppercase">License</a>
 				<a href="/logo" class="link not-uppercase">Logo</a>
 				<a href="/press" class="link not-uppercase">Press</a>

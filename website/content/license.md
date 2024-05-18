@@ -3,7 +3,7 @@ title = "Graphite license"
 +++
 
 <section class="reading-material">
-<div class="section">
+<div class="block">
 
 # Graphite license
 
@@ -15,7 +15,7 @@ The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite
 
 Visual assets, including but not limited to logos, icons, SVG code, branding imagery, and sample artwork are excluded from this license and held under copyright by their respective owners. Learn about the [Graphite brand](/logo) for more information.
 
-----
+---
 
 Apache License  
 Version 2.0, January 2004  
