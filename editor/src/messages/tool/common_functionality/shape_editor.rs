@@ -982,10 +982,7 @@ impl ShapeState {
 					continue;
 				}
 
-				selected_points.sort_by(|&a, &b| match a > b {
-					true => std::cmp::Ordering::Greater,
-					false => std::cmp::Ordering::Less,
-				});
+				selected_points.sort_by(|&a, &b| b.cmp(&a));
 
 				let mut last_manipulator_index = 0;
 				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
