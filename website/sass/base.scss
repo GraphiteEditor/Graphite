@@ -19,6 +19,7 @@
 	--color-sage: #91b99a;
 
 	--max-width: 1200px;
+	--max-extended-width: 1600px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
 	--max-width-reading-material: 800px;
 	--variable-px: Min(1px, 0.15vw);
@@ -27,13 +28,7 @@
 	--border-thickness: 2px;
 
 	--font-size-body: 18px;
-
-	--font-size-h1: calc(var(--font-size-body) * 48 / 18);
-	--font-size-h2: calc(var(--font-size-body) * 32 / 18);
-	--font-size-h3: calc(var(--font-size-body) * 24 / 18);
-	--font-size-h4: calc(var(--font-size-body) * 18 / 18);
 	--font-size-link: calc(var(--font-size-body) * 24 / 18);
-
 
 	@media screen and (max-width: 780px) {
 		--font-size-body: 16px;
@@ -97,33 +92,40 @@ h1.feature-box-header {
 }
 
 h1 {
+	font-size: calc(var(--font-size-body) * 48 / 18);
 	font-family: "Bona Nova", Palatino, serif;
 	font-feature-settings: "lnum";
 	line-height: 1.25;
 	font-weight: 700;
-	font-size: var(--font-size-h1);
+	display: inline-block;
+	margin: 0;
 }
 
-h2 {
-	font-family: "Inter", sans-serif;
-	line-height: 1.5;
-	font-weight: 800;
-	font-size: var(--font-size-h2);
-	margin-top: 80px;
-}
-
-h3 {
-	font-size: var(--font-size-h3);
-}
-
-h1,
 h2,
 h3,
 h4,
 h5,
 h6 {
-	margin: 0;
+	font-family: "Inter", sans-serif;
+	line-height: 1.5;
+	font-weight: 800;
 	display: inline-block;
+	margin: 0;
+}
+
+h2 {
+	font-size: calc(var(--font-size-body) * 32 / 18);
+	font-weight: 700;
+}
+
+h3 {
+	font-size: calc(var(--font-size-body) * 24 / 18);
+}
+
+h4,
+h5,
+h6 {
+	font-size: var(--font-size-body);
 }
 
 p {
@@ -145,7 +147,8 @@ p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-b
 .video-embed + :is(p, .link, .button),
 p + p > .button,
 p + :is(.link, section),
-img + .link {
+img + .link,
+article {
 	margin-top: 20px;
 }
 
@@ -327,26 +330,11 @@ summary {
 	cursor: pointer;
 }
 
-.reading-material.reading-material.reading-material {
+.reading-material.reading-material {
 	max-width: var(--max-width-reading-material);
-
-	hr {
-		margin-top: 40px;
-		margin-bottom: 40px;
-	}
 
 	article {
 		width: 100%;
-		margin: calc(80 * var(--variable-px)) 0;
-
-		h1,
-		h2,
-		h3,
-		h4 {
-			font-family: "Inter", sans-serif;
-			line-height: 1.5;
-			font-weight: 800;
-		}
 
 		h2 {
 			margin-top: 80px;
@@ -357,7 +345,6 @@ summary {
 		}
 
 		h4 {
-			font-size: var(--font-size-h4);
 			margin-top: 20px;
 		}
 
@@ -385,7 +372,8 @@ summary {
 		}
 
 		+ hr {
-			margin-top: 0;
+			margin-top: calc(80 * var(--variable-px));
+			margin-bottom: calc(40 * var(--variable-px));
 		}
 	}
 }
@@ -1276,7 +1264,7 @@ body > .page {
 	main {
 		padding: calc(120 * var(--variable-px)) var(--page-edge-padding);
 
-		section {
+		> section {
 			max-width: var(--max-width);
 			margin-left: auto;
 			margin-right: auto;

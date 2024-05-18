@@ -22,7 +22,7 @@ css = ["volunteer.css"]
 <div class="info-box">
 
 <a href="/volunteer/guide">
-	<img src="https://files.keavon.com/-/FailingHarmoniousKitty/keavon_Book_of_code_--ar_31_--sref_httpss.mj.runmiMNtdlos5A_h_6568374b-406f-4176-bd9f-c176cf35221f_0.png" />
+	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
 </a>
 
 **Get started by reading the contributor guide:**
@@ -59,7 +59,7 @@ Develop the engine that powers Graphite's node graph and rendering. Graphene is 
 <div class="info-box">
 
 <a href="https://discord.graphite.rs">
-	<img src="https://files.keavon.com/-/NeighboringDecentShorebird/keavon_httpss.mj.runystAKbmsUKQ_Old-style_fountain_pen_with_n_e4847f9d-6aa7-413c-bc3b-077b77565f1c_3.png" />
+	<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
 **Ask how to get started by reaching out to a [core team member](/about#core-team) on Discord:**

@@ -60,6 +60,10 @@
 			}
 		}
 
+		~ section {
+			margin-top: calc(120 * var(--variable-px));
+		}
+
 		.banner {
 			width: 400px;
 			flex: 0 0 auto;

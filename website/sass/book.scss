@@ -1,14 +1,16 @@
 .three-column-layout {
 	--aside-gap: 40px;
 	--aside-width: 300px;
+	--align-with-article-title-letter-cap-heights: 0.4em;
 	position: relative;
 	display: flex;
+	justify-content: space-between;
 	gap: var(--aside-gap);
 	// Creates a stacking context for the left popout sidebar's sticky positioning
 	transform: translate(0);
 
-	&.three-column-layout.three-column-layout {
-		max-width: calc(var(--max-width-reading-material) + 2 * var(--aside-width) + 2 * var(--aside-gap));
+	&.three-column-layout {
+		max-width: var(--max-extended-width);
 	}
 
 	.close-chapter-selection,
@@ -128,7 +130,7 @@
 					padding-right: var(--page-edge-padding);
 
 					ul:first-of-type {
-						margin-top: calc(120 * var(--variable-px) + var(--align-with-title-cap-height));
+						margin-top: calc(120 * var(--variable-px) + var(--align-with-article-title-letter-cap-heights));
 					}
 
 					.close-chapter-selection {
@@ -165,7 +167,7 @@
 			}
 		}
 	}
-	
+
 	aside {
 		position: sticky;
 		align-self: flex-start;
@@ -176,20 +178,22 @@
 		margin-top: -40px;
 		flex: 0 1 auto;
 
-		ul {
-			list-style: none;
-			padding: 0;
-			margin: 0;
-			margin-top: 40px;
-
+		&.contents > ul,
+		.wrapper-inner > ul {
 			&:first-of-type {
-				--align-with-title-cap-height: 0.4em;
-				margin-top: calc(40px + var(--align-with-title-cap-height));
+				margin-top: calc(40px + var(--align-with-article-title-letter-cap-heights));
 			}
 
 			&:last-of-type {
 				margin-bottom: calc(40 * var(--variable-px));
 			}
+		}
+
+		ul {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			margin-top: 40px;
 
 			ul {
 				margin-top: 0;
@@ -213,11 +217,7 @@
 			}
 
 			li {
-				margin-top: 0;
-				
-				+ li {
-					margin-top: 0.5em;
-				}
+				margin-top: 0.5em;
 				
 				a {
 					color: var(--color-walnut);

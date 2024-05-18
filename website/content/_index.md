@@ -117,10 +117,10 @@ js = ["image-interaction.js", "video-embed.js"]
 		</div>
 		<div class="screenshot-description">
 			<p class="active" data-carousel-description>
-				<a href="https://editor.graphite.rs/#demo/red-dress"><em>Red Dress</em></a> — Illustration made with the help of procedurally generating hundreds of circles in the node graph.
+				<a href="https://editor.graphite.rs/#demo/red-dress"><em>Red Dress</em></a> — Illustration made with the help of procedurally placing hundreds of circles.
 			</p>
 			<p data-carousel-description>
-				<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — Vector art made with the Pen and Gradient tools without needing to touch the node graph.
+				<a href="https://editor.graphite.rs/#demo/valley-of-spires"><em>Valley of Spires</em></a> — Vector art made with the Pen and Gradient tools without touching the node graph.
 			</p>
 			<p data-carousel-description>
 				<a href="https://editor.graphite.rs/#demo/procedural-string-lights"><em>Procedural String Lights</em></a> — Drawing of a tree adorned by reusable, auto-placed light bulbs along the wire path made using this node graph.
@@ -393,9 +393,9 @@ Graphite's procedural, data-driven approach to graphic design affords unique cap
 </div>
 </section>
 <!-- ▙ PROCEDURALISM ▟ -->
-<!--                   -->
-<!-- ▛ FUNDRAISING ▜ -->
-<section id="fundraising" class="feature-box-outer">
+<!--                 -->
+<!-- ▛ DONATE ▜ -->
+<section id="donate" class="feature-box-outer">
 <div class="feature-box-inner">
 
 <h1 class="feature-box-header">Support the mission</h1>
@@ -415,8 +415,8 @@ Graphite is built by a small, dedicated crew of volunteers in need of the resour
 
 </div>
 </section>
-<!-- ▙ FUNDRAISING ▟ -->
-<!--                 -->
+<!-- ▙ DONATE ▟ -->
+<!--                -->
 <!-- ▛ VECTOR ART ▜ -->
 <section id="vector-art">
 <div class="block">

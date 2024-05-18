@@ -19,6 +19,10 @@
 		}
 	}
 
+	article {
+		margin-top: calc(80 * var(--variable-px));
+	}
+
 	.social {
 		width: 100%;
 		display: flex;
