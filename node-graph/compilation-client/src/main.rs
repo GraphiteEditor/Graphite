@@ -38,7 +38,7 @@ fn main() {
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(0), 0)],
-		previous_outputs: None,
+		root_node: Some(NodeId(0)), 
 		nodes: [DocumentNode {
 			name: "Blend Image".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(

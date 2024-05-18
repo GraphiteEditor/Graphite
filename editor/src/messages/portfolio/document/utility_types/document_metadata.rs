@@ -153,20 +153,18 @@ impl DocumentMetadata {
 		self.folders = HashSet::new();
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
-
 		// Should refer to output node
-		let Some(graph_craft::document::NodeInput::Node { node_id, .. }) = graph.original_outputs().get(0) else {
+		let Some(output_node_id) = graph.root_node else {
 			return;
 		};
-		let output_node_id = *node_id;
 
-		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::new(output_node_id, graph))];
+		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
-			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
+			// Skip the horizontal_root_node_id node, except for the root node
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == output_node_id { 0 } else { 1 }) {
 				if !current_node.visible {
 					self.hidden.insert(current_node_id);
 				}
@@ -178,7 +176,9 @@ impl DocumentMetadata {
 				if current_node.is_layer {
 					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
 					if !self.structure.contains_key(&current_layer_node) {
-						awaiting_primary_flow.push((current_node_id, parent_layer_node));
+						if current_node_id != output_node_id {
+							awaiting_primary_flow.push((current_node_id, parent_layer_node));
+						}
 						parent_layer_node.push_child(self, current_layer_node);
 						parent_layer_node = current_layer_node;
 

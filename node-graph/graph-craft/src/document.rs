@@ -539,8 +539,8 @@ pub struct NodeNetwork {
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	#[serde(skip)]
-	/// In the case when another node is previewed (chosen by the user as a temporary output), this stores what it previously was so it can be restored later.
-	pub previous_outputs: Option<Vec<NodeInput>>,
+	/// Stores the node which will be used as the root in document metadata and restoring the default preview node. If it is none, then exports must be disconnected
+	pub root_node: Option<NodeId>,
 }
 
 #[derive(PartialEq)]
@@ -562,7 +562,7 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.previous_outputs.hash(state);
+		self.root_node.hash(state);
 	}
 }
 
@@ -572,11 +572,6 @@ impl NodeNetwork {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		hasher.finish()
-	}
-
-	/// Get the original output nodes of this network, ignoring any preview node
-	pub fn original_outputs(&self) -> &Vec<NodeInput> {
-		self.previous_outputs.as_ref().unwrap_or(&self.exports)
 	}
 
 	// Unused
@@ -590,7 +585,7 @@ impl NodeNetwork {
 		Self {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
-			previous_outputs: None,
+			root_node: None,
 		}
 	}
 
@@ -619,12 +614,7 @@ impl NodeNetwork {
 		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
-			if let Some(pos) = self
-				.original_outputs()
-				.first()
-				.and_then(|first| if let NodeInput::Node { node_id, .. } = first { self.nodes.get(node_id) } else { None })
-				.map(|n| n.metadata.position)
-			{
+			if let Some(pos) = self.root_node.and_then(|root_node| self.nodes.get(&root_node)).map(|n| n.metadata.position) {
 				node.metadata.position = pos + IVec2::new(8, 0);
 			}
 		}
@@ -711,22 +701,6 @@ impl NodeNetwork {
 			.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
 	}
 
-	/// Is the node being used directly as an original output?
-	pub fn original_outputs_contain(&self, node_id_to_check: NodeId) -> bool {
-		self.original_outputs()
-			.iter()
-			.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
-	}
-
-	/// Is the node being used directly as a previous output?
-	pub fn previous_outputs_contain(&self, node_id_to_check: NodeId) -> Option<bool> {
-		self.previous_outputs.as_ref().map(|outputs| {
-			outputs
-				.iter()
-				.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
-		})
-	}
-
 	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
 	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
 		FlowIter {
@@ -806,13 +780,9 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		self.previous_outputs.iter_mut().for_each(|nodes| {
-			nodes.iter_mut().for_each(|output| {
-				if let NodeInput::Node { node_id, .. } = output {
-					*node_id = f(*node_id)
-				}
-			})
-		});
+		if let Some(root_node) = &mut self.root_node {
+			*root_node = f(*root_node);
+		}
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes
 			.into_iter()

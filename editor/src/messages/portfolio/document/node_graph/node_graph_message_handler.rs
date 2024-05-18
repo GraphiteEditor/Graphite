@@ -174,7 +174,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						while let Some(current_node) = stack.pop() {
 							if let Some(downstream_nodes) = outward_links.get(&current_node) {
 								for downstream_node in downstream_nodes {
-									if network.original_outputs_contain(*downstream_node) {
+									if network.root_node.expect("Root node should always exist if a node is being deleted") == *downstream_node {
 										can_delete = false;
 									} else if !delete_nodes.contains(downstream_node) {
 										stack.push(*downstream_node);
@@ -745,15 +745,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
-					// Check if the node is not already being previewed
-					if !network.outputs_contain(node_id) {
-						network.previous_outputs = Some(network.previous_outputs.to_owned().unwrap_or_else(|| network.exports.clone()));
-						network.exports[0] = NodeInput::node(node_id, 0);
-					} else if let Some(outputs) = network.previous_outputs.take() {
-						network.exports = outputs
-					} else {
-						return;
-					}
+					if let Some(export) = network.exports.get_mut(0) {
+						*export = NodeInput::node(node_id, 0);
+					} 
 				}
 
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
@@ -850,16 +844,13 @@ impl NodeGraphMessageHandler {
 			if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
-
-				// Don't show stop previewing button on the original output node
-				if !(is_output && network.previous_outputs_contain(node_id).unwrap_or(true)) {
-					let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
-						.icon(Some("Rescale".to_string()))
-						.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
-						.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
-						.widget_holder();
-					widgets.push(output_button);
-				}
+				let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
+					.icon(Some("Rescale".to_string()))
+					.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
+					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
+					.widget_holder();
+				widgets.push(output_button);
+				
 			}
 
 			self.widgets[0] = LayoutGroup::Row { widgets };
