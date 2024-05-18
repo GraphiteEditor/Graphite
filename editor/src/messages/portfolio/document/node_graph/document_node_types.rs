@@ -240,7 +240,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(3), 0)],
 				nodes: [
 					// Secondary (left) input type coercion
@@ -303,7 +302,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(2), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					(
@@ -381,7 +379,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Load Image",
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -433,7 +430,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Create Canvas",
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
@@ -472,7 +468,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Draw Canvas",
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(2)],
 				exports: vec![NodeInput::node(NodeId(3), 0)],
 				nodes: [
 					DocumentNode {
@@ -531,7 +526,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Begin Scope",
 			category: "Ignore",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -661,7 +655,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Image Frame",
 			category: "General",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
@@ -696,24 +689,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Noise Pattern",
 			category: "General",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-					NodeId(0),
-				],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
@@ -984,45 +959,46 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Split Channels",
 			category: "Image Adjustments",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
 				exports: vec![
+					NodeInput::node(NodeId(0), 0),
 					NodeInput::node(NodeId(1), 0),
 					NodeInput::node(NodeId(2), 0),
 					NodeInput::node(NodeId(3), 0),
-					NodeInput::node(NodeId(4), 0),
 				],
 				nodes: [
-					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
-					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
-					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
-					// TODO: Remove this limitation by either making the `imports` above into a double-vec or making each of these DocumentNodes request their imported data based on its index.
-					DocumentNode {
-						name: "Identity".to_string(),
-						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
 					DocumentNode {
 						name: "RedNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false)],
+						inputs: vec![
+							NodeInput::network(concrete!(ImageFrame<Color>), 0),
+							NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "GreenNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false)],
+						inputs: vec![
+							NodeInput::network(concrete!(ImageFrame<Color>), 0),
+							NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "BlueNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false)],
+						inputs: vec![
+							NodeInput::network(concrete!(ImageFrame<Color>), 0),
+							NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "AlphaNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false)],
+						inputs: vec![
+							NodeInput::network(concrete!(ImageFrame<Color>), 0),
+							NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
+						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<>")),
 						..Default::default()
 					},
@@ -1048,7 +1024,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Brush",
 			category: "Brush",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
@@ -1121,23 +1096,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Image",
 			category: "Ignore",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Identity".to_string(),
-						inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
+				exports: vec![NodeInput::node(NodeId(0), 0)],
+				nodes: vec![DocumentNode {
+					name: "Cull".to_string(),
+					inputs: vec![NodeInput::network(concrete!(ImageFrame<Color>), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
+					manual_composition: Some(concrete!(Footprint)),
+					..Default::default()
+				}]
 				.into_iter()
 				.enumerate()
 				.map(|(id, node)| (NodeId(id as u64), node))
@@ -1154,7 +1120,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Uniform",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1206,7 +1171,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Storage",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1258,7 +1222,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateOutputBuffer",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1316,7 +1279,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateComputePass",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0), NodeId(1), NodeId(1)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1418,7 +1380,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "ExecuteComputePipeline",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1470,7 +1431,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "ReadOutputBuffer",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -1522,7 +1482,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "CreateGpuSurface",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
@@ -1561,7 +1520,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "RenderTexture",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
@@ -1615,7 +1573,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "UploadTexture",
 			category: "Gpu",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(1), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
@@ -2250,7 +2207,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Circle",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: vec![
 					DocumentNode {
@@ -2415,7 +2371,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Transform",
 			category: "Transform",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(1), NodeId(1), NodeId(1), NodeId(1), NodeId(1)],
 				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					DocumentNode {
@@ -2571,25 +2526,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Sample Points",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(2), NodeId(2), NodeId(2), NodeId(2)], // First is given to Identity, the rest are given to Sample Points
-				exports: vec![NodeInput::node(NodeId(2), 0)],                         // Taken from output 0 of Sample Points
+				exports: vec![NodeInput::node(NodeId(1), 0)], // Taken from output 0 of Sample Points
 				nodes: [
 					DocumentNode {
-						name: "Identity".to_string(),
-						inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)], // From the document node's parameters
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
 						name: "Lengths of Segments of Subpaths".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)], // From output 0 of Identity
+						inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::LengthsOfSegmentsOfSubpaths")),
 						..Default::default()
 					},
 					DocumentNode {
 						name: "Sample Points".to_string(),
 						inputs: vec![
-							NodeInput::node(NodeId(0), 0),          // From output 0 of Identity
+							NodeInput::network(concrete!(graphene_core::vector::VectorData), 0),
 							NodeInput::network(concrete!(f64), 1),  // From the document node's parameters
 							NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 							NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
@@ -2725,25 +2673,6 @@ pub static IMAGINATE_NODE: Lazy<DocumentNodeDefinition> = Lazy::new(|| DocumentN
 	name: "Imaginate",
 	category: "Image Synthesis",
 	implementation: DocumentNodeImplementation::Network(NodeNetwork {
-		imports: vec![
-			NodeId(0),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-			NodeId(1),
-		],
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: [
 			(
@@ -2865,68 +2794,82 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 	// 	network.flatten(id);
 	// }
 
-	let mut network_inputs = Vec::new();
-	let mut input_type = None;
-	for (id, node) in network.nodes.iter() {
-		for input in node.inputs.iter() {
-			if let NodeInput::Network { .. } = input {
-				if input_type.is_none() {
-					input_type = Some(input.clone());
-				}
-				//log::debug!("document network input: {:?}", input);
-				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type {network:#?}");
-				network_inputs.push(*id);
-			}
-		}
-	}
-	//log::debug!("network_inputs: {:?}", network_inputs);
-	let len = network_inputs.len();
-	network.imports = network_inputs;
-	// if the network has no inputs, it doesn't need to be wrapped in a scope
-	if len == 0 {
-		log::warn!("Network has no inputs, not wrapping in scope");
-		return network;
-	}
-	//Same networks
-	//log::debug!("creating Scope with inner network, {:?}", network.clone());
-
-	let inner_network = DocumentNode {
-		name: "Scope".to_string(),
-		implementation: DocumentNodeImplementation::Network(network),
-		inputs: core::iter::repeat(NodeInput::node(NodeId(0), 1)).take(len).collect(),
-		..Default::default()
-	};
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")
-		.to_document_node(vec![input_type.unwrap()], DocumentNodeMetadata::default());
+		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::default());
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
 		}
 	}
 
+	let inner_network = DocumentNode {
+		name: "Scope".to_string(),
+		implementation: DocumentNodeImplementation::Network(network),
+		inputs: vec![NodeInput::node(NodeId(0), 1)],
+		..Default::default()
+	};
+
+	let render_node = graph_craft::document::DocumentNode {
+		name: "Output".into(),
+		inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 1)],
+		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(2), 0)],
+			nodes: [
+				DocumentNode {
+					name: "Create Canvas".to_string(),
+					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+					skip_deduplication: true,
+					..Default::default()
+				},
+				DocumentNode {
+					name: "Cache".to_string(),
+					manual_composition: Some(concrete!(())),
+					inputs: vec![NodeInput::node(NodeId(0), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+					..Default::default()
+				},
+				DocumentNode {
+					name: "RenderNode".to_string(),
+					inputs: vec![
+						NodeInput::network(concrete!(WasmEditorApi), 1),
+						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
+						NodeInput::node(NodeId(1), 0),
+					],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
+					..Default::default()
+				},
+			]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (NodeId(id as u64), node))
+			.collect(),
+			..Default::default()
+		}),
+		metadata: DocumentNodeMetadata::position((8, 4)),
+		..Default::default()
+	};
+
 	// wrap the inner network in a scope
 	let nodes = vec![
 		begin_scope,
 		inner_network,
+		render_node,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)], DocumentNodeMetadata::default()),
+			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::default()),
 	];
 
 	NodeNetwork {
-		imports: vec![NodeId(0)],
-		exports: vec![NodeInput::node(NodeId(2), 0)],
+		exports: vec![NodeInput::node(NodeId(3), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
 }
 
 pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
-	let mut network = NodeNetwork {
-		imports: vec![NodeId(0)],
-		..Default::default()
-	};
+	let mut network = NodeNetwork { ..Default::default() };
 	network.push_node(
 		resolve_document_node_type("Input Frame")
 			.expect("Input Frame node does not exist")
@@ -2947,10 +2890,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
-	let mut network = NodeNetwork {
-		imports: vec![NodeId(0)],
-		..Default::default()
-	};
+	let mut network = NodeNetwork { ..Default::default() };
 	network.push_node(text_generator.to_document_node(
 		[
 			NodeInput::network(concrete!(WasmEditorApi), 0),

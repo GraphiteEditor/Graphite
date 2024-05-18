@@ -532,11 +532,6 @@ impl DocumentNodeImplementation {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
-	/// The list of nodes that are imported into this network from the parent network.
-	/// Each import is a reference to which node within this network that the input is connected to.
-	/// Presently, only one is supported— use an Identity node to split an input to multiple user nodes (although this could, and should, be changed in the future).
-	#[serde(alias = "inputs")] // TODO: Eventually remove this alias (probably starting late 2024)
-	pub imports: Vec<NodeId>,
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	#[serde(alias = "outputs")] // TODO: Eventually remove this alias (probably starting late 2024)
@@ -560,7 +555,6 @@ pub enum FlowType {
 
 impl std::hash::Hash for NodeNetwork {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.imports.hash(state);
 		self.exports.hash(state);
 		let mut nodes: Vec<_> = self.nodes.iter().collect();
 		nodes.sort_by_key(|(id, _)| *id);
@@ -594,7 +588,6 @@ impl NodeNetwork {
 
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
-			imports: node.inputs.iter().filter(|input| matches!(input, NodeInput::Network { .. })).map(|_| NodeId(0)).collect(),
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
 			previous_outputs: None,
@@ -604,7 +597,6 @@ impl NodeNetwork {
 	/// A graph with just an input node
 	pub fn new_network() -> Self {
 		Self {
-			imports: vec![NodeId(0)],
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(
 				NodeId(0),
@@ -647,56 +639,6 @@ impl NodeNetwork {
 		self.nodes.insert(id, node);
 		self.exports = vec![NodeInput::node(id, 0)];
 		id
-	}
-
-	/// Adds a output identity node to the network
-	pub fn push_output_node(&mut self) -> NodeId {
-		let node = DocumentNode {
-			name: "Output".into(),
-			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
-			..Default::default()
-		};
-		self.push_node(node)
-	}
-
-	/// Adds a Cache and a Clone node to the network
-	pub fn push_cache_node(&mut self, ty: Type) -> NodeId {
-		let node = DocumentNode {
-			name: "Cache".into(),
-			inputs: vec![],
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0)],
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: vec![
-					(
-						NodeId(0),
-						DocumentNode {
-							name: "MemoNode".to_string(),
-							manual_composition: Some(concrete!(())),
-							inputs: vec![NodeInput::network(ty, 0)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode")),
-							..Default::default()
-						},
-					),
-					(
-						NodeId(1),
-						DocumentNode {
-							name: "CloneNode".to_string(),
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::CloneNode<_>")),
-							..Default::default()
-						},
-					),
-				]
-				.into_iter()
-				.collect(),
-				..Default::default()
-			}),
-			metadata: DocumentNodeMetadata { position: (0, 0).into() },
-			..Default::default()
-		};
-		self.push_node(node)
 	}
 
 	/// Get the nested network given by the path of node ids
@@ -1005,38 +947,67 @@ impl NodeNetwork {
 			return;
 		}
 
-		// Replace value inputs with value nodes
-		for input in node.inputs.iter_mut() {
-			// Skip inputs that are already value nodes
-			if node.implementation == DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()) {
-				break;
-			}
-
-			let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
-			if let NodeInput::Value { tagged_value, exposed } = previous_input {
-				let value_node_id = gen_id();
-				let merged_node_id = map_ids(id, value_node_id);
-				let mut original_location = node.original_location.clone();
-				if let Some(path) = &mut original_location.path {
-					path.push(value_node_id);
+		// Skip nodes that are already value nodes
+		if node.implementation != DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()) {
+			// Replace value exports with value nodes, added inside nested network
+			if let DocumentNodeImplementation::Network(nested_network) = &mut node.implementation {
+				for export in nested_network.exports.iter_mut() {
+					let previous_export = std::mem::replace(export, NodeInput::network(concrete!(()), 0));
+					if let NodeInput::Value { tagged_value, exposed } = previous_export {
+						let value_node_id = gen_id();
+						let merged_node_id = map_ids(id, value_node_id);
+						let mut original_location = node.original_location.clone();
+						if let Some(path) = &mut original_location.path {
+							path.push(value_node_id);
+						}
+						nested_network.nodes.insert(
+							merged_node_id,
+							DocumentNode {
+								name: "Value".into(),
+								inputs: vec![NodeInput::Value { tagged_value, exposed }],
+								implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+								original_location,
+								..Default::default()
+							},
+						);
+						*export = NodeInput::Node {
+							node_id: merged_node_id,
+							output_index: 0,
+							lambda: false,
+						};
+					} else {
+						*export = previous_export;
+					}
 				}
-				self.nodes.insert(
-					merged_node_id,
-					DocumentNode {
-						name: "Value".into(),
-						inputs: vec![NodeInput::Value { tagged_value, exposed }],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
-						original_location,
-						..Default::default()
-					},
-				);
-				*input = NodeInput::Node {
-					node_id: merged_node_id,
-					output_index: 0,
-					lambda: false,
-				};
-			} else {
-				*input = previous_input;
+			}
+			// Replace value inputs with value nodes, added to flattened network
+			for input in node.inputs.iter_mut() {
+				let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
+				if let NodeInput::Value { tagged_value, exposed } = previous_input {
+					let value_node_id = gen_id();
+					let merged_node_id = map_ids(id, value_node_id);
+					let mut original_location = node.original_location.clone();
+					if let Some(path) = &mut original_location.path {
+						path.push(value_node_id);
+					}
+					self.nodes.insert(
+						merged_node_id,
+						DocumentNode {
+							name: "Value".into(),
+							inputs: vec![NodeInput::Value { tagged_value, exposed }],
+							implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+							original_location,
+							..Default::default()
+						},
+					);
+					*input = NodeInput::Node {
+						node_id: merged_node_id,
+						output_index: 0,
+						lambda: false,
+					};
+				} else {
+					*input = previous_input;
+				}
 			}
 		}
 
@@ -1270,7 +1241,6 @@ mod test {
 
 	fn add_network() -> NodeNetwork {
 		NodeNetwork {
-			imports: vec![NodeId(0), NodeId(0)],
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
 				(
@@ -1303,7 +1273,6 @@ mod test {
 		let mut network = add_network();
 		network.map_ids(|id| NodeId(id.0 + 1));
 		let mapped_add = NodeNetwork {
-			imports: vec![NodeId(1), NodeId(1)],
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				(
@@ -1342,7 +1311,6 @@ mod test {
 		};
 		// TODO: Extend test cases to test nested network
 		let mut extraction_network = NodeNetwork {
-			imports: vec![],
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
 				id_node.clone(),
@@ -1369,7 +1337,6 @@ mod test {
 	#[test]
 	fn flatten_add() {
 		let mut network = NodeNetwork {
-			imports: vec![NodeId(1)],
 			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [(
 				NodeId(1),
@@ -1472,7 +1439,6 @@ mod test {
 
 	fn flat_network() -> NodeNetwork {
 		NodeNetwork {
-			imports: vec![NodeId(10)],
 			exports: vec![NodeInput::node(NodeId(11), 0)],
 			nodes: [
 				(
@@ -1535,7 +1501,6 @@ mod test {
 
 	fn two_node_identity() -> NodeNetwork {
 		NodeNetwork {
-			imports: vec![NodeId(1), NodeId(2)],
 			exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				(
@@ -1565,7 +1530,6 @@ mod test {
 
 	fn output_duplicate(network_outputs: Vec<NodeInput>, result_node_input: NodeInput) -> NodeNetwork {
 		let mut network = NodeNetwork {
-			imports: Vec::new(),
 			exports: network_outputs,
 			nodes: [
 				(

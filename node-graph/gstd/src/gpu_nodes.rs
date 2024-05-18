@@ -169,7 +169,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 
 	log::debug!("inner_network: {inner_network:?}");
 	let network = NodeNetwork {
-		imports: vec![NodeId(2), NodeId(1)], //vec![0, 1],
 		#[cfg(feature = "quantization")]
 		exports: vec![NodeInput::node(NodeId(5), 0)],
 		#[cfg(not(feature = "quantization"))]
@@ -434,7 +433,6 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let compiler = graph_craft::graphene_compiler::Compiler {};
 
 	let network = NodeNetwork {
-		imports: vec![],
 		exports: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: [DocumentNode {
 			name: "BlendOp".into(),

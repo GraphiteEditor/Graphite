@@ -37,7 +37,6 @@ fn main() {
 
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
-		imports: vec![],
 		exports: vec![NodeInput::node(NodeId(0), 0)],
 		previous_outputs: None,
 		nodes: [DocumentNode {
