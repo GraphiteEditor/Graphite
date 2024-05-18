@@ -984,6 +984,9 @@ impl ShapeState {
 
 				selected_points.sort_by(|&a, &b| b.cmp(&a));
 
+				// Required to remove duplicates when the handles and anchors are selected
+				selected_points.dedup();
+
 				let mut last_manipulator_index = 0;
 				let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<ManipulatorGroupId>>> = None;
 				for (i, &manipulator_index) in selected_points.iter().enumerate() {
