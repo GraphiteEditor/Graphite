@@ -560,12 +560,16 @@ Watch this timelapse showing the process of mixing traditional vector art (traci
 <!--                 -->
 <!-- ▛ RECENT NEWS ▜ -->
 <section id="recent-news" class="feature-box-outer">
-	<div class="feature-box-inner">
-		<h1 class="feature-box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
-		<hr />
-		<div class="diptych">
-		<!-- replacements::blog_posts(count = 2) -->
-		</div>
-	</div>
+<div class="feature-box-inner">
+
+<h1 class="feature-box-header">Recent news <span> / </span> <a href="/blog" class="link arrow">More in the blog</a></h1>
+
+---
+
+<div class="diptych">
+<!-- replacements::blog_posts(count = 2) -->
+</div>
+
+</div>
 </section>
 <!-- ▙ RECENT NEWS ▟ -->

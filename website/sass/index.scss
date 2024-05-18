@@ -58,7 +58,7 @@
 // ▛ TAGLINE ▜
 #tagline {
 	p {
-		font-size: calc((10 / 9) * var(--font-size-body));
+		font-size: calc(1rem * 10 / 9);
 
 		@media screen and (max-width: 1400px) {
 			max-width: unset;

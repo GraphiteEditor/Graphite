@@ -1,8 +1,51 @@
-#fundraising {
-	background-color: var(--color-seaside);
-	color: rgba(0, 0, 0, 0.9);
+// #fundraising {
+// 	background-color: var(--color-seaside);
+// 	color: rgba(0, 0, 0, 0.9);
 
-	.graphic {
-		max-width: 400px;
-	}
-}
+// 	.graphic {
+// 		max-width: 400px;
+// 	}
+
+// 	.fundraising {
+// 		margin-top: 20px;
+// 		width: 100%;
+		
+// 		.fundraising-bar {
+// 			width: 100%;
+// 			height: 32px;
+// 			border-radius: 10000px;
+// 			background: var(--color-fog);
+// 			overflow: hidden;
+			
+// 			.fundraising-bar-progress {
+// 				width: calc(var(--fundraising-percent) - (4px * 2) - (32px - 4px * 2));
+// 				padding-left: calc(32px - 4px * 2);
+// 				height: calc(100% - 4px * 2);
+// 				margin: 4px;
+// 				border-radius: 10000px;
+// 				background: linear-gradient(to right, var(--color-navy), var(--color-crimson));
+// 				transition: opacity 1s, width 2s;
+// 			}
+// 		}
+
+// 		.goal-metrics {
+// 			display: flex;
+// 			justify-content: space-between;
+// 			font-weight: 800;
+// 			margin-top: 8px;
+// 			margin-left: 20px;
+// 			width: calc(100% - 40px);
+
+// 			> span {
+// 				transition: opacity 1s;
+// 			}
+// 		}
+
+// 		&.fundraising.loading {
+// 			.goal-metrics > span,
+// 			.fundraising-bar .fundraising-bar-progress {
+// 				opacity: 0;
+// 			}
+// 		}
+// 	}
+// }

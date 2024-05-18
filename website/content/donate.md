@@ -2,7 +2,7 @@
 title = "Donate"
 
 [extra]
-css = ["donate.css"]
+# css = ["donate.css"]
 # js = ["fundraising.js"]
 +++
 
