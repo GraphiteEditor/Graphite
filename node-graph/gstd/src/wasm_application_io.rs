@@ -192,7 +192,7 @@ pub struct RasterizeVectorNode<Footprint, Surface> {
 }
 
 #[node_macro::node_fn(RasterizeVectorNode)]
-async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<SRGBA8> {
+async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	let resolution = footprint.resolution;
@@ -228,7 +228,7 @@ async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footp
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let image = Image::from_raw_buffer(resolution.x, resolution.y, rasterized.data().0);
+	let image = Image::from_image_data(&rasterized.data().0, resolution.x, resolution.y);
 	ImageFrame {
 		image,
 		transform: glam::DAffine2::from_scale(resolution.as_dvec2()),
