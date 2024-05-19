@@ -154,11 +154,14 @@ impl Default for SvgRender {
 	}
 }
 
+#[derive(Default)]
 pub enum ImageRenderMode {
+	#[default]
 	Base64,
 }
 
 /// Static state used whilst rendering
+#[derive(Default)]
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
 	pub image_render_mode: ImageRenderMode,
