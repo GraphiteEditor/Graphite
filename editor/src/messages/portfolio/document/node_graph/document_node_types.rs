@@ -484,6 +484,63 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Rasterize Artwork",
+			category: "Structural",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				imports: vec![NodeId(2), NodeId(2), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Rasterize Vector".to_string(),
+						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::Network(concrete!(Footprint)), NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeVectorNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Artwork",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::VectorData(VectorData::default()), true),
+				},
+				DocumentInputType {
+					name: "Footprint",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(TaggedValue::Footprint(Footprint::default()), true),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::Network(concrete!(WasmEditorApi)),
+				},
+			],
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			// This essentially builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
 			name: "Begin Scope",
 			category: "Ignore",
