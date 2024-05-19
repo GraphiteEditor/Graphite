@@ -982,7 +982,7 @@ impl ShapeState {
 					continue;
 				}
 
-				selected_points.sort_by(|&a, &b| b.cmp(&a));
+				selected_points.sort();
 
 				// Required to remove duplicates when the handles and anchors are selected
 				selected_points.dedup();
