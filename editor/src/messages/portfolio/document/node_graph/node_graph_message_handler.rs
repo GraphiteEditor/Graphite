@@ -1,4 +1,4 @@
-use graph_craft::document::{DocumentNode, FlowType, NodeId, NodeInput, NodeNetwork, Source};
+use graph_craft::document::{DocumentNode, FlowType, NodeId, NodeInput, NodeNetwork, RootNode, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -11,6 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
@@ -295,13 +296,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::EnterNestedNetwork { node } => {
-				if let Some(network) = document_network.nested_network(&self.network) {
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					if network.imports_metadata.0 == node || network.exports_metadata.0 == node {
 						return;
 					}
 
 					if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
 						self.network.push(node);
+					}
+					if let Some(network) = document_network.nested_network_mut(&self.network) {
+						if let Some(NodeInput::Node { node_id, output_index, .. }) = network.exports.get(0) {
+							network.root_node = Some(RootNode {
+								id: *node_id,
+								output_index: *output_index,
+							});
+						}
 					}
 					self.send_graph(document_network, document_metadata, selected_nodes, collapsed, graph_view_overlay_open, responses);
 				}
@@ -345,6 +354,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				for _ in 0..depth_of_nesting {
 					self.network.pop();
+				}
+				if let Some(network) = document_network.nested_network_mut(&self.network) {
+					if let Some(NodeInput::Node { node_id, output_index, .. }) = network.exports.get(0) {
+						network.root_node = Some(RootNode {
+							id: *node_id,
+							output_index: *output_index,
+						});
+					}
 				}
 				self.send_graph(document_network, document_metadata, selected_nodes, collapsed, graph_view_overlay_open, responses);
 
@@ -945,6 +962,13 @@ impl NodeGraphMessageHandler {
 						link_end,
 						link_end_input_index,
 					})
+				} else if let NodeInput::Network { import_index, .. } = *input {
+					Some(FrontendNodeLink {
+						link_start: network.imports_metadata.0,
+						link_start_output_index: import_index,
+						link_end,
+						link_end_input_index,
+					})
 				} else {
 					None
 				}
@@ -966,7 +990,7 @@ impl NodeGraphMessageHandler {
 				links.push(FrontendNodeLink {
 					link_start: *node_id,
 					link_start_output_index: *output_index,
-					link_end: NodeId(0),
+					link_end: network.exports_metadata.0,
 					link_end_input_index: i,
 				})
 			}
@@ -1003,90 +1027,161 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
-			let node_path = vec![node_id];
-			// TODO: This should be based on the graph runtime type inference system in order to change the colors of node connectors to match the data type in use
-			if let Some(document_node_definition) = document_node_types::resolve_document_node_type(&node.name) {
-				// Inputs
-				let mut inputs = {
-					let frontend_graph_inputs = document_node_definition.inputs.iter().enumerate().map(|(index, input_type)| {
-						// Convert the index in all inputs to the index in only the exposed inputs
-						let index = node.inputs.iter().take(index).filter(|input| input.is_exposed()).count();
+			let node_id_path = &[&self.network[..], &[node_id]].concat(); //node id path
+			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, input)| {
+				// Convert the index in all inputs to the index in only the exposed inputs
+				let input_type = self
+					.resolved_types
+					.inputs
+					.get(&Source { node: node_id_path.clone(), index })
+					.cloned()
+					.or_else(|| input.as_value().map(|tagged_value| tagged_value.ty()));
 
-						FrontendGraphInput {
-							data_type: input_type.data_type,
-							name: input_type.name.to_string(),
-							resolved_type: self.resolved_types.inputs.get(&Source { node: node_path.clone(), index }).map(|input| format!("{input:?}")),
-							connected: None,
-						}
-					});
-
-					node.inputs.iter().zip(frontend_graph_inputs).map(|(node_input, mut frontend_graph_input)| {
-						if let NodeInput::Node { node_id: connected_node_id, .. } = node_input {
-							frontend_graph_input.connected = Some(*connected_node_id);
-						}
-						(node_input, frontend_graph_input)
-					})
+				let frontend_data_type = if let Some(input_type) = &input_type {
+					FrontendGraphDataType::with_type(input_type)
+				} else {
+					FrontendGraphDataType::General
 				};
-				let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
-				let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
 
-				// Outputs
-				let mut outputs = document_node_definition.outputs.iter().enumerate().map(|(index, output_type)| {
+				FrontendGraphInput {
+					data_type: frontend_data_type,
+					name: "Placeholder".to_string(),
+					resolved_type: input_type.map(|input| format!("{input:?}")),
+					connected: None,
+				}
+			});
+
+			let mut inputs = node.inputs.iter().zip(frontend_graph_inputs).map(|(node_input, mut frontend_graph_input)| {
+				if let NodeInput::Node { node_id: connected_node_id, .. } = node_input {
+					frontend_graph_input.connected = Some(*connected_node_id);
+				} else if let NodeInput::Network { .. } = node_input {
+					frontend_graph_input.connected = Some(network.imports_metadata.0);
+				}
+				(node_input, frontend_graph_input)
+			});
+
+			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
+			let exposed_inputs = inputs.filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type).collect();
+
+			let output_type = self.resolved_types.outputs.get(&Source { node: node_id_path.clone(), index: 0 }); //node_types.output;
+			let frontend_data_type = if let Some(output_type) = output_type {
+				FrontendGraphDataType::with_type(&output_type)
+			} else {
+				FrontendGraphDataType::General
+			};
+			let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, 0)).unwrap_or(&(Vec::new(), Vec::new())).clone();
+
+			let primary_output = Some(FrontendGraphOutput {
+				data_type: frontend_data_type,
+				name: "Output 1".to_string(),
+				resolved_type: output_type.map(|input| format!("{input:?}")),
+				connected,
+				connected_index,
+			});
+			let mut exposed_outputs = Vec::new();
+
+			// If the node is not a protonode, get types by traversing across exports until a proto node is reached.
+			if let graph_craft::document::DocumentNodeImplementation::Network(internal_network) = &node.implementation {
+				for (index, export) in internal_network.exports.iter().enumerate().skip(1) {
+					let mut current_export = export;
+					let mut current_network = internal_network;
+					let mut current_path = node_id_path.clone();
+					while let NodeInput::Node { node_id, output_index, .. } = current_export {
+						current_path.push(*node_id);
+						let next_node = current_network.nodes.get(node_id).expect("Export node id should always exist");
+						if let graph_craft::document::DocumentNodeImplementation::Network(next_network) = &next_node.implementation {
+							current_network = next_network;
+							current_export = next_network.exports.get(*output_index).expect("Export at output index should always exist");
+						} else {
+							break;
+						}
+					}
+
+					let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
+						//Current export is pointing to a proto node where type can be derived
+						assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
+						self.resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
+					} else if let NodeInput::Value { tagged_value, .. } = current_export {
+						Some(tagged_value.ty())
+					} else if let NodeInput::Network { import_type, .. } = current_export {
+						Some(import_type.clone())
+					} else {
+						None
+					};
+
+					let frontend_data_type = if let Some(output_type) = &output_type {
+						FrontendGraphDataType::with_type(output_type)
+					} else {
+						FrontendGraphDataType::General
+					};
+
 					let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
-					FrontendGraphOutput {
-						data_type: output_type.data_type,
-						name: output_type.name.to_string(),
-						resolved_type: self.resolved_types.outputs.get(&Source { node: node_path.clone(), index }).map(|output| format!("{output:?}")),
+					exposed_outputs.push(FrontendGraphOutput {
+						data_type: frontend_data_type,
+						name: format!("Output {}", index + 1),
+						resolved_type: output_type.map(|input| format!("{input:?}")),
 						connected,
 						connected_index,
-					}
-				});
-				let primary_output = node.has_primary_output.then(|| outputs.next()).flatten();
-				let exposed_outputs = outputs.collect::<Vec<_>>();
-
-				// Errors
-				let errors = self.node_graph_errors.iter().find(|error| error.node_path.starts_with(&node_path)).map(|error| error.error.clone());
-				nodes.push(FrontendNode {
-					id: node_id,
-					is_layer: node.is_layer,
-					can_be_layer: self.eligible_to_be_layer(network, node_id),
-					alias: Self::untitled_layer_label(node),
-					name: node.name.clone(),
-					primary_input,
-					exposed_inputs,
-					primary_output,
-					exposed_outputs,
-					position: node.metadata.position.into(),
-					previewed: network.outputs_contain(node_id),
-					visible: node.visible,
-					locked: node.locked,
-					errors: errors.map(|e| format!("{e:?}")),
-					ui_only: false,
-				});
-			} else {
-				//TODO: Display nodes without definition by using compiled network
+					});
+				}
 			}
+			nodes.push(FrontendNode {
+				id: node_id,
+				is_layer: node.is_layer,
+				can_be_layer: self.eligible_to_be_layer(network, node_id),
+				alias: Self::untitled_layer_label(node),
+				name: node.name.clone(),
+				primary_input,
+				exposed_inputs,
+				primary_output,
+				exposed_outputs,
+				position: node.metadata.position.into(),
+				previewed: network.outputs_contain(node_id),
+				visible: node.visible,
+				locked: node.locked,
+				errors: None,
+				ui_only: false,
+			});
 		}
-		let mut export_node_inputs = Vec::new();
-		for (i, export) in network.exports.iter().enumerate() {
-			//First export should visually connect to the root node
-			if i == 0 {
-				export_node_inputs.push(FrontendGraphInput {
-					data_type: super::utility_types::FrontendGraphDataType::General,
-					name: format!("Export {}", i + 1),
-					resolved_type: None,
-					connected: network.root_node.map(|root_node| root_node.id),
-				});
-			} else {
-				let export_input_node = if let NodeInput::Node { node_id, .. } = export { Some(*node_id) } else { None };
 
-				export_node_inputs.push(FrontendGraphInput {
-					data_type: super::utility_types::FrontendGraphDataType::General,
-					name: format!("Export {}", i + 1),
-					resolved_type: None,
-					connected: export_input_node,
-				});
+		// Add import/export UI only nodes
+		let mut export_node_inputs = Vec::new();
+		for (index, export) in network.exports.iter().enumerate() {
+			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, .. } = export {
+				let node_id_path = &[&self.network[..], &[*node_id]].concat();
+				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index });
+
+				if let Some(input_type) = input_type {
+					(FrontendGraphDataType::with_type(&input_type), Some(input_type.clone()))
+				} else {
+					(FrontendGraphDataType::General, None)
+				}
 			}
+			// If type should only be determined from resolved_types then remove this
+			else if let NodeInput::Value { tagged_value, .. } = export {
+				(FrontendGraphDataType::with_tagged_value(tagged_value), Some(tagged_value.ty()))
+			} else if let NodeInput::Network { import_type, .. } = export {
+				(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
+			} else {
+				(FrontendGraphDataType::General, None)
+			};
+
+			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
+			let connected = if index == 0 {
+				network.root_node.map(|root_node| root_node.id)
+			} else {
+				if let NodeInput::Node { node_id, .. } = export {
+					Some(*node_id)
+				} else {
+					None
+				}
+			};
+			export_node_inputs.push(FrontendGraphInput {
+				data_type: frontend_data_type,
+				name: format!("Export {}", index + 1),
+				resolved_type: input_type.map(|input| format!("{input:?}")),
+				connected,
+			});
 		}
 		nodes.push(FrontendNode {
 			id: network.exports_metadata.0,
@@ -1106,13 +1201,35 @@ impl NodeGraphMessageHandler {
 			ui_only: true,
 		});
 		let mut import_node_outputs = Vec::new();
-		for i in 0..number_of_imports {
-			let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, i)).unwrap_or(&(Vec::new(), Vec::new())).clone();
+		for index in 0..number_of_imports {
+			let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
+			let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned().or_else(|| {
+				// If type should only be determined from resolved_types then remove this
+				let mut parent_network_path = self.network.clone();
+				let Some(parent_node_id) = parent_network_path.pop() else {
+					log::error!("Could not get parent node id from {:?}", parent_network_path);
+					return None;
+				};
+				let Some(parent_network) = document_network.nested_network(&parent_network_path) else {
+					log::error!("Could not get network for node {parent_node_id}");
+					return None;
+				};
+				let Some(parent_node) = parent_network.nodes.get(&parent_node_id) else {
+					log::error!("Could not get node for {parent_node_id}");
+					return None;
+				};
+				parent_node.inputs.get(index).and_then(|input| input.as_value().map(|tagged_value| tagged_value.ty()))
+			});
+			let frontend_data_type = if let Some(input_type) = input_type.clone() {
+				FrontendGraphDataType::with_type(&input_type)
+			} else {
+				FrontendGraphDataType::General
+			};
 
 			import_node_outputs.push(FrontendGraphOutput {
-				data_type: super::utility_types::FrontendGraphDataType::General,
-				name: format!("Import {}", i + 1),
-				resolved_type: None,
+				data_type: frontend_data_type,
+				name: format!("Import {}", index + 1),
+				resolved_type: input_type.map(|input| format!("{input:?}")),
 				connected,
 				connected_index,
 			});
@@ -1214,8 +1331,9 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
 		};
-		//let network = &crate::messages::portfolio::document::node_graph::document_node_types::wrap_network_in_scope(document_network.clone(), generate_uuid());
-
+		// View encapsulating network
+		// let mut network = &mut crate::messages::portfolio::document::node_graph::document_node_types::wrap_network_in_scope(document_network.clone(), generate_uuid());
+		// network.root_node = Some(RootNode { id: NodeId(3), output_index: 0 });
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
 		metadata.load_structure(network, selected_nodes);
@@ -1295,7 +1413,7 @@ impl NodeGraphMessageHandler {
 	/// Tries to remove a node from the network, returning true on success.
 	fn remove_node(&mut self, document_network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_id: NodeId, responses: &mut VecDeque<Message>, reconnect: bool) -> bool {
 		if !Self::remove_references_from_network(document_network, node_id, reconnect) {
-			log::debug!("could not remove_references_from_network");
+			log::error!("could not remove_references_from_network");
 			return false;
 		}
 		document_network.nodes.remove(&node_id);
@@ -1326,12 +1444,17 @@ impl NodeGraphMessageHandler {
 		}
 
 		let Some(node) = document_network.nodes.get(&node_id) else { return false };
-		let Some(definition) = resolve_document_node_type(&node.name) else { return false };
 
 		let exposed_value_count = node.inputs.iter().filter(|input| if let NodeInput::Value { exposed, .. } = input { *exposed } else { false }).count();
 		let node_input_count = node.inputs.iter().filter(|input| if let NodeInput::Node { .. } = input { true } else { false }).count();
 		let input_count = node_input_count + exposed_value_count;
-		let output_count = definition.outputs.len();
+
+		let output_count = if let graph_craft::document::DocumentNodeImplementation::Network(nested_network) = &node.implementation {
+			nested_network.exports.len()
+		} else {
+			// Node is a protonode, so it must have 1 output
+			1
+		};
 
 		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
 		node.has_primary_output && output_count == 1 && (input_count == 1 || input_count == 2)

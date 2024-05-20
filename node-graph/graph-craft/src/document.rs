@@ -439,7 +439,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Network { .. } => false,
+			NodeInput::Network { .. } => true,
 			NodeInput::Inline(_) => false,
 		}
 	}
@@ -839,7 +839,7 @@ impl NodeNetwork {
 			} else {
 				node.original_location = OriginalLocation {
 					path: Some(new_path),
-					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
+					inputs_exposed: vec![true; node.inputs.len()],
 					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
 					..Default::default()
 				}

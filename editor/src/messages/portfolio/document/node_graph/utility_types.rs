@@ -1,5 +1,6 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
+use graphene_core::Type;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -44,6 +45,44 @@ impl FrontendGraphDataType {
 			TaggedValue::Artboard(_) | TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			TaggedValue::Palette(_) => Self::Palette,
 			_ => Self::General,
+		}
+	}
+	pub fn with_type(input: &Type) -> Self {
+		match input {
+			Type::Generic(_) => {
+				log::debug!("Generic type should be resolved");
+				Self::General
+			}
+			Type::Concrete(concrete_type) => {
+				let Some(internal_id) = concrete_type.id else {
+					return Self::General;
+				};
+				use graphene_core::raster::Color;
+				use std::any::TypeId;
+				match internal_id {
+					x if x == TypeId::of::<String>() => Self::Text,
+					x if x == TypeId::of::<f64>() || x == TypeId::of::<u32>() || x == TypeId::of::<glam::DAffine2>() => Self::Number,
+					x if x == TypeId::of::<bool>() => Self::Boolean,
+					x if x == TypeId::of::<glam::f64::DVec2>() || x == TypeId::of::<glam::u32::UVec2>() || x == TypeId::of::<glam::IVec2>() => Self::Vector,
+					x if x == TypeId::of::<graphene_core::raster::Image<Color>>() || x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => Self::Raster,
+					x if x == TypeId::of::<Color>() => Self::Color,
+					x if x == TypeId::of::<Vec<Color>>() => Self::Palette,
+					x if x == TypeId::of::<std::sync::Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>()
+						|| x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>()
+						|| x == TypeId::of::<graphene_core::vector::VectorData>() =>
+					{
+						Self::Subpath
+					}
+					x if x == TypeId::of::<graphene_core::GraphicGroup>() => Self::GraphicGroup,
+					x if x == TypeId::of::<graphene_core::Artboard>() || x == TypeId::of::<graphene_core::ArtboardGroup>() => Self::Artboard,
+					_ => Self::General,
+				}
+			}
+			Type::Fn(_, output) => Self::with_type(output),
+			Type::Future(_) => {
+				log::debug!("Future type not used");
+				Self::General
+			}
 		}
 	}
 }

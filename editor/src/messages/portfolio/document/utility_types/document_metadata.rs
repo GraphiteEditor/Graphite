@@ -227,7 +227,9 @@ impl DocumentMetadata {
 			}
 		}
 
-		selected_nodes.0.retain(|node| graph.nodes.contains_key(node));
+		selected_nodes
+			.0
+			.retain(|node| graph.nodes.contains_key(node) || graph.exports_metadata.0 == *node || graph.imports_metadata.0 == *node);
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}

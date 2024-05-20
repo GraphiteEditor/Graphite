@@ -2753,7 +2753,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")
-		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::default());
+		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::position((-12, -3)));
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
@@ -2764,6 +2764,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: vec![NodeInput::node(NodeId(0), 1)],
+		metadata: DocumentNodeMetadata::position((-10, 0)),
 		..Default::default()
 	};
 
@@ -2804,7 +2805,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 			.collect(),
 			..Default::default()
 		}),
-		metadata: DocumentNodeMetadata::position((8, 4)),
+		metadata: DocumentNodeMetadata::position((-3, 0)),
 		..Default::default()
 	};
 
@@ -2815,7 +2816,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		render_node,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::default()),
+			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::position((2, -3))),
 	];
 
 	NodeNetwork {
