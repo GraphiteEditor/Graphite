@@ -421,7 +421,7 @@ pub struct BlendGpuImageNode<Background, B, O> {
 }
 
 #[node_macro::node_fn(BlendGpuImageNode)]
-async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f32) -> ImageFrame<Color> {
+async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<Color>, blend_mode: BlendMode, opacity: f64) -> ImageFrame<Color> {
 	let foreground_size = DVec2::new(foreground.image.width as f64, foreground.image.height as f64);
 	let background_size = DVec2::new(background.image.width as f64, background.image.height as f64);
 	// Transforms a point from the background image to the foreground image
@@ -457,7 +457,7 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 							i1[(_global_index.y * i0 + _global_index.x) as usize],
 						))"#,
 					TaggedValue::BlendMode(blend_mode).to_primitive_string(),
-					TaggedValue::F32(opacity).to_primitive_string(),
+					TaggedValue::F64(opacity).to_primitive_string(),
 				),
 				concrete![Color],
 			))],

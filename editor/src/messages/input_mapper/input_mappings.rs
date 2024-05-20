@@ -15,13 +15,13 @@ use glam::DVec2;
 impl From<MappingVariant> for Mapping {
 	fn from(value: MappingVariant) -> Self {
 		match value {
-			MappingVariant::Default => default_mapping(),
+			MappingVariant::Default => input_mappings(),
 			MappingVariant::ZoomWithScroll => zoom_with_scroll(),
 		}
 	}
 }
 
-pub fn default_mapping() -> Mapping {
+pub fn input_mappings() -> Mapping {
 	use InputMapperMessage::*;
 	use Key::*;
 
@@ -61,7 +61,7 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
 		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
 		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedLocked),
-		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedLayers),
+		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedAsLayersOrNodes),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
@@ -292,6 +292,9 @@ pub fn default_mapping() -> Mapping {
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyP); modifiers=[Alt], action_dispatch=DocumentMessage::DebugPrintDocument),
+		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
+		entry!(KeyDown(KeyS); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleSnapping),
+		entry!(KeyDown(KeyG); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleGridVisibility),
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyY); modifiers=[Accel], action_dispatch=DocumentMessage::Redo),
 		entry!(KeyDown(KeyZ); modifiers=[Accel], action_dispatch=DocumentMessage::Undo),
@@ -422,7 +425,7 @@ pub fn default_mapping() -> Mapping {
 pub fn zoom_with_scroll() -> Mapping {
 	use InputMapperMessage::*;
 
-	let mut mapping = default_mapping();
+	let mut mapping = input_mappings();
 
 	let remove = [
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),

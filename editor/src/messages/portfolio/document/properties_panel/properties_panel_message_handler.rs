@@ -43,7 +43,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 
 				let options_bar = vec![LayoutGroup::Row {
 					widgets: vec![
-						IconLabel::new("File").tooltip("Document").widget_holder(),
+						IconLabel::new("File").tooltip("Document name").widget_holder(),
 						Separator::new(SeparatorType::Related).widget_holder(),
 						TextInput::new(document_name)
 							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())

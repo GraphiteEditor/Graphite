@@ -322,6 +322,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
 
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
 
 	widgets
@@ -353,19 +354,6 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		])
-	} else if let NodeInput::Value {
-		tagged_value: TaggedValue::F32(x),
-		exposed: false,
-	} = document_node.inputs[index]
-	{
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32((x.value.unwrap()) as f32), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		])
@@ -2252,7 +2240,12 @@ pub fn generate_node_properties(document_node: &DocumentNode, node_id: NodeId, c
 		Some(document_node_type) => (document_node_type.properties)(document_node, node_id, context),
 		None => unknown_node_properties(document_node),
 	};
-	LayoutGroup::Section { name, layout }
+	LayoutGroup::Section {
+		name,
+		visible: document_node.visible,
+		id: node_id.0,
+		layout,
+	}
 }
 
 pub fn stroke_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

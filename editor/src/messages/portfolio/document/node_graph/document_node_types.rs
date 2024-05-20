@@ -197,9 +197,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "General",
 			is_layer: true,
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(2), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				imports: vec![NodeId(1), NodeId(0)],
+				exports: vec![NodeOutput::new(NodeId(3), 0)],
 				nodes: [
+					// Secondary (left) input type coercion
 					(
 						NodeId(0),
 						DocumentNode {
@@ -209,24 +210,30 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							..Default::default()
 						},
 					),
-					// The monitor node is used to display a thumbnail in the UI.
-					// TODO: Check if thumbnail is reversed
+					// Primary (bottom) input type coercion
 					(
 						NodeId(1),
+						DocumentNode {
+							name: "To Graphic Group".to_string(),
+							inputs: vec![NodeInput::Network(generic!(T))],
+							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
+							..Default::default()
+						},
+					),
+					// The monitor node is used to display a thumbnail in the UI
+					(
+						NodeId(2),
 						DocumentNode {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							..monitor_node()
 						},
 					),
 					(
-						NodeId(2),
+						NodeId(3),
 						DocumentNode {
 							name: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
-							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
-								NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(graphene_core::GraphicGroup)))),
-							],
+							inputs: vec![NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
 							..Default::default()
 						},
@@ -690,6 +697,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>")),
 						..Default::default()
 					},
+					// TODO: Make noise pattern node resolution aware and remove the cull node
 					DocumentNode {
 						name: "Cull".to_string(),
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
@@ -945,6 +953,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					// The input image feeds into the identity, then we take its passed-through value when the other channels are reading from it instead of the original input.
 					// We do this for technical restrictions imposed by Graphene which doesn't allow an input to feed into multiple interior nodes in the subgraph.
 					// Diagram: <https://files.keavon.com/-/AchingSecondHypsilophodon/capture.png>
+					// TODO: Remove this limitation by either making the `imports` above into a double-vec or making each of these DocumentNodes request their imported data based on its index.
 					DocumentNode {
 						name: "Identity".to_string(),
 						inputs: vec![NodeInput::Network(concrete!(ImageFrame<Color>))],
@@ -2230,30 +2239,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Ellipse",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Ellipse Generator".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(concrete!(f64)), NodeInput::Network(concrete!(f64))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::EllipseGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Radius X", TaggedValue::F64(50.), false),
@@ -2266,37 +2252,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Rectangle",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Rectangle Generator".to_string(),
-						inputs: vec![
-							NodeInput::Network(concrete!(())),
-							NodeInput::Network(concrete!(f64)),
-							NodeInput::Network(concrete!(f64)),
-							NodeInput::Network(concrete!(bool)),
-							NodeInput::Network(generic!(T)),
-							NodeInput::Network(concrete!(bool)),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Size X", TaggedValue::F64(100.), false),
@@ -2312,30 +2268,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Regular Polygon",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Regular Polygon Generator".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(f64))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::RegularPolygonGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Sides", TaggedValue::U32(6), false),
@@ -2348,35 +2281,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Star",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Star Generator".to_string(),
-						inputs: vec![
-							NodeInput::Network(concrete!(())),
-							NodeInput::Network(concrete!(u32)),
-							NodeInput::Network(concrete!(f64)),
-							NodeInput::Network(concrete!(f64)),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::StarGenerator<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Sides", TaggedValue::U32(5), false),
@@ -2390,30 +2295,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Line",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Line Generator".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(concrete!(DVec2)), NodeInput::Network(concrete!(DVec2))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::LineGenerator<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::LineGenerator<_, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
@@ -2426,30 +2308,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Spline",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Spline Generator".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(())), NodeInput::Network(concrete!(Vec<DVec2>))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::SplineGenerator<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::SplineGenerator<_>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Points", TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
@@ -2461,33 +2320,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Shape",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Path Generator".to_string(),
-						inputs: vec![
-							NodeInput::Network(concrete!(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>)),
-							NodeInput::Network(concrete!(Vec<graphene_core::vector::PointId>)),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::PathGenerator<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			inputs: vec![
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
 				DocumentInputType::value("Colinear Manipulators", TaggedValue::PointIds(vec![]), false),
@@ -2556,35 +2389,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Text",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0), NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
-				nodes: vec![
-					DocumentNode {
-						name: "Text Generator".to_string(),
-						inputs: vec![
-							NodeInput::Network(concrete!(application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>)),
-							NodeInput::Network(concrete!(String)),
-							NodeInput::Network(concrete!(graphene_core::text::Font)),
-							NodeInput::Network(concrete!(f64)),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::text::TextGeneratorNode<_, _, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cull".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>")),
-						manual_composition: Some(concrete!(Footprint)),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
+			implementation: DocumentNodeImplementation::proto("graphene_core::text::TextGeneratorNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
@@ -3043,7 +2848,6 @@ impl DocumentNodeDefinition {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
-	network.resolve_empty_stacks();
 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 	for id in node_ids {
 		network.flatten(id);

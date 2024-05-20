@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}{{ section.title }}{% endblock title %}
+{%- block head -%}{%- set page = page | default(value = section) -%}
+{%- set title = page.title -%}
+{%- endblock head -%}
 
-{% block content %}
-{{ section.content | safe }}
-{% endblock content %}
+{%- block content -%}{%- set page = page | default(value = section) -%}
+{{ page.content | safe }}
+{%- endblock content -%}

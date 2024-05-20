@@ -283,7 +283,7 @@ impl TextToolData {
 				text: String::new(),
 				font: editing_text.font.clone(),
 				size: editing_text.font_size,
-				parent: document.new_layer_parent(),
+				parent: document.new_layer_parent(true),
 				insert_index: -1,
 			});
 			responses.add(GraphOperationMessage::FillSet {

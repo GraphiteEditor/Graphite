@@ -235,7 +235,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Section { name: _, layout }) => {
+			Some(LayoutGroup::Section { layout, .. }) => {
 				for layout_row in layout {
 					self.stack.push(layout_row);
 				}
@@ -276,7 +276,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Section { name: _, layout }) => {
+			Some(LayoutGroup::Section { layout, .. }) => {
 				for layout_row in layout {
 					self.stack.push(layout_row);
 				}
@@ -301,8 +301,9 @@ pub enum LayoutGroup {
 		#[serde(rename = "rowWidgets")]
 		widgets: Vec<WidgetHolder>,
 	},
+	// TODO: Move this from being a child of `enum LayoutGroup` to being a child of `enum Layout`
 	#[serde(rename = "section")]
-	Section { name: String, layout: SubLayout },
+	Section { name: String, visible: bool, id: u64, layout: SubLayout },
 }
 
 impl Default for LayoutGroup {
@@ -378,28 +379,43 @@ impl LayoutGroup {
 			(
 				Self::Section {
 					name: current_name,
+					visible: current_visible,
+					id: current_id,
 					layout: current_layout,
 				},
-				Self::Section { name: new_name, layout: new_layout },
+				Self::Section {
+					name: new_name,
+					visible: new_visible,
+					id: new_id,
+					layout: new_layout,
+				},
 			) => {
-				// If the lengths are different then resend the entire panel
+				// Resend the entire panel if the lengths, names, visibility, or node IDs are different
 				// TODO: Diff insersion and deletion of items
-				if *current_name != new_name || current_layout.len() != new_layout.len() {
+				if current_layout.len() != new_layout.len() || *current_name != new_name || *current_visible != new_visible || *current_id != new_id {
 					// Update self to reflect new changes
 					*current_name = new_name.clone();
+					*current_visible = new_visible;
+					*current_id = new_id;
 					*current_layout = new_layout.clone();
 
 					// Push an update layout group to the diff
-					let new_value = DiffUpdate::LayoutGroup(Self::Section { name: new_name, layout: new_layout });
+					let new_value = DiffUpdate::LayoutGroup(Self::Section {
+						name: new_name,
+						visible: new_visible,
+						id: new_id,
+						layout: new_layout,
+					});
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
-					return;
 				}
 				// Diff all of the children
-				for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout).enumerate() {
-					widget_path.push(index);
-					current_child.diff(new_child, widget_path, widget_diffs);
-					widget_path.pop();
+				else {
+					for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout).enumerate() {
+						widget_path.push(index);
+						current_child.diff(new_child, widget_path, widget_diffs);
+						widget_path.pop();
+					}
 				}
 			}
 			(current, new) => {

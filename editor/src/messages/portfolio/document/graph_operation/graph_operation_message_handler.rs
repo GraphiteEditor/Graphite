@@ -1,5 +1,6 @@
 use super::transform_utils::{self, LayerBounds};
 use super::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
@@ -36,10 +37,182 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
+			GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index } => {
+				let shift = nodes
+					.get(&NodeId(0))
+					.and_then(|node| {
+						document_network
+							.nodes
+							.get(&parent.to_node())
+							.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
+					})
+					.unwrap_or_default();
+
+				for (old_id, mut document_node) in nodes {
+					// Shift copied node
+					document_node.metadata.position += shift;
+
+					// Get the new, non-conflicting id
+					let node_id = *new_ids.get(&old_id).unwrap();
+					document_node = document_node.map_ids(NodeGraphMessageHandler::default_node_input, &new_ids);
+
+					// Insert node into network
+					document_network.nodes.insert(node_id, document_node);
+				}
+
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
+					log::error!("Could not get layer node when adding as child");
+					return;
+				};
+
+				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
+				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent.to_node(), insert_index);
+
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+
+				if let Some(upstream_node) = upstream_node {
+					responses.add(GraphOperationMessage::InsertNodeBetween {
+						post_node_id: downstream_node,
+						post_node_input_index: input_index,
+						insert_node_output_index: 0,
+						insert_node_id: *new_layer_id,
+						insert_node_input_index: 0,
+						pre_node_output_index: 0,
+						pre_node_id: upstream_node,
+					})
+				} else {
+					responses.add(NodeGraphMessage::SetNodeInput {
+						node_id: downstream_node,
+						input_index: input_index,
+						input: NodeInput::node(*new_layer_id, 0),
+					})
+				}
+
+				responses.add(NodeGraphMessage::ShiftUpstream {
+					node_id: *new_layer_id,
+					shift: IVec2::new(0, 3),
+					shift_self: true,
+				});
+
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
+				let Some(node_to_disconnect) = document_network.nodes.get(&node_id) else {
+					warn!("Node {} not found in DisconnectInput", node_id);
+					return;
+				};
+				let Some(node_type) = resolve_document_node_type(&node_to_disconnect.name) else {
+					warn!("Node {} not in library", node_to_disconnect.name);
+					return;
+				};
+				let Some(existing_input) = node_to_disconnect.inputs.get(input_index) else {
+					warn!("Node does not have an input at the selected index");
+					return;
+				};
+
+				let mut input = node_type.inputs[input_index].default.clone();
+				if let NodeInput::Value { exposed, .. } = &mut input {
+					*exposed = existing_input.is_exposed();
+				}
+				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				}
+			}
+			GraphOperationMessage::InsertLayerAtStackIndex { layer_id, parent, insert_index } => {
+				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(&document_network, parent, insert_index);
+
+				// `layer_to_move` should always correspond to a node.
+				let Some(layer_to_move_node) = document_network.nodes.get(&layer_id) else {
+					log::error!("Layer node not found when inserting node {} at index {}", layer_id, insert_index);
+					return;
+				};
+
+				// Move current layer to post node.
+				let post_node = document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
+				let current_position = layer_to_move_node.metadata.position;
+				let new_position = post_node.metadata.position;
+
+				// If moved to top of a layer stack, move to the left of the post node. If moved within a stack, move directly on the post node. The stack will be shifted down later.
+				let offset_to_post_node = if insert_index == 0 {
+					new_position - current_position - IVec2::new(8, 0)
+				} else {
+					new_position - current_position
+				};
+
+				responses.add(NodeGraphMessage::ShiftUpstream {
+					node_id: layer_id,
+					shift: offset_to_post_node,
+					shift_self: true,
+				});
+
+				// Update post_node input to layer_to_move.
+				if let Some(upstream_node) = pre_node_id {
+					responses.add(GraphOperationMessage::InsertNodeBetween {
+						post_node_id: post_node_id,
+						post_node_input_index: post_node_input_index,
+						insert_node_output_index: 0,
+						insert_node_id: layer_id,
+						insert_node_input_index: 0,
+						pre_node_output_index: 0,
+						pre_node_id: upstream_node,
+					})
+				} else {
+					responses.add(NodeGraphMessage::SetNodeInput {
+						node_id: post_node_id,
+						input_index: post_node_input_index,
+						input: NodeInput::node(layer_id, 0),
+					})
+				}
+
+				// Shift stack down, starting at the moved node.
+				responses.add(NodeGraphMessage::ShiftUpstream {
+					node_id: layer_id,
+					shift: IVec2::new(0, 3),
+					shift_self: true,
+				});
+			}
+			GraphOperationMessage::InsertNodeBetween {
+				post_node_id,
+				post_node_input_index,
+				insert_node_output_index,
+				insert_node_id,
+				insert_node_input_index,
+				pre_node_output_index,
+				pre_node_id,
+			} => {
+				let Some(post_node) = document_network.nodes.get(&post_node_id) else {
+					error!("Post node not found");
+					return;
+				};
+				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
+					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
+					return;
+				};
+				let Some(insert_node) = document_network.nodes.get(&insert_node_id) else {
+					error!("Insert node not found");
+					return;
+				};
+				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
+					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
+					return;
+				};
+
+				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: post_node_id,
+					input_index: post_node_input_index,
+					input: post_input,
+				});
+
+				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: insert_node_id,
+					input_index: insert_node_input_index,
+					input: insert_input,
+				});
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
@@ -106,67 +279,78 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.brush_modify(strokes);
 				}
 			}
-			GraphOperationMessage::MoveUpstreamSiblingsToChild { new_parent, upstream_sibling_ids } => {
-				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
-				for node_to_move in upstream_sibling_ids.iter().rev() {
-					// Connect pre node to post node, or disconnect pre node if post node doesn't exist
-					let mut pre_node_id = new_parent;
-					loop {
-						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&pre_node_id).and_then(|node| node.inputs.get(0)) else {
-							log::error!("End of stack should never be reached");
-							return;
-						};
-						if *node_id == *node_to_move {
-							break;
-						}
-						pre_node_id = *node_id;
-					}
-
-					if let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get(&node_to_move).and_then(|node| node.inputs.get(0)) {
-						let post_node_id = *node_id;
-						let Some(NodeInput::Node { node_id, .. }) = document_network.nodes.get_mut(&pre_node_id).and_then(|node| node.inputs.get_mut(0)) else {
-							log::error!("Pre node should always have primary input");
-							return;
-						};
-						*node_id = post_node_id;
-					} else {
-						DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&pre_node_id).expect("Upstream sibling should always exist"), 0);
-					}
-
-					// Connect upstream sibling to the secondary input of the parent
-					let Some(parent_secondary_input) = document_network.nodes.get(&new_parent).and_then(|node| node.inputs.get(1)) else {
-						log::error!("Could not get child node input for current node");
-						return;
-					};
-
-					// Insert upstream_sibling_node at top of group stack
-					if let NodeInput::Node { node_id, .. } = parent_secondary_input {
-						// If there is already a node at the top of the stack, insert upstream_sibling_node in between
-						let current_child = *node_id;
-						let Some(upstream_sibling_input) = document_network.nodes.get_mut(&node_to_move).and_then(|node| node.inputs.get_mut(0)) else {
-							log::error!("Could not get upstream sibling node input");
-							return;
-						};
-						*upstream_sibling_input = NodeInput::node(current_child, 0);
-					}
-
-					let Some(parent_secondary_input_mut) = document_network.nodes.get_mut(&new_parent).and_then(|node| node.inputs.get_mut(1)) else {
-						log::error!("Could not get child node input for current node");
-						return;
-					};
-
-					*parent_secondary_input_mut = NodeInput::node(*node_to_move, 0);
-				}
-
-				let Some(most_upstream_sibling) = upstream_sibling_ids.last() else {
+			GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent } => {
+				let group_layer = LayerNodeIdentifier::new(new_parent, &document_network);
+				let Some(group_parent) = group_layer.parent(&document_metadata) else {
+					log::error!("Could not find parent for layer {:?}", group_layer);
 					return;
 				};
-				DocumentMessageHandler::disconnect_input(document_network.nodes.get_mut(&most_upstream_sibling).expect("Upstream sibling should always exist"), 0);
 
-				let top_of_stack = upstream_sibling_ids.first().expect("Upstream nodes to move cannot be empty");
-				let upstream_shift = IVec2::new(-8, 0);
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				modify_inputs.shift_upstream(*top_of_stack, upstream_shift, true);
+				// Create a vec of nodes to move with all selected layers in the parent layer child stack, as well as each non layer sibling directly upstream of the selected layer
+				let mut selected_siblings = Vec::new();
+
+				// Skip over horizontal non layer node chain that feeds into parent
+				let Some(mut current_stack_node_id) = group_parent.first_child(&document_metadata).and_then(|current_stack_node| Some(current_stack_node.to_node())) else {
+					log::error!("Folder should always have child");
+					return;
+				};
+				let current_stack_node_id = &mut current_stack_node_id;
+
+				loop {
+					let mut current_stack_node = document_network.nodes.get(current_stack_node_id).expect("Current stack node id should always be a node");
+
+					// Check if the current stack node is a selected layer
+					if selected_nodes
+						.selected_layers(&document_metadata)
+						.any(|selected_node_id| selected_node_id.to_node() == *current_stack_node_id)
+					{
+						selected_siblings.push(*current_stack_node_id);
+
+						// Push all non layer sibling nodes directly upstream of the selected layer
+						loop {
+							let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
+
+							let next_node = document_network.nodes.get(node_id).expect("Stack node id should always be a node");
+
+							// If the next node is a layer, immediately break and leave current stack node as the non layer node
+							if next_node.is_layer {
+								break;
+							}
+
+							*current_stack_node_id = *node_id;
+							current_stack_node = next_node;
+
+							selected_siblings.push(*current_stack_node_id);
+						}
+					}
+
+					// Get next node
+					let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
+					*current_stack_node_id = *node_id;
+				}
+
+				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
+				for node_to_move in selected_siblings.iter().rev() {
+					// Connect downstream node to upstream node, or disconnect downstream node if upstream node doesn't exist
+					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+						node_id: *node_to_move,
+						reconnect_to_sibling: true,
+					});
+
+					responses.add(GraphOperationMessage::InsertLayerAtStackIndex {
+						layer_id: *node_to_move,
+						parent: new_parent,
+						insert_index: 0,
+					});
+				}
+
+				let Some(most_upstream_sibling) = selected_siblings.last() else {
+					return;
+				};
+				responses.add(GraphOperationMessage::DisconnectInput {
+					node_id: *most_upstream_sibling,
+					input_index: 0,
+				});
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);

@@ -296,7 +296,7 @@ impl<F: Fn(&MessageDiscriminant) -> Vec<KeysGroup>> MessageHandler<LayoutMessage
 	}
 
 	fn actions(&self) -> ActionList {
-		actions!()
+		actions!(LayoutMessageDiscriminant;)
 	}
 }
 
@@ -309,30 +309,35 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Vec<KeysGroup>,
 	) {
-		// We don't diff the menu bar layout yet.
-		if matches!(new_layout, Layout::MenuLayout(_)) {
-			// Skip update if the same
-			if self.layouts[layout_target as usize] == new_layout {
-				return;
+		match new_layout {
+			Layout::WidgetLayout(_) => {
+				let mut widget_diffs = Vec::new();
+				self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
+
+				// Skip sending if no diff.
+				if widget_diffs.is_empty() {
+					return;
+				}
+
+				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
 			}
-			// Update the backend storage
-			self.layouts[layout_target as usize] = new_layout;
-			// Update the UI
-			responses.add(FrontendMessage::UpdateMenuBarLayout {
-				layout_target,
-				layout: self.layouts[layout_target as usize].clone().unwrap_menu_layout(action_input_mapping).layout,
-			});
-			return;
-		}
+			// We don't diff the menu bar layout yet.
+			Layout::MenuLayout(_) => {
+				// Skip update if the same
+				if self.layouts[layout_target as usize] == new_layout {
+					return;
+				}
 
-		let mut widget_diffs = Vec::new();
-		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
-		// Skip sending if no diff.
-		if widget_diffs.is_empty() {
-			return;
-		}
+				// Update the backend storage
+				self.layouts[layout_target as usize] = new_layout;
 
-		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
+				// Update the UI
+				responses.add(FrontendMessage::UpdateMenuBarLayout {
+					layout_target,
+					layout: self.layouts[layout_target as usize].clone().unwrap_menu_layout(action_input_mapping).layout,
+				});
+			}
+		}
 	}
 
 	/// Send a diff to the frontend based on the layout target.

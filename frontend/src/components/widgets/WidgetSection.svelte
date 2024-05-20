@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { getContext } from "svelte";
+
+	import type { Editor } from "@graphite/wasm-communication/editor";
 	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
+	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
@@ -14,6 +18,8 @@
 	export let classes: Record<string, boolean> = {};
 
 	let expanded = true;
+
+	const editor = getContext<Editor>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
@@ -21,6 +27,25 @@
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
 		<TextLabel bold={true}>{widgetData.name}</TextLabel>
+		<IconButton
+			icon={"Trash"}
+			size={24}
+			action={(e) => {
+				editor.handle.deleteNode(widgetData.id);
+				e?.stopPropagation();
+			}}
+			class={"show-only-on-hover"}
+		/>
+		<IconButton
+			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
+			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+			size={24}
+			action={(e) => {
+				editor.handle.toggleNodeVisibility(widgetData.id);
+				e?.stopPropagation();
+			}}
+			class={widgetData.visible ? "show-only-on-hover" : ""}
+		/>
 	</button>
 	{#if expanded}
 		<LayoutCol class="body">
@@ -53,11 +78,33 @@
 			align-items: center;
 			display: flex;
 			flex: 0 0 24px;
-			padding: 0 8px;
+			padding-left: 8px;
+			padding-right: 0;
 			margin-bottom: 4px;
 			border: 0;
 			border-radius: 4px;
 			background: var(--color-2-mildblack);
+
+			&.expanded {
+				border-radius: 4px 4px 0 0;
+				margin-bottom: 0;
+
+				.expand-arrow::after {
+					transform: rotate(90deg);
+				}
+			}
+
+			&:hover {
+				background: var(--color-4-dimgray);
+
+				.expand-arrow::after {
+					background: var(--icon-expand-collapse-arrow-hover);
+				}
+
+				+ .body {
+					border: 1px solid var(--color-4-dimgray);
+				}
+			}
 
 			.expand-arrow {
 				width: 8px;
@@ -79,32 +126,15 @@
 				}
 			}
 
-			&.expanded {
-				border-radius: 4px 4px 0 0;
-				margin-bottom: 0;
-
-				.expand-arrow::after {
-					transform: rotate(90deg);
-				}
-			}
-
 			.text-label {
 				height: 18px;
 				margin-left: 8px;
-				display: inline-block;
+				flex: 1 1 100%;
 			}
+		}
 
-			&:hover {
-				background: var(--color-4-dimgray);
-
-				.expand-arrow::after {
-					background: var(--icon-expand-collapse-arrow-hover);
-				}
-
-				+ .body {
-					border: 1px solid var(--color-4-dimgray);
-				}
-			}
+		&:not(:hover) .header .show-only-on-hover {
+			display: none;
 		}
 
 		.body {

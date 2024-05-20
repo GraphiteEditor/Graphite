@@ -1,6 +1,6 @@
-// ================================================================================================
+// ========
 // CAROUSEL
-// ================================================================================================
+// ========
 
 const FLING_VELOCITY_THRESHOLD = 10;
 const FLING_VELOCITY_WINDOW_SIZE = 20;
@@ -16,6 +16,17 @@ function initializeCarousel() {
 	const carouselContainers = document.querySelectorAll("[data-carousel]");
 
 	carouselContainers.forEach((carouselContainer) => {
+		const slideImages = carouselContainer.querySelectorAll("[data-carousel-slide] [data-carousel-image]");
+		const tornLeft = carouselContainer.querySelector("[data-carousel-slide-torn-left]");
+		const tornRight = carouselContainer.querySelector("[data-carousel-slide-torn-right]");
+		[tornLeft, tornRight].forEach((insertInsideElement) => {
+			slideImages.forEach((image) => {
+				const clonedImage = image.cloneNode(true);
+				if (clonedImage instanceof HTMLImageElement) clonedImage.alt = "";
+				insertInsideElement.insertAdjacentElement("beforeend", clonedImage);
+			});
+		});
+
 		const images = carouselContainer.querySelectorAll("[data-carousel-image]");
 		const directionPrev = carouselContainer.querySelector("[data-carousel-prev]");
 		const directionNext = carouselContainer.querySelector("[data-carousel-next]");
@@ -36,6 +47,7 @@ function initializeCarousel() {
 			dragLastClientX,
 			velocityDeltaWindow,
 			jostleNoLongerNeeded,
+			requestAnimationFrameActive: false,
 		};
 		carousels.push(carousel);
 
@@ -62,7 +74,10 @@ function initializeCarousel() {
 
 							let startTime;
 							const buildUp = (timeStep) => {
-								if (carousel.jostleNoLongerNeeded) return;
+								if (carousel.jostleNoLongerNeeded) {
+									carousel.carouselContainer.classList.remove("jostling");
+									return;
+								}
 
 								if (!startTime) startTime = timeStep;
 								const elapsedTime = timeStep - startTime;
@@ -75,10 +90,12 @@ function initializeCarousel() {
 								if (elapsedTime < JOSTLE_TIME) {
 									requestAnimationFrame(buildUp);
 								} else {
+									carousel.carouselContainer.classList.remove("jostling");
 									carousel.jostleNoLongerNeeded = true;
 									slideTo(carousel, 0, true);
 								}
 							};
+							carousel.carouselContainer.classList.add("jostling")
 							requestAnimationFrame(buildUp);
 						};
 					});
@@ -115,27 +132,65 @@ function slideTo(carousel, index, smooth) {
 }
 
 function currentTransform(carousel) {
-	const currentTransformMatrix = window.getComputedStyle(carousel.images[0]).transform;
-	// Grab the X value from the format that looks like: `matrix(1, 0, 0, 1, -1332.13, 0)` or `none`
-	return Number(currentTransformMatrix.split(",")[4] || "0");
+	const currentTransformMatrix = window.getComputedStyle(carousel.images[1]).transform;
+	// Grab the X value from the format that looks like either of: `matrix(1, 0, 0, 1, -1332.13, 0)` or `none`
+	const xValue = Number(currentTransformMatrix.split(",")[4] || "0");
+
+	return xValue + carousel.images[1].getBoundingClientRect().width;
 }
 
 function setCurrentTransform(carousel, x, unit, smooth, doNotTerminateJostle = false) {
 	const xInitial = currentTransform(carousel);
-	
+	let xValue = x;
+	if (unit === "%") xValue = x - 100;
+	if (unit === "px") xValue = x - carousel.images[1].getBoundingClientRect().width;
+
 	Array.from(carousel.images).forEach((image) => {
 		image.style.transitionTimingFunction = smooth ? "ease-in-out" : "cubic-bezier(0, 0, 0.2, 1)";
-		image.style.transform = `translateX(${x}${unit})`;
+		image.style.transform = `translateX(${xValue}${unit})`;
 	});
 
 	// If the user caused the carousel to move, we can assume they know how to use it and don't need the jostle hint anymore
-	if (!doNotTerminateJostle && x !== xInitial) carousel.jostleNoLongerNeeded = true;
+	if (!doNotTerminateJostle && x - xInitial < 0.0001) carousel.jostleNoLongerNeeded = true;
+
+	const distance = unit === "%" ? x : x / carousel.images[1].getBoundingClientRect().width * 100;
+	const overSlidingLeft = distance > 0;
+	const overSlidingRight = distance < (carousel.dots.length - 1) * -100;
+
+	if ((overSlidingLeft || overSlidingRight) && !carousel.requestAnimationFrameActive) updateOverSlide(carousel);
+}
+
+function updateOverSlide(carousel) {
+	const paddingLeft = parseInt(getComputedStyle(carousel.images[1]).paddingLeft);
+	const paddingRight = parseInt(getComputedStyle(carousel.images[carousel.images.length - 2]).paddingRight);
+	const slidLeftDistance = carousel.images[1].getBoundingClientRect().left + paddingLeft - carousel.images[1].parentElement.getBoundingClientRect().left;
+	const slidRightDistance = -(carousel.images[carousel.images.length - 2].getBoundingClientRect().right - paddingRight - carousel.images[1].parentElement.getBoundingClientRect().right);
+	const imageWidth = carousel.images[1].getBoundingClientRect().width;
+	const overSlideFactor = Math.min(1, Math.max(0, (Math.max(slidLeftDistance, slidRightDistance) / imageWidth)));
+
+	const images = carousel.images[0].closest("[data-carousel]").querySelectorAll("[data-carousel-image]:first-child, [data-carousel-image]:last-child");
+
+	// Call again the next frame if we're still sliding past the edge
+	if (overSlideFactor > 0) {
+		images.forEach((image) => {
+			image.style.setProperty("--over-slide-factor", overSlideFactor);
+		});
+
+		carousel.requestAnimationFrameActive = true;
+		requestAnimationFrame(() => updateOverSlide(carousel));
+	} else {
+		images.forEach((image) => {
+			image.style.removeProperty("--over-slide-factor");
+		});
+
+		carousel.requestAnimationFrameActive = false;
+	}
 }
 
 function currentClosestImageIndex(carousel) {
 	const currentTransformX = -currentTransform(carousel);
 
-	const imageWidth = carousel.images[0].getBoundingClientRect().width;
+	const imageWidth = carousel.images[1].getBoundingClientRect().width;
 	return Math.round(currentTransformX / imageWidth);
 }
 
@@ -148,7 +203,7 @@ function dragBegin(event) {
 	const carouselContainer = event.target.closest("[data-carousel]");
 	const carousel = carousels.find((carousel) => carousel.carouselContainer === carouselContainer);
 	if (!carousel) return;
-	
+
 	event.preventDefault();
 
 	carousel.dragLastClientX = event.clientX;
@@ -160,7 +215,7 @@ function dragBegin(event) {
 function dragEnd(dropWithoutVelocity) {
 	const carousel = carousels.find((carousel) => carousel.dragLastClientX !== undefined);
 	if (!carousel) return;
-	
+
 	if (!carousel.images) return;
 
 	carousel.dragLastClientX = undefined;
@@ -235,9 +290,9 @@ function clamp(value, min, max) {
 	return Math.min(Math.max(value, min), max);
 }
 
-// ================================================================================================
+// ================
 // IMAGE COMPARISON
-// ================================================================================================
+// ================
 
 const RECENTER_DELAY = 1;
 const RECENTER_ANIMATION_DURATION = 0.25;
@@ -279,7 +334,7 @@ function initializeImageComparison() {
 				element.dataset.lastInteraction = "";
 				return;
 			}
-			
+
 			const factor = smootherstep(completionFactor);
 			const newLocation = lerp(element.dataset.recenterStartValue, 50, factor);
 			element.style.setProperty("--comparison-percent", `${newLocation}%`);
@@ -289,7 +344,7 @@ function initializeImageComparison() {
 
 		const lerp = (a, b, t) => (1 - t) * a + t * b;
 		const smootherstep = (x) => x * x * x * (x * (x * 6 - 15) + 10);
-		
+
 		element.addEventListener("pointermove", moveHandler);
 		element.addEventListener("pointerenter", moveHandler);
 		element.addEventListener("pointerleave", leaveHandler);
@@ -297,9 +352,10 @@ function initializeImageComparison() {
 	});
 }
 
-// ================================================================================================
+// ==================
 // AUTO-PLAYING VIDEO
-// ================================================================================================
+// ==================
+
 window.addEventListener("DOMContentLoaded", initializeVideoAutoPlay);
 
 function initializeVideoAutoPlay() {
@@ -310,12 +366,12 @@ function initializeVideoAutoPlay() {
 		if (!(player instanceof HTMLVideoElement)) return;
 
 		let loaded = false;
-		
+
 		new IntersectionObserver((entries) => {
 			entries.forEach((entry) => {
 				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
 					player.play();
-					
+
 					loaded = true;
 				};
 			});

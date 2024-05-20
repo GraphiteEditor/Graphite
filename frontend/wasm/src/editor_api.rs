@@ -26,6 +26,14 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
+/// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
+/// This avoids creating a json with a list millions of numbers long.
+// #[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
+// extern "C" {
+// 	// fn dispatchTauri(message: String) -> String;
+// 	fn dispatchTauri(message: String);
+// }
+
 /// Set the random seed used by the editor by calling this from JS upon initialization.
 /// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen(js_name = setRandomSeed)]
@@ -33,15 +41,7 @@ pub fn set_random_seed(seed: u64) {
 	editor::application::set_uuid_seed(seed);
 }
 
-/// We directly interface with the updateImage JS function for massively increased performance over serializing and deserializing.
-/// This avoids creating a json with a list millions of numbers long.
-#[wasm_bindgen(module = "/../src/wasm-communication/editor.ts")]
-extern "C" {
-	//fn dispatchTauri(message: String) -> String;
-	fn dispatchTauri(message: String);
-}
-
-/// Provides a handle to access the raw WASM memory
+/// Provides a handle to access the raw WASM memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
@@ -88,15 +88,12 @@ impl EditorHandle {
 		}
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		editor(|editor| {
-			// Get the editor, then dispatch the message to the backend, and return its response `FrontendMessage` queue
-			let frontend_messages = editor.handle_message(message.into());
+		let frontend_messages = editor(|editor| editor.handle_message(message.into()));
 
-			// Send each `FrontendMessage` to the JavaScript frontend
-			for message in frontend_messages.into_iter() {
-				self.send_frontend_message_to_js(message);
-			}
-		});
+		// Send each `FrontendMessage` to the JavaScript frontend
+		for message in frontend_messages.into_iter() {
+			self.send_frontend_message_to_js(message);
+		}
 	}
 
 	// Sends a FrontendMessage to JavaScript
@@ -182,20 +179,20 @@ impl EditorHandle {
 		}
 	}
 
-	#[wasm_bindgen(js_name = tauriResponse)]
-	pub fn tauri_response(&self, _message: JsValue) {
-		#[cfg(feature = "tauri")]
-		match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
-			Ok(response) => {
-				for message in response {
-					self.send_frontend_message_to_js(message);
-				}
-			}
-			Err(error) => {
-				log::error!("tauri response: {error:?}\n{_message:?}");
-			}
-		}
-	}
+	// #[wasm_bindgen(js_name = tauriResponse)]
+	// pub fn tauri_response(&self, _message: JsValue) {
+	// 	#[cfg(feature = "tauri")]
+	// 	match ron::from_str::<Vec<FrontendMessage>>(&_message.as_string().unwrap()) {
+	// 		Ok(response) => {
+	// 			for message in response {
+	// 				self.send_frontend_message_to_js(message);
+	// 			}
+	// 		}
+	// 		Err(error) => {
+	// 			log::error!("tauri response: {error:?}\n{_message:?}");
+	// 		}
+	// 	}
+	// }
 
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
@@ -686,11 +683,22 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Toggle visibility of a layer from the layer list
-	#[wasm_bindgen(js_name = toggleLayerVisibility)]
-	pub fn toggle_layer_visibility(&self, id: u64) {
+	/// Toggle visibility of a layer or node given its node ID
+	#[wasm_bindgen(js_name = toggleNodeVisibility)]
+	pub fn toggle_node_visibility(&self, id: u64) {
 		let node_id = NodeId(id);
 		let message = NodeGraphMessage::ToggleVisibility { node_id };
+		self.dispatch(message);
+	}
+
+	/// Delete a layer or node given its node ID
+	#[wasm_bindgen(js_name = deleteNode)]
+	pub fn delete_node(&self, id: u64) {
+		let message = DocumentMessage::StartTransaction;
+		self.dispatch(message);
+
+		let id = NodeId(id);
+		let message = DocumentMessage::DeleteLayer { id };
 		self.dispatch(message);
 	}
 

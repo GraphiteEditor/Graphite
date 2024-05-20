@@ -654,7 +654,6 @@ impl NodeGraphExecutor {
 			}
 			TaggedValue::Bool(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::String(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::F32(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::F64(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),

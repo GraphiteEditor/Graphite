@@ -6,17 +6,17 @@ css = ["about.css"]
 +++
 
 <section>
-<div class="section">
+<div class="block">
 
 # About Graphite
 
-Graphite is a community-built, open source software project that is free to use for any purpose. If you find Graphite valuable, consider [supporting financially](/donate) or [getting involved](/volunteer).
+Graphite is a community-built free software project. If you find it valuable, consider [donating](/donate) or [getting involved](/volunteer) to keep it sustainable.
 
 </div>
 </section>
 
 <section>
-<div class="section">
+<div class="block">
 
 ## Project
 
@@ -29,7 +29,7 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 
 <div class="diptych">
 
-<div class="section">
+<div class="block">
 
 ## Mission
 
@@ -38,19 +38,19 @@ Graphite strives to unshackle the creativity of every budding artist and seasone
 Mission success will come when Graphite is an industry standard. A cohesive product vision and focus on innovation over imitation is the strategy that will make that possible.
 
 </div>
-<div class="section">
+<div class="block">
 
-## Commitment
+## Funding
 
-As an independent community-driven software project, Graphite will always remain free. It has no investors to answer to. Its founder keeps costs low and relies on [your support](/donate) while he works full-time bringing Graphite to life. To sustainably grow, the long-term funding model will pair donations with paid accounts that provide optional online services like document storage/syncing and render acceleration via cloud GPUs.
+Graphite has no investors to answer to and will always be free and open source. [Keavon](#keavon), the project founder, has been personally funding all expenses out-of-pocket and turning down a tech industry salary to work full-time bringing Graphite to life. He asks for [your support](/donate) bearing a small fraction of that cost.
+
+Long-term, donations will be supplemented by revenue from cloud storage/sync and multi-GPU render acceleration services.
 
 </div>
 
 </div>
 
 </section>
-
-<!-- A batteries-included creative app for every kind of digital artist where -->
 
 <!-- ## Statistics
 
@@ -91,7 +91,7 @@ As an independent community-driven software project, Graphite will always remain
 </script> -->
 
 <!-- <section id="opener-message">
-<div class="section">
+<div class="block">
 
 ## A 2D creative tool made for everyone
 
@@ -107,56 +107,50 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 </div>
 </section> -->
 
-<section id="core-team" class="feature-box">
-<div class="box">
+<section id="core-team" class="feature-box-outer">
+<div class="feature-box-inner">
 
-<h1 class="box-header">Meet the core team</h1>
+<h1 class="feature-box-header">Meet the core team</h1>
 
 ---
 
 <div class="triptych">
 
-<div class="section" id="keavon">
+<div class="block" id="keavon">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers <span class="flag" title="American">🇺🇸</span>
+## Keavon Chambers
 
-*@Keavon*
+*@Keavon* <span class="flag" title="American">🇺🇸</span>
 
-### Founder
+*Founder, UI & product design, frontend engineering*
 
-*UI & product design, frontend engineering*
-
-Keavon is a creative generalist with a love for the fusion of arts and technology. Photographer, UX and graphic designer, technical artist, game developer, and everything in-between— he is equal parts designer and engineer. His multidisciplinary background in the digital arts is aptly suited for concocting the unique vision needed to bring Graphite to fruition.
+Keavon is a creative generalist with a love for the fusion of arts and technology. UX and graphic designer, photographer, game developer, technical artist, and everything in between— he is equal parts designer and engineer. His multidisciplinary background in the digital arts is aptly suited for concocting the unique vision needed to bring Graphite to fruition.
 
 </div>
-<div class="section" id="dennis">
+<div class="block" id="dennis">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert <span class="flag" title="German">🇩🇪</span>
+## Dennis Kobert
 
-*@TrueDoctor*
-
-### Lead Engineer
+*@TrueDoctor* <span class="flag" title="German">🇩🇪</span>
 
 *Graphene node engine, research, architecture*
 
 Dennis is a mix between a mathematician and a mad scientist. While still enjoying the art of photography and image editing (which drew him to the project early on), he thrives when challenged with designing complex systems and pushing boundaries. His method of building generalized solutions wrapped in elegant layers of abstraction led to his creation of the Graphene engine.
 
 </div>
-<div class="section" id="hypercube">
+<div class="block" id="hypercube">
 
 <img src="https://static.graphite.rs/content/about/core-team-photo-hypercube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
 
-## "Hypercube" <span class="flag" title="British">🇬🇧</span>
+## "Hypercube"
 
-*@0Hypercube*
+*@0Hypercube* <span class="flag" title="British">🇬🇧</span>
 
-### Software Engineer
-
-*Editor systems, nodes, architecture*
+*Editor systems, nodes, tools, architecture*
 
 "Hypercube" is a light speed code monkey who excels at developing, refactoring, and maintaining the editor code base. With an unmatched ability to comprehend intricate code, he delivers lasting and efficient solutions at an impressive pace. He takes ownership of many central editor systems including tools, typography, transforms, layers, and node graph integration.
 
@@ -172,25 +166,25 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <div class="triptych">
 
-<div class="section">
+<div class="block">
 
 ## Credits
 
-In addition to the work of the Core Team listed above, dozens of contributors have written code that makes Graphite what it is today:
+In addition to the work of the Core Team listed above, over a hundred other contributors have written code that makes Graphite what it is today:
 
 <a href="https://github.com/GraphiteEditor/Graphite/graphs/contributors" class="button arrow">Credits</a>
 
 </div>
-<div class="section">
+<div class="block">
 
 ## License
 
-The Graphite editor and source code are provided under the Apache License 2.0 terms. See below for details and exclusions:
+The Graphite editor source code is published under the terms of the Apache License 2.0. See below for details and exclusions:
 
 <a href="/license" class="button arrow">License</a>
 
 </div>
-<div class="section">
+<div class="block">
 
 ## Logo
 

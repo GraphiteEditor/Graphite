@@ -9,6 +9,7 @@ use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
@@ -161,15 +162,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let outward_links = document_network.collect_outwards_links();
 
 					for (_, upstream_id) in document_network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
-						// TODO: move into a document_network function .is_sole_dependent. This function does a downstream traversal starting from the current node,
-						// TODO: and only traverses for nodes that are not in the delete_nodes set. If all downstream nodes converge to some node in the delete_nodes set,
-						// TODO: then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent. This means disconnected branches
-						// TODO: that do not feed into the delete_nodes set or the output node will be deleted.
-
+						// This does a downstream traversal starting from the current node, and ending at either a node in the delete_nodes set or the output.
+						// If the traversal find as child node of a node in the delete_nodes set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
 						let mut stack = vec![upstream_id];
 						let mut can_delete = true;
 
-						// TODO: Add iteration limit to force break in case of infinite while loop
 						while let Some(current_node) = stack.pop() {
 							if let Some(downstream_nodes) = outward_links.get(&current_node) {
 								for downstream_node in downstream_nodes {
@@ -238,34 +235,64 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index });
+
 				let Some(network) = document_network.nested_network(&self.network) else {
 					warn!("No network");
 					return;
 				};
-				let Some(node) = network.nodes.get(&node_id) else {
-					warn!("Invalid node");
-					return;
-				};
-				let Some(node_type) = resolve_document_node_type(&node.name) else {
-					warn!("Node {} not in library", node.name);
-					return;
-				};
-				let Some((input_index, existing_input)) = node.inputs.iter().enumerate().filter(|(_, input)| input.is_exposed()).nth(input_index) else {
-					return;
-				};
-
-				let mut input = node_type.inputs[input_index].default.clone();
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = existing_input.is_exposed();
-				}
-
-				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::DisconnectLayerFromStack { node_id, reconnect_to_sibling } => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					warn!("No network");
+					return;
+				};
+
+				// Ensure node is a layer and create LayerNodeIdentifier
+				if network.nodes.get(&node_id).is_some_and(|node| !node.is_layer) {
+					log::error!("Non layer node passed to DisconnectLayer");
+					return;
+				}
+
+				let layer_to_disconnect = LayerNodeIdentifier::new(node_id, &network);
+
+				let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&network, &document_metadata, layer_to_disconnect) else {
+					log::error!("Downstream node should always exist when moving layer");
+					return;
+				};
+				let layer_to_move_sibling_input = network.nodes.get(&layer_to_disconnect.to_node()).and_then(|node| node.inputs.get(0));
+				if let Some(NodeInput::Node { node_id, .. }) = layer_to_move_sibling_input.and_then(|node_input| if reconnect_to_sibling { Some(node_input) } else { None }) {
+					let upstream_sibling_id = *node_id;
+					let Some(downstream_node) = document_network.nodes.get_mut(&downstream_node_id) else { return };
+
+					if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
+						*node_id = upstream_sibling_id;
+					}
+
+					let upstream_shift = IVec2::new(0, -3);
+					responses.add(NodeGraphMessage::ShiftUpstream {
+						node_id: upstream_sibling_id,
+						shift: upstream_shift,
+						shift_self: true,
+					});
+				} else {
+					// Disconnect node directly downstream if upstream sibling doesn't exist
+					responses.add(GraphOperationMessage::DisconnectInput {
+						node_id: downstream_node_id,
+						input_index: downstream_input_index,
+					});
+				}
+
+				responses.add(GraphOperationMessage::DisconnectInput {
+					node_id: layer_to_disconnect.to_node(),
+					input_index: 0,
+				});
 			}
 			NodeGraphMessage::EnterNestedNetwork { node } => {
 				if let Some(network) = document_network.nested_network(&self.network) {
@@ -370,37 +397,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("No network");
 					return;
 				};
-				let Some(post_node) = network.nodes.get(&post_node_id) else {
-					error!("Post node not found");
-					return;
-				};
-				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
-					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
-					return;
-				};
-				let Some(insert_node) = network.nodes.get(&insert_node_id) else {
-					error!("Insert node not found");
-					return;
-				};
-				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
-					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
-					return;
-				};
-
 				responses.add(DocumentMessage::StartTransaction);
 
-				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
-					node_id: post_node_id,
-					input_index: post_node_input_index,
-					input: post_input,
-				});
-
-				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
-					node_id: insert_node_id,
-					input_index: insert_node_input_index,
-					input: insert_input,
+				responses.add(GraphOperationMessage::InsertNodeBetween {
+					post_node_id,
+					post_node_input_index,
+					insert_node_output_index,
+					insert_node_id,
+					insert_node_input_index,
+					pre_node_output_index,
+					pre_node_id,
 				});
 
 				if network.connected_to_output(insert_node_id) {
@@ -520,6 +526,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 			}
+			NodeGraphMessage::SetNodePosition { node_id, position } => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else {
+					warn!("No network");
+					return;
+				};
+
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					log::error!("Failed to find node {node_id} when setting position");
+					return;
+				};
+
+				node.metadata.position = position;
+
+				// Since document structure doesn't change, just update the nodes
+				if graph_view_overlay_open {
+					let links = Self::collect_links(network);
+					let nodes = self.collect_nodes(&links, network);
+					responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
+				}
+			}
 			NodeGraphMessage::SetQualifiedInputValue { node_path, input_index, value } => {
 				let Some((node_id, node_path)) = node_path.split_last() else {
 					error!("Node path is empty");
@@ -591,6 +617,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				self.send_graph(network, graph_view_overlay_open, document_metadata, selected_nodes, collapsed, responses);
 			}
+			NodeGraphMessage::ShiftUpstream { node_id, shift, shift_self } => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else {
+					warn!("No network");
+					return;
+				};
+
+				let mut modify_inputs = ModifyInputsContext::new(network, document_metadata, self, responses);
+				modify_inputs.shift_upstream(node_id, shift, shift_self);
+			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -631,8 +666,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				})();
+
 				document_metadata.load_structure(document_network, selected_nodes);
+
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
+
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -667,7 +706,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				document_metadata.load_structure(document_network, selected_nodes);
 				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 			}
-			NodeGraphMessage::ToggleSelectedLayers => {
+			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
 				for node_id in selected_nodes.selected_nodes() {
@@ -753,16 +792,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		unimplemented!("Must use `actions_with_node_graph_open` instead (unless we change every implementation of the MessageHandler trait).")
+		if self.has_selection {
+			actions!(NodeGraphMessageDiscriminant;
+				ToggleSelectedLocked,
+				ToggleSelectedVisibility,
+			)
+		} else {
+			actions!(NodeGraphMessageDiscriminant;)
+		}
 	}
 }
 
 impl NodeGraphMessageHandler {
-	pub fn actions_with_node_graph_open(&self, graph_open: bool) -> ActionList {
-		if self.has_selection && graph_open {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked, ToggleSelectedLayers, DuplicateSelectedNodes, DeleteSelectedNodes, Cut, Copy)
-		} else if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant; ToggleSelectedVisibility, ToggleSelectedLocked)
+	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
+	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
+		if self.has_selection {
+			actions!(NodeGraphMessageDiscriminant;
+				Copy,
+				Cut,
+				DeleteSelectedNodes,
+				DuplicateSelectedNodes,
+				ToggleSelectedAsLayersOrNodes,
+			)
 		} else {
 			actions!(NodeGraphMessageDiscriminant;)
 		}

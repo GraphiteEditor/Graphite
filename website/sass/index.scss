@@ -4,69 +4,6 @@
 	overflow: hidden;
 }
 
-// ▛ LOGO ▜
-#logo {
-	display: flex;
-
-	img {
-		width: auto;
-		max-width: 100%;
-		max-height: 240px;
-	}
-}
-// ▙ LOGO ▟
-
-.pencil-texture {
-	position: absolute;
-	--remaining-width-to-full: calc(var(--max-width-plus-padding) - min(calc(100vw - 100px), var(--max-width-plus-padding)));
-	left: Max(calc(-1 * var(--remaining-width-to-full)), -50px);
-	width: 100px;
-	mix-blend-mode: multiply;
-
-	@media screen and (max-width: 1000px) {
-		width: 40px;
-		top: 400px;
-		left: -10px;
-	}
-}
-
-// ▛ QUICK LINKS ▜
-#quick-links {
-	margin-top: calc(80 * var(--variable-px));
-	display: flex;
-	gap: calc(var(--font-size-link) * 0.8);
-	flex-wrap: wrap;
-
-	div {
-		display: flex;
-		gap: calc(var(--font-size-link) * 0.8);
-		flex-direction: row;
-		flex-wrap: wrap;
-
-		img {
-			width: calc(var(--font-size-link) * 2);
-			display: block;
-		}
-	}
-}
-// ▙ QUICK LINKS ▟
-
-// ▛ TAGLINE ▜
-#tagline {
-	h1 {
-		font-size: var(--font-size-intro-heading);
-	}
-
-	p {
-		font-size: var(--font-size-intro-body);
-
-		@media screen and (max-width: 1400px) {
-			max-width: unset !important;
-		}
-	}
-}
-// ▙ TAGLINE ▟
-
 .hexagons {
 	max-width: var(--max-width);
 	margin: auto;
@@ -87,17 +24,108 @@
 			left: 0;
 			transform: translate(-50%) rotate(347deg);
 			opacity: 0.25;
-			width: Max(1000px, Min(1400px, calc(100vw * 1400 / 1920)));
+			--hexagon-max-size: 1100;
+			--mexagon-min-size: 900;
+			--hexagon-shrink-start-viewport-width: 1640;
+			width: Max(
+				Min(
+					calc(var(--hexagon-max-size) * 1px),
+					calc(var(--hexagon-max-size) / var(--hexagon-shrink-start-viewport-width) * 100vw)
+				),
+				calc(var(--mexagon-min-size) * 1px)
+			);
 			height: auto;
 
 			polygon {
 				fill: none;
-				stroke: gray;
+				stroke: #aaa;
 				stroke-width: 1px;
 			}
 		}
 	}
 }
+
+// ▛ LOGO ▜
+#logo {
+	img {
+		width: auto;
+		max-width: 100%;
+		max-height: 160px;
+	}
+}
+// ▙ LOGO ▟
+
+// ▛ TAGLINE ▜
+#tagline {
+	p {
+		font-size: calc(1rem * 10 / 9);
+
+		@media screen and (max-width: 1400px) {
+			max-width: unset;
+		}
+	}
+}
+// ▙ TAGLINE ▟
+
+// ▛ QUICK LINKS ▜
+#quick-links {
+	margin-top: calc(40 * var(--variable-px));
+	gap: calc(var(--font-size-link) * 0.8) calc(var(--font-size-link) * 0.8 * 2);
+
+	&,
+	.social-media-buttons,
+	.call-to-action-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		flex-direction: row;
+	}
+
+	.social-media-buttons,
+	.call-to-action-buttons {
+		gap: calc(var(--font-size-link) * 0.8);
+	}
+
+	.social-media-buttons img {
+		width: calc(var(--font-size-link) * 2);
+		display: block;
+	}
+
+	.call-to-action-buttons .github-stars {
+		display: inline-flex;
+		padding-left: calc(var(--font-size-link) / 2);
+		padding-right: 0;
+
+		img {
+			margin: auto;
+			width: calc(var(--font-size-link) * 4 / 3);
+			height: calc(var(--font-size-link) * 4 / 3);
+		}
+
+		span {
+			margin: auto calc(var(--font-size-link) / 2);
+		}
+
+		div {
+			display: inline-flex;
+			background: var(--color-fog);
+			padding: 0 calc(var(--font-size-link) / 2);
+			border-left: var(--border-thickness) solid var(--color-crimson);
+			align-items: center;
+
+			&:empty {
+				display: none;
+			}
+		}
+	}
+
+	// Hide all these buttons while waiting for the number of stars to be fetched.
+	// Otherwise the width of the star count will cause a jump upon loading with the layout of all subsequent buttons changing.
+	// If it fails to load, the div will be removed, allowing the buttons to be displayed (with the star count omitted).
+	&:has(.github-stars div:empty) {
+		visibility: hidden;
+	}
+}
+// ▙ QUICK LINKS ▟
 
 // ▛ SCREENSHOTS ▜
 // ▙ SCREENSHOTS ▟
@@ -106,144 +134,152 @@
 // ▙ TODAY AND TOMORROW ▟
 
 // ▛ DISCIPLINES ▜
-#disciplines .section {
+#disciplines .block {
 	align-items: center;
 
-	.informational-group .informational {
+	.feature-icons .feature-icon {
 		margin-top: 40px;
 	}
 }
 // ▙ DISCIPLINES ▟
 
-// ▛ COMMUNITY ▜
-#community {
+// ▛ NEWSLETTER ▜
+#newsletter {
 	background-color: var(--color-mustard);
+	position: relative;
 
-	#newsletter {
-		#newsletter-success {
-			background: var(--color-crimson);
-			margin-top: 40px;
-			padding: 40px;
-			width: 100%;
-			color: var(--color-fog);
-			box-sizing: border-box;
+	#newsletter-success {
+		position: absolute;
+		top: 0;
 
-			&:not(:target) {
-				display: none;
-			}
-		}
-
-		#newsletter-success:target ~ form {
+		&:not(:target) ~ .feature-box-inner .diptych .newsletter-success,
+		&:target ~ .feature-box-inner .diptych form {
 			display: none;
-		}
-
-		form {
-			width: 100%;
-			margin-top: 40px;
-			display: flex;
-			gap: 20px;
-			flex-wrap: wrap;
-
-			.same-line {
-				display: flex;
-				gap: 20px;
-				flex: 100000 1 0;
-				flex-wrap: wrap;
-				min-width: Min(100%, calc(240px + 20px + 240px));
-
-				div {
-					min-height: auto;
-				}
-			}
-
-			.column {
-				display: flex;
-				flex-direction: column;
-				justify-content: flex-end;
-				--input-focus-color: var(--color-ale);
-
-				&.name {
-					flex: 1 0 0;
-					min-width: 240px;
-				}
-
-				&.phone {
-					display: none;
-				}
-
-				&.email {
-					flex: 1 0 0;
-					min-width: 240px;
-				}
-
-				@media screen and (max-width: 400px) {
-					&.name,
-					&.email {
-						min-width: 100%;
-					}
-				}
-
-				&.submit {
-					flex: 1 0 auto;
-				}
-
-				label,
-				input {
-					flex: 0 0 auto;
-				}
-
-				label {
-					font-size: var(--font-size-link);
-					font-weight: 800;
-					margin-bottom: 10px;
-					line-height: 1;
-				}
-
-				input:not([type="submit"]) {
-					flex: 0 0 auto;
-					width: 100%;
-					height: calc(var(--font-size-link) * 2);
-					font-size: calc(var(--font-size-link) * 0.9);
-					color: inherit;
-					border: var(--border-thickness) solid currentColor;
-					border-radius: 0; // Required for iOS Safari
-					outline: none;
-					margin: 0;
-					padding: 0 var(--font-size-link);
-					font-family: inherit;
-					font-weight: inherit;
-					box-sizing: border-box;
-
-					&:focus {
-						border-color: var(--input-focus-color);
-					}
-				}
-
-				input[type="submit"] {
-					background: none;
-					outline: none;
-					cursor: pointer;
-					border-radius: 0; // Required for iOS Safari
-
-					&:focus {
-						border-color: var(--input-focus-color);
-						color: var(--input-focus-color);
-					}
-				}
-			}
 		}
 	}
 
-	#social .social-links {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 20px 80px;
-		margin-top: 40px;
+	.diptych {
+		justify-content: center;
 
-		.column {
+		.newsletter-signup {
+			.newsletter-success {
+				margin-top: 40px;
+				padding: 40px;
+				width: 100%;
+				box-sizing: border-box;
+				background: var(--color-ale);
+				border: 2px solid var(--color-navy);
+			}
+
+			form {
+				width: 100%;
+				margin-top: 40px;
+				display: flex;
+				gap: 20px;
+				flex-wrap: wrap;
+
+				.same-line {
+					display: flex;
+					gap: 20px;
+					flex: 100000 1 0;
+					flex-wrap: wrap;
+					min-width: Min(100%, 700px);
+
+					div {
+						min-height: auto;
+					}
+				}
+
+				.input-column {
+					display: flex;
+					flex-direction: column;
+					justify-content: flex-end;
+					--input-focus-color: var(--color-ale);
+
+					&.name {
+						flex: 1 0 0;
+						min-width: 240px;
+					}
+
+					&.phone {
+						display: none;
+					}
+
+					&.email {
+						flex: 1 0 0;
+						min-width: 240px;
+					}
+
+					@media screen and (max-width: 400px) {
+						&.name,
+						&.email {
+							min-width: 100%;
+						}
+					}
+
+					&.submit {
+						flex: 1 0 auto;
+
+						.button {
+							text-align: center;
+						}
+					}
+
+					label,
+					input {
+						flex: 0 0 auto;
+					}
+
+					label {
+						font-size: var(--font-size-link);
+						font-weight: 800;
+						margin-bottom: 10px;
+						line-height: 1;
+					}
+
+					input:not([type="submit"]) {
+						flex: 0 0 auto;
+						width: 100%;
+						height: calc(var(--font-size-link) * 2);
+						font-size: calc(var(--font-size-link) * 0.9);
+						color: inherit;
+						border: var(--border-thickness) solid currentColor;
+						border-radius: 0; // Required for iOS Safari
+						outline: none;
+						margin: 0;
+						padding: 0 var(--font-size-link);
+						font-family: inherit;
+						font-weight: inherit;
+						box-sizing: border-box;
+
+						&:focus {
+							border-color: var(--input-focus-color);
+						}
+					}
+
+					input[type="submit"] {
+						background: none;
+						outline: none;
+						cursor: pointer;
+						border-radius: 0; // Required for iOS Safari
+
+						&:focus {
+							border-color: var(--input-focus-color);
+							color: var(--input-focus-color);
+						}
+					}
+				}
+			}
+		}
+
+		.social-media-links {
 			display: flex;
+			flex: 0 1 fit-content;
 			flex-direction: column;
-			gap: 20px;
+			flex-wrap: wrap;
+			justify-content: flex-end;
+			gap: 20px 80px;
+			min-width: 0;
 
 			a {
 				text-decoration: none;
@@ -263,39 +299,39 @@
 		}
 	}
 }
-// ▙ COMMUNITY ▟
+// ▙ NEWSLETTER ▟
 
 // ▛ JUMP RIGHT IN ▜
 // #jump-right-in {
 // 	max-width: 1000px;
 
-// 	.section {
+// 	.block {
 // 		align-items: center;
 // 	}
 // }
 // ▙ JUMP RIGHT IN ▟
 
 // ▛ PROCEDURALISM ▜
-#proceduralism .section,
-#proceduralism-demo .section,
-#proceduralism-features .section {
+#proceduralism .block,
+#proceduralism-demo .block,
+#proceduralism-features .block {
 	align-items: center;
 }
 // ▙ PROCEDURALISM ▟
 
-// ▛ FUNDRAISING ▜
-#fundraising {
-	background-color: var(--color-cove);
+// ▛ DONATE ▜
+#donate {
+	background-color: var(--color-lilac);
 
 	.graphic {
 		max-width: 400px;
 	}
 }
-// ▙ FUNDRAISING ▟
+// ▙ DONATE ▟
 
 // ▛ VECTOR ART ▜
 #vector-art {
-	.section {
+	.block {
 		align-items: center;
 	}
 }
@@ -303,7 +339,7 @@
 
 // ▛ IMAGINATE ▜
 // #imaginate {
-// 	> .section {
+// 	> .block {
 // 		align-items: center;
 
 // 		h1 {
@@ -348,7 +384,7 @@
 // 	> .diptych {
 // 		margin-top: calc(80 * var(--variable-px));
 
-// 		.section {
+// 		.block {
 // 			align-items: center;
 
 // 			h2 {
@@ -377,34 +413,49 @@
 }
 // ▙ DEMO VIDEO ▟
 
-// ▛ GET INVOLVED ▜
-#get-involved-box {
-	background-color: var(--color-sage);
-
-	.graphic img {
-		mix-blend-mode: hard-light;
-	}
-}
-// ▙ GET INVOLVED ▟
-
-.demo-artwork {
-	display: flex;
-	align-items: center;
-	margin-top: 20px;
-
-	img {
-		width: 128px;
-		height: 128px;
-		border: 12px solid var(--color-walnut);
-		vertical-align: top;
-		flex: 0 0 auto;
+// ▛ RECENT NEWS ▜
+#recent-news {
+	background-color: var(--color-walnut);
+	color: var(--color-white);
+	
+	a {
+		color: var(--color-mustard);
 	}
 
-	p {
-		display: flex;
+	.banner img {
+		width: 100%;
+		height: auto;
+		margin-bottom: 20px;
+	}
+
+	.headline a {
+		text-decoration: none;
+		font-weight: 700;
+	}
+
+	.summary {
+		margin: 20px 0;
 		flex-direction: column;
-		max-width: 300px;
-		margin-left: 40px;
-		text-align: left;
+		gap: 20px;
+		text-align: justify;
+		-webkit-hyphens: auto;
+		hyphens: auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 6;
+
+		// Safari workaround: https://stackoverflow.com/a/72170897/775283
+		// But there remains an issue where the ellipsis is rendered inside the text. There doesn't appear to be a fix, or even a way to disable the ellipsis in Safari.
+		p {
+			display: inline;
+
+			&::after {
+				content: "\A\A"; // Double new line
+				white-space: pre;
+			}
+		}
 	}
 }
+// ▙ RECENT NEWS ▟

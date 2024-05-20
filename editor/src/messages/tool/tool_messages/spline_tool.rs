@@ -208,7 +208,7 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_parent();
+				let parent = document.new_layer_parent(true);
 				let transform = document.metadata().transform_to_viewport(parent);
 
 				//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);

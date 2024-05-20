@@ -26,6 +26,7 @@ quantization = [
 wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
 
 [dependencies]
+js-sys = "0.3.67"
 log = { workspace = true }
 bitflags = { workspace = true }
 thiserror = { workspace = true }

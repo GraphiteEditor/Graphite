@@ -100,7 +100,11 @@
 		const categories = new Map<string, NodeCategoryDetails>();
 
 		nodeTypes.forEach((node) => {
-			const nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+			let nameIncludesSearchTerm = node.name.toLowerCase().includes(searchTerm.toLowerCase());
+			// Quick and dirty hack to alias "Layer" to "Merge" in the search
+			if (node.name === "Merge") {
+				nameIncludesSearchTerm = nameIncludesSearchTerm || "Layer".toLowerCase().includes(searchTerm.toLowerCase());
+			}
 
 			if (searchTerm.length > 0 && !nameIncludesSearchTerm && !node.category.toLowerCase().includes(searchTerm.toLowerCase())) {
 				return;
@@ -556,8 +560,8 @@
 		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
-	function toggleLayerVisibility(id: bigint) {
-		editor.handle.toggleLayerVisibility(id);
+	function toggleNodeVisibility(id: bigint) {
+		editor.handle.toggleNodeVisibility(id);
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean) {
@@ -956,7 +960,7 @@
 				</div>
 				<IconButton
 					class={"visibility"}
-					action={(e) => (toggleLayerVisibility(node.id), e?.stopPropagation())}
+					action={(e) => (toggleNodeVisibility(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
 					tooltip={node.visible ? "Visible" : "Hidden"}

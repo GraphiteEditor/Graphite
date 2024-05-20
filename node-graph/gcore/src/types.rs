@@ -80,12 +80,25 @@ pub struct ProtoNodeIdentifier {
 	pub name: Cow<'static, str>,
 }
 
+fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Cow<'static, str>, D::Error> {
+	use serde::Deserialize;
+
+	// Rename "f32" to "f64"
+	let name = String::deserialize(deserializer)?;
+	let name = match name.as_str() {
+		"f32" => "f64".to_string(),
+		_ => name,
+	};
+	Ok(Cow::Owned(name))
+}
+
 #[derive(Clone, Debug, Eq, specta::Type)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TypeDescriptor {
 	#[cfg_attr(feature = "serde", serde(skip))]
 	#[specta(skip)]
 	pub id: Option<TypeId>,
+	#[serde(deserialize_with = "migrate_type_descriptor_names")]
 	pub name: Cow<'static, str>,
 	#[serde(default)]
 	pub size: usize,

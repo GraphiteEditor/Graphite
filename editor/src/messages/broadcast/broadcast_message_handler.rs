@@ -22,6 +22,6 @@ impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 	}
 
 	fn actions(&self) -> ActionList {
-		vec![]
+		actions!(BroadcastEventDiscriminant;)
 	}
 }

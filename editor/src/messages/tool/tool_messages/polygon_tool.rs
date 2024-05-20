@@ -268,7 +268,7 @@ impl Fsm for PolygonToolFsmState {
 
 					HashMap::from([(NodeId(0), node)])
 				};
-				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(), responses);
+				let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, document.new_layer_parent(false), responses);
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				polygon_data.layer = Some(layer);

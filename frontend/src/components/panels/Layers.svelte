@@ -129,8 +129,8 @@
 		return currentFolder;
 	}
 
-	function toggleLayerVisibility(id: bigint) {
-		editor.handle.toggleLayerVisibility(id);
+	function toggleNodeVisibility(id: bigint) {
+		editor.handle.toggleNodeVisibility(id);
 	}
 
 	function toggleLayerLock(id: bigint) {
@@ -430,7 +430,7 @@
 					<IconButton
 						class={"status-toggle"}
 						classes={{ inactive: !listing.entry.parentsVisible }}
-						action={(e) => (toggleLayerVisibility(listing.entry.id), e?.stopPropagation())}
+						action={(e) => (toggleNodeVisibility(listing.entry.id), e?.stopPropagation())}
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}

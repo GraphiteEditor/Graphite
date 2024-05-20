@@ -19,9 +19,36 @@ use glam::{DAffine2, DVec2, IVec2};
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
+	AddNodesAsChild {
+		nodes: HashMap<NodeId, DocumentNode>,
+		new_ids: HashMap<NodeId, NodeId>,
+		parent: LayerNodeIdentifier,
+		insert_index: isize,
+	},
+	DisconnectInput {
+		node_id: NodeId,
+		input_index: usize,
+	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
+	},
+	InsertLayerAtStackIndex {
+		layer_id: NodeId,
+		parent: NodeId,
+		insert_index: usize,
+	},
+	InsertNodeBetween {
+		post_node_id: NodeId,
+		post_node_input_index: usize,
+		insert_node_output_index: usize,
+		insert_node_id: NodeId,
+		insert_node_input_index: usize,
+		pre_node_output_index: usize,
+		pre_node_id: NodeId,
+	},
+	MoveSelectedSiblingsToChild {
+		new_parent: NodeId,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -63,10 +90,6 @@ pub enum GraphOperationMessage {
 	Brush {
 		layer: LayerNodeIdentifier,
 		strokes: Vec<BrushStroke>,
-	},
-	MoveUpstreamSiblingsToChild {
-		new_parent: NodeId,
-		upstream_sibling_ids: Vec<NodeId>,
 	},
 	NewArtboard {
 		id: NodeId,

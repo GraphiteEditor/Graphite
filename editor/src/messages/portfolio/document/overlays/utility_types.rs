@@ -1,14 +1,13 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
-
 use bezier_rs::{Bezier, Subpath};
+use core::borrow::Borrow;
+use core::f64::consts::{PI, TAU};
+use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, VectorData};
-
-use core::borrow::Borrow;
-use core::f64::consts::PI;
-use glam::{DAffine2, DVec2};
+use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -40,10 +39,24 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>) {
+	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
-
+		if let Some(dash_width) = dash_width {
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(1));
+			array.push(&JsValue::from(dash_width - 1.));
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.ok();
+		} else {
+			let array = js_sys::Array::new();
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
 		self.render_context.begin_path();
 		self.render_context.move_to(start.x, start.y);
 		self.render_context.line_to(end.x, end.y);
@@ -55,7 +68,7 @@ impl OverlayContext {
 		let position = position.round() - DVec2::splat(0.5);
 
 		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(position.x, position.y, MANIPULATOR_GROUP_MARKER_SIZE / 2., 0., TAU).expect("draw circle");
 
 		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(fill));
@@ -86,13 +99,37 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
+	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
+		let size = 1.;
+		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
+
+		let position = position.round() - DVec2::splat(0.5);
+		let corner = position - DVec2::splat(size) / 2.;
+
+		self.render_context.begin_path();
+		self.render_context.rect(corner.x, corner.y, size, size);
+		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+		self.render_context.fill();
+	}
+
+	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
+		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
+		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
+		let position = position.round();
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("draw circle");
+		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(color_fill));
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(color_stroke));
+		self.render_context.fill();
+		self.render_context.stroke();
+	}
 	pub fn pivot(&mut self, position: DVec2) {
 		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
 
 		// Circle
 
 		self.render_context.begin_path();
-		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., PI * 2.).expect("draw circle");
+		self.render_context.arc(x, y, PIVOT_DIAMETER / 2., 0., TAU).expect("draw circle");
 		self.render_context.set_fill_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_YELLOW));
 		self.render_context.fill();
 

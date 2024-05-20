@@ -56,7 +56,7 @@ fn add_network() -> NodeNetwork {
 							}},
 						))"#,
 					TaggedValue::BlendMode(BlendMode::Normal).to_primitive_string(),
-					TaggedValue::F32(1.0).to_primitive_string(),
+					TaggedValue::F64(1.).to_primitive_string(),
 				),
 				concrete![Color],
 			))],

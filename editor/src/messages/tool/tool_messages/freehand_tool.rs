@@ -315,7 +315,7 @@ impl Fsm for FreehandToolFsmState {
 				} else {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
-					let parent = document.new_layer_parent();
+					let parent = document.new_layer_parent(true);
 
 					let nodes = {
 						let node_type = resolve_document_node_type("Path Modify").expect("Path Modify node does not exist");
