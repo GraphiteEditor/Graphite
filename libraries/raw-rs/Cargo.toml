@@ -1,7 +1,16 @@
 [package]
 name = "raw-rs"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+description = "A library to extract images from camera raw files"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["raw", "tiff", "camera", "image"]
+categories = ["multimedia::images", "multimedia::encoding"]
+homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/raw-rs"
+repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/raw-rs"
+documentation = "https://docs.rs/raw-rs"
 
 [dependencies]
 num_enum = "0.7.2"
