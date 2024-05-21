@@ -1,24 +1,28 @@
-use super::types::{TagType, TypeNumber, TypeShort, Array, TypeLong, ConstArray, TypeByte};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeLong, TypeNumber, TypeShort};
 use super::TagId;
 
-pub struct Tag<T: TagType>{
-    tag_id: TagId,
-    name: &'static str,
-    tag_type: std::marker::PhantomData<T>,
+pub struct Tag<T: TagType> {
+	tag_id: TagId,
+	name: &'static str,
+	tag_type: std::marker::PhantomData<T>,
 }
 
 impl<T: TagType> Tag<T> {
-    const fn new(tag_id: TagId, name: &'static str) -> Self {
-        Tag { tag_id, name, tag_type: std::marker::PhantomData }
-    }
+	const fn new(tag_id: TagId, name: &'static str) -> Self {
+		Tag {
+			tag_id,
+			name,
+			tag_type: std::marker::PhantomData,
+		}
+	}
 
-    pub fn id(&self) -> TagId {
-        self.tag_id
-    }
+	pub fn id(&self) -> TagId {
+		self.tag_id
+	}
 
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
+	pub fn name(&self) -> &'static str {
+		self.name
+	}
 }
 
 pub const IMAGE_WIDTH: Tag<TypeNumber> = Tag::new(TagId::ImageWidth, "Image Width");
