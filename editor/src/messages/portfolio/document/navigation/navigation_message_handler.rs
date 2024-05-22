@@ -204,12 +204,17 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let v1 = metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
 				let v2 = metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
 
-				let center = v1.lerp(v2, 0.5) - pos1.lerp(pos2, 0.5);
-				let size = (pos2 - pos1) / (v2 - v1);
-				let size = 1. / size;
+				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
+				let size = 1. / ((pos2 - pos1) / (v2 - v1));
 				let new_scale = size.min_element();
 
-				ptz.pan += center;
+				let viewport_change = metadata.document_to_viewport.transform_vector2(center);
+
+				// Only change the pan if the change will be visible in the viewport
+				if viewport_change.x.abs() > 0.5 || viewport_change.y.abs() > 0.5 {
+					ptz.pan += center;
+				}
+
 				ptz.zoom *= new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR;
 
 				// Keep the canvas filling less than the full available viewport bounds if requested.

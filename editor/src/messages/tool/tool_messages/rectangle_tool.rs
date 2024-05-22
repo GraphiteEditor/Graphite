@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -211,6 +211,13 @@ impl Fsm for RectangleToolFsmState {
 
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
 				shape_data.layer = Some(layer);
+
+				responses.add(GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				});
 
 				let fill_color = tool_options.fill.active_color();
 				responses.add(GraphOperationMessage::FillSet {

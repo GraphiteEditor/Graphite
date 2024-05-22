@@ -182,12 +182,20 @@ impl Fsm for LineToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let layer = graph_modification_utils::new_vector_layer(vec![subpath], NodeId(generate_uuid()), document.new_layer_parent(true), responses);
+
+				responses.add(GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				});
+
 				responses.add(GraphOperationMessage::StrokeSet {
 					layer,
 					stroke: Stroke::new(tool_options.stroke.active_color(), tool_options.line_weight),
 				});
-				tool_data.layer = Some(layer);
 
+				tool_data.layer = Some(layer);
 				tool_data.weight = tool_options.line_weight;
 
 				LineToolFsmState::Drawing
