@@ -534,6 +534,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					default: NodeInput::Network(concrete!(WasmEditorApi)),
 				},
 			],
+			properties: node_properties::rasterize_properties,
 			outputs: vec![DocumentOutputType {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,

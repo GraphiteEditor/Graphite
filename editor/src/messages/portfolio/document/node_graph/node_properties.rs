@@ -1640,6 +1640,14 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 
 	vec![translation, rotation, scale]
 }
+pub fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let top_left = vec2_widget(document_node, node_id, 1, "Top Left Corner", "X", "Y", " px", None, add_blank_assist);
+	let bottom_right = vec2_widget(document_node, node_id, 1, "Bottom Right Corner", "X", "Y", " px", None, add_blank_assist);
+
+	let resolution = vec2_widget(document_node, node_id, 3, "Resolution", "W", "H", "x", None, add_blank_assist);
+
+	vec![top_left, bottom_right, resolution]
+}
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let text = text_area_widget(document_node, node_id, 1, "Text", true);
