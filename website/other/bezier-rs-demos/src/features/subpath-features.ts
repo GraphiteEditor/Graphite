@@ -16,15 +16,24 @@ const subpathFeatures = {
 		name: "Length",
 		callback: (subpath: WasmSubpathInstance): string => subpath.length(),
 	},
+	"length-centroid": {
+		name: "Length Centroid",
+		callback: (subpath: WasmSubpathInstance): string => subpath.length_centroid(),
+	},
 	area: {
 		name: "Area",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area(options.error, options.minimum_separation),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
 	},
-	centroid: {
-		name: "Centroid",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.centroid(options.error, options.minimum_separation),
+	"area-centroid": {
+		name: "Area Centroid",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.area_centroid(options.error, options.minimum_separation),
 		inputOptions: [intersectionErrorOptions, minimumSeparationOptions],
+	},
+	"poisson-disk-points": {
+		name: "Poisson-Disk Points",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.poisson_disk_points(options.separation_disk_diameter),
+		inputOptions: [separationDiskDiameter],
 	},
 	evaluate: {
 		name: "Evaluate",
@@ -68,11 +77,6 @@ const subpathFeatures = {
 	"bounding-box": {
 		name: "Bounding Box",
 		callback: (subpath: WasmSubpathInstance): string => subpath.bounding_box(),
-	},
-	"poisson-disk-points": {
-		name: "Poisson-Disk Points",
-		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.poisson_disk_points(options.separation_disk_diameter),
-		inputOptions: [separationDiskDiameter],
 	},
 	inflections: {
 		name: "Inflections",

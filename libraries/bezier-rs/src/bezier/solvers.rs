@@ -404,7 +404,13 @@ impl Bezier {
 	/// - `error` - For intersections where the provided bezier is non-linear, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	pub fn unfiltered_intersections(&self, other: &Bezier, error: Option<f64>) -> Vec<[f64; 2]> {
 		let error = error.unwrap_or(0.5);
-		if other.handles == BezierHandles::Linear {
+
+		// TODO: This implementation does not handle the case of line-like bezier curves properly. Two line-like bezier curves which have the same slope
+		// should not return any intersection points but the current implementation returns many of them. This results in the area of line not being zero.
+		// Using `is_linear` does prevent it but only in cases where the line-like cubic bezier has it handles at exactly the same position as the start
+		// and end points. In future, the below algorithm needs to be changed to account for all possible cases.
+
+		if other.is_linear() {
 			// Rotate the bezier and the line by the angle that the line makes with the x axis
 			let line_directional_vector = other.end - other.start;
 			let angle = line_directional_vector.angle_between(DVec2::new(0., 1.));

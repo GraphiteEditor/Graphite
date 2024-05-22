@@ -595,6 +595,7 @@ impl Primitive for String {}
 impl Primitive for bool {}
 impl Primitive for f32 {}
 impl Primitive for f64 {}
+impl Primitive for DVec2 {}
 
 fn text_attributes(attributes: &mut SvgRenderAttrs) {
 	attributes.push("fill", "white");
