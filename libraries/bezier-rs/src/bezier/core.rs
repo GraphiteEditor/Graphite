@@ -223,7 +223,7 @@ impl Bezier {
 	///
 	/// **NOTE**: This is different from simply checking if the handle is [`BezierHandles::Linear`]. A [`Quadratic`](BezierHandles::Quadratic) or [`Cubic`](BezierHandles::Cubic) Bezier curve can also be a line if the handles are colinear to the start and end points. Therefore if the handles exceed the start and end point, it will still be considered as a line.
 	pub fn is_linear(&self) -> bool {
-		let is_colinear = |a: DVec2, b: DVec2, c: DVec2| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() == 0. };
+		let is_colinear = |a: DVec2, b: DVec2, c: DVec2| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() < MAX_ABSOLUTE_DIFFERENCE };
 
 		match self.handles {
 			BezierHandles::Linear => true,
