@@ -537,8 +537,8 @@ pub struct AreaNode<VectorData> {
 }
 
 #[node_macro::node_fn(AreaNode)]
-async fn area_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
-	let vector_data = self.vector_data.eval(footprint).await;
+async fn area_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
+	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	let mut area = 0.;
 	let scale = vector_data.transform.decompose_scale();
@@ -555,8 +555,8 @@ pub struct CentroidNode<VectorData, CentroidType> {
 }
 
 #[node_macro::node_fn(CentroidNode)]
-async fn centroid_node<Fut: Future<Output = VectorData>>(footprint: Footprint, vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
-	let vector_data = self.vector_data.eval(footprint).await;
+async fn centroid_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
+	let vector_data = self.vector_data.eval(Footprint::default()).await;
 
 	if centroid_type == CentroidType::Area {
 		let mut area = 0.;

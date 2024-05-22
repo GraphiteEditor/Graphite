@@ -2605,7 +2605,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::node_no_properties,
-			manual_composition: Some(concrete!(Footprint)),
+			manual_composition: Some(concrete!(())),
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2618,7 +2618,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			],
 			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Vector)],
 			properties: node_properties::centroid_properties,
-			manual_composition: Some(concrete!(Footprint)),
+			manual_composition: Some(concrete!(())),
 			..Default::default()
 		},
 		DocumentNodeDefinition {
