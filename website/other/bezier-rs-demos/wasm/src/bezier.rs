@@ -148,9 +148,9 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
-	pub fn perimeter_centroid(&self) -> String {
+	pub fn length_centroid(&self) -> String {
 		let bezier = self.get_bezier_path();
-		let (_, centroid) = self.0.perimeter_centroid(None);
+		let centroid = self.0.length_centroid(None);
 		let point_text = draw_circle(centroid, 4., RED, 1.5, WHITE);
 		wrap_svg_tag(format!("{bezier}{}", point_text))
 	}

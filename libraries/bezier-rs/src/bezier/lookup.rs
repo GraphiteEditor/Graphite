@@ -179,11 +179,15 @@ impl Bezier {
 		}
 	}
 
-	/// Return an approximation of the length and perimeter centroid of the bezier curve.
+	/// Return an approximation of the length centroid, together with the length, of the bezier curve.
+	///
+	/// The length centroid is the center of mass for the arc length of the Bezier segment.
+	/// An infinitely thin wire forming the Bezier segment's shape would balance at this point.
+	///
 	/// - `tolerance` - Tolerance used to approximate the curve.
-	pub fn perimeter_centroid(&self, tolerance: Option<f64>) -> (f64, DVec2) {
+	pub fn length_centroid_and_length(&self, tolerance: Option<f64>) -> (DVec2, f64) {
 		match self.handles {
-			BezierHandles::Linear => ((self.start - self.end).length(), (self.start + self.end()) / 2.),
+			BezierHandles::Linear => ((self.start + self.end()) / 2., (self.start - self.end).length()),
 			BezierHandles::Quadratic { handle } => {
 				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
 				fn recurse(a0: DVec2, a1: DVec2, a2: DVec2, tolerance: f64, level: u8) -> (f64, DVec2) {
@@ -204,7 +208,7 @@ impl Bezier {
 				}
 
 				let (length, centroid_parts) = recurse(self.start, handle, self.end, tolerance.unwrap_or_default(), 0);
-				(length, centroid_parts / length)
+				(centroid_parts / length, length)
 			}
 			BezierHandles::Cubic { handle_start, handle_end } => {
 				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
@@ -228,9 +232,20 @@ impl Bezier {
 					(length1 + length2, centroid_part1 + centroid_part2)
 				}
 				let (length, centroid_parts) = recurse(self.start, handle_start, handle_end, self.end, tolerance.unwrap_or_default(), 0);
-				(length, centroid_parts / length)
+				(centroid_parts / length, length)
 			}
 		}
+	}
+
+	/// Return an approximation of the length centroid of the Bezier curve.
+	///
+	/// The length centroid is the center of mass for the arc length of the Bezier segment.
+	/// An infinitely thin wire with the Bezier segment's shape would balance at this point.
+	///
+	/// - `tolerance` - Tolerance used to approximate the curve.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/length-centroid/solo" title="Length Centroid Demo"></iframe>
+	pub fn length_centroid(&self, tolerance: Option<f64>) -> DVec2 {
+		self.length_centroid_and_length(tolerance).0
 	}
 
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
@@ -315,22 +330,22 @@ mod tests {
 	}
 
 	#[test]
-	fn test_perimeter_centroid() {
+	fn test_length_centroid() {
 		let p1 = DVec2::new(30., 50.);
 		let p2 = DVec2::new(140., 30.);
 		let p3 = DVec2::new(160., 170.);
 		let p4 = DVec2::new(77., 129.);
 
 		let bezier_linear = Bezier::from_linear_dvec2(p1, p2);
-		assert!(bezier_linear.perimeter_centroid(None).1.abs_diff_eq((p1 + p2) / 2., MAX_ABSOLUTE_DIFFERENCE));
+		assert!(bezier_linear.length_centroid_and_length(None).0.abs_diff_eq((p1 + p2) / 2., MAX_ABSOLUTE_DIFFERENCE));
 
 		let bezier_quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
 		let expected = DVec2::new(112.81017736920136, 87.98713052477228);
-		assert!(bezier_quadratic.perimeter_centroid(None).1.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(bezier_quadratic.length_centroid_and_length(None).0.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		let expected = DVec2::new(95.23597072432115, 88.0645175770206);
-		assert!(bezier_cubic.perimeter_centroid(None).1.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
+		assert!(bezier_cubic.length_centroid_and_length(None).0.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]

@@ -66,9 +66,9 @@ const bezierFeatures = {
 		name: "Length",
 		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.length(),
 	},
-	"perimeter-centroid": {
-		name: "Perimeter Centroid",
-		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.perimeter_centroid(),
+	"length-centroid": {
+		name: "Length Centroid",
+		callback: (bezier: WasmBezierInstance, _: Record<string, number>): string => bezier.length_centroid(),
 	},
 	evaluate: {
 		name: "Evaluate",

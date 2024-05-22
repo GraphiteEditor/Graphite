@@ -219,13 +219,12 @@ impl Bezier {
 		self.get_points().all(|point| point.abs_diff_eq(start, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
-	/// Returns true if the bezier curve is equivalent to a line.
+	// TODO: What about the case when a handle extends beyond the start or end point? Is that considered "equivalent to a line"?
+	/// Returns true if the Bezier curve is equivalent to a line.
 	///
-	/// **NOTE**: This is different from simply checking if the handle is `BezierHandles::Linear`. A Quadratic or Cubic bezier curve can also be a line if the handles are colinear to the start and end points.
+	/// **NOTE**: This is different from simply checking if the handle is [`BezierHandles::Linear`]. A [`Quadratic`](BezierHandles::Quadratic) or [`Cubic`](BezierHandles::Cubic) Bezier curve can also be a line if the handles are colinear to the start and end points.
 	pub fn is_linear(&self) -> bool {
-		fn is_colinear(a: DVec2, b: DVec2, c: DVec2) -> bool {
-			((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() == 0.0
-		}
+		let is_colinear = |a: DVec2, b: DVec2, c: DVec2| -> bool { ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() == 0. };
 
 		match self.handles {
 			BezierHandles::Linear => true,

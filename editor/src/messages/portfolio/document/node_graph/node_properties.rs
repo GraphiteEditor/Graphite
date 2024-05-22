@@ -893,11 +893,13 @@ fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) 
 		let entries = vec![
 			RadioEntryData::new("area")
 				.label("Area")
+				.tooltip("Center of mass for the interior area of the shape")
 				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Area), node_id, index))
 				.on_commit(commit_value),
-			RadioEntryData::new("perimeter")
-				.label("Perimeter")
-				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Perimeter), node_id, index))
+			RadioEntryData::new("length")
+				.label("Length")
+				.tooltip("Center of mass for the perimeter arc length of the shape")
+				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Length), node_id, index))
 				.on_commit(commit_value),
 		];
 
@@ -906,7 +908,7 @@ fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) 
 			RadioInput::new(entries)
 				.selected_index(match centroid_type {
 					CentroidType::Area => Some(0),
-					CentroidType::Perimeter => Some(1),
+					CentroidType::Length => Some(1),
 				})
 				.widget_holder(),
 		]);

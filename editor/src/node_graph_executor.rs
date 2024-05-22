@@ -220,7 +220,6 @@ impl NodeRuntime {
 
 			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 			if let Err(e) = self.executor.update(proto_network).await {
-				error!("Node graph error {e:#?}");
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);

@@ -30,17 +30,33 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		self.iter().map(|bezier| bezier.length(tolerance)).sum()
 	}
 
-	/// Return the approximation of the length and perimeter centroid of the `Subpath`.
+	/// Return the approximation of the length centroid, together with the length, of the `Subpath`.
+	///
+	/// The length centroid is the center of mass for the arc length of the solid shape's perimeter.
+	/// An infinitely thin wire forming the subpath's closed shape would balance at this point.
 	///
 	/// It will return `None` if no manipulator is present.
 	/// - `tolerance` - Tolerance used to approximate the curve.
 	/// - `always_closed` - consider the subpath as closed always.
-	pub fn perimeter_centroid(&self, tolerance: Option<f64>, always_closed: bool) -> Option<(f64, DVec2)> {
+	pub fn length_centroid_and_length(&self, tolerance: Option<f64>, always_closed: bool) -> Option<(DVec2, f64)> {
 		if always_closed { self.iter_closed() } else { self.iter() }
-			.map(|bezier| bezier.perimeter_centroid(tolerance))
-			.map(|(length, centroid)| (length, length * centroid))
-			.reduce(|(length1, centroid_part1), (length2, centroid_part2)| (length1 + length2, centroid_part1 + centroid_part2))
-			.map(|(length, centroid_part)| (length, centroid_part / length))
+			.map(|bezier| bezier.length_centroid_and_length(tolerance))
+			.map(|(centroid, length)| (centroid * length, length))
+			.reduce(|(centroid_part1, length1), (centroid_part2, length2)| (centroid_part1 + centroid_part2, length1 + length2))
+			.map(|(centroid_part, length)| (centroid_part / length, length))
+	}
+
+	/// Return the approximation of the length centroid of the `Subpath`.
+	///
+	/// The length centroid is the center of mass for the arc length of the solid shape's perimeter.
+	/// An infinitely thin wire forming the subpath's closed shape would balance at this point.
+	///
+	/// It will return `None` if no manipulator is present.
+	/// - `tolerance` - Tolerance used to approximate the curve.
+	/// - `always_closed` - consider the subpath as closed always.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/length-centroid/solo" title="Length Centroid Demo"></iframe>
+	pub fn length_centroid(&self, tolerance: Option<f64>, always_closed: bool) -> Option<DVec2> {
+		self.length_centroid_and_length(tolerance, always_closed).map(|(centroid, _)| centroid)
 	}
 
 	/// Return the area enclosed by the `Subpath` always considering it as a closed subpath. It will always give a positive value.
@@ -83,16 +99,20 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 		area.abs()
 	}
 
-	/// Return the area and area centroid of the `Subpath` always considering it as a closed subpath. The area will always be a positive value.
+	/// Return the area centroid, together with the area, of the `Subpath` always considering it as a closed subpath. The area will always be a positive value.
 	///
-	/// It will return `None` if no manipulator is present. If the area is less than `error`, it will return (zero, Nan).
+	/// The area centroid is the center of mass for the area of a solid shape's interior.
+	/// An infinitely flat material forming the subpath's closed shape would balance at this point.
+	///
+	/// It will return `None` if no manipulator is present. If the area is less than `error`, it will return `Some((DVec2::NAN, 0.))`.
+	///
 	/// Because the calculation of area and centroid for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
-	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
+	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two.
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	pub fn area_centroid(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Option<(f64, DVec2)> {
+	pub fn area_centroid_and_area(&self, error: Option<f64>, minimum_separation: Option<f64>) -> Option<(DVec2, f64)> {
 		let all_intersections = self.all_self_intersections(error, minimum_separation);
 		let mut current_sign: f64 = 1.;
 
@@ -131,29 +151,33 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			.reduce(|(x1, y1, area1), (x2, y2, area2)| (x1 + x2, y1 + y2, area1 + area2))?;
 
 		if area.abs() < error.unwrap_or(MAX_ABSOLUTE_DIFFERENCE) {
-			return Some((0., DVec2::NAN));
+			return Some((DVec2::NAN, 0.));
 		}
 
-		Some((area.abs(), DVec2::new(x_sum / area, y_sum / area)))
+		Some((DVec2::new(x_sum / area, y_sum / area), area.abs()))
 	}
 
-	/// Attempts to return the area centroid of the `Subpath` always considering it as a closed subpath. Falls back to perimeter centroid if the area is zero.
+	/// Attempts to return the area centroid of the `Subpath` always considering it as a closed subpath. Falls back to length centroid if the area is zero.
+	///
+	/// The area centroid is the center of mass for the area of a solid shape's interior.
+	/// An infinitely flat material forming the subpath's closed shape would balance at this point.
 	///
 	/// It will return `None` if no manipulator is present.
 	/// Because the calculation of centroid for self-intersecting path requires finding the intersections, the following parameters are used:
 	/// - `error` - For intersections with non-linear beziers, `error` defines the threshold for bounding boxes to be considered an intersection point.
 	/// - `minimum_separation` - the minimum difference two adjacent `t`-values must have when comparing adjacent `t`-values in sorted order.
-	/// - `tolerance` - Tolerance used to approximate the curve if it falls back to perimeter centroid.
+	/// - `tolerance` - Tolerance used to approximate the curve if it falls back to length centroid.
 	/// If the comparison condition is not satisfied, the function takes the larger `t`-value of the two
 	///
 	/// **NOTE**: if an intersection were to occur within an `error` distance away from an anchor point, the algorithm will filter that intersection out.
-	pub fn centroid(&self, error: Option<f64>, minimum_separation: Option<f64>, tolerance: Option<f64>) -> Option<DVec2> {
-		let (area, centroid) = self.area_centroid(error, minimum_separation)?;
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#subpath/area-centroid/solo" title="Area Centroid Demo"></iframe>
+	pub fn area_centroid(&self, error: Option<f64>, minimum_separation: Option<f64>, tolerance: Option<f64>) -> Option<DVec2> {
+		let (centroid, area) = self.area_centroid_and_area(error, minimum_separation)?;
 
 		if area != 0. {
 			Some(centroid)
 		} else {
-			self.perimeter_centroid(tolerance, true).map(|(_, centroid)| centroid)
+			self.length_centroid_and_length(tolerance, true).map(|(centroid, _)| centroid)
 		}
 	}
 
@@ -336,7 +360,7 @@ mod tests {
 	}
 
 	#[test]
-	fn perimeter_centroid() {
+	fn length_centroid() {
 		let start = DVec2::new(0., 0.);
 		let end = DVec2::new(1., 1.);
 		let handle = DVec2::new(0., 1.);
@@ -362,10 +386,10 @@ mod tests {
 		let expected_centroid = DVec2::new(0.4153039799983826, 0.5846960200016174);
 		let epsilon = 0.00001;
 
-		assert!(subpath.perimeter_centroid(None, true).unwrap().1.abs_diff_eq(expected_centroid, epsilon));
+		assert!(subpath.length_centroid_and_length(None, true).unwrap().0.abs_diff_eq(expected_centroid, epsilon));
 
 		subpath.closed = true;
-		assert!(subpath.perimeter_centroid(None, true).unwrap().1.abs_diff_eq(expected_centroid, epsilon));
+		assert!(subpath.length_centroid_and_length(None, true).unwrap().0.abs_diff_eq(expected_centroid, epsilon));
 	}
 
 	#[test]
@@ -402,7 +426,7 @@ mod tests {
 	}
 
 	#[test]
-	fn centroid() {
+	fn area_centroid() {
 		let start = DVec2::new(0., 0.);
 		let end = DVec2::new(1., 1.);
 		let handle = DVec2::new(0., 1.);
@@ -428,10 +452,10 @@ mod tests {
 		let expected_centroid = DVec2::new(0.4, 0.6);
 		let epsilon = 0.00001;
 
-		assert!(subpath.centroid(Some(0.001), Some(0.001), None).unwrap().abs_diff_eq(expected_centroid, epsilon));
+		assert!(subpath.area_centroid(Some(0.001), Some(0.001), None).unwrap().abs_diff_eq(expected_centroid, epsilon));
 
 		subpath.closed = true;
-		assert!(subpath.centroid(Some(0.001), Some(0.001), None).unwrap().abs_diff_eq(expected_centroid, epsilon));
+		assert!(subpath.area_centroid(Some(0.001), Some(0.001), None).unwrap().abs_diff_eq(expected_centroid, epsilon));
 	}
 
 	#[test]
