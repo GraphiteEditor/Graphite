@@ -325,7 +325,7 @@
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltip="Color model, color space, and HDR (coming soon)" /> -->
 			<LayoutRow>
 				<TextLabel tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
@@ -341,7 +341,7 @@
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel tooltip="Red/Green/Blue channels of the color, integers 0–255">RGB</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
@@ -358,7 +358,7 @@
 							}}
 							min={0}
 							max={255}
-							minWidth={56}
+							minWidth={1}
 							tooltip={`${{ r: "Red", g: "Green", b: "Blue" }[channel]} channel, integers 0–255`}
 						/>
 					{/each}
@@ -368,7 +368,7 @@
 				<TextLabel tooltip={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}>
 					HSV
 				</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
@@ -386,7 +386,7 @@
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
-							minWidth={56}
+							minWidth={1}
 							displayDecimalPlaces={1}
 							tooltip={{
 								h: `Hue component, the shade along the spectrum of the rainbow`,
@@ -397,25 +397,28 @@
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
-			<NumberInput
-				label="Alpha"
-				value={!isNone ? alpha * 100 : undefined}
-				on:value={({ detail }) => {
-					if (detail !== undefined) alpha = detail / 100;
-					setColorAlphaPercent(detail);
-				}}
-				on:startHistoryTransaction={() => {
-					dispatch("startHistoryTransaction");
-				}}
-				min={0}
-				max={100}
-				rangeMin={0}
-				rangeMax={100}
-				unit="%"
-				mode="Range"
-				displayDecimalPlaces={1}
-				tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
-			/>
+			<LayoutRow>
+				<TextLabel tooltip="Scale from transparent (0%) to opaque (100%) for the color's alpha channel">Alpha</TextLabel>
+				<Separator type="Related" />
+				<NumberInput
+					value={!isNone ? alpha * 100 : undefined}
+					on:value={({ detail }) => {
+						if (detail !== undefined) alpha = detail / 100;
+						setColorAlphaPercent(detail);
+					}}
+					on:startHistoryTransaction={() => {
+						dispatch("startHistoryTransaction");
+					}}
+					min={0}
+					max={100}
+					rangeMin={0}
+					rangeMax={100}
+					unit="%"
+					mode="Range"
+					displayDecimalPlaces={1}
+					tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
+				/>
+			</LayoutRow>
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone}
@@ -565,7 +568,7 @@
 
 		.details {
 			margin-left: 16px;
-			width: 208px;
+			width: 200px;
 			gap: 8px;
 
 			> .layout-row {
@@ -573,8 +576,9 @@
 				flex: 0 0 auto;
 
 				> .text-label {
-					width: 24px;
-					flex: 0 0 auto;
+					// TODO: Use a table or grid layout for this width to match the widest label. Hard-coding it won't work when we add translation/localization.
+					flex: 0 0 34px;
+					line-height: 24px;
 				}
 
 				&.leftover-space {
@@ -584,7 +588,7 @@
 
 			.choice-preview {
 				flex: 0 0 auto;
-				width: 208px;
+				width: 100%;
 				height: 32px;
 				border-radius: 2px;
 				border: 1px solid var(--color-1-nearblack);
@@ -687,8 +691,8 @@
 				margin: 0;
 				padding: 0;
 				border-radius: 2px;
-				width: calc(48px + (48px + 4px) / 2);
 				height: 24px;
+				flex: 1 1 100%;
 
 				&.none {
 					background: var(--color-none);
@@ -716,6 +720,7 @@
 					width: 24px;
 					font-size: 0;
 					overflow: hidden;
+					flex: 0 0 auto;
 
 					div {
 						display: inline-block;

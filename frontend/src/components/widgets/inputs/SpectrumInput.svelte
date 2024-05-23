@@ -67,10 +67,11 @@
 	// SendPositions({ index, position }[])
 	// AddMarker(position)
 	// RemoveMarkers(index[])
+	// ResetMarkerToDefault(index)
 
 	// // We need a way to encode constraints on some markers, like locking them in place or preventing reordering
 	// // We need a way to encode the allowability of adding new markers between certain markers, or preventing the deletion of certain markers
-	// // We need a way to reset a marker to what can be considered its default position, by double clicking on it
+	// // We need the ability to multi-select markers and move them all at once
 </script>
 
 <LayoutCol class="spectrum-input">

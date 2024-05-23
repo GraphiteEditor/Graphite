@@ -266,6 +266,9 @@
 		// Only drag the number with left click (and when it's valid to do so)
 		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled || editing) return;
 
+		// Remove the text entry cursor from any other selected text field
+		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+
 		// Don't drag the text value from is input element
 		e.preventDefault();
 
