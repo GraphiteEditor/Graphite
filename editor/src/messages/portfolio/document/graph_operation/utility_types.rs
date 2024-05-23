@@ -127,7 +127,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_node_as_primary_export(&mut self, id: NodeId, mut new_node: DocumentNode, node_input_index: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
 		let Some(export) = self.document_network.exports.get_mut(0) else {
-			log::debug!("Could not get primary export when adding node");
+			log::error!("Could not get primary export when adding node");
 			return None;
 		};
 		*export = NodeInput::node(id, 0);
@@ -157,13 +157,23 @@ impl<'a> ModifyInputsContext<'a> {
 	///      ↑      if skip_layer_nodes == 2, return (NonLayerNode, Some(Layer3), 0)
 	/// -> Layer3   input_index: 3
 	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
-	pub fn get_post_node_with_index(network: &NodeNetwork, mut post_node_id: NodeId, insert_index: usize) -> (NodeId, Option<NodeId>, usize) {
-		let mut post_node_input_index = if post_node_id == NodeId(0) { 0 } else { 1 };
+	pub fn get_post_node_with_index(network: &NodeNetwork, metadata: &DocumentMetadata, parent: LayerNodeIdentifier, insert_index: usize) -> (Option<NodeId>, Option<NodeId>, usize) {
+		let post_node_information = if parent != LayerNodeIdentifier::ROOT_PARENT {
+			Some((parent.to_node(), 1))
+		} else {
+			network.root_node.map(|root_node| (root_node.id, 0))
+		};
 
+		let Some((mut post_node_id, mut post_node_input_index)) = post_node_information else {
+			return (None, None, 0);
+		};
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
 		loop {
 			if current_index == insert_index {
+				if parent == LayerNodeIdentifier::ROOT_PARENT {
+					post_node_input_index = 1;
+				}
 				break;
 			}
 			let next_node_in_stack_id = network
@@ -214,42 +224,40 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		(post_node_id, pre_node_id, post_node_input_index)
+		(Some(post_node_id), pre_node_id, post_node_input_index)
 	}
 
-	pub fn create_layer(&mut self, new_id: NodeId, output_node_id: NodeId, skip_layer_nodes: usize) -> Option<NodeId> {
+	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
-
 		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top-most artboard,
 		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
 		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
-
-		let mut post_node_id = output_node_id;
-		if post_node_id == NodeId(0) {
-			// Check if an artboard is connected, and switch post node to the artboard.
-			if let Some(NodeInput::Node { node_id, .. }) = &self.document_network.nodes.get(&post_node_id).expect("Output node should always exist").inputs.get(0) {
-				let input_node = self.document_network.nodes.get(&node_id).expect("First input node should exist");
-				if input_node.is_artboard() {
-					post_node_id = *node_id;
-				}
-			}
-		}
-		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, post_node_id, skip_layer_nodes);
 		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-		if let Some(pre_node_id) = pre_node_id {
-			self.insert_between(
-				new_id,
-				new_layer_node,
-				NodeInput::node(pre_node_id, 0),
-				0, // pre_node is a sibling so it connects to the first input
-				post_node_id,
-				NodeInput::node(new_id, 0),
-				post_node_input_index,
-				IVec2::new(0, 3),
-			);
+		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, self.document_metadata, parent, skip_layer_nodes);
+
+		if let Some(post_node_id) = post_node_id {
+			if let Some(pre_node_id) = pre_node_id {
+				self.insert_between(
+					new_id,
+					new_layer_node,
+					NodeInput::node(pre_node_id, 0),
+					0, // pre_node is a sibling so it connects to the first input
+					post_node_id,
+					NodeInput::node(new_id, 0),
+					post_node_input_index,
+					IVec2::new(0, 3),
+				);
+			} else {
+				let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
+				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
+			};
 		} else {
-			let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
-			self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
+			//If post_node does not exist, then network is empty
+			self.document_network.nodes.insert(new_id, new_layer_node);
+			if let Some(export) = self.document_network.exports.get_mut(0) {
+				*export = NodeInput::node(new_id, 0);
+			}
+			self.document_network.root_node = Some(RootNode { id: new_id, output_index: 0 });
 		}
 
 		Some(new_id)
@@ -257,19 +265,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn create_layer_with_insert_index(&mut self, new_id: NodeId, insert_index: isize, parent: LayerNodeIdentifier) -> Option<NodeId> {
 		let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
-
-		// If root_node doesn't exist, or is a non layer node, insert layer as primary export
-		if parent == LayerNodeIdentifier::ROOT
-			&& self
-				.document_network
-				.root_node
-				.map_or(true, |root_node| self.document_network.nodes.get(&root_node.id).map_or(false, |node| !node.is_layer))
-		{
-			let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-			self.insert_node_as_primary_export(new_id, new_layer_node, 0)
-		} else {
-			self.create_layer(new_id, parent.to_node(), skip_layer_nodes)
-		}
+		self.create_layer(new_id, parent, skip_layer_nodes)
 	}
 
 	/// Creates an artboard that outputs to the output node.
@@ -315,11 +311,6 @@ impl<'a> ModifyInputsContext<'a> {
 				//Else connect the new artboard directly to the root node.
 				self.insert_node_before(new_id, root_node.id, 0, artboard_node, IVec2::new(-8, 3))
 			};
-
-			if let Some(new_id) = created_node_id {
-				let new_child = LayerNodeIdentifier::new_unchecked(new_id);
-				LayerNodeIdentifier::ROOT.push_front_child(self.document_metadata, new_child);
-			}
 
 			created_node_id
 		}

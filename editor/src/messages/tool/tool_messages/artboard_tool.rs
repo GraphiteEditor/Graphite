@@ -271,7 +271,6 @@ impl Fsm for ArtboardToolFsmState {
 
 				let start = root_transform.transform_point2(start);
 				let size = root_transform.transform_vector2(size);
-
 				if let Some(artboard) = tool_data.selected_artboard {
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						id: artboard.to_node(),

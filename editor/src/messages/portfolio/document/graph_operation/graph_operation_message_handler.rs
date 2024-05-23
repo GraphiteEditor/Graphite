@@ -38,13 +38,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 		match message {
 			GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index } => {
-				let shift = nodes
-					.get(&NodeId(0))
-					.and_then(|node| {
-						document_network
-							.nodes
-							.get(&parent.to_node())
-							.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
+				let shift = document_network
+					.root_node
+					.and_then(|root_node| {
+						nodes.get(&root_node.id).and_then(|node| {
+							if parent == LayerNodeIdentifier::ROOT_PARENT {
+								return None;
+							};
+							let parent_node_id = parent.to_node();
+							document_network
+								.nodes
+								.get(&parent_node_id)
+								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
+						})
 					})
 					.unwrap_or_default();
 
@@ -61,16 +67,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 
 				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
-					log::error!("Could not get layer node when adding as child");
+					error!("Could not get layer node when adding as child");
 					return;
 				};
 
 				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
-				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent.to_node(), insert_index);
+				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, document_metadata, parent, insert_index);
 
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
 
-				if let Some(upstream_node) = upstream_node {
+				if let (Some(downstream_node), Some(upstream_node)) = (downstream_node, upstream_node) {
 					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: downstream_node,
 						post_node_input_index: input_index,
@@ -80,12 +86,17 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						pre_node_output_index: 0,
 						pre_node_id: upstream_node,
 					})
-				} else {
+				} else if let Some(downstream_node) = downstream_node {
 					responses.add(NodeGraphMessage::SetNodeInput {
 						node_id: downstream_node,
 						input_index: input_index,
 						input: NodeInput::node(*new_layer_id, 0),
 					})
+				} else {
+					document_network.root_node = Some(graph_craft::document::RootNode { id: *new_layer_id, output_index: 0 });
+					if let Some(primary_export) = document_network.exports.get_mut(0) {
+						*primary_export = NodeInput::node(*new_layer_id, 0)
+					}
 				}
 
 				responses.add(NodeGraphMessage::ShiftUpstream {
@@ -122,8 +133,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::InsertLayerAtStackIndex { layer_id, parent, insert_index } => {
-				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(&document_network, parent, insert_index);
-
+				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, document_metadata, parent, insert_index);
+				let Some(post_node_id) = post_node_id else {
+					log::error!("Post node should exist in InsertLayerAtStackIndex");
+					return;
+				};
 				// `layer_to_move` should always correspond to a node.
 				let Some(layer_to_move_node) = document_network.nodes.get(&layer_id) else {
 					log::error!("Layer node not found when inserting node {} at index {}", layer_id, insert_index);
@@ -277,9 +291,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent } => {
-				let group_layer = LayerNodeIdentifier::new(new_parent, &document_network);
-				let Some(group_parent) = group_layer.parent(&document_metadata) else {
-					log::error!("Could not find parent for layer {:?}", group_layer);
+				let Some(group_parent) = new_parent.parent(&document_metadata) else {
+					log::error!("Could not find parent for layer {:?}", new_parent);
 					return;
 				};
 

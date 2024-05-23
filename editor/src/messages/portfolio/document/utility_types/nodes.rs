@@ -57,7 +57,13 @@ pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
 	pub fn layer_visible(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
-		layer.ancestors(metadata).all(|layer| metadata.node_is_visible(layer.to_node()))
+		layer.ancestors(metadata).all(|layer| {
+			if layer != LayerNodeIdentifier::ROOT_PARENT {
+				metadata.node_is_visible(layer.to_node())
+			} else {
+				false
+			}
+		})
 	}
 
 	pub fn selected_visible_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {

@@ -773,7 +773,15 @@ impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			let node_id = self.stack.pop()?;
+			let mut node_id = self.stack.pop()?;
+
+			if node_id == NodeId(0) {
+				if let Some(root_node) = self.network.root_node {
+					node_id = root_node.id
+				} else {
+					return None;
+				}
+			}
 
 			if let Some(document_node) = self.network.nodes.get(&node_id) {
 				let skip = if self.flow_type == FlowType::HorizontalFlow && document_node.is_layer { 1 } else { 0 };
@@ -785,7 +793,7 @@ impl<'a> Iterator for FlowIter<'a> {
 				self.stack.extend(node_ids);
 
 				return Some((document_node, node_id));
-			};
+			}
 		}
 	}
 }

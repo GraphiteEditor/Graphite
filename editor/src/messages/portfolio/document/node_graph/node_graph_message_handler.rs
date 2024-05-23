@@ -1278,15 +1278,21 @@ impl NodeGraphMessageHandler {
 			if node.is_layer {
 				let layer = LayerNodeIdentifier::new(node_id, network);
 
-				let parents_visible = layer
-					.ancestors(metadata)
-					.filter(|&ancestor| ancestor != layer)
-					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default());
+				let parents_visible = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
+					if layer != LayerNodeIdentifier::ROOT_PARENT {
+						network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
+					} else {
+						false
+					}
+				});
 
-				let parents_unlocked = layer
-					.ancestors(metadata)
-					.filter(|&ancestor| ancestor != layer)
-					.all(|layer| network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default());
+				let parents_unlocked = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
+					if layer != LayerNodeIdentifier::ROOT_PARENT {
+						network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
+					} else {
+						false
+					}
+				});
 
 				let data = LayerPanelEntry {
 					id: node_id,
@@ -1302,7 +1308,7 @@ impl NodeGraphMessageHandler {
 					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
-					parent_id: layer.parent(metadata).map(|parent| parent.to_node()),
+					parent_id: layer.parent(metadata).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT{ Some(parent.to_node())} else {None}),
 					name: node.name.clone(),
 					alias: Self::untitled_layer_label(node),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },

@@ -238,6 +238,7 @@ impl PenToolData {
 
 		// Get the position and set properties
 		let transform = document.metadata().transform_to_document(parent);
+		
 		let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 		let start_position = transform.inverse().transform_point2(snapped.snapped_point_document);

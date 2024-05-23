@@ -128,7 +128,7 @@ pub enum GradientDragTarget {
 /// Contains information about the selected gradient handle
 #[derive(Clone, Debug, Default)]
 struct SelectedGradient {
-	layer: LayerNodeIdentifier,
+	layer: Option<LayerNodeIdentifier>,
 	transform: DAffine2,
 	gradient: Gradient,
 	dragging: GradientDragTarget,
@@ -138,7 +138,7 @@ impl SelectedGradient {
 	pub fn new(gradient: Gradient, layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Self {
 		let transform = gradient_space_transform(layer, document);
 		Self {
-			layer,
+			layer: Some(layer),
 			transform,
 			gradient,
 			dragging: GradientDragTarget::End,
@@ -198,10 +198,12 @@ impl SelectedGradient {
 	/// Update the layer fill to the current gradient
 	pub fn render_gradient(&mut self, responses: &mut VecDeque<Message>) {
 		self.gradient.transform = self.transform;
-		responses.add(GraphOperationMessage::FillSet {
-			layer: self.layer,
-			fill: Fill::Gradient(self.gradient.clone()),
-		});
+		if let Some(layer) = self.layer {
+			responses.add(GraphOperationMessage::FillSet {
+				layer,
+				fill: Fill::Gradient(self.gradient.clone()),
+			});
+		}
 	}
 }
 
@@ -250,7 +252,9 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
 					let Some(gradient) = get_gradient(layer, &document.network) else { continue };
 					let transform = gradient_space_transform(layer, document);
-					let dragging = selected.filter(|selected| selected.layer == layer).map(|selected| selected.dragging);
+					let dragging = selected
+						.filter(|selected| selected.layer.map_or(false, |selected_layer| selected_layer == layer))
+						.map(|selected| selected.dragging);
 
 					let Gradient { start, end, positions, .. } = gradient;
 					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
@@ -289,10 +293,13 @@ impl Fsm for GradientToolFsmState {
 
 				// The gradient has only one point and so should become a fill
 				if selected_gradient.gradient.positions.len() == 1 {
-					responses.add(GraphOperationMessage::FillSet {
-						layer: selected_gradient.layer,
-						fill: Fill::Solid(selected_gradient.gradient.positions[0].1),
-					});
+					if let Some(layer) = selected_gradient.layer {
+						responses.add(GraphOperationMessage::FillSet {
+							layer: layer,
+							fill: Fill::Solid(selected_gradient.gradient.positions[0].1),
+						});
+					}
+
 					return self;
 				}
 
@@ -367,7 +374,7 @@ impl Fsm for GradientToolFsmState {
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
 							tool_data.selected_gradient = Some(SelectedGradient {
-								layer,
+								layer: Some(layer),
 								transform,
 								gradient: gradient.clone(),
 								dragging: GradientDragTarget::Step(index),
@@ -381,7 +388,7 @@ impl Fsm for GradientToolFsmState {
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
 							tool_data.selected_gradient = Some(SelectedGradient {
-								layer,
+								layer: Some(layer),
 								transform,
 								gradient: gradient.clone(),
 								dragging: dragging_target,

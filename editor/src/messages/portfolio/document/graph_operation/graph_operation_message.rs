@@ -35,7 +35,7 @@ pub enum GraphOperationMessage {
 	},
 	InsertLayerAtStackIndex {
 		layer_id: NodeId,
-		parent: NodeId,
+		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
 	InsertNodeBetween {
@@ -48,7 +48,7 @@ pub enum GraphOperationMessage {
 		pre_node_id: NodeId,
 	},
 	MoveSelectedSiblingsToChild {
-		new_parent: NodeId,
+		new_parent: LayerNodeIdentifier,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

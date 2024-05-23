@@ -287,13 +287,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
-					.unwrap_or(LayerNodeIdentifier::ROOT);
+					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
 				let insert_index = parent
 					.children(self.metadata())
 					.enumerate()
 					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as isize))
 					.unwrap_or(-1);
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -338,7 +339,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
-				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.network, &self.selected_nodes, parent);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -396,16 +397,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let parent = self
-					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
-					.unwrap_or(LayerNodeIdentifier::ROOT);
-
-				// Cancel grouping layers across different artboards
-				// TODO: Group each set of layers for each artboard separately
-				if parent == LayerNodeIdentifier::ROOT {
+				let Some(parent) = self.metadata().deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+					// Cancel grouping layers across different artboards
+					// TODO: Group each set of layers for each artboard separately
 					return;
-				}
+				};
 
 				// Move layers in nested unselected folders above the first unselected parent folder
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
@@ -434,7 +430,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						node_id: layer.to_node(),
 						reconnect_to_sibling: true,
 					});
-
 					// Move disconnected node to folder
 					let folder_position = self
 						.network
@@ -471,18 +466,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 				}
 
-				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.network, &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id: folder_id,
 					nodes: HashMap::new(),
-					parent,
+					parent: parent,
 					insert_index: calculated_insert_index,
 					alias: String::new(),
 				});
 
-				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: folder_id });
+				let parent: LayerNodeIdentifier = LayerNodeIdentifier::new_unchecked(folder_id);
+				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: parent });
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -534,16 +530,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
-				// Artboards can only have the Output node as the parent.
-				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT {
+				// Artboards can only have None as the parent.
+				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
 				// Disallow inserting layers between artboards. Since only artboards can output to Output node, the layer parent cannot be the output.
-				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT {
+				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
+				//TODO: use let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
+				let mut insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 
-				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
+				let layer_above_insertion = if parent == LayerNodeIdentifier::ROOT_PARENT {
+					None //None represents the parent of the root node
+				} else if insert_index == 0 {
+					Some(parent)
+				} else {
+					parent.children(&self.metadata).nth(insert_index - 1)
+				};
 
 				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
@@ -551,6 +555,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
 				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
 				for layer_to_move in ordered_last_elements {
+					if layer_to_move
+						.upstream_siblings(&self.metadata)
+						.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
+					{
+						insert_index -= 1;
+					}
+
 					// Disconnect layer to move and reconnect downstream node to upstream sibling if it exists.
 					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
 						node_id: layer_to_move.to_node(),
@@ -559,7 +570,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Reconnect layer_to_move to new parent at insert index.
 					responses.add(GraphOperationMessage::InsertLayerAtStackIndex {
 						layer_id: layer_to_move.to_node(),
-						parent: parent.to_node(),
+						parent: parent,
 						insert_index,
 					});
 				}
@@ -1094,8 +1105,7 @@ impl DocumentMessageHandler {
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
 		self.metadata
-			.root()
-			.descendants(&self.metadata)
+			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
@@ -1108,8 +1118,7 @@ impl DocumentMessageHandler {
 	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.metadata
-			.root()
-			.descendants(&self.metadata)
+			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
@@ -1198,6 +1207,7 @@ impl DocumentMessageHandler {
 	/// Called recursively by the entry function [`serialize_root`].
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
 		let mut space = 0;
+
 		for layer_node in folder.children(self.metadata()) {
 			data_section.push(layer_node.to_node().0);
 			space += 1;
@@ -1249,7 +1259,7 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
 	pub fn serialize_root(&self) -> RawBuffer {
-		let mut structure_section = vec![LayerNodeIdentifier::ROOT.to_node().0];
+		let mut structure_section = vec![NodeId(0).0];
 		let mut data_section = Vec::new();
 		self.serialize_structure(self.metadata().root(), &mut structure_section, &mut data_section, &mut vec![]);
 
@@ -1403,11 +1413,11 @@ impl DocumentMessageHandler {
 	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
 	///
 	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> usize {
-		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
-		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
-		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as usize
-	}
+	// fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> usize {
+	// 	let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
+	// 	let layer_ids_above = parent.children(self.metadata()).take(take_amount);
+	// 	layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as usize
+	// }
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
@@ -1416,7 +1426,7 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, network: &NodeNetwork, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
 		parent
 			.children(metadata)
 			.enumerate()

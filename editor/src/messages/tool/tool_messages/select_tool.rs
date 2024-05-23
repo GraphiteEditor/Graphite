@@ -344,7 +344,7 @@ impl SelectToolData {
 			};
 			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(document.network(), &copy_ids).collect();
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.selected_nodes, parent);
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.network, &document.selected_nodes, parent);
 
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
@@ -1100,14 +1100,7 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 			.filter(not_artboard(document))
 			.find(|&ancestor| document.selected_nodes.selected_layers_contains(ancestor, document.metadata()));
 
-		let new_selected = ancestor.unwrap_or_else(|| {
-			layer
-				.ancestors(document.metadata())
-				.take_while(|&layer| layer != LayerNodeIdentifier::ROOT)
-				.filter(not_artboard(document))
-				.last()
-				.unwrap_or(layer)
-		});
+		let new_selected = ancestor.unwrap_or_else(|| layer.ancestors(document.metadata()).filter(not_artboard(document)).last().unwrap_or(layer));
 		tool_data.layers_dragging.retain(|layer| !layer.ancestors(document.metadata()).any(|ancestor| ancestor == new_selected));
 		tool_data.layers_dragging.push(new_selected);
 	}
@@ -1118,7 +1111,12 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 }
 
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
-	tool_data.layers_dragging.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or_default()]);
+	tool_data
+		.layers_dragging
+		.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or(LayerNodeIdentifier::new(
+			document.network.root_node.expect("Root node should exist when dragging layers").id,
+			&document.network,
+		))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
 	});
