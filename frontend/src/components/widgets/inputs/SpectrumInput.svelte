@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { onDestroy } from "svelte";
+	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	// const dispatch = createEventDispatcher<{ checked: boolean }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
 	let activeMarkerIndex = 0;
 	let markers = [
@@ -22,6 +22,7 @@
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		activeMarkerIndex = index;
+		dispatch("selectedIndex", index);
 
 		addEvents();
 

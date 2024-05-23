@@ -219,6 +219,16 @@ export type RGB = { r: number; g: number; b: number };
 
 // All channels range from 0 to 1
 export class Color {
+	readonly red!: number;
+
+	readonly green!: number;
+
+	readonly blue!: number;
+
+	readonly alpha!: number;
+
+	readonly none!: boolean;
+
 	constructor();
 
 	constructor(none: "none");
@@ -265,16 +275,6 @@ export class Color {
 			this.none = false;
 		}
 	}
-
-	readonly red!: number;
-
-	readonly green!: number;
-
-	readonly blue!: number;
-
-	readonly alpha!: number;
-
-	readonly none!: boolean;
 
 	static fromCSS(colorCode: string): Color | undefined {
 		// Allow single-digit hex value inputs
@@ -355,29 +355,18 @@ export class Color {
 		};
 	}
 
-	toRgba255(): RGBA | undefined {
-		if (this.none) return undefined;
-
-		return {
-			r: Math.round(this.red * 255),
-			g: Math.round(this.green * 255),
-			b: Math.round(this.blue * 255),
-			a: Math.round(this.alpha * 255),
-		};
-	}
-
 	toRgbCSS(): string | undefined {
-		const rgba = this.toRgba255();
-		if (!rgba) return undefined;
+		const rgb = this.toRgb255();
+		if (!rgb) return undefined;
 
-		return `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`;
+		return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 	}
 
 	toRgbaCSS(): string | undefined {
-		const rgba = this.toRgba255();
-		if (!rgba) return undefined;
+		const rgb = this.toRgb255();
+		if (!rgb) return undefined;
 
-		return `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`;
+		return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.alpha})`;
 	}
 
 	toHSV(): HSV | undefined {

@@ -56,6 +56,14 @@
 	let oldValue = hsva.v;
 	let oldAlpha = hsva.a;
 	let oldIsNone = hsvaOrNone === undefined;
+	// Gradient color stops
+	let gradientStops: { position: number; color: Color }[] | undefined = [
+		{ position: 0, color: Color.fromCSS("#e25151") as Color },
+		{ position: 0.25, color: Color.fromCSS("#ffc86d") as Color },
+		{ position: 0.5, color: Color.fromCSS("#fbdca3") as Color },
+		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
+		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
+	];
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
@@ -268,6 +276,10 @@
 		}
 	}
 
+	function gradientMarkerSelected({ detail: index }: CustomEvent<number>) {
+		setColor(gradientStops?.[index]?.color);
+	}
+
 	onDestroy(() => {
 		removeEvents();
 	});
@@ -305,7 +317,7 @@
 				</LayoutCol>
 			</LayoutRow>
 			<LayoutRow class="gradient">
-				<SpectrumInput />
+				<SpectrumInput on:selectedIndex={gradientMarkerSelected} />
 				<NumberInput value={50} displayDecimalPlaces={1} unit="%" />
 			</LayoutRow>
 		</LayoutCol>
@@ -732,8 +744,7 @@
 						transition: background-color 0.2s ease;
 					}
 
-					&:hover div,
-					&:focus div {
+					&:hover div {
 						background: var(--pure-color);
 					}
 				}
