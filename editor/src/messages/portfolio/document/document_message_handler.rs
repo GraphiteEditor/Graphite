@@ -317,6 +317,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
+					//Path will never include ROOT_PARENT, so this is safe
 					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
 				}
 			}
@@ -426,6 +427,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 
+					// ROOT_PARENT cannot be selected, so this should never be true
+					if layer == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be deleted");
+						continue;
+					};
+
+					// first_unselected_parent_folder must be a child of parent, so it cannot be the ROOT_PARENT
+					if first_unselected_parent_folder == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("first_unselected_parent_folder cannot be ROOT_PARENT");
+						continue;
+					};
+
 					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
 						node_id: layer.to_node(),
 						reconnect_to_sibling: true,
@@ -444,6 +457,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Insert node right above the folder
+					//TODO: downstream node can be none if it is the root node
 					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder)
 					else {
 						log::error!("Downstream node should always exist when inserting layer");
@@ -465,7 +479,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						shift_self: true,
 					});
 				}
-
 				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.network, &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
@@ -538,7 +551,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
-				//TODO: use let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
 				let mut insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 
 				let layer_above_insertion = if parent == LayerNodeIdentifier::ROOT_PARENT {
@@ -560,6 +572,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
 					{
 						insert_index -= 1;
+					}
+					// layer_to_move should never be ROOT_PARENT, since it is not included in all_layers()
+					if layer_to_move == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("Layer to move cannot be root parent");
+						continue;
 					}
 
 					// Disconnect layer to move and reconnect downstream node to upstream sibling if it exists.
@@ -632,6 +649,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							.selected_layers(self.metadata())
 							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
+							// layer cannot be ROOT_PARENT since selected_layers skips ROOT_PARENT
+							if layer == LayerNodeIdentifier::ROOT_PARENT {
+								log::error!("layer cannot be ROOT_PARENT in nudge");
+								continue;
+							}
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
 							let new = to.inverse() * transformation * to * original_transform;
@@ -670,6 +692,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 
+				// layer cannot be ROOT_PARENT since it is the newly created layer
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
@@ -783,6 +806,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// If we have shift pressed and a layer already selected then fill the range
 				if let Some(last_selected) = self.layer_range_selection_reference.filter(|_| shift) {
+					if last_selected == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be selected in SelectLayer");
+						return;
+					}
 					nodes.push(last_selected.to_node());
 					nodes.push(id);
 
@@ -792,7 +819,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.skip_while(|&node| node != layer && node != last_selected)
 						.skip(1)
 						.take_while(|&node| node != layer && node != last_selected)
-						.for_each(|node| nodes.push(node.to_node()));
+						.for_each(|node| {
+							if node == LayerNodeIdentifier::ROOT_PARENT {
+								log::error!("ROOT_PARENT should not exist in all_layers")
+							} else {
+								nodes.push(node.to_node())
+							}
+						});
 				} else {
 					if ctrl {
 						// Toggle selection when holding ctrl
@@ -809,7 +842,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Set our last selection reference
 					self.layer_range_selection_reference = Some(layer);
 				}
-
 				// Don't create messages for empty operations
 				if !nodes.is_empty() {
 					// Add or set our selected layers
@@ -942,6 +974,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
 				for folder in folder_paths {
+					if folder == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
+						continue;
+					}
 					// Cannot ungroup artboard
 					let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
 					if folder_node.is_artboard() {
@@ -964,6 +1000,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Set the primary input for the node downstream of folder to the first layer node
+					//TODO: downstream node can be none if it is the root node
 					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
@@ -1130,7 +1167,14 @@ impl DocumentMessageHandler {
 	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
 		node_list
 			.iter()
-			.find(|&&layer| !network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default())
+			.find(|&&layer| {
+				if layer != LayerNodeIdentifier::ROOT_PARENT {
+					!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+				} else {
+					log::error!("ROOT_PARENT should not exist in find_deepest");
+					false
+				}
+			})
 			.copied()
 	}
 
@@ -1145,7 +1189,14 @@ impl DocumentMessageHandler {
 		node_list.truncate(
 			node_list
 				.iter()
-				.position(|&layer| !network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default())
+				.position(|&layer| {
+					if layer != LayerNodeIdentifier::ROOT_PARENT {
+						!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+					} else {
+						log::error!("ROOT_PARENT should not exist in click_list_any");
+						false
+					}
+				})
 				.unwrap_or(0) + 1,
 		);
 		node_list
@@ -1376,7 +1427,9 @@ impl DocumentMessageHandler {
 		if let Some(previous_sibling) = layer_to_move.previous_sibling(metadata) {
 			downstream_layer = Some((previous_sibling.to_node(), false))
 		} else if let Some(parent) = layer_to_move.parent(metadata) {
-			downstream_layer = Some((parent.to_node(), true))
+			if parent != LayerNodeIdentifier::ROOT_PARENT {
+				downstream_layer = Some((parent.to_node(), true))
+			}
 		};
 
 		// Downstream layer should always exist

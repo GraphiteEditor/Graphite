@@ -263,6 +263,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let layer_to_disconnect = LayerNodeIdentifier::new(node_id, &network);
 
+				if layer_to_disconnect == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot disconnect ROOT_PARENT");
+					return;
+				}
+				//TODO: downstream node can be none if it is the root node
 				let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&network, &document_metadata, layer_to_disconnect) else {
 					log::error!("Downstream node should always exist when moving layer");
 					return;
@@ -1282,7 +1287,7 @@ impl NodeGraphMessageHandler {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
 						network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
 					} else {
-						false
+						true
 					}
 				});
 
@@ -1290,7 +1295,7 @@ impl NodeGraphMessageHandler {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
 						network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
 					} else {
-						false
+						true
 					}
 				});
 

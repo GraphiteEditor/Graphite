@@ -128,6 +128,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run FillSet on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.fill_set(fill);
 				}
@@ -229,21 +233,37 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run OpacitySet on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run BlendModeSet on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run UpdateBounds on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run StrokeSet on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
@@ -254,6 +274,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run TransformChange on ROOT_PARENT");
+					return;
+				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
@@ -266,6 +290,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run TransformSet on ROOT_PARENT");
+					return;
+				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 
 				let current_transform = Some(document_metadata.transform_to_viewport(layer));
@@ -275,17 +303,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
+					return;
+				}
 				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run Vector on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.vector_modify(modification);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot run Brush on ROOT_PARENT");
+					return;
+				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
 					modify_inputs.brush_modify(strokes);
 				}

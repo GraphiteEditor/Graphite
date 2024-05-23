@@ -263,6 +263,9 @@ impl DocumentMetadata {
 	}
 
 	pub fn downstream_transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.transform_to_viewport(layer);
+		};
 		self.upstream_transforms
 			.get(&layer.to_node())
 			.copied()
@@ -390,7 +393,6 @@ impl LayerNodeIdentifier {
 	}
 
 	/// Access the node id of this layer
-	#[track_caller]
 	pub fn to_node(self) -> NodeId {
 		let id = NodeId(u64::from(self.0) - 1);
 		debug_assert!(id != NodeId(0), "LayerNodeIdentifer::ROOT_PARENT cannot be converted to NodeId");

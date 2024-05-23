@@ -248,6 +248,10 @@ impl TextToolData {
 	}
 
 	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Cannot edit ROOT_PARENT in TextTooLData")
+		}
+		
 		if tool_state == TextToolFsmState::Editing {
 			self.set_editing(false, font_cache, document, responses);
 		}

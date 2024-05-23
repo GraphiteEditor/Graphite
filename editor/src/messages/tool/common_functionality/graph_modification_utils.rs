@@ -227,6 +227,7 @@ pub struct NodeGraphLayer<'a> {
 impl<'a> NodeGraphLayer<'a> {
 	/// Get the layer node from the document
 	pub fn new(layer: LayerNodeIdentifier, network: &'a NodeNetwork) -> Self {
+		debug_assert!(layer != LayerNodeIdentifier::ROOT_PARENT, "Cannot create new NodeGraphLayer from ROOT_PARENT");
 		Self {
 			node_graph: network,
 			layer_node: layer.to_node(),

@@ -61,7 +61,7 @@ impl SelectedNodes {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
 				metadata.node_is_visible(layer.to_node())
 			} else {
-				false
+				true
 			}
 		})
 	}
@@ -71,7 +71,13 @@ impl SelectedNodes {
 	}
 
 	pub fn layer_locked(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {
-		layer.ancestors(metadata).any(|layer| metadata.node_is_locked(layer.to_node()))
+		layer.ancestors(metadata).any(|layer| {
+			if layer != LayerNodeIdentifier::ROOT_PARENT {
+				metadata.node_is_locked(layer.to_node())
+			} else {
+				false
+			}
+		})
 	}
 
 	pub fn selected_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
@@ -79,8 +85,10 @@ impl SelectedNodes {
 	}
 
 	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata)
-			.filter(move |&layer| self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata))
+		self.selected_layers(metadata).filter(move |&layer| {
+			log::debug!("layer: {:?}", layer);
+			self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata)
+		})
 	}
 
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {

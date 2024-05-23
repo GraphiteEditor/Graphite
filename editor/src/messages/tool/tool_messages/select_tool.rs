@@ -313,6 +313,12 @@ impl SelectToolData {
 		let mut new_dragging = Vec::new();
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
 			let Some(layer) = layer_ancestors.last().copied() else { continue };
+			// Layer cannot be ROOT_PARENT, since ROOT_PARENT cannot be part of layers_dragging
+			if layer == LayerNodeIdentifier::ROOT_PARENT {
+				log::error!("ROOT_PARENT cannot be in layers_dragging");
+				continue;
+			}
+			// Parent can be LayerNodeIdentifier::ROOT_PARENT
 			let Some(parent) = layer.parent(&document.metadata) else { continue };
 
 			// Moves the layer back to its starting position.
@@ -365,8 +371,13 @@ impl SelectToolData {
 
 		// Delete the duplicated layers
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
+			let layer = layer_ancestors.last().unwrap();
+			if *layer == LayerNodeIdentifier::ROOT_PARENT {
+				log::error!("ROOT_PARENT cannot be in layers_dragging");
+				continue;
+			}
 			responses.add(NodeGraphMessage::DeleteNodes {
-				node_ids: vec![layer_ancestors.last().unwrap().to_node()],
+				node_ids: vec![layer.to_node()],
 				reconnect: true,
 			});
 		}
@@ -379,7 +390,17 @@ impl SelectToolData {
 				skip_rerender: true,
 			});
 		}
-		let nodes = original.iter().map(|layer| layer.to_node()).collect();
+		let nodes = original
+			.iter()
+			.filter_map(|layer| {
+				if *layer != LayerNodeIdentifier::ROOT_PARENT {
+					Some(layer.to_node())
+				} else {
+					log::error!("ROOT_PARENT cannot be part of non_duplicated_layers");
+					None
+				}
+			})
+			.collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 		self.layers_dragging = original;
 	}
@@ -523,7 +544,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						tool_data.layers_dragging.retain(|layer| document.network.nodes.contains_key(&layer.to_node()));
+						tool_data.layers_dragging.retain(|layer| if *layer != LayerNodeIdentifier::ROOT_PARENT {document.network.nodes.contains_key(&layer.to_node())} else {log::error!("ROOT_PARENT should not be part of layers_dragging"); false});
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -545,7 +566,7 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
+						tool_data.layers_dragging.retain(|layer| if *layer != LayerNodeIdentifier::ROOT_PARENT {document.network.nodes.contains_key(&layer.to_node())} else {log::error!("ROOT_PARENT should not be part of layers_dragging"); false});
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -702,7 +723,14 @@ impl Fsm for SelectToolFsmState {
 						let pivot_transform = DAffine2::from_translation(pivot);
 						let transformation = pivot_transform * delta * pivot_transform.inverse();
 
-						tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network.nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
 						let selected = &tool_data.layers_dragging;
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
@@ -745,7 +773,14 @@ impl Fsm for SelectToolFsmState {
 
 					let delta = DAffine2::from_angle(snapped_angle);
 
-					tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
+					tool_data.layers_dragging.retain(|layer| {
+						if *layer != LayerNodeIdentifier::ROOT_PARENT {
+							document.network().nodes.contains_key(&layer.to_node())
+						} else {
+							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
+							false
+						}
+					});
 					let mut selected = Selected::new(
 						&mut bounds.original_transforms,
 						&mut bounds.center_of_transformation,
@@ -869,7 +904,6 @@ impl Fsm for SelectToolFsmState {
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad(quad, &document.network);
-
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
 							.selected_nodes
@@ -881,14 +915,28 @@ impl Fsm for SelectToolFsmState {
 						tool_data.layers_dragging.extend(replacement_selected_layers.iter());
 
 						responses.add(NodeGraphMessage::SelectedNodesSet {
-							nodes: replacement_selected_layers.iter().map(|layer| layer.to_node()).collect(),
+							nodes: replacement_selected_layers
+								.iter()
+								.filter_map(|layer| {
+									if *layer != LayerNodeIdentifier::ROOT_PARENT {
+										Some(layer.to_node())
+									} else {
+										log::error!("ROOT_PARENT cannot be part of replacement_selected_layers");
+										None
+									}
+								})
+								.collect(),
 						});
 					}
 				} else if let Some(selecting_layer) = tool_data.select_single_layer.take() {
 					if !tool_data.has_dragged {
-						responses.add(NodeGraphMessage::SelectedNodesSet {
-							nodes: vec![selecting_layer.to_node()],
-						});
+						if selecting_layer == LayerNodeIdentifier::ROOT_PARENT {
+							log::error!("selecting_layer should not be ROOT_PARENT");
+						} else {
+							responses.add(NodeGraphMessage::SelectedNodesSet {
+								nodes: vec![selecting_layer.to_node()],
+							});
+						}
 					}
 				}
 
@@ -952,7 +1000,18 @@ impl Fsm for SelectToolFsmState {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
 					responses.add(DocumentMessage::StartTransaction);
 					responses.add(NodeGraphMessage::SelectedNodesSet {
-						nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
+						nodes: tool_data
+							.layers_dragging
+							.iter()
+							.filter_map(|layer| {
+								if *layer != LayerNodeIdentifier::ROOT_PARENT {
+									Some(layer.to_node())
+								} else {
+									log::error!("ROOT_PARENT cannot be part of tool_data.layers_dragging");
+									None
+								}
+							})
+							.collect(),
 					});
 				}
 				responses.add(OverlaysMessage::Draw);
@@ -983,7 +1042,13 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::Abort) => {
-				tool_data.layers_dragging.retain(|layer| document.network().nodes.contains_key(&layer.to_node()));
+				tool_data.layers_dragging.retain(|layer| {
+					if *layer != LayerNodeIdentifier::ROOT_PARENT {
+						document.network().nodes.contains_key(&layer.to_node())
+					} else {
+						false
+					}
+				});
 				if let Some(mut bounding_box_overlays) = tool_data.bounding_box_manager.take() {
 					let mut selected = Selected::new(
 						&mut bounding_box_overlays.original_transforms,
@@ -1106,7 +1171,18 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 	}
 
 	responses.add(NodeGraphMessage::SelectedNodesSet {
-		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
+		nodes: tool_data
+			.layers_dragging
+			.iter()
+			.filter_map(|layer| {
+				if *layer != LayerNodeIdentifier::ROOT_PARENT {
+					Some(layer.to_node())
+				} else {
+					log::error!("ROOT_PARENT cannot be part of tool_data.layers_dragging");
+					None
+				}
+			})
+			.collect(),
 	});
 }
 
@@ -1118,7 +1194,18 @@ fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<La
 			&document.network,
 		))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
-		nodes: tool_data.layers_dragging.iter().map(|layer| layer.to_node()).collect(),
+		nodes: tool_data
+			.layers_dragging
+			.iter()
+			.filter_map(|layer| {
+				if *layer != LayerNodeIdentifier::ROOT_PARENT {
+					Some(layer.to_node())
+				} else {
+					log::error!("ROOT_PARENT cannot be part of tool_data.layers_dragging");
+					None
+				}
+			})
+			.collect(),
 	});
 }
 
@@ -1135,7 +1222,10 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	}) else {
 		return;
 	};
-
+	if new_selected == LayerNodeIdentifier::ROOT_PARENT {
+		log::error!("new_selected cannot be ROOT_PARENT");
+		return;
+	}
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 
