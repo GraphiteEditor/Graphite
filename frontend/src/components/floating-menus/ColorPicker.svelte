@@ -44,6 +44,14 @@
 	const hsvaOrNone = color.toHSVA();
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
+	// Gradient color stops
+	let gradient: { position: number; color: Color }[] | undefined = [
+		{ position: 0, color: Color.fromCSS("#e25151") as Color },
+		{ position: 0.25, color: Color.fromCSS("#ffc86d") as Color },
+		{ position: 0.5, color: Color.fromCSS("#fbdca3") as Color },
+		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
+		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
+	];
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
@@ -56,19 +64,12 @@
 	let oldValue = hsva.v;
 	let oldAlpha = hsva.a;
 	let oldIsNone = hsvaOrNone === undefined;
-	// Gradient color stops
-	let gradientStops: { position: number; color: Color }[] | undefined = [
-		{ position: 0, color: Color.fromCSS("#e25151") as Color },
-		{ position: 0.25, color: Color.fromCSS("#ffc86d") as Color },
-		{ position: 0.5, color: Color.fromCSS("#fbdca3") as Color },
-		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
-		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
-	];
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
 
 	let hexCodeInputWidget: TextInput | undefined;
+	let gradientSpectrumInputWidget: SpectrumInput | undefined;
 
 	$: watchOpen(open);
 	$: watchColor(color);
@@ -173,6 +174,11 @@
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 		dispatch("color", colorToEmit);
+
+		if (gradient && gradientSpectrumInputWidget instanceof SpectrumInput) {
+			gradient[gradientSpectrumInputWidget.activeIndex()].color = colorToEmit;
+			gradient = gradient;
+		}
 	}
 
 	function swapNewWithOld() {
@@ -276,8 +282,15 @@
 		}
 	}
 
-	function gradientMarkerSelected({ detail: index }: CustomEvent<number>) {
-		setColor(gradientStops?.[index]?.color);
+	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number>) {
+		const color = gradient?.[index]?.color;
+		const hsva = color?.toHSVA();
+		if (!color || !hsva) return;
+
+		setColor(color);
+
+		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+		setOldHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
 	}
 
 	onDestroy(() => {
@@ -316,10 +329,30 @@
 					{/if}
 				</LayoutCol>
 			</LayoutRow>
-			<LayoutRow class="gradient">
-				<SpectrumInput on:selectedIndex={gradientMarkerSelected} />
-				<NumberInput value={50} displayDecimalPlaces={1} unit="%" />
-			</LayoutRow>
+			{#if gradient}
+				<LayoutRow class="gradient">
+					<SpectrumInput
+						markers={gradient}
+						on:markers={() => {
+							gradient = gradient;
+						}}
+						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
+						bind:this={gradientSpectrumInputWidget}
+					/>
+					{#if gradientSpectrumInputWidget}
+						<NumberInput
+							value={gradient[gradientSpectrumInputWidget.activeIndex()].position * 100}
+							on:value={({ detail }) => {
+								if (gradient && gradientSpectrumInputWidget && detail !== undefined) gradient[gradientSpectrumInputWidget.activeIndex()].position = detail / 100;
+							}}
+							displayDecimalPlaces={0}
+							min={0}
+							max={100}
+							unit="%"
+						/>
+					{/if}
+				</LayoutRow>
+			{/if}
 		</LayoutCol>
 		<LayoutCol class="details">
 			<LayoutRow class="choice-preview" tooltip="Comparison views of the present color choice (left) and the color before any change (right)">
@@ -330,9 +363,11 @@
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
 					<TextLabel>New</TextLabel>
 				</LayoutCol>
-				<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
-					<TextLabel>Old</TextLabel>
-				</LayoutCol>
+				{#if !newColor.equals(oldColor)}
+					<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
+						<TextLabel>Old</TextLabel>
+					</LayoutCol>
+				{/if}
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltip="Color model, color space, and HDR (coming soon)" /> -->
 			<LayoutRow>
@@ -434,20 +469,20 @@
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set No Color" tabindex="0" />
+					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0" />
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set Black" tabindex="0" />
+				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0" />
 				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set White" tabindex="0" />
+				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0" />
 				<Separator type="Related" />
 				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set Red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set Yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set Green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set Cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set Blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set Magenta" />
+					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
+					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
+					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
+					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
+					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
+					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
 				</button>
 				<Separator type="Related" />
 				<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />

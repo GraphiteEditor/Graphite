@@ -1,28 +1,29 @@
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
 
+	import type { Color } from "@graphite/wasm-communication/messages";
+
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number; markers: typeof markers }>();
+
+	export let markers: { position: number; color: Color }[];
 
 	let activeMarkerIndex = 0;
-	let markers = [
-		{ position: 0, color: "#e25151" },
-		{ position: 0.25, color: "#ffc86d" },
-		{ position: 0.5, color: "#fbdca3" },
-		{ position: 0.75, color: "#f8eadd" },
-		{ position: 1, color: "#85cbda" },
-	];
 
 	let markerTrack: LayoutRow | undefined;
 
 	// export let disabled = false;
 	// export let tooltip: string | undefined = undefined;
 
+	export function activeIndex() {
+		return activeMarkerIndex;
+	}
+
 	function markerPointerDown(e: PointerEvent, index: number) {
 		activeMarkerIndex = index;
-		dispatch("selectedIndex", index);
+		dispatch("activeMarkerIndexChange", activeMarkerIndex);
 
 		addEvents();
 
@@ -37,7 +38,11 @@
 		if (!markerTrackRect) return;
 		const ratio = (e.clientX - markerTrackRect.left) / markerTrackRect.width;
 
-		markers[activeMarkerIndex].position = Math.max(0, Math.min(1, ratio));
+		const active = markers[activeMarkerIndex];
+		active.position = Math.max(0, Math.min(1, ratio));
+		markers.sort((a, b) => a.position - b.position);
+		activeMarkerIndex = markers.indexOf(active);
+		dispatch("markers", markers);
 	}
 
 	function onPointerUp() {
@@ -75,13 +80,20 @@
 	// // We need the ability to multi-select markers and move them all at once
 </script>
 
-<LayoutCol class="spectrum-input">
+<LayoutCol
+	class="spectrum-input"
+	styles={{
+		"--gradient-start": markers[0]?.color.toRgbCSS() || "black",
+		"--gradient-end": markers[markers.length - 1]?.color.toRgbCSS() || "black",
+		"--gradient-stops": markers.map((marker) => `${marker.color.toRgbCSS()} ${marker.position * 100}%`).join(", "),
+	}}
+>
 	<LayoutRow class="gradient-strip"></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each markers as marker, index}
 			<svg
 				style:--marker-position={marker.position}
-				style:--marker-color={marker.color}
+				style:--marker-color={marker.color.toRgbCSS()}
 				class="marker"
 				class:active={index === activeMarkerIndex}
 				data-gradient-marker
@@ -104,9 +116,6 @@
 <style lang="scss" global>
 	.spectrum-input {
 		--marker-half-width: 6px;
-		--gradient-stops: #e25151 0%, #ffc86d 25%, #fbdca3 50%, #f8eadd 75%, #85cbda 100%;
-		--gradient-start: #e25151;
-		--gradient-end: #85cbda;
 
 		.gradient-strip {
 			flex: 0 0 auto;

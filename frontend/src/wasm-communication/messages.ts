@@ -315,7 +315,7 @@ export class Color {
 
 	equals(other: Color): boolean {
 		if (this.none && other.none) return true;
-		return this.red === other.red && this.green === other.green && this.blue === other.blue && this.alpha === other.alpha;
+		return Math.abs(this.red - other.red) < 1e-6 && Math.abs(this.green - other.green) < 1e-6 && Math.abs(this.blue - other.blue) < 1e-6 && Math.abs(this.alpha - other.alpha) < 1e-6;
 	}
 
 	toHexNoAlpha(): string | undefined {
