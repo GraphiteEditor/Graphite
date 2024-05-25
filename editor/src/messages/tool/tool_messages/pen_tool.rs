@@ -424,13 +424,13 @@ impl Fsm for PenToolFsmState {
 				let valid = |point: DVec2, handle: DVec2| point.distance_squared(handle) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 				let next_point = transform.transform_point2(tool_data.next_point);
 				let next_handle_start = transform.transform_point2(tool_data.next_handle_start);
-				overlay_context.line(next_point, next_handle_start, None);
+				overlay_context.line(next_point, next_handle_start);
 				let start = tool_data.latest_point.map(|(_, start)| transform.transform_point2(start));
 				let handle = tool_data.latest_handle.map(|handle| handle.apply_transformation(|point| transform.transform_point2(point)));
 
 				if let (Some(start), Some(BezierHandles::Cubic { handle_start, handle_end })) = (start, handle) {
-					overlay_context.line(start, handle_start, None);
-					overlay_context.line(next_point, handle_end, None);
+					overlay_context.line(start, handle_start);
+					overlay_context.line(next_point, handle_end);
 
 					path_overlays(document, shape_editor, &mut overlay_context);
 
@@ -474,7 +474,7 @@ impl Fsm for PenToolFsmState {
 						HashMap::from([(NodeId(0), node_type.to_document_node_default_inputs([], Default::default()))])
 					};
 
-					let parent = document.new_layer_parent();
+					let parent = document.new_layer_parent(true);
 					let layer = graph_modification_utils::new_custom(NodeId(generate_uuid()), nodes, parent, responses);
 					tool_options.fill.apply_fill(layer, responses);
 					tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);

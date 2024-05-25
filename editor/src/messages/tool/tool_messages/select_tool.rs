@@ -495,7 +495,7 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection_list = document.click_list(input.mouse.position, &document.network);
+				let intersection_list = document.click_list(input.mouse.position, &document.network).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.

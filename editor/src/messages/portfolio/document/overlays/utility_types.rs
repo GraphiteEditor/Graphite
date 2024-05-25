@@ -39,7 +39,13 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
+	pub fn line(&mut self, start: DVec2, end: DVec2) {
+		self.dashed_line(start, end, None, None)
+	}
+	pub fn coloured_line(&mut self, start: DVec2, end: DVec2, color: &str) {
+		self.dashed_line(start, end, Some(color), None)
+	}
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 		if let Some(dash_width) = dash_width {

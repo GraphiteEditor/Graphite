@@ -1,5 +1,6 @@
 pub mod brush_stroke;
 pub mod generator_nodes;
+pub mod misc;
 
 pub mod style;
 pub use style::PathStyle;

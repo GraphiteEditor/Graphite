@@ -1,4 +1,5 @@
 use super::tool_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -272,6 +273,13 @@ impl Fsm for PolygonToolFsmState {
 				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
 				polygon_data.layer = Some(layer);
+
+				responses.add(GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+					transform_in: TransformIn::Viewport,
+					skip_rerender: false,
+				});
 
 				PolygonToolFsmState::Drawing
 			}

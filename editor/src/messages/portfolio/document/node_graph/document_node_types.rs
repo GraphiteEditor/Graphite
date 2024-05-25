@@ -2630,6 +2630,29 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Area",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::AreaNode<_>"),
+			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
+			properties: node_properties::node_no_properties,
+			manual_composition: Some(concrete!(())),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Centroid",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_core::vector::CentroidNode<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Centroid Type", TaggedValue::CentroidType(graphene_core::vector::misc::CentroidType::Area), false),
+			],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Vector)],
+			properties: node_properties::centroid_properties,
+			manual_composition: Some(concrete!(())),
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Morph",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::MorphNode<_, _, _, _>"),

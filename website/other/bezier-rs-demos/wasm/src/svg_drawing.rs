@@ -16,6 +16,7 @@ pub const NONE: &str = "none";
 
 // Default attributes
 pub const CURVE_ATTRIBUTES: &str = "stroke=\"black\" stroke-width=\"2\" fill=\"none\"";
+pub const CURVE_FILLED_ATTRIBUTES: &str = "stroke=\"black\" stroke-width=\"2\" fill=\"lightgray\"";
 pub const HANDLE_LINE_ATTRIBUTES: &str = "stroke=\"gray\" stroke-width=\"1\" fill=\"none\"";
 pub const ANCHOR_ATTRIBUTES: &str = "r=\"4\" stroke=\"black\" stroke-width=\"2\" fill=\"white\"";
 pub const HANDLE_ATTRIBUTES: &str = "r=\"3\" stroke=\"gray\" stroke-width=\"1.5\" fill=\"white\"";
@@ -59,7 +60,7 @@ pub fn draw_sector(center: DVec2, radius: f64, start_angle: f64, end_angle: f64,
 	let [end_x, end_y] = polar_to_cartesian(center.x, center.y, radius, end_angle);
 	// draw sector with fill color
 	let sector_svg = format!(
-		r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {} {} L {start_x} {start_y} Z"  stroke="none" fill="{fill}" />"#,
+		r#"<path d="M {start_x} {start_y} A {radius} {radius} 0 0 1 {end_x} {end_y} L {} {} L {start_x} {start_y} Z" stroke="none" fill="{fill}" />"#,
 		center.x, center.y
 	);
 	// draw arc with stroke color

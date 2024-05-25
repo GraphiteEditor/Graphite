@@ -1,3 +1,4 @@
+use super::misc::CentroidType;
 use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
@@ -530,6 +531,75 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 	}
 
 	result
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AreaNode<VectorData> {
+	vector_data: VectorData,
+}
+
+#[node_macro::node_fn(AreaNode)]
+async fn area_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>) -> f64 {
+	let vector_data = self.vector_data.eval(Footprint::default()).await;
+
+	let mut area = 0.;
+	let scale = vector_data.transform.decompose_scale();
+	for subpath in vector_data.stroke_bezier_paths() {
+		area += subpath.area(Some(1e-3), Some(1e-3));
+	}
+	area * scale[0] * scale[1]
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CentroidNode<VectorData, CentroidType> {
+	vector_data: VectorData,
+	centroid_type: CentroidType,
+}
+
+#[node_macro::node_fn(CentroidNode)]
+async fn centroid_node<Fut: Future<Output = VectorData>>(empty: (), vector_data: impl Node<Footprint, Output = Fut>, centroid_type: CentroidType) -> DVec2 {
+	let vector_data = self.vector_data.eval(Footprint::default()).await;
+
+	if centroid_type == CentroidType::Area {
+		let mut area = 0.;
+		let mut centroid = DVec2::ZERO;
+		for subpath in vector_data.stroke_bezier_paths() {
+			if let Some((subpath_centroid, subpath_area)) = subpath.area_centroid_and_area(Some(1e-3), Some(1e-3)) {
+				if subpath_area == 0. {
+					continue;
+				}
+				area += subpath_area;
+				centroid += subpath_area * subpath_centroid;
+			}
+		}
+
+		if area != 0. {
+			centroid /= area;
+			return vector_data.transform().transform_point2(centroid);
+		}
+	}
+
+	let mut length = 0.;
+	let mut centroid = DVec2::ZERO;
+	for subpath in vector_data.stroke_bezier_paths() {
+		if let Some((subpath_centroid, subpath_length)) = subpath.length_centroid_and_length(None, true) {
+			length += subpath_length;
+			centroid += subpath_length * subpath_centroid;
+		}
+	}
+
+	if length != 0. {
+		centroid /= length;
+		return vector_data.transform().transform_point2(centroid);
+	}
+
+	let positions = vector_data.point_domain.positions();
+	if !positions.is_empty() {
+		let centroid = positions.iter().sum::<DVec2>() / (positions.len() as f64);
+		return vector_data.transform().transform_point2(centroid);
+	}
+
+	DVec2::ZERO
 }
 
 #[cfg(test)]

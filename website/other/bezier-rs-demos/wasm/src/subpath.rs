@@ -99,6 +99,18 @@ impl WasmSubpath {
 		wrap_svg_tag(result)
 	}
 
+	fn to_filled_svg(&self) -> String {
+		let mut subpath_svg = String::new();
+		self.0.to_svg(
+			&mut subpath_svg,
+			CURVE_FILLED_ATTRIBUTES.to_string(),
+			ANCHOR_ATTRIBUTES.to_string(),
+			HANDLE_ATTRIBUTES.to_string(),
+			HANDLE_LINE_ATTRIBUTES.to_string(),
+		);
+		subpath_svg
+	}
+
 	pub fn insert(&self, t: f64, t_variant: String) -> String {
 		let mut subpath = self.0.clone();
 		let t = parse_t_variant(&t_variant, t);
@@ -115,14 +127,35 @@ impl WasmSubpath {
 		wrap_svg_tag(format!("{}{}", self.to_default_svg(), length_text))
 	}
 
-	pub fn area(&self, error: f64, minimum_separation: f64) -> String {
-		let area_text = draw_text(format!("Area: {}", self.0.area(Some(error), Some(minimum_separation))), 5., 193., BLACK);
-		wrap_svg_tag(format!("{}{}", self.to_default_svg(), area_text))
+	pub fn length_centroid(&self) -> String {
+		let centroid = self.0.length_centroid(None, true).unwrap();
+		let point_text = draw_circle(centroid, 4., RED, 1.5, WHITE);
+		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
 	}
 
-	pub fn centroid(&self, error: f64, minimum_separation: f64) -> String {
-		let point_text = draw_circle(self.0.centroid(Some(error), Some(minimum_separation)).unwrap(), 4., RED, 1.5, WHITE);
-		wrap_svg_tag(format!("{}{}", self.to_default_svg(), point_text))
+	pub fn area(&self, error: f64, minimum_separation: f64) -> String {
+		let area_text = draw_text(format!("Area: {}", self.0.area(Some(error), Some(minimum_separation))), 5., 193., BLACK);
+		wrap_svg_tag(format!("{}{}", self.to_filled_svg(), area_text))
+	}
+
+	pub fn area_centroid(&self, error: f64, minimum_separation: f64) -> String {
+		let point_text = draw_circle(self.0.area_centroid(Some(error), Some(minimum_separation), None).unwrap(), 4., RED, 1.5, WHITE);
+		wrap_svg_tag(format!("{}{}", self.to_filled_svg(), point_text))
+	}
+
+	pub fn poisson_disk_points(&self, separation_disk_diameter: f64) -> String {
+		let r = separation_disk_diameter / 2.;
+
+		let subpath_svg = self.to_default_svg();
+		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random);
+
+		let points_style = format!("<style class=\"poisson\">style.poisson ~ circle {{ fill: {RED}; opacity: 0.25; }}</style>");
+		let content = points
+			.iter()
+			.map(|point| format!("<circle cx=\"{}\" cy=\"{}\" r=\"{r}\" />", point.x, point.y))
+			.collect::<Vec<_>>()
+			.join("");
+		wrap_svg_tag(format!("{subpath_svg}{points_style}{content}"))
 	}
 
 	pub fn evaluate(&self, t: f64, t_variant: String) -> String {
@@ -214,21 +247,6 @@ impl WasmSubpath {
 				wrap_svg_tag(content)
 			}
 		}
-	}
-
-	pub fn poisson_disk_points(&self, separation_disk_diameter: f64) -> String {
-		let r = separation_disk_diameter / 2.;
-
-		let subpath_svg = self.to_default_svg();
-		let points = self.0.poisson_disk_points(separation_disk_diameter, Math::random);
-
-		let points_style = format!("<style class=\"poisson\">style.poisson ~ circle {{ fill: {RED}; opacity: 0.25; }}</style>");
-		let content = points
-			.iter()
-			.map(|point| format!("<circle cx=\"{}\" cy=\"{}\" r=\"{r}\" />", point.x, point.y))
-			.collect::<Vec<_>>()
-			.join("");
-		wrap_svg_tag(format!("{subpath_svg}{points_style}{content}"))
 	}
 
 	pub fn inflections(&self) -> String {

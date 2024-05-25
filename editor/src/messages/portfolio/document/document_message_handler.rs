@@ -1125,25 +1125,25 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray(viewport_location).filter(move |&layer| !is_artboard(layer, network))
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		let mut node_list = self.click_list_any(viewport_location, network);
-		node_list.truncate(
-			node_list
-				.iter()
-				.position(|&layer| !network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default())
-				.unwrap_or(0) + 1,
-		);
-		node_list
+	pub fn click_list<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray_no_artboards(viewport_location, network).scan(true, |last_had_children, layer| {
+			if *last_had_children {
+				*last_had_children = network.nodes.get(&layer.to_node()).map_or(false, |node| node.layer_has_child_layers(network));
+				Some(layer)
+			} else {
+				None
+			}
+		})
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location, network).last().copied()
+		self.click_list(viewport_location, network).last()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
