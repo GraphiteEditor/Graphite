@@ -215,7 +215,7 @@ impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
-			responses.add(NodeGraphMessage::SetVisibility { node_id, visible: !editable });
+			responses.add(GraphOperationMessage::SetVisibility { layer: LayerNodeIdentifier::new(node_id, &document.network), visible: !editable });
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {

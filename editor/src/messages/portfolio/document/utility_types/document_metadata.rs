@@ -117,6 +117,10 @@ impl DocumentMetadata {
 		self.artboards.iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
 	}
 
+	pub fn all_artboards(&self) -> &HashSet<LayerNodeIdentifier> {
+		&self.artboards
+	}
+
 	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
 		self.folders.contains(&layer)
 	}

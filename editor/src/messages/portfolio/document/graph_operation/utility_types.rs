@@ -2,6 +2,7 @@ use crate::messages::portfolio::document::node_graph::document_node_types::resol
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, RootNode};
@@ -40,6 +41,9 @@ pub enum VectorDataModification {
 	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
 
+// TODO: Generalize for any network, rewrite as static functions since there only a few fields are used for each function, so when calling only the necessary data will
+// be provided
+/// NodeGraphMessage or GraphOperationMessage cannot be added in ModifyInputsContext, since the functions are called by both messages handlers
 pub struct ModifyInputsContext<'a> {
 	pub document_metadata: &'a mut DocumentMetadata,
 	pub document_network: &'a mut NodeNetwork,
@@ -107,7 +111,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.document_network.nodes.insert(id, new_node);
 
-		self.shift_upstream(id, shift_upstream, false);
+		ModifyInputsContext::shift_upstream(self.document_network, id, shift_upstream, false);
 
 		Some(id)
 	}
@@ -143,7 +147,8 @@ impl<'a> ModifyInputsContext<'a> {
 			self.document_network.root_node = Some(RootNode { id, output_index: 0 });
 		}
 
-		self.shift_upstream(id, IVec2::new(-8, 3), false);
+		ModifyInputsContext::shift_upstream(self.document_network, id, IVec2::new(-8, 3), false);
+
 		Some(id)
 	}
 	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index.
@@ -376,7 +381,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(&mut self, node_id: NodeId, shift: IVec2, shift_self: bool) {
+	pub fn shift_upstream(network: &mut NodeNetwork, node_id: NodeId, shift: IVec2, shift_self: bool) {
 		let mut shift_nodes = HashSet::new();
 		if shift_self {
 			shift_nodes.insert(node_id);
@@ -384,7 +389,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut stack = vec![node_id];
 		while let Some(node_id) = stack.pop() {
-			let Some(node) = self.document_network.nodes.get(&node_id) else { continue };
+			let Some(node) = network.nodes.get(&node_id) else { continue };
 			for input in &node.inputs {
 				let NodeInput::Node { node_id, .. } = input else { continue };
 				if shift_nodes.insert(*node_id) {
@@ -394,7 +399,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		for node_id in shift_nodes {
-			if let Some(node) = self.document_network.nodes.get_mut(&node_id) {
+			if let Some(node) = network.nodes.get_mut(&node_id) {
 				node.metadata.position += shift;
 			}
 		}
@@ -453,7 +458,6 @@ impl<'a> ModifyInputsContext<'a> {
 			.upstream_flow_back_from_nodes(
 				self.layer_node.map_or_else(
 					|| {
-						//TODO: maybe self.document_network.original_outputs since exports is the node that is currently being previewed
 						self.document_network
 							.exports
 							.iter()
@@ -472,7 +476,7 @@ impl<'a> ModifyInputsContext<'a> {
 			self.modify_new_node(name, update_input);
 		}
 
-		self.node_graph.network.clear();
+		//self.node_graph.network.clear();
 		self.responses.add(PropertiesPanelMessage::Refresh);
 
 		if !skip_rerender {
@@ -623,7 +627,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn vector_modify(&mut self, modification: VectorDataModification) {
+	pub fn vector_modify(&mut self, modification: VectorDataModification) -> Option<LayerNodeIdentifier> {
 		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
 		let mut empty = false;
@@ -657,10 +661,11 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 
 		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
+
 		if empty {
-			if let Some(id) = self.layer_node {
-				self.responses.add(DocumentMessage::DeleteLayer { id })
-			}
+			self.layer_node.map(|layer_id| LayerNodeIdentifier::new(layer_id, &self.document_network))
+		} else {
+			None
 		}
 	}
 
@@ -687,5 +692,143 @@ impl<'a> ModifyInputsContext<'a> {
 			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
 			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
+	}
+
+	/// Deletes all nodes in node_ids and any sole dependents in the horizontal chain if the node to delete is a layer node
+	pub fn delete_nodes(network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_ids: Vec<NodeId>, reconnect: bool, responses: &mut VecDeque<Message>) {
+		let mut delete_nodes = HashSet::new();
+
+		for node_id in &node_ids {
+			delete_nodes.insert(*node_id);
+
+			if !reconnect {
+				continue;
+			};
+
+			let Some(node) = network.nodes.get(&node_id) else {
+				continue;
+			};
+			let child_id = node.inputs.get(1).and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
+			let Some(child_id) = child_id else {
+				continue;
+			};
+
+			let outward_links = network.collect_outwards_links();
+
+			for (_, upstream_id) in network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
+				// This does a downstream traversal starting from the current node, and ending at either a node in the delete_nodes set or the output.
+				// If the traversal find as child node of a node in the delete_nodes set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
+				let mut stack = vec![upstream_id];
+				let mut can_delete = true;
+
+				while let Some(current_node) = stack.pop() {
+					if let Some(downstream_nodes) = outward_links.get(&current_node) {
+						for downstream_node in downstream_nodes {
+							if network.root_node.expect("Root node should always exist if a node is being deleted").id == *downstream_node {
+								can_delete = false;
+							} else if !delete_nodes.contains(downstream_node) {
+								stack.push(*downstream_node);
+							}
+							// Continue traversing over the downstream sibling, which happens if the current node is a sibling to a node in node_ids
+							else {
+								for deleted_node_id in &node_ids {
+									let Some(output_node) = network.nodes.get(&deleted_node_id) else {
+										continue;
+									};
+									let Some(input) = output_node.inputs.get(0) else {
+										continue;
+									};
+
+									if let NodeInput::Node { node_id, .. } = input {
+										if *node_id == current_node {
+											stack.push(*deleted_node_id);
+										};
+									};
+								}
+							};
+						}
+					}
+				}
+
+				if can_delete {
+					delete_nodes.insert(upstream_id);
+				}
+			}
+		}
+		for delete_node_id in delete_nodes {
+			let Some(delete_node) = network.nodes.get(&delete_node_id) else {
+				continue;
+			};
+
+			ModifyInputsContext::remove_node(network, selected_nodes, delete_node_id, reconnect, responses);
+		}
+	}
+
+	/// Tries to remove a node from the network, returning true on success.
+	fn remove_node(network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_id: NodeId, reconnect: bool, responses: &mut VecDeque<Message>) -> bool {
+		if !ModifyInputsContext::remove_references_from_network(network, node_id, reconnect) {
+			log::error!("could not remove_references_from_network");
+			return false;
+		}
+		network.nodes.remove(&node_id);
+		selected_nodes.retain_selected_nodes(|&id| id != node_id);
+		responses.add(BroadcastEvent::SelectionChanged);
+		true
+	}
+
+	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
+		let mut reconnect_to_input: Option<NodeInput> = None;
+
+		if reconnect {
+			// Check whether the being-deleted node's first (primary) input is a node
+			if let Some(node) = network.nodes.get(&deleting_node_id) {
+				// Reconnect to the node below when deleting a layer node.
+				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) {
+					reconnect_to_input = Some(node.inputs[0].clone());
+				}
+			}
+		}
+
+		for (node_id, node) in network.nodes.iter_mut() {
+			if *node_id == deleting_node_id {
+				continue;
+			}
+			for (input_index, input) in node.inputs.iter_mut().enumerate() {
+				let NodeInput::Node {
+					node_id: upstream_node_id,
+					output_index,
+					..
+				} = input
+				else {
+					continue;
+				};
+				if *upstream_node_id != deleting_node_id {
+					continue;
+				}
+
+				let Some(node_type) = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name) else {
+					warn!("Removing input of invalid node type '{}'", node.name);
+					return false;
+				};
+
+				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
+					let mut refers_to_output_node = false;
+
+					// Use the first input node as the new input if deleting node's first input is a node,
+					// and the current node uses its primary output too
+					if let Some(reconnect_to_input) = &reconnect_to_input {
+						if *output_index == 0 {
+							refers_to_output_node = true;
+							*input = reconnect_to_input.clone()
+						}
+					}
+
+					if !refers_to_output_node {
+						*input = NodeInput::value(tagged_value.clone(), true);
+					}
+				}
+			}
+		}
+		true
 	}
 }

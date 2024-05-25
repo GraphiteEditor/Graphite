@@ -532,8 +532,8 @@ impl EditorHandle {
 	/// Set the name for the layer
 	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
-		let id = NodeId(id);
-		let message = NodeGraphMessage::SetName { node_id: id, name };
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
+		let message = GraphOperationMessage::SetName { layer, name };
 		self.dispatch(message);
 	}
 
@@ -601,7 +601,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
 		let node_id = NodeId(node_id);
-		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
+		let message = NodeGraphMessage::DisconnectInput { node_id, input_index };
 		self.dispatch(message);
 	}
 
@@ -691,8 +691,18 @@ impl EditorHandle {
 	}
 
 	/// Toggle visibility of a layer or node given its node ID
-	#[wasm_bindgen(js_name = toggleNodeVisibility)]
-	pub fn toggle_node_visibility(&self, id: u64) {
+	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
+	pub fn toggle_node_visibility_layer(&self, id: u64) {
+		let node_id = NodeId(id);
+		let message = GraphOperationMessage::ToggleVisibility {
+			layer: LayerNodeIdentifier::new_unchecked(node_id),
+		};
+		self.dispatch(message);
+	}
+
+	/// Toggle visibility of a layer or node given its node ID
+	#[wasm_bindgen(js_name = toggleNodeVisibilityGraph)]
+	pub fn toggle_node_visibility_graph(&self, id: u64) {
 		let node_id = NodeId(id);
 		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
@@ -705,15 +715,15 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = DocumentMessage::DeleteLayer { id };
+		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
 		self.dispatch(message);
 	}
 
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, id: u64) {
-		let id = NodeId(id);
-		let message = NodeGraphMessage::ToggleLocked { node_id: id };
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
+		let message = GraphOperationMessage::ToggleLocked { layer };
 		self.dispatch(message);
 	}
 

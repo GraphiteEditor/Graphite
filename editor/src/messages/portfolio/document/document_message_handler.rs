@@ -308,8 +308,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network);
 			}
-			DocumentMessage::DeleteLayer { id } => {
-				responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
+			DocumentMessage::DeleteLayer { layer } => {
+				responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
@@ -318,7 +318,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
 					//Path will never include ROOT_PARENT, so this is safe
-					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
+					responses.add_front(DocumentMessage::DeleteLayer { layer: *path.last().unwrap() });
 				}
 			}
 			DocumentMessage::DeselectAllLayers => {
@@ -334,7 +334,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				};
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				self.metadata.load_structure(network, &mut self.selected_nodes);
+				self.metadata.load_structure(&self.network, &mut self.selected_nodes);
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
@@ -439,10 +439,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					};
 
-					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: layer.to_node(),
 						reconnect_to_sibling: true,
 					});
+
 					// Move disconnected node to folder
 					let folder_position = self
 						.network
@@ -451,7 +452,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.expect("Current folder should always exist")
 						.metadata
 						.position;
-					responses.add(NodeGraphMessage::SetNodePosition {
+
+					responses.add(GraphOperationMessage::SetNodePosition {
 						node_id: layer.to_node(),
 						position: folder_position,
 					});
@@ -473,7 +475,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						pre_node_id: first_unselected_parent_folder.to_node(),
 					});
 
-					responses.add(NodeGraphMessage::ShiftUpstream {
+					responses.add(GraphOperationMessage::ShiftUpstream {
 						node_id: first_unselected_parent_folder.to_node(),
 						shift: IVec2::new(0, 3),
 						shift_self: true,
@@ -553,13 +555,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 				let mut insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 
-				let layer_above_insertion = if parent == LayerNodeIdentifier::ROOT_PARENT {
-					None //None represents the parent of the root node
-				} else if insert_index == 0 {
-					Some(parent)
-				} else {
-					parent.children(&self.metadata).nth(insert_index - 1)
-				};
+				let layer_above_insertion = if insert_index == 0 { Some(parent) } else { parent.children(&self.metadata).nth(insert_index - 1) };
 
 				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
@@ -580,13 +576,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Disconnect layer to move and reconnect downstream node to upstream sibling if it exists.
-					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: layer_to_move.to_node(),
 						reconnect_to_sibling: true,
 					});
 					// Reconnect layer_to_move to new parent at insert index.
-					responses.add(GraphOperationMessage::InsertLayerAtStackIndex {
-						layer_id: layer_to_move.to_node(),
+					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
+						node_id: layer_to_move.to_node(),
 						parent: parent,
 						insert_index,
 					});
@@ -649,11 +645,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 							.selected_layers(self.metadata())
 							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
 						{
-							// layer cannot be ROOT_PARENT since selected_layers skips ROOT_PARENT
-							if layer == LayerNodeIdentifier::ROOT_PARENT {
-								log::error!("layer cannot be ROOT_PARENT in nudge");
-								continue;
-							}
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
 							let new = to.inverse() * transformation * to * original_transform;
@@ -985,16 +976,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Get first child layer node that feeds into the secondary input for the folder
-					let Some(child_layer_node_id) = folder.first_child(&self.metadata).map(|child_layer| child_layer.to_node()) else {
+					let Some(child_layer) = folder.first_child(&self.metadata) else {
 						log::error!("Folder should always have a child");
 						return;
 					};
 
 					// Move child_layer stack x position to folder stack
-					let child_layer_node = self.network.nodes.get(&child_layer_node_id).expect("Child node should always exist for layer");
+					let child_layer_node = self.network.nodes.get(&child_layer.to_node()).expect("Child node should always exist for layer");
 					let offset = folder_node.metadata.position - child_layer_node.metadata.position;
-					responses.add(NodeGraphMessage::ShiftUpstream {
-						node_id: child_layer_node_id,
+					responses.add(GraphOperationMessage::ShiftUpstream {
+						node_id: child_layer.to_node(),
 						shift: offset,
 						shift_self: true,
 					});
@@ -1007,8 +998,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 
 					// Output_index must be 0 since layers only have 1 output
-					let downstream_input = NodeInput::node(child_layer_node_id, 0);
-					responses.add(NodeGraphMessage::SetNodeInput {
+					let downstream_input = NodeInput::node(child_layer.to_node(), 0);
+					responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node_id,
 						input_index: downstream_input_index,
 						input: downstream_input,
@@ -1016,10 +1007,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
 					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
-						let layer_upstream_sibling_id = *node_id;
+						let upstream_sibling_id = *node_id;
 
 						// Get the node at the bottom of the first layer node stack
-						let mut last_child_node_id = child_layer_node_id;
+						let mut last_child_node_id = child_layer.to_node();
 						loop {
 							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
 								break;
@@ -1028,35 +1019,32 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						}
 
 						// Connect the primary input of the bottom layer of the node to the upstream sibling
-						let bottom_layer_node_input = NodeInput::node(layer_upstream_sibling_id, 0);
-						responses.add(NodeGraphMessage::SetNodeInput {
+						let bottom_layer_node_input = NodeInput::node(upstream_sibling_id, 0);
+						responses.add(GraphOperationMessage::SetNodeInput {
 							node_id: last_child_node_id,
 							input_index: 0,
 							input: bottom_layer_node_input,
 						});
 
 						// Shift upstream_sibling down by the height of the child layer stack
-						let top_of_stack = self.network.nodes.get(&child_layer_node_id).expect("Child layer should always exist for child layer id");
-						let bottom_of_stack = self.network.nodes.get(&last_child_node_id).expect("Last child layer should always exist for last child layer id");
+						let top_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Child layer should always exist for child layer id");
+						let bottom_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Last child layer should always exist for last child layer id");
 						let target_distance = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y;
 
 						let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
-						let upstream_sibling_node = self.network.nodes.get(&layer_upstream_sibling_id).expect("Upstream sibling node should always exist");
+						let upstream_sibling_node = self.network.nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
 						let current_distance = upstream_sibling_node.metadata.position.y - folder_node.metadata.position.y;
 
 						let y_offset = target_distance - current_distance + 3;
-						responses.add(NodeGraphMessage::ShiftUpstream {
-							node_id: layer_upstream_sibling_id,
+						responses.add(GraphOperationMessage::ShiftUpstream {
+							node_id: upstream_sibling_id,
 							shift: IVec2::new(0, y_offset),
 							shift_self: true,
 						});
 					}
 
 					// Delete folder and all horizontal inputs, also deletes node in metadata
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![folder.to_node()],
-						reconnect: true,
-					});
+					responses.add(GraphOperationMessage::DeleteLayer { layer: folder, reconnect: true });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1946,15 +1934,15 @@ impl DocumentMessageHandler {
 				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+					.tooltip_shortcut(action_keys!(GraphOperationMessageDiscriminant::ToggleSelectedLocked))
+					.on_update(|_| GraphOperationMessage::ToggleSelectedLocked.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+					.tooltip_shortcut(action_keys!(GraphOperationMessageDiscriminant::ToggleSelectedVisibility))
+					.on_update(|_| GraphOperationMessage::ToggleSelectedVisibility.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 			],

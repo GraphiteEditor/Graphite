@@ -33,13 +33,9 @@ pub enum NodeGraphMessage {
 	DeleteSelectedNodes {
 		reconnect: bool,
 	},
-	DisconnectNodes {
+	DisconnectInput {
 		node_id: NodeId,
 		input_index: usize,
-	},
-	DisconnectLayerFromStack {
-		node_id: NodeId,
-		reconnect_to_sibling: bool,
 	},
 	EnterNestedNetwork {
 		node: NodeId,
@@ -97,9 +93,9 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		input: NodeInput,
 	},
-	SetNodePosition {
-		node_id: NodeId,
-		position: IVec2,
+	SetNetworkExport {
+		export_index: usize,
+		input: NodeInput,
 	},
 	SetQualifiedInputValue {
 		node_path: Vec<NodeId>,
@@ -109,11 +105,6 @@ pub enum NodeGraphMessage {
 	/// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
 	ShiftNode {
 		node_id: NodeId,
-	},
-	ShiftUpstream {
-		node_id: NodeId,
-		shift: IVec2,
-		shift_self: bool,
 	},
 	SetVisibility {
 		node_id: NodeId,
@@ -134,9 +125,6 @@ pub enum NodeGraphMessage {
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
-	},
-	ToggleLocked {
-		node_id: NodeId,
 	},
 	TogglePreview {
 		node_id: NodeId,

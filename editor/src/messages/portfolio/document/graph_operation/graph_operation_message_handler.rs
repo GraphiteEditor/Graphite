@@ -26,6 +26,8 @@ pub struct GraphOperationMessageData<'a> {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct GraphOperationMessageHandler {}
 
+// GraphOperationMessageHandler always modifed the document network. This is so changes to the layers panel will only affect the document network.
+// For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
 		let GraphOperationMessageData {
@@ -87,7 +89,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						pre_node_id: upstream_node,
 					})
 				} else if let Some(downstream_node) = downstream_node {
-					responses.add(NodeGraphMessage::SetNodeInput {
+					responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node,
 						input_index: input_index,
 						input: NodeInput::node(*new_layer_id, 0),
@@ -99,7 +101,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					}
 				}
 
-				responses.add(NodeGraphMessage::ShiftUpstream {
+				responses.add(GraphOperationMessage::ShiftUpstream {
 					node_id: *new_layer_id,
 					shift: IVec2::new(0, 3),
 					shift_self: true,
@@ -107,9 +109,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			GraphOperationMessage::DeleteLayer { layer, reconnect } => {
+				if layer == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Cannot delete ROOT_PARENT");
+					return;
+				}
+				ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![layer.to_node()], reconnect, responses);
+
+				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
 				let Some(node_to_disconnect) = document_network.nodes.get(&node_id) else {
-					warn!("Node {} not found in DisconnectInput", node_id);
+					warn!("Node {} not found in GraphOperationMessage::DisconnectInput", node_id);
 					return;
 				};
 				let Some(node_type) = resolve_document_node_type(&node_to_disconnect.name) else {
@@ -125,7 +137,59 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = existing_input.is_exposed();
 				}
-				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+				responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
+				if document_network.connected_to_output(node_id) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
+				//TODO: downstream node can be none if it is the root node
+				//TODO: .collect_outwards_links() is very inefficient. Replace node_id with a layer, and disconnect most upstream non layer node, before the next layer node
+				let outwards_links = document_network.collect_outwards_links();
+
+				let Some(downstream_node_id) = outwards_links.get(&node_id).and_then(|outward_links| outward_links.get(0)) else {
+					log::error!("Downstream node should always exist when moving layer");
+					return;
+				};
+				let Some(downstream_node) = document_network.nodes.get(downstream_node_id) else { return };
+				let mut downstream_input_index = None;
+				for input_index in 0..2 {
+					if let Some(NodeInput::Node { node_id: input_id, .. }) = downstream_node.inputs.get(input_index) {
+						if *input_id == node_id {
+							downstream_input_index = Some(input_index)
+						}
+					}
+				}
+				let Some(downstream_input_index) = downstream_input_index else {
+					log::error!("Downstream input_index should always exist when moving layer");
+					return;
+				};
+
+				let layer_to_move_sibling_input = document_network.nodes.get(&node_id).and_then(|node| node.inputs.get(0));
+				if let Some(NodeInput::Node { node_id, .. }) = layer_to_move_sibling_input.and_then(|node_input| if reconnect_to_sibling { Some(node_input) } else { None }) {
+					let upstream_sibling_id = *node_id;
+
+					let Some(downstream_node) = document_network.nodes.get_mut(downstream_node_id) else { return };
+					if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
+						*node_id = upstream_sibling_id;
+					}
+
+					let upstream_shift = IVec2::new(0, -3);
+					responses.add(GraphOperationMessage::ShiftUpstream {
+						node_id: upstream_sibling_id,
+						shift: upstream_shift,
+						shift_self: true,
+					});
+				} else {
+					// Disconnect node directly downstream if upstream sibling doesn't exist
+					responses.add(GraphOperationMessage::DisconnectInput {
+						node_id: *downstream_node_id,
+						input_index: downstream_input_index,
+					});
+				}
+
+				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index: 0 });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
@@ -136,15 +200,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.fill_set(fill);
 				}
 			}
-			GraphOperationMessage::InsertLayerAtStackIndex { layer_id, parent, insert_index } => {
+			GraphOperationMessage::InsertNodeAtStackIndex { node_id, parent, insert_index } => {
 				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, document_metadata, parent, insert_index);
 				let Some(post_node_id) = post_node_id else {
 					log::error!("Post node should exist in InsertLayerAtStackIndex");
 					return;
 				};
 				// `layer_to_move` should always correspond to a node.
-				let Some(layer_to_move_node) = document_network.nodes.get(&layer_id) else {
-					log::error!("Layer node not found when inserting node {} at index {}", layer_id, insert_index);
+				let Some(layer_to_move_node) = document_network.nodes.get(&node_id) else {
+					log::error!("Layer node not found when inserting node {} at index {}", node_id, insert_index);
 					return;
 				};
 
@@ -160,8 +224,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					new_position - current_position
 				};
 
-				responses.add(NodeGraphMessage::ShiftUpstream {
-					node_id: layer_id,
+				responses.add(GraphOperationMessage::ShiftUpstream {
+					node_id: node_id,
 					shift: offset_to_post_node,
 					shift_self: true,
 				});
@@ -172,22 +236,22 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						post_node_id: post_node_id,
 						post_node_input_index: post_node_input_index,
 						insert_node_output_index: 0,
-						insert_node_id: layer_id,
+						insert_node_id: node_id,
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: upstream_node,
 					})
 				} else {
-					responses.add(NodeGraphMessage::SetNodeInput {
+					responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: post_node_id,
 						input_index: post_node_input_index,
-						input: NodeInput::node(layer_id, 0),
+						input: NodeInput::node(node_id, 0),
 					})
 				}
 
 				// Shift stack down, starting at the moved node.
-				responses.add(NodeGraphMessage::ShiftUpstream {
-					node_id: layer_id,
+				responses.add(GraphOperationMessage::ShiftUpstream {
+					node_id: node_id,
 					shift: IVec2::new(0, 3),
 					shift_self: true,
 				});
@@ -219,14 +283,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 
 				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
+				responses.add(GraphOperationMessage::SetNodeInput {
 					node_id: post_node_id,
 					input_index: post_node_input_index,
 					input: post_input,
 				});
 
 				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
-				responses.add(NodeGraphMessage::SetNodeInput {
+				responses.add(GraphOperationMessage::SetNodeInput {
 					node_id: insert_node_id,
 					input_index: insert_node_input_index,
 					input: insert_input,
@@ -318,7 +382,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.vector_modify(modification);
+					let previous_layer = modify_inputs.vector_modify(modification);
+					if let Some(layer) = previous_layer {
+						responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true })
+					}
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
@@ -381,14 +448,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
 				for node_to_move in selected_siblings.iter().rev() {
-					// Connect downstream node to upstream node, or disconnect downstream node if upstream node doesn't exist
-					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+					// Disconnect node, then reconnect as new child
+					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: *node_to_move,
 						reconnect_to_sibling: true,
 					});
 
-					responses.add(GraphOperationMessage::InsertLayerAtStackIndex {
-						layer_id: *node_to_move,
+					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
+						node_id: *node_to_move,
 						parent: new_parent,
 						insert_index: 0,
 					});
@@ -499,19 +566,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
-				let modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				let artboard_nodes = modify_inputs
-					.document_network
-					.nodes
-					.iter()
-					.filter(|(_, node)| node.is_artboard())
-					.map(|(id, _)| *id)
-					.collect::<Vec<_>>();
-				for artboard in artboard_nodes {
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![artboard],
-						reconnect: true,
-					});
+				for &artboard in document_metadata.all_artboards() {
+					responses.add(GraphOperationMessage::DeleteLayer { layer: artboard, reconnect: true });
 				}
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
@@ -537,6 +593,102 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+			}
+			GraphOperationMessage::SetNodePosition { node_id, position } => {
+				let Some(node) = document_network.nodes.get_mut(&node_id) else {
+					log::error!("Failed to find node {node_id} when setting position");
+					return;
+				};
+
+				node.metadata.position = position;
+			}
+			GraphOperationMessage::SetName { layer, name } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::SetNameImpl { layer, name });
+			}
+			GraphOperationMessage::SetNameImpl { layer, name } => {
+				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else { return };
+				node.alias = name;
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {
+				if let Some(node) = document_network.nodes.get_mut(&node_id) {
+					let Some(node_input) = node.inputs.get_mut(input_index) else {
+						error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
+						return;
+					};
+					let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+					*node_input = input;
+					if structure_changed {
+						load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+					}
+				}
+			}
+			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
+				ModifyInputsContext::shift_upstream(document_network, node_id, shift, shift_self);
+			}
+			GraphOperationMessage::ToggleSelectedVisibility => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
+				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_visible(layer.to_node()));
+
+				for layer in selected_nodes.selected_layers(&document_metadata) {
+					responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+				}
+			}
+			GraphOperationMessage::ToggleVisibility { layer } => {
+				let visible = !document_metadata.node_is_visible(layer.to_node());
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+			}
+			GraphOperationMessage::SetVisibility { layer, visible } => {
+				// Set what we determined shall be the visibility of the node
+				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else {
+					log::error!("Could not get node {:?} in GraphOperationMessage::SetVisibility", layer.to_node());
+					return;
+				};
+				node.visible = visible;
+
+				// Only generate node graph if one of the selected nodes is connected to the output
+				if document_network.connected_to_output(layer.to_node()) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+
+				document_metadata.load_structure(document_network, selected_nodes);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			GraphOperationMessage::ToggleSelectedLocked => {
+				responses.add(DocumentMessage::StartTransaction);
+
+				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
+				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
+
+				for layer in selected_nodes.selected_layers(&document_metadata) {
+					responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+				}
+			}
+			GraphOperationMessage::ToggleLocked { layer } => {
+				let Some(node) = document_network.nodes.get(&layer.to_node()) else {
+					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", layer.to_node());
+					return;
+				};
+
+				let locked = !node.locked;
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(GraphOperationMessage::SetLocked { layer, locked });
+			}
+			GraphOperationMessage::SetLocked { layer, locked } => {
+				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else { return };
+				node.locked = locked;
+
+				if document_network.connected_to_output(layer.to_node()) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+
+				document_metadata.load_structure(document_network, selected_nodes);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated)
 			}
 		}
 	}

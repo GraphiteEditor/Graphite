@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 use bezier_rs::Subpath;
 use graph_craft::document::DocumentNode;
 use graph_craft::document::NodeId;
+use graph_craft::document::NodeInput;
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::text::Font;
@@ -25,16 +26,24 @@ pub enum GraphOperationMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},
+	DeleteLayer {
+		layer: LayerNodeIdentifier,
+		reconnect: bool,
+	},
 	DisconnectInput {
 		node_id: NodeId,
 		input_index: usize,
+	},
+	DisconnectNodeFromStack {
+		node_id: NodeId,
+		reconnect_to_sibling: bool,
 	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
-	InsertLayerAtStackIndex {
-		layer_id: NodeId,
+	InsertNodeAtStackIndex {
+		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
@@ -134,5 +143,43 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
+	},
+	ShiftUpstream {
+		node_id: NodeId,
+		shift: IVec2,
+		shift_self: bool,
+	},
+	SetNodePosition {
+		node_id: NodeId,
+		position: IVec2,
+	},
+	SetName {
+		layer: LayerNodeIdentifier,
+		name: String,
+	},
+	SetNameImpl {
+		layer: LayerNodeIdentifier,
+		name: String,
+	},
+	SetNodeInput {
+		node_id: NodeId,
+		input_index: usize,
+		input: NodeInput,
+	},
+	ToggleSelectedVisibility,
+	ToggleVisibility {
+		layer: LayerNodeIdentifier,
+	},
+	SetVisibility {
+		layer: LayerNodeIdentifier,
+		visible: bool,
+	},
+	ToggleSelectedLocked,
+	ToggleLocked {
+		layer: LayerNodeIdentifier,
+	},
+	SetLocked {
+		layer: LayerNodeIdentifier,
+		locked: bool,
 	},
 }

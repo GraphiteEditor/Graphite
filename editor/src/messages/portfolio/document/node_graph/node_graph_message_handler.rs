@@ -38,7 +38,8 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 }
-
+/// NodeGraphMessageHandler always modifies the nested graph displayed in the Graph UI. No GraphOperationMessages should be added here, since those
+/// messages will only affect the document network.
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
 		let NodeGraphHandlerData {
@@ -61,7 +62,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
-				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
 				self.update_selected(document_network, document_metadata, selected_nodes, responses);
 				if selected_nodes.selected_layers(document_metadata).count() <= 1 {
 					responses.add(DocumentMessage::SetRangeSelectionLayer {
@@ -77,29 +77,83 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				input_node,
 				input_node_connector_index,
 			} => {
-				let node_id = input_node;
-
-				let Some(network) = document_network.nested_network(&self.network) else {
+				let Some(network) = document_network.nested_network_mut(&self.network) else {
 					error!("No network");
 					return;
 				};
-				let Some(input_node) = network.nodes.get(&node_id) else {
-					error!("No to");
-					return;
-				};
-				let Some((input_index, _)) = input_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(input_node_connector_index) else {
-					error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
-					return;
+				//If output_node_id is none, then it is the UI only Import node
+				let output_node_id = if network.imports_metadata.0 == output_node { None } else { Some(output_node) };
+				//If input_node is none, then it is the UI only Export node
+				let input_node_id = if network.exports_metadata.0 == input_node { None } else { Some(input_node) };
+
+				let input_index = if network.exports_metadata.0 != input_node {
+					let Some(input_node) = network.nodes.get(&input_node) else {
+						error!("No to");
+						return;
+					};
+					let input_index = input_node
+						.inputs
+						.iter()
+						.enumerate()
+						.filter(|input| input.1.is_exposed())
+						.nth(input_node_connector_index)
+						.map(|enumerated_input| enumerated_input.0);
+
+					let Some(input_index) = input_index else {
+						error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
+						return;
+					};
+					input_index
+				} else {
+					input_node_connector_index
 				};
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let input = NodeInput::node(output_node, output_node_connector_index);
-				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+				match (output_node_id, input_node_id) {
+					// Connecting 2 document nodes
+					(Some(output_node_id), Some(input_node_id)) => {
+						let input = NodeInput::node(output_node_id, output_node_connector_index);
+						responses.add(NodeGraphMessage::SetNodeInput {
+							node_id: input_node_id,
+							input_index,
+							input,
+						});
 
-				if network.connected_to_output(node_id) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+						if network.connected_to_output(input_node_id) {
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+						}
+					}
+					// Connecting a document node output to the Export node input
+					(Some(output_node_id), None) => {
+						network.root_node = Some(RootNode {
+							id: output_node_id,
+							output_index: output_node_connector_index,
+						});
+						let input = NodeInput::node(output_node_id, output_node_connector_index);
+						responses.add(NodeGraphMessage::SetNetworkExport { export_index: input_index, input });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+					// Connecting a document node input to the Import node output
+					(None, Some(input_node_id)) => {
+						let input = NodeInput::network(generic!(T), output_node_connector_index);
+						responses.add(NodeGraphMessage::SetNodeInput {
+							node_id: input_node_id,
+							input_index,
+							input,
+						});
+						if network.connected_to_output(input_node_id) {
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+						}
+					}
+					// Connecting a Export node input to the Import node output
+					(None, None) => {
+						let input = NodeInput::network(generic!(T), output_node_connector_index);
+						responses.add(NodeGraphMessage::SetNetworkExport { export_index: input_index, input });
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
 				}
+
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Copy => {
@@ -109,7 +163,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				// Collect the selected nodes
-				let new_ids = &selected_nodes.selected_nodes().copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
+				let new_ids = &selected_nodes
+					.selected_nodes_filtered(network)
+					.copied()
+					.enumerate()
+					.map(|(new, old)| (old, NodeId(new as u64)))
+					.collect();
 				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
 
 				// Prefix to show that this is nodes
@@ -147,158 +206,60 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					error!("No network");
 					return;
 				};
-				let mut delete_nodes = HashSet::new();
 
-				for node_id in &node_ids {
-					delete_nodes.insert(*node_id);
+				ModifyInputsContext::delete_nodes(network, selected_nodes, node_ids, reconnect, responses);
 
-					if !reconnect {
-						continue;
-					};
-
-					let Some(node) = network.nodes.get(&node_id) else {
-						continue;
-					};
-					let child_id = node.inputs.get(1).and_then(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
-					let Some(child_id) = child_id else {
-						continue;
-					};
-
-					let outward_links = network.collect_outwards_links();
-
-					for (_, upstream_id) in network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
-						// This does a downstream traversal starting from the current node, and ending at either a node in the delete_nodes set or the output.
-						// If the traversal find as child node of a node in the delete_nodes set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
-						let mut stack = vec![upstream_id];
-						let mut can_delete = true;
-
-						while let Some(current_node) = stack.pop() {
-							if let Some(downstream_nodes) = outward_links.get(&current_node) {
-								for downstream_node in downstream_nodes {
-									if network.root_node.expect("Root node should always exist if a node is being deleted").id == *downstream_node {
-										can_delete = false;
-									} else if !delete_nodes.contains(downstream_node) {
-										stack.push(*downstream_node);
-									}
-									// Continue traversing over the downstream sibling, which happens if the current node is a sibling to a node in node_ids
-									else {
-										for deleted_node_id in &node_ids {
-											let Some(output_node) = network.nodes.get(&deleted_node_id) else {
-												continue;
-											};
-											let Some(input) = output_node.inputs.get(0) else {
-												continue;
-											};
-
-											if let NodeInput::Node { node_id, .. } = input {
-												if *node_id == current_node {
-													stack.push(*deleted_node_id);
-												};
-											};
-										}
-									};
-								}
-							}
-						}
-
-						if can_delete {
-							delete_nodes.insert(upstream_id);
-						}
-					}
-				}
-				for delete_node_id in delete_nodes {
-					let Some(delete_node) = network.nodes.get(&delete_node_id) else {
-						continue;
-					};
-
-					if delete_node.is_layer {
-						// Delete node from document metadata
-						let layer_node = LayerNodeIdentifier::new(delete_node_id, network);
-						layer_node.delete(document_metadata);
-					}
-					self.remove_node(network, selected_nodes, delete_node_id, responses, reconnect);
+				// Load structure if the selected network is the document network
+				if self.network.is_empty() {
+					load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 				}
 
-				// Only generate node graph if one of the selected nodes is connected to the output
-				if selected_nodes.selected_nodes().any(|&node_id| network.connected_to_output(node_id)) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
-				// There is no need to call `load_network_structure()` since the metadata is already updated
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
 			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					warn!("No network");
+					return;
+				};
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
-					node_ids: selected_nodes.selected_nodes().copied().collect(),
+					node_ids: selected_nodes.selected_nodes_filtered(network).copied().collect(),
 					reconnect,
 				});
 			}
-			NodeGraphMessage::DisconnectNodes { node_id, input_index } => {
+
+			NodeGraphMessage::DisconnectInput { node_id, input_index } => {
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index });
 
 				let Some(network) = document_network.nested_network(&self.network) else {
 					warn!("No network");
 					return;
 				};
 
+				let Some(node_to_disconnect) = network.nodes.get(&node_id) else {
+					warn!("Node {} not found in DisconnectInput", node_id);
+					return;
+				};
+				let Some(node_type) = resolve_document_node_type(&node_to_disconnect.name) else {
+					warn!("Node {} not in library", node_to_disconnect.name);
+					return;
+				};
+				let Some(existing_input) = node_to_disconnect.inputs.get(input_index) else {
+					warn!("Node does not have an input at the selected index");
+					return;
+				};
+
+				let mut input = node_type.inputs[input_index].default.clone();
+				if let NodeInput::Value { exposed, .. } = &mut input {
+					*exposed = existing_input.is_exposed();
+				}
+				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				responses.add(NodeGraphMessage::SendGraph);
-			}
-			NodeGraphMessage::DisconnectLayerFromStack { node_id, reconnect_to_sibling } => {
-				let Some(network) = document_network.nested_network(&self.network) else {
-					warn!("No network");
-					return;
-				};
-
-				// Ensure node is a layer and create LayerNodeIdentifier
-				if network.nodes.get(&node_id).is_some_and(|node| !node.is_layer) {
-					log::error!("Non layer node passed to DisconnectLayer");
-					return;
-				}
-
-				let layer_to_disconnect = LayerNodeIdentifier::new(node_id, &network);
-
-				if layer_to_disconnect == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot disconnect ROOT_PARENT");
-					return;
-				}
-				//TODO: downstream node can be none if it is the root node
-				let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&network, &document_metadata, layer_to_disconnect) else {
-					log::error!("Downstream node should always exist when moving layer");
-					return;
-				};
-				let layer_to_move_sibling_input = network.nodes.get(&layer_to_disconnect.to_node()).and_then(|node| node.inputs.get(0));
-				if let Some(NodeInput::Node { node_id, .. }) = layer_to_move_sibling_input.and_then(|node_input| if reconnect_to_sibling { Some(node_input) } else { None }) {
-					let upstream_sibling_id = *node_id;
-					let Some(downstream_node) = document_network.nodes.get_mut(&downstream_node_id) else { return };
-
-					if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
-						*node_id = upstream_sibling_id;
-					}
-
-					let upstream_shift = IVec2::new(0, -3);
-					responses.add(NodeGraphMessage::ShiftUpstream {
-						node_id: upstream_sibling_id,
-						shift: upstream_shift,
-						shift_self: true,
-					});
-				} else {
-					// Disconnect node directly downstream if upstream sibling doesn't exist
-					responses.add(GraphOperationMessage::DisconnectInput {
-						node_id: downstream_node_id,
-						input_index: downstream_input_index,
-					});
-				}
-
-				responses.add(GraphOperationMessage::DisconnectInput {
-					node_id: layer_to_disconnect.to_node(),
-					input_index: 0,
-				});
 			}
 			NodeGraphMessage::EnterNestedNetwork { node } => {
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
@@ -325,7 +286,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(network) = document_network.nested_network(&self.network) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					let new_ids = &selected_nodes.selected_nodes().map(|&id| (id, NodeId(generate_uuid()))).collect();
+					let new_ids = &selected_nodes.selected_nodes_filtered(network).map(|&id| (id, NodeId(generate_uuid()))).collect();
 
 					selected_nodes.clear_selected_nodes();
 					responses.add(BroadcastEvent::SelectionChanged);
@@ -422,7 +383,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				responses.add(DocumentMessage::StartTransaction);
 
-				responses.add(GraphOperationMessage::InsertNodeBetween {
+				responses.add(NodeGraphMessage::InsertNodeBetween {
 					post_node_id,
 					post_node_input_index,
 					insert_node_output_index,
@@ -442,13 +403,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
-
-				for node_id in selected_nodes.selected_nodes() {
-					if network.exports_metadata.0 == *node_id {
+				for node_id in selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>() {
+					if network.exports_metadata.0 == node_id {
 						network.exports_metadata.1 += IVec2::new(displacement_x, displacement_y);
-					} else if network.imports_metadata.0 == *node_id {
+					} else if network.imports_metadata.0 == node_id {
 						network.imports_metadata.1 += IVec2::new(displacement_x, displacement_y);
-					} else if let Some(node) = network.nodes.get_mut(node_id) {
+					} else if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
 				}
@@ -549,34 +509,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
 						*node_input = input;
-						if structure_changed {
+						//Only load network structure for changes to document_network
+						if structure_changed && self.network.is_empty() {
 							load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 						}
 					}
 				}
 			}
-			NodeGraphMessage::SetNodePosition { node_id, position } => {
+			NodeGraphMessage::SetNetworkExport { export_index, input } => {
 				let Some(network) = document_network.nested_network_mut(&self.network) else {
 					warn!("No network");
 					return;
 				};
-
-				let Some(node) = network.nodes.get_mut(&node_id) else {
-					log::error!("Failed to find node {node_id} when setting position");
+				let Some(network_export) = network.exports.get_mut(export_index) else {
+					error!("Could not get export index {:?} for network: {:?}", export_index, network);
 					return;
 				};
-
-				node.metadata.position = position;
-
-				// Since document structure doesn't change, just update the nodes
-				if graph_view_overlay_open {
-					let Some(network) = document_network.nested_network(&self.network) else {
-						warn!("No network");
-						return;
-					};
-					let links = Self::collect_links(network);
-					let nodes = self.collect_nodes(document_network, network, &links);
-					responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
+				*network_export = input;
+				//Only load network structure for changes to document_network
+				if self.network.is_empty() {
+					load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
 				}
 			}
 			NodeGraphMessage::SetQualifiedInputValue { node_path, input_index, value } => {
@@ -650,23 +602,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				self.send_graph(document_network, document_metadata, selected_nodes, collapsed, graph_view_overlay_open, responses);
 			}
-			NodeGraphMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				let Some(network) = document_network.nested_network_mut(&self.network) else {
-					warn!("No network");
-					return;
-				};
-
-				let mut modify_inputs = ModifyInputsContext::new(network, document_metadata, self, responses);
-				modify_inputs.shift_upstream(node_id, shift, shift_self);
-			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = selected_nodes.selected_nodes().all(|&node_id| document_metadata.node_is_visible(node_id));
-				let visible = !visible;
+				let visible = !selected_nodes
+					.selected_nodes_filtered(network)
+					.all(|&node_id| network.nodes.get(&node_id).is_some_and(|node| node.visible));
 
-				for &node_id in selected_nodes.selected_nodes() {
+				for &node_id in selected_nodes.selected_nodes_filtered(network) {
 					responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 				}
 			}
@@ -677,72 +622,81 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				responses.add(DocumentMessage::StartTransaction);
-				let visible = document_metadata.node_is_visible(node_id);
-				let visible = !visible;
+				let Some(node) = network.nodes.get(&node_id) else {
+					log::error!("Cannot get node {node_id} in NodeGraphMessage::ToggleVisibility");
+					return;
+				};
 
+				let visible = !node.visible;
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 			}
 			NodeGraphMessage::SetVisibility { node_id, visible } => {
-				(|| {
-					let Some(network) = document_network.nested_network_mut(&self.network) else { return };
+				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
-					// Set what we determined shall be the visibility of the node
-					let Some(node) = network.nodes.get_mut(&node_id) else { return };
-					node.visible = visible;
+				// Set what we determined shall be the visibility of the node
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					log::error!("Could not get node {node_id} in NodeGraphMessage::SetVisibility");
+					return;
+				};
+				node.visible = visible;
 
-					// Only generate node graph if one of the selected nodes is connected to the output
-					if network.connected_to_output(node_id) {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-				})();
+				// Only generate node graph if one of the selected nodes is connected to the output
+				if network.connected_to_output(node_id) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 
-				document_metadata.load_structure(document_network, selected_nodes);
-
-				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
+				// If change has been made to document_network
+				if self.network.is_empty() {
+					document_metadata.load_structure(document_network, selected_nodes);
+					self.update_selection_action_buttons(document_network, selected_nodes, responses);
+				}
 
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::ToggleSelectedLocked => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 				responses.add(DocumentMessage::StartTransaction);
 
-				let is_locked = !selected_nodes.selected_nodes().any(|&id| document_metadata.node_is_locked(id));
+				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
+				let locked = !selected_nodes
+					.selected_nodes_filtered(network)
+					.all(|&node_id| network.nodes.get(&node_id).is_some_and(|node| node.locked));
 
-				for &node_id in selected_nodes.selected_nodes() {
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
+				for &node_id in selected_nodes.selected_nodes_filtered(network) {
+					responses.add(NodeGraphMessage::SetLocked { node_id, locked });
 				}
-			}
-			NodeGraphMessage::ToggleLocked { node_id } => {
-				responses.add(DocumentMessage::StartTransaction);
-				let is_locked = !document_metadata.node_is_locked(node_id);
-				responses.add(NodeGraphMessage::SetLocked { node_id, locked: is_locked });
 			}
 			NodeGraphMessage::SetLocked { node_id, locked } => {
-				if let Some(network) = document_network.nested_network_mut(&self.network) {
-					let Some(node) = network.nodes.get_mut(&node_id) else { return };
-					node.locked = locked;
-
-					if network.connected_to_output(node_id) {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
-				}
-				document_metadata.load_structure(document_network, selected_nodes);
-				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
-			}
-			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
-				for node_id in selected_nodes.selected_nodes() {
-					let Some(node) = network.nodes.get_mut(&node_id) else { continue };
+				let Some(node) = network.nodes.get_mut(&node_id) else { return };
+				node.locked = locked;
+
+				if network.connected_to_output(node_id) {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
+				// If change has been made to document_network
+				if self.network.is_empty() {
+					document_metadata.load_structure(document_network, selected_nodes);
+					self.update_selection_action_buttons(document_network, selected_nodes, responses);
+				}
+			}
+			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
+				let Some(network) = document_network.nested_network(&self.network) else { return };
+
+				for node_id in selected_nodes.selected_nodes_filtered(network).cloned().collect::<Vec<_>>() {
+					let Some(network_mut) = document_network.nested_network_mut(&self.network) else { return };
+					let Some(node) = network_mut.nodes.get_mut(&node_id) else { continue };
 
 					if node.has_primary_output {
 						responses.add(NodeGraphMessage::SetToNodeOrLayer {
-							node_id: *node_id,
+							node_id: node_id,
 							is_layer: !node.is_layer,
 						});
 					}
 
-					if network.connected_to_output(*node_id) {
+					if network_mut.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
@@ -783,13 +737,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });
 			}
 			NodeGraphMessage::TogglePreviewImpl { node_id } => {
+				let toggle_id = node_id;
 				if let Some(network) = document_network.nested_network_mut(&self.network) {
 					if let Some(export) = network.exports.get_mut(0) {
-						*export = NodeInput::node(node_id, 0);
+						if let NodeInput::Node { node_id, .. } = export {
+							// End preview, set export back to root node
+							if *node_id == toggle_id {
+								*export = NodeInput::node(network.root_node.expect("Root node should exist when ending preview").id, 0);
+							} else {
+								*export = NodeInput::node(toggle_id, 0);
+							}
+						} else {
+							*export = NodeInput::node(toggle_id, 0);
+						}
 					}
 				}
 
-				self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
+				self.update_selection_action_buttons(document_network, selected_nodes, responses);
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
@@ -849,19 +813,24 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Updates the buttons for visibility, locked, and preview
-	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+	fn update_selection_action_buttons(&mut self, document_network: &NodeNetwork, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		if let Some(network) = document_network.nested_network(&self.network) {
 			let mut widgets = Vec::new();
 
 			// Don't allow disabling input or output nodes
-			let mut selection = selected_nodes
-				.selected_nodes()
-				.filter(|node_id| network.imports_metadata.0 != **node_id && network.exports_metadata.0 != **node_id);
+			let mut selection = selected_nodes.selected_nodes_filtered(network);
 
 			// If there is at least one other selected node then show the hide or show button
 			if selection.next().is_some() {
 				// Check if any of the selected nodes are disabled
-				let all_visible = selected_nodes.selected_nodes().all(|&id| document_metadata.node_is_visible(id));
+				let all_visible = selected_nodes.selected_nodes_filtered(network).all(|id| {
+					if let Some(node) = network.nodes.get(id) {
+						node.visible
+					} else {
+						error!("Could not get node {id} in update_selection_action_buttons");
+						true
+					}
+				});
 
 				// Check if multiple nodes are selected
 				let multiple_nodes = selection.next().is_some();
@@ -909,7 +878,7 @@ impl NodeGraphMessageHandler {
 
 		// First, we filter all the selections into layers and nodes
 		let (mut layers, mut nodes) = (Vec::new(), Vec::new());
-		for node_id in selected_nodes.selected_nodes() {
+		for node_id in selected_nodes.selected_nodes_filtered(network) {
 			if let Some(layer_or_node) = network.nodes.get(node_id) {
 				if layer_or_node.is_layer {
 					layers.push(*node_id);
@@ -1035,6 +1004,7 @@ impl NodeGraphMessageHandler {
 			let node_id_path = &[&self.network[..], &[node_id]].concat(); //node id path
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, input)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
+				//TODO: Only display input type if potential inputs in node_registry are all the same type
 				let input_type = self
 					.resolved_types
 					.inputs
@@ -1278,14 +1248,14 @@ impl NodeGraphMessageHandler {
 			})
 			.collect::<Vec<String>>()
 	}
-	fn update_layer_panel(network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
-		for (&node_id, node) in &network.nodes {
+	fn update_layer_panel(document_network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
+		for (&node_id, node) in &document_network.nodes {
 			if node.is_layer {
-				let layer = LayerNodeIdentifier::new(node_id, network);
+				let layer = LayerNodeIdentifier::new(node_id, document_network);
 
 				let parents_visible = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
+						document_network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
 					} else {
 						true
 					}
@@ -1293,7 +1263,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_unlocked = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
+						document_network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
 					} else {
 						true
 					}
@@ -1308,7 +1278,7 @@ impl NodeGraphMessageHandler {
 							// At least one secondary input is exposed on this layer node
 							node.inputs.iter().skip(1).any(|input| input.is_exposed()) &&
 							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
-							network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
+							document_network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
 						),
 					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
@@ -1347,8 +1317,8 @@ impl NodeGraphMessageHandler {
 		// network.root_node = Some(RootNode { id: NodeId(3), output_index: 0 });
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
-		metadata.load_structure(network, selected_nodes);
-		Self::update_layer_panel(network, metadata, collapsed, responses);
+		metadata.load_structure(document_network, selected_nodes);
+		Self::update_layer_panel(document_network, metadata, collapsed, responses);
 		if graph_open {
 			let links = Self::collect_links(network);
 			let nodes = self.collect_nodes(document_network, network, &links);
@@ -1359,78 +1329,10 @@ impl NodeGraphMessageHandler {
 
 	/// Updates the frontend's selection state in line with the backend
 	fn update_selected(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
-		self.update_selection_action_buttons(document_network, document_metadata, selected_nodes, responses);
+		self.update_selection_action_buttons(document_network, selected_nodes, responses);
 		responses.add(FrontendMessage::UpdateNodeGraphSelection {
 			selected: selected_nodes.selected_nodes_ref().clone(),
 		});
-	}
-
-	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
-		let mut reconnect_to_input: Option<NodeInput> = None;
-
-		if reconnect {
-			// Check whether the being-deleted node's first (primary) input is a node
-			if let Some(node) = network.nodes.get(&deleting_node_id) {
-				// Reconnect to the node below when deleting a layer node.
-				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) {
-					reconnect_to_input = Some(node.inputs[0].clone());
-				}
-			}
-		}
-
-		for (node_id, node) in network.nodes.iter_mut() {
-			if *node_id == deleting_node_id {
-				continue;
-			}
-			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node {
-					node_id: upstream_node_id,
-					output_index,
-					..
-				} = input
-				else {
-					continue;
-				};
-				if *upstream_node_id != deleting_node_id {
-					continue;
-				}
-
-				let Some(node_type) = document_node_types::resolve_document_node_type(&node.name) else {
-					warn!("Removing input of invalid node type '{}'", node.name);
-					return false;
-				};
-
-				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
-					let mut refers_to_output_node = false;
-
-					// Use the first input node as the new input if deleting node's first input is a node,
-					// and the current node uses its primary output too
-					if let Some(reconnect_to_input) = &reconnect_to_input {
-						if *output_index == 0 {
-							refers_to_output_node = true;
-							*input = reconnect_to_input.clone()
-						}
-					}
-
-					if !refers_to_output_node {
-						*input = NodeInput::value(tagged_value.clone(), true);
-					}
-				}
-			}
-		}
-		true
-	}
-
-	/// Tries to remove a node from the network, returning true on success.
-	fn remove_node(&mut self, document_network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_id: NodeId, responses: &mut VecDeque<Message>, reconnect: bool) -> bool {
-		if !Self::remove_references_from_network(document_network, node_id, reconnect) {
-			log::error!("could not remove_references_from_network");
-			return false;
-		}
-		document_network.nodes.remove(&node_id);
-		selected_nodes.retain_selected_nodes(|&id| id != node_id);
-		responses.add(BroadcastEvent::SelectionChanged);
-		true
 	}
 
 	/// Gets the default node input based on the node name and the input index

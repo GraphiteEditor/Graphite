@@ -2,6 +2,8 @@
 	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
+	import { c } from "vite/dist/node/types.d-AKzkD8vd";
+
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
@@ -389,11 +391,11 @@
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
-
 			// Output: Begin dragging out a new link
 			if (isOutput) {
+				console.log("frontendNode.primaryOutput?.connected: ", frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined);
 				// Disallow creating additional vertical output links from an already-connected layer
-				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined) return;
+				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected.length != 0) return;
 
 				linkInProgressFromConnector = port;
 				// // Since we are just beginning to drag out a link from the top, we know the in-progress link exists from this layer's top and has no connection to any other layer bottom yet
@@ -560,8 +562,8 @@
 		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
-	function toggleNodeVisibility(id: bigint) {
-		editor.handle.toggleNodeVisibility(id);
+	function toggleNodeVisibilityGraph(id: bigint) {
+		editor.handle.toggleNodeVisibilityGraph(id);
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean) {
@@ -638,7 +640,7 @@
 		// If the node has been dragged on top of the link then connect it into the middle.
 		if (link) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
-
+			//TODO: Add support for import/export nodes
 			editor.handle.insertNodeBetween(link.linkEnd, Number(link.linkEndInputIndex), 0, selectedNodeId, 0, Number(link.linkStartOutputIndex), link.linkStart);
 			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
@@ -649,6 +651,7 @@
 
 		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
+			//TODO: Add support for import/export nodes
 			editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
 		disconnecting = undefined;
@@ -660,6 +663,7 @@
 			if (from !== undefined && to !== undefined) {
 				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
+				//TODO: Add support for import/export nodes
 				editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (linkInProgressFromConnector && !initialDisconnecting) {
@@ -713,6 +717,7 @@
 
 		if (from !== undefined) {
 			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
+			//TODO: Add support for import/export nodes
 			editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 		}
 
@@ -969,7 +974,7 @@
 				</div>
 				<IconButton
 					class={"visibility"}
-					action={(e) => (toggleNodeVisibility(node.id), e?.stopPropagation())}
+					action={(e) => (toggleNodeVisibilityGraph(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
 					tooltip={node.visible ? "Visible" : "Hidden"}

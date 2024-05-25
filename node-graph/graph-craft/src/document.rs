@@ -392,6 +392,7 @@ pub enum NodeInput {
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
 	Value { tagged_value: TaggedValue, exposed: bool },
 
+	//TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network { import_type: Type, import_index: usize },
 

@@ -1,6 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, NodeNetwork};
 
 use serde::ser::SerializeStruct;
 
@@ -85,10 +85,8 @@ impl SelectedNodes {
 	}
 
 	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata).filter(move |&layer| {
-			log::debug!("layer: {:?}", layer);
-			self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata)
-		})
+		self.selected_layers(metadata)
+			.filter(move |&layer| self.layer_visible(layer, metadata) && !self.layer_locked(layer, metadata))
 	}
 
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
@@ -103,8 +101,14 @@ impl SelectedNodes {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
-	pub fn selected_nodes(&self) -> core::slice::Iter<'_, NodeId> {
-		self.0.iter()
+	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
+		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
+	}
+
+	// Only get selected nodes that are in the current network, and that are not import/export nodes
+	pub fn selected_nodes_filtered<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
+		self.selected_nodes(network)
+			.filter(|node_id| **node_id != network.imports_metadata.0 && **node_id != network.exports_metadata.0)
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
