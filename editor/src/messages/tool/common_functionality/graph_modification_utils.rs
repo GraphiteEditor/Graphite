@@ -111,14 +111,14 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) 
 	let TaggedValue::DAffine2(transform) = inputs.get(6)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::GradientPositions(positions) = inputs.get(7)?.as_value()? else {
+	let TaggedValue::GradientStops(stops) = inputs.get(7)?.as_value()? else {
 		return None;
 	};
 	Some(Gradient {
 		start: *start,
 		end: *end,
 		transform: *transform,
-		positions: positions.clone(),
+		stops: stops.clone(),
 		gradient_type: *gradient_type,
 	})
 }

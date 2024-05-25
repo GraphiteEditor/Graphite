@@ -12,6 +12,7 @@ use graphene_core::text::Font;
 use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
+use graphene_std::vector::style::GradientStops;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -888,13 +889,15 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+				let stops = linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect();
+				let stops = GradientStops(stops);
 
 				Fill::Gradient(Gradient {
 					start,
 					end,
 					transform: DAffine2::IDENTITY,
 					gradient_type: GradientType::Linear,
-					positions: linear.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
+					stops,
 				})
 			}
 			usvg::Paint::RadialGradient(radial) => {
@@ -911,13 +914,15 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 				let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
 				let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
+				let stops = radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect();
+				let stops = GradientStops(stops);
 
 				Fill::Gradient(Gradient {
 					start,
 					end,
 					transform: DAffine2::IDENTITY,
 					gradient_type: GradientType::Radial,
-					positions: radial.stops.iter().map(|stop| (stop.offset.get() as f64, usvg_color(stop.color, stop.opacity.get()))).collect(),
+					stops,
 				})
 			}
 			usvg::Paint::Pattern(_) => {

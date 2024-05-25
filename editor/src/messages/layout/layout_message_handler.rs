@@ -5,6 +5,7 @@ use crate::messages::prelude::*;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
+use graphene_std::vector::style::FillColorChoice;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default)]
@@ -88,14 +89,15 @@ impl LayoutMessageHandler {
 							let is_none = update_value.get("none")?.as_bool()?;
 
 							if !is_none {
-								Some(Some(Color::from_rgbaf32(
+								Some(FillColorChoice::Solid(Color::from_rgbaf32(
 									update_value.get("red")?.as_f64()? as f32,
 									update_value.get("green")?.as_f64()? as f32,
 									update_value.get("blue")?.as_f64()? as f32,
 									update_value.get("alpha")?.as_f64()? as f32,
 								)?))
+							// TODO: Add FillColorChoice::Gradient
 							} else {
-								Some(None)
+								Some(FillColorChoice::None)
 							}
 						})()
 						.unwrap_or_else(|| panic!("ColorButton update was not able to be parsed with color data: {color_button:?}"));

@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Color } from "@graphite/wasm-communication/messages";
+	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -13,7 +13,14 @@
 	export let primary: Color;
 	export let secondary: Color;
 
-	let primaryOpen = false;
+	let testGradient = new Gradient([
+		{ position: 0, color: Color.fromCSS("#e25151") as Color },
+		{ position: 0.25, color: Color.fromCSS("#ffc86d") as Color },
+		{ position: 0.5, color: Color.fromCSS("#fbdca3") as Color },
+		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
+		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
+	]);
+	let primaryOpen = true;
 	let secondaryOpen = false;
 
 	function clickPrimarySwatch() {
@@ -37,12 +44,33 @@
 
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} class:open={true} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker open={true} on:open={({ detail }) => (primaryOpen = detail)} color={primary} on:color={({ detail }) => primaryColorChanged(detail)} direction="Right" />
+		<button
+			on:click={clickPrimarySwatch}
+			class:open={primaryOpen}
+			style:--swatch-color={testGradient.firstColor()?.toRgbaCSS() || "black"}
+			data-floating-menu-spawner="no-hover-transfer"
+			tabindex="0"
+		/>
+		<ColorPicker
+			open={primaryOpen}
+			on:open={({ detail }) => (primaryOpen = detail)}
+			colorOrGradient={testGradient}
+			on:colorOrGradient={({ detail }) => {
+				if (detail instanceof Color) primaryColorChanged(detail);
+				else testGradient = detail;
+			}}
+			direction="Right"
+		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
 		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker open={secondaryOpen} on:open={({ detail }) => (secondaryOpen = detail)} color={secondary} on:color={({ detail }) => secondaryColorChanged(detail)} direction="Right" />
+		<ColorPicker
+			open={secondaryOpen}
+			on:open={({ detail }) => (secondaryOpen = detail)}
+			colorOrGradient={secondary}
+			on:colorOrGradient={({ detail }) => detail instanceof Color && secondaryColorChanged(detail)}
+			direction="Right"
+		/>
 	</LayoutRow>
 </LayoutCol>
 

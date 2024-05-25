@@ -1,5 +1,5 @@
 use super::misc::CentroidType;
-use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
+use super::style::{Fill, FillType, Gradient, GradientStops, GradientType, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -18,7 +18,7 @@ pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform
 	start: Start,
 	end: End,
 	transform: Transform,
-	positions: Positions,
+	stops: Positions,
 }
 
 #[node_macro::node_fn(SetFillNode)]
@@ -30,7 +30,7 @@ fn set_vector_data_fill(
 	start: DVec2,
 	end: DVec2,
 	transform: DAffine2,
-	positions: Vec<(f64, Color)>,
+	stops: GradientStops,
 ) -> VectorData {
 	vector_data.style.set_fill(match fill_type {
 		FillType::Solid => solid_color.map_or(Fill::None, Fill::Solid),
@@ -38,7 +38,7 @@ fn set_vector_data_fill(
 			start,
 			end,
 			transform,
-			positions,
+			stops,
 			gradient_type,
 		}),
 	});

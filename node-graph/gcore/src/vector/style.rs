@@ -27,29 +27,44 @@ pub enum GradientType {
 	Radial,
 }
 
+// TODO: Someday we could switch this to a Box[T] to avoid over-allocation
+/// A list of colors associated with positions (in the range 0 to 1) along a gradient.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+pub struct GradientStops(pub Vec<(f64, Color)>);
+
+impl std::hash::Hash for GradientStops {
+	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.0.len().hash(state);
+		self.0.iter().for_each(|(position, color)| {
+			position.to_bits().hash(state);
+			color.hash(state);
+		});
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Gradient {
+	pub stops: GradientStops,
+	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
 	pub transform: DAffine2,
-	pub positions: Vec<(f64, Color)>,
-	pub gradient_type: GradientType,
 }
 
 impl core::hash::Hash for Gradient {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.positions.len().hash(state);
+		self.stops.0.len().hash(state);
 		[].iter()
 			.chain(self.start.to_array().iter())
 			.chain(self.end.to_array().iter())
 			.chain(self.transform.to_cols_array().iter())
-			.chain(self.positions.iter().map(|(position, _)| position))
+			.chain(self.stops.0.iter().map(|(position, _)| position))
 			.for_each(|x| x.to_bits().hash(state));
-		self.positions.iter().for_each(|(_, color)| color.hash(state));
+		self.stops.0.iter().for_each(|(_, color)| color.hash(state));
 		self.gradient_type.hash(state);
 	}
 }
@@ -60,7 +75,7 @@ impl Gradient {
 		Gradient {
 			start,
 			end,
-			positions: vec![(0., start_color), (1., end_color)],
+			stops: GradientStops(vec![(0., start_color), (1., end_color)]),
 			transform,
 			gradient_type,
 		}
@@ -70,23 +85,25 @@ impl Gradient {
 		let start = self.start + (other.start - self.start) * time;
 		let end = self.end + (other.end - self.end) * time;
 		let transform = self.transform;
-		let positions = self
-			.positions
+		let stops = self
+			.stops
+			.0
 			.iter()
-			.zip(other.positions.iter())
+			.zip(other.stops.0.iter())
 			.map(|((a_pos, a_color), (b_pos, b_color))| {
 				let position = a_pos + (b_pos - a_pos) * time;
 				let color = a_color.lerp(b_color, time as f32);
 				(position, color)
 			})
 			.collect::<Vec<_>>();
+		let stops = GradientStops(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 
 		Self {
 			start,
 			end,
 			transform,
-			positions,
+			stops,
 			gradient_type,
 		}
 	}
@@ -97,9 +114,9 @@ impl Gradient {
 		let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 		let updated_transform = multiplied_transform * bound_transform;
 
-		let mut positions = String::new();
-		for (position, color) in self.positions.iter() {
-			let _ = write!(positions, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.with_alpha(color.a()).rgba_hex());
+		let mut stop = String::new();
+		for (position, color) in self.stops.0.iter() {
+			let _ = write!(stop, r##"<stop offset="{}" stop-color="#{}" />"##, position, color.with_alpha(color.a()).rgba_hex());
 		}
 
 		let mod_gradient = transformed_bound_transform.inverse();
@@ -121,7 +138,7 @@ impl Gradient {
 				let _ = write!(
 					svg_defs,
 					r#"<linearGradient id="{}" x1="{}" x2="{}" y1="{}" y2="{}" gradientTransform="matrix({})">{}</linearGradient>"#,
-					gradient_id, start.x, end.x, start.y, end.y, transform, positions
+					gradient_id, start.x, end.x, start.y, end.y, transform, stop
 				);
 			}
 			GradientType::Radial => {
@@ -129,7 +146,7 @@ impl Gradient {
 				let _ = write!(
 					svg_defs,
 					r#"<radialGradient id="{}" cx="{}" cy="{}" r="{}" gradientTransform="matrix({})">{}</radialGradient>"#,
-					gradient_id, start.x, start.y, radius, transform, positions
+					gradient_id, start.x, start.y, radius, transform, stop
 				);
 			}
 		}
@@ -151,11 +168,11 @@ impl Gradient {
 		}
 
 		// Compute the color of the inserted stop
-		let get_color = |index: usize, time: f64| match (self.positions[index].1, self.positions.get(index + 1).map(|(_, c)| *c)) {
+		let get_color = |index: usize, time: f64| match (self.stops.0[index].1, self.stops.0.get(index + 1).map(|(_, c)| *c)) {
 			// Lerp between the nearest colors if applicable
 			(a, Some(b)) => a.lerp(
 				&b,
-				((time - self.positions[index].0) / self.positions.get(index + 1).map(|end| end.0 - self.positions[index].0).unwrap_or_default()) as f32,
+				((time - self.stops.0[index].0) / self.stops.0.get(index + 1).map(|end| end.0 - self.stops.0[index].0).unwrap_or_default()) as f32,
 			),
 			// Use the start or the end color if applicable
 			(v, _) => v,
@@ -163,14 +180,14 @@ impl Gradient {
 
 		// Compute the correct index to keep the positions in order
 		let mut index = 0;
-		while self.positions.len() > index && self.positions[index].0 <= new_position {
+		while self.stops.0.len() > index && self.stops.0[index].0 <= new_position {
 			index += 1;
 		}
 
 		let new_color = get_color(index - 1, new_position);
 
 		// Insert the new stop
-		self.positions.insert(index, (new_position, new_color));
+		self.stops.0.insert(index, (new_position, new_color));
 
 		Some(index)
 	}
@@ -178,7 +195,9 @@ impl Gradient {
 
 /// Describes the fill of a layer.
 ///
-/// Can be None, a solid [Color], a linear [Gradient], a radial [Gradient] or potentially some sort of image or pattern in the future
+/// Can be None, a solid [Color], or a linear/radial [Gradient].
+///
+/// In the future we'll probably also add a pattern fill.
 #[repr(C)]
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum Fill {
@@ -208,7 +227,7 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient
-			Self::Gradient(Gradient { positions, .. }) => positions[0].1,
+			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
 		}
 	}
 
@@ -221,13 +240,13 @@ impl Fill {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
 			(Self::Solid(a), Self::Gradient(b)) => {
 				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.positions.iter_mut().for_each(|(_, color)| *color = *a);
+				solid_to_gradient.stops.0.iter_mut().for_each(|(_, color)| *color = *a);
 				let a = &solid_to_gradient;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Solid(b)) => {
 				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.positions.iter_mut().for_each(|(_, color)| *color = *b);
+				gradient_to_solid.stops.0.iter_mut().for_each(|(_, color)| *color = *b);
 				let b = &gradient_to_solid;
 				Self::Gradient(a.lerp(b, time))
 			}
@@ -260,6 +279,39 @@ impl Fill {
 		} else {
 			None
 		}
+	}
+}
+
+/// Describes the fill of a layer, but unlike [`Fill`], this doesn't store a [`Gradient`] directly but just its [`GradientStops`].
+///
+/// Can be None, a solid [Color], or a linear/radial [Gradient].
+///
+/// In the future we'll probably also add a pattern fill.
+#[repr(C)]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+pub enum FillColorChoice {
+	#[default]
+	None,
+	Solid(Color),
+	Gradient(GradientStops),
+}
+
+impl FillColorChoice {
+	pub fn from_optional_color(color: Option<Color>) -> Self {
+		match color {
+			Some(color) => Self::Solid(color),
+			None => Self::None,
+		}
+	}
+
+	pub fn as_solid(&self) -> Option<Color> {
+		let Self::Solid(color) = self else { return None };
+		Some(*color)
+	}
+
+	pub fn as_gradient(&self) -> Option<&GradientStops> {
+		let Self::Gradient(gradient) = self else { return None };
+		Some(gradient)
 	}
 }
 

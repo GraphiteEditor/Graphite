@@ -217,6 +217,39 @@ export type HSV = { h: number; s: number; v: number };
 export type RGBA = { r: number; g: number; b: number; a: number };
 export type RGB = { r: number; g: number; b: number };
 
+export class Gradient {
+	readonly stops!: { position: number; color: Color }[];
+
+	constructor(stops: { position: number; color: Color }[]) {
+		this.stops = stops;
+	}
+
+	toLinearGradientCSS(): string {
+		const pieces = this.stops.map((stop) => `${stop.color.toRgbCSS()} ${stop.position * 100}%`);
+		return `linear-gradient(to right, ${pieces.join(", ")})`;
+	}
+
+	firstColor(): Color | undefined {
+		return this.stops[0]?.color;
+	}
+
+	lastColor(): Color | undefined {
+		return this.stops[this.stops.length - 1]?.color;
+	}
+
+	atIndex(index: number): { position: number; color: Color } | undefined {
+		return this.stops[index];
+	}
+
+	colorAtIndex(index: number): Color | undefined {
+		return this.stops[index]?.color;
+	}
+
+	positionAtIndex(index: number): number | undefined {
+		return this.stops[index]?.position;
+	}
+}
+
 // All channels range from 0 to 1
 export class Color {
 	readonly red!: number;
@@ -694,10 +727,11 @@ export class CheckboxInput extends WidgetProps {
 }
 
 export class ColorButton extends WidgetProps {
-	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
-		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha),
-	)
-	value!: Color;
+	@Transform((value) => {
+		console.log(value);
+		return value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha);
+	})
+	value!: FillColorChoice; // Color | Gradient | undefined;
 
 	disabled!: boolean;
 

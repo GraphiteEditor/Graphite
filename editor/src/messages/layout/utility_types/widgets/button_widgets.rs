@@ -2,7 +2,7 @@ use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 
-use graphene_core::raster::color::Color;
+use graphene_std::vector::style::FillColorChoice;
 use graphite_proc_macros::WidgetBuilder;
 
 use derivative::*;
@@ -124,7 +124,7 @@ pub struct TextButton {
 #[derivative(Debug, PartialEq, Default)]
 pub struct ColorButton {
 	#[widget_builder(constructor)]
-	pub value: Option<Color>,
+	pub value: FillColorChoice,
 
 	pub disabled: bool,
 

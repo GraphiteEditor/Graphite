@@ -3,7 +3,7 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB } from "@graphite/wasm-communication/messages";
+	import { type HSV, type RGB, type Gradient } from "@graphite/wasm-communication/messages";
 	import { Color } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -32,26 +32,22 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ color: Color; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: Color | Gradient; startHistoryTransaction: undefined }>();
 
-	export let color: Color;
+	export let colorOrGradient: Color | Gradient;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
-	const hsvaOrNone = color.toHSVA();
+	const hsvaOrNone = colorOrGradient instanceof Color ? colorOrGradient.toHSVA() : colorOrGradient.firstColor()?.toHSVA();
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
 	// Gradient color stops
-	let gradient: { position: number; color: Color }[] | undefined = [
-		{ position: 0, color: Color.fromCSS("#e25151") as Color },
-		{ position: 0.25, color: Color.fromCSS("#ffc86d") as Color },
-		{ position: 0.5, color: Color.fromCSS("#fbdca3") as Color },
-		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
-		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
-	];
+	let gradient: Gradient | undefined = colorOrGradient instanceof Color ? undefined : colorOrGradient;
+	// Currently viewed color
+	let color: Color = colorOrGradient instanceof Color ? colorOrGradient : colorOrGradient.firstColor() || (Color.fromCSS("black") as Color);
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
@@ -173,12 +169,14 @@
 
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
-		dispatch("color", colorToEmit);
 
-		if (gradient && gradientSpectrumInputWidget instanceof SpectrumInput) {
-			gradient[gradientSpectrumInputWidget.activeIndex()].color = colorToEmit;
+		const stop = gradientSpectrumInputWidget && gradient?.atIndex(gradientSpectrumInputWidget.activeIndex());
+		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
+			stop.color = colorToEmit;
 			gradient = gradient;
 		}
+
+		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
 
 	function swapNewWithOld() {
@@ -283,7 +281,7 @@
 	}
 
 	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number>) {
-		const color = gradient?.[index]?.color;
+		const color = gradient?.colorAtIndex(index);
 		const hsva = color?.toHSVA();
 		if (!color || !hsva) return;
 
@@ -332,8 +330,8 @@
 			{#if gradient}
 				<LayoutRow class="gradient">
 					<SpectrumInput
-						markers={gradient}
-						on:markers={() => {
+						{gradient}
+						on:gradient={() => {
 							gradient = gradient;
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
@@ -341,9 +339,10 @@
 					/>
 					{#if gradientSpectrumInputWidget}
 						<NumberInput
-							value={gradient[gradientSpectrumInputWidget.activeIndex()].position * 100}
+							value={(gradient.positionAtIndex(gradientSpectrumInputWidget.activeIndex()) || 0) * 100}
 							on:value={({ detail }) => {
-								if (gradient && gradientSpectrumInputWidget && detail !== undefined) gradient[gradientSpectrumInputWidget.activeIndex()].position = detail / 100;
+								const stop = gradientSpectrumInputWidget && gradient?.atIndex(gradientSpectrumInputWidget.activeIndex());
+								if (stop && detail !== undefined) stop.position = detail / 100;
 							}}
 							displayDecimalPlaces={0}
 							min={0}

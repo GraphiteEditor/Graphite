@@ -553,7 +553,7 @@ impl<'a> ModifyInputsContext<'a> {
 				inputs[4] = NodeInput::value(TaggedValue::DVec2(gradient.start), false);
 				inputs[5] = NodeInput::value(TaggedValue::DVec2(gradient.end), false);
 				inputs[6] = NodeInput::value(TaggedValue::DAffine2(gradient.transform), false);
-				inputs[7] = NodeInput::value(TaggedValue::GradientPositions(gradient.positions), false);
+				inputs[7] = NodeInput::value(TaggedValue::GradientStops(gradient.stops), false);
 			}
 		});
 	}

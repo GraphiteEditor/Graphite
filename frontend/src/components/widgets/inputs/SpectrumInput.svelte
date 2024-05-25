@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
 
-	import type { Color } from "@graphite/wasm-communication/messages";
+	import { type Gradient } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number; markers: typeof markers }>();
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number; gradient: Gradient }>();
 
-	export let markers: { position: number; color: Color }[];
+	export let gradient: Gradient;
 
 	let activeMarkerIndex = 0;
 
@@ -38,11 +38,11 @@
 		if (!markerTrackRect) return;
 		const ratio = (e.clientX - markerTrackRect.left) / markerTrackRect.width;
 
-		const active = markers[activeMarkerIndex];
+		const active = gradient.stops[activeMarkerIndex];
 		active.position = Math.max(0, Math.min(1, ratio));
-		markers.sort((a, b) => a.position - b.position);
-		activeMarkerIndex = markers.indexOf(active);
-		dispatch("markers", markers);
+		gradient.stops.sort((a, b) => a.position - b.position);
+		activeMarkerIndex = gradient.stops.indexOf(active);
+		dispatch("gradient", gradient);
 	}
 
 	function onPointerUp() {
@@ -83,14 +83,14 @@
 <LayoutCol
 	class="spectrum-input"
 	styles={{
-		"--gradient-start": markers[0]?.color.toRgbCSS() || "black",
-		"--gradient-end": markers[markers.length - 1]?.color.toRgbCSS() || "black",
-		"--gradient-stops": markers.map((marker) => `${marker.color.toRgbCSS()} ${marker.position * 100}%`).join(", "),
+		"--gradient-start": gradient.firstColor()?.toRgbCSS() || "black",
+		"--gradient-end": gradient.lastColor()?.toRgbCSS() || "black",
+		"--gradient-stops": gradient.toLinearGradientCSS(),
 	}}
 >
 	<LayoutRow class="gradient-strip"></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
-		{#each markers as marker, index}
+		{#each gradient.stops as marker, index}
 			<svg
 				style:--marker-position={marker.position}
 				style:--marker-color={marker.color.toRgbCSS()}
@@ -121,7 +121,7 @@
 			flex: 0 0 auto;
 			height: 16px;
 			background-image:
-				linear-gradient(to right, var(--gradient-stops)),
+				var(--gradient-stops),
 				// Solid start/end colors on either side so the gradient begins at the center of a marker
 				linear-gradient(var(--gradient-start), var(--gradient-start)),
 				linear-gradient(var(--gradient-end), var(--gradient-end));
