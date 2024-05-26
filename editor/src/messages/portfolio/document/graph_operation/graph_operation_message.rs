@@ -13,6 +13,7 @@ use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
 use graphene_core::{Artboard, Color};
+use graphene_std::vector::misc::BooleanOperation;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -24,6 +25,10 @@ pub enum GraphOperationMessage {
 		new_ids: HashMap<NodeId, NodeId>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
+	},
+	CreateBooleanOperationNode {
+		node_id: NodeId,
+		operation: BooleanOperation,
 	},
 	DisconnectInput {
 		node_id: NodeId,
@@ -38,14 +43,20 @@ pub enum GraphOperationMessage {
 		parent: NodeId,
 		insert_index: usize,
 	},
+	InsertBooleanOperation {
+		operation: BooleanOperation,
+	},
 	InsertNodeBetween {
+		// Post node
 		post_node_id: NodeId,
 		post_node_input_index: usize,
-		insert_node_output_index: usize,
+		// Inserted node
 		insert_node_id: NodeId,
+		insert_node_output_index: usize,
 		insert_node_input_index: usize,
-		pre_node_output_index: usize,
+		// Pre node
 		pre_node_id: NodeId,
+		pre_node_output_index: usize,
 	},
 	MoveSelectedSiblingsToChild {
 		new_parent: NodeId,

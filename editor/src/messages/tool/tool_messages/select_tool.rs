@@ -17,6 +17,7 @@ use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
 use graphene_core::renderer::Quad;
+use graphene_std::vector::misc::BooleanOperation;
 
 use std::fmt;
 
@@ -147,10 +148,12 @@ impl SelectTool {
 	}
 
 	fn boolean_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
-		["Union", "Subtract Front", "Subtract Back", "Intersect", "Difference"].into_iter().map(|name| {
-			IconButton::new(format!("Boolean{}", name.replace(' ', "")), 24)
-				.tooltip(format!("Boolean {name} (coming soon)"))
-				.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1091) }.into())
+		let operations = BooleanOperation::list();
+		let icons = BooleanOperation::icons();
+		operations.into_iter().zip(icons.into_iter()).map(|(operation, icon)| {
+			IconButton::new(icon, 24)
+				.tooltip(operation.to_string())
+				.on_update(move |_| GraphOperationMessage::InsertBooleanOperation { operation }.into())
 				.widget_holder()
 		})
 	}
@@ -191,7 +194,7 @@ impl LayoutHolder for SelectTool {
 		widgets.extend(self.flip_widgets(disabled));
 
 		// Boolean
-		if self.tool_data.selected_layers_count >= 2 {
+		if self.tool_data.selected_layers_count == 2 {
 			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 			widgets.extend(self.boolean_widgets());
 		}

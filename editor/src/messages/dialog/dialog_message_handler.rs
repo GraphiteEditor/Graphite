@@ -1,7 +1,6 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 
 pub struct DialogMessageData<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,

@@ -2539,6 +2539,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Boolean Operation",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::proto("graphene_std::vector::BooleanOperationNode<_, _>"),
+			inputs: vec![
+				DocumentInputType::value("Upper Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Lower Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
+				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			properties: node_properties::boolean_operation_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Copy to Points",
 			category: "Vector",
 			// TODO: Wrap this implementation with a document node that has a cache node so the output is cached?

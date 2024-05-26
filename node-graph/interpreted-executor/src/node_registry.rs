@@ -713,6 +713,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::BoundingBoxNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::SolidifyStrokeNode, input: VectorData, params: []),
 		register_node!(graphene_core::vector::CircularRepeatNode<_, _, _>, input: VectorData, params: [f64, f64, u32]),
+		async_node!(graphene_std::vector::BooleanOperationNode<_, _>, input: VectorData, output: VectorData, fn_params: [Footprint => VectorData, () => graphene_core::vector::misc::BooleanOperation]),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::transform::CullNode<_>"),
 			|args| {
