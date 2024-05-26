@@ -148,6 +148,13 @@ impl WasmBezier {
 		wrap_svg_tag(format!("{bezier}{}", draw_text(format!("Length: {:.2}", self.0.length(None)), TEXT_OFFSET_X, TEXT_OFFSET_Y, BLACK)))
 	}
 
+	pub fn length_centroid(&self) -> String {
+		let bezier = self.get_bezier_path();
+		let centroid = self.0.length_centroid(None);
+		let point_text = draw_circle(centroid, 4., RED, 1.5, WHITE);
+		wrap_svg_tag(format!("{bezier}{}", point_text))
+	}
+
 	pub fn evaluate(&self, raw_t: f64, t_variant: String) -> String {
 		let bezier = self.get_bezier_path();
 		let t = parse_t_variant(&t_variant, raw_t);

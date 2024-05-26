@@ -145,6 +145,8 @@ impl BorrowTree {
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;
+			} else {
+				self.update_source_map(id, &node);
 			}
 			old_nodes.remove(&id);
 		}
@@ -192,9 +194,7 @@ impl BorrowTree {
 		self.nodes.remove(&id);
 	}
 
-	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
-	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
-		log::debug!("pushing node path: {:?}", proto_node.original_location.path.clone().unwrap_or_default());
+	pub fn update_source_map(&mut self, id: NodeId, proto_node: &ProtoNode) {
 		self.source_map.insert(proto_node.original_location.path.clone().unwrap_or_default(), id);
 
 		let params = match &proto_node.construction_args {
@@ -207,6 +207,11 @@ impl BorrowTree {
 		for x in proto_node.original_location.outputs_source.values() {
 			assert_eq!(*x, 0, "Proto nodes should refer to output index 0");
 		}
+	}
+
+	/// Insert a new node into the borrow tree, calling the constructor function from `node_registry.rs`.
+	pub async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+		self.update_source_map(id, &proto_node);
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {

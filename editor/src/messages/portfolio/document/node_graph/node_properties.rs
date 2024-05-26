@@ -14,6 +14,7 @@ use graphene_core::raster::{
 	SelectiveColorChoice,
 };
 use graphene_core::text::Font;
+use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
 use glam::{DVec2, IVec2, UVec2};
@@ -878,6 +879,39 @@ fn curves_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 				.on_commit(commit_value)
 				.widget_holder(),
 		])
+	}
+	LayoutGroup::Row { widgets }
+}
+
+fn centroid_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, "Centroid Type", FrontendGraphDataType::General, true);
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::CentroidType(centroid_type),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let entries = vec![
+			RadioEntryData::new("area")
+				.label("Area")
+				.tooltip("Center of mass for the interior area of the shape")
+				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Area), node_id, index))
+				.on_commit(commit_value),
+			RadioEntryData::new("length")
+				.label("Length")
+				.tooltip("Center of mass for the perimeter arc length of the shape")
+				.on_update(update_value(move |_| TaggedValue::CentroidType(CentroidType::Length), node_id, index))
+				.on_commit(commit_value),
+		];
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries)
+				.selected_index(match centroid_type {
+					CentroidType::Area => Some(0),
+					CentroidType::Length => Some(1),
+				})
+				.widget_holder(),
+		]);
 	}
 	LayoutGroup::Row { widgets }
 }
@@ -2450,4 +2484,10 @@ pub fn image_color_palette(document_node: &DocumentNode, node_id: NodeId, _conte
 	let size = number_widget(document_node, node_id, 1, "Max Size", NumberInput::default().int().min(1.).max(28.), true);
 
 	vec![LayoutGroup::Row { widgets: size }]
+}
+
+pub fn centroid_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let centroid_type = centroid_widget(document_node, node_id, 1);
+
+	vec![centroid_type]
 }

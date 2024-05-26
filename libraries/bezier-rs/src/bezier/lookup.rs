@@ -179,6 +179,75 @@ impl Bezier {
 		}
 	}
 
+	/// Return an approximation of the length centroid, together with the length, of the bezier curve.
+	///
+	/// The length centroid is the center of mass for the arc length of the Bezier segment.
+	/// An infinitely thin wire forming the Bezier segment's shape would balance at this point.
+	///
+	/// - `tolerance` - Tolerance used to approximate the curve.
+	pub fn length_centroid_and_length(&self, tolerance: Option<f64>) -> (DVec2, f64) {
+		match self.handles {
+			BezierHandles::Linear => ((self.start + self.end()) / 2., (self.start - self.end).length()),
+			BezierHandles::Quadratic { handle } => {
+				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+				fn recurse(a0: DVec2, a1: DVec2, a2: DVec2, tolerance: f64, level: u8) -> (f64, DVec2) {
+					let lower = a0.distance(a2);
+					let upper = a0.distance(a1) + a1.distance(a2);
+					if upper - lower <= 2. * tolerance || level >= 8 {
+						let length = (lower + upper) / 2.;
+						return (length, length * (a0 + a1 + a2) / 3.);
+					}
+
+					let b1 = 0.5 * (a0 + a1);
+					let c1 = 0.5 * (a1 + a2);
+					let b2 = 0.5 * (b1 + c1);
+
+					let (length1, centroid_part1) = recurse(a0, b1, b2, 0.5 * tolerance, level + 1);
+					let (length2, centroid_part2) = recurse(b2, c1, a2, 0.5 * tolerance, level + 1);
+					(length1 + length2, centroid_part1 + centroid_part2)
+				}
+
+				let (length, centroid_parts) = recurse(self.start, handle, self.end, tolerance.unwrap_or_default(), 0);
+				(centroid_parts / length, length)
+			}
+			BezierHandles::Cubic { handle_start, handle_end } => {
+				// Use Casteljau subdivision, noting that the length is more than the straight line distance from start to end but less than the straight line distance through the handles
+				fn recurse(a0: DVec2, a1: DVec2, a2: DVec2, a3: DVec2, tolerance: f64, level: u8) -> (f64, DVec2) {
+					let lower = a0.distance(a3);
+					let upper = a0.distance(a1) + a1.distance(a2) + a2.distance(a3);
+					if upper - lower <= 2. * tolerance || level >= 8 {
+						let length = (lower + upper) / 2.;
+						return (length, length * (a0 + a1 + a2 + a3) / 4.);
+					}
+
+					let b1 = 0.5 * (a0 + a1);
+					let t0 = 0.5 * (a1 + a2);
+					let c1 = 0.5 * (a2 + a3);
+					let b2 = 0.5 * (b1 + t0);
+					let c2 = 0.5 * (t0 + c1);
+					let b3 = 0.5 * (b2 + c2);
+
+					let (length1, centroid_part1) = recurse(a0, b1, b2, b3, 0.5 * tolerance, level + 1);
+					let (length2, centroid_part2) = recurse(b3, c2, c1, a3, 0.5 * tolerance, level + 1);
+					(length1 + length2, centroid_part1 + centroid_part2)
+				}
+				let (length, centroid_parts) = recurse(self.start, handle_start, handle_end, self.end, tolerance.unwrap_or_default(), 0);
+				(centroid_parts / length, length)
+			}
+		}
+	}
+
+	/// Return an approximation of the length centroid of the Bezier curve.
+	///
+	/// The length centroid is the center of mass for the arc length of the Bezier segment.
+	/// An infinitely thin wire with the Bezier segment's shape would balance at this point.
+	///
+	/// - `tolerance` - Tolerance used to approximate the curve.
+	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/length-centroid/solo" title="Length Centroid Demo"></iframe>
+	pub fn length_centroid(&self, tolerance: Option<f64>) -> DVec2 {
+		self.length_centroid_and_length(tolerance).0
+	}
+
 	/// Returns the parametric `t`-value that corresponds to the closest point on the curve to the provided point.
 	/// <iframe frameBorder="0" width="100%" height="300px" src="https://graphite.rs/libraries/bezier-rs#bezier/project/solo" title="Project Demo"></iframe>
 	pub fn project(&self, point: DVec2) -> f64 {
@@ -258,6 +327,25 @@ mod tests {
 
 		let bezier_cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
 		assert!(utils::f64_compare(bezier_cubic.length(None), 199., 1e-2));
+	}
+
+	#[test]
+	fn test_length_centroid() {
+		let p1 = DVec2::new(30., 50.);
+		let p2 = DVec2::new(140., 30.);
+		let p3 = DVec2::new(160., 170.);
+		let p4 = DVec2::new(77., 129.);
+
+		let bezier_linear = Bezier::from_linear_dvec2(p1, p2);
+		assert!(bezier_linear.length_centroid_and_length(None).0.abs_diff_eq((p1 + p2) / 2., MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_quadratic = Bezier::from_quadratic_dvec2(p1, p2, p3);
+		let expected = DVec2::new(112.81017736920136, 87.98713052477228);
+		assert!(bezier_quadratic.length_centroid_and_length(None).0.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
+
+		let bezier_cubic = Bezier::from_cubic_dvec2(p1, p2, p3, p4);
+		let expected = DVec2::new(95.23597072432115, 88.0645175770206);
+		assert!(bezier_cubic.length_centroid_and_length(None).0.abs_diff_eq(expected, MAX_ABSOLUTE_DIFFERENCE));
 	}
 
 	#[test]

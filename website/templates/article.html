@@ -1,40 +1,35 @@
 {% extends "base.html" %}
 
-{% block title %}Blog | {% set this = section | default(value = page) %}{{ this.title }}{% endblock title %}
+{%- block head -%}{%- set page = page | default(value = section) -%}
+{%- set title = "Blog | " ~ page.title -%}
+{%- set meta_title = page.title -%}
+{%- set meta_image = page.extra.banner_png | safe -%}
+{%- set meta_article_type = true -%}
+{%- set meta_description = page.extra.summary | default(value = page.content | striptags | safe | linebreaksbr | replace(from = "<br>", to = " ") | replace(from = "  ", to = " ") | trim | truncate(length = 200)) -%}
+{%- set css = ["article.css"] -%}
+{%- endblock head -%}
 
-{% block head %}
-{% set this = section | default(value = page) %}
-<link rel="stylesheet" href="/article.css">
-<meta property="og:type" content="article" />
-<meta property="og:title" content="{{ this.title | safe }}.">
-<meta property="og:image" content="{{ this.extra.banner_png | safe }}">
-<meta property="og:url" content="{{ current_url | safe }}">
-{% endblock head %}
-
-{% block content %}
-{% set this = section | default(value = page) %}
-
+{%- block content -%}{%- set page = page | default(value = section) -%}
 <section class="reading-material">
-	<div class="section">
+	<div class="block">
 		<div class="details">
-			<h1 class="headline">{{ this.title }}</h2>
-			<span class="publication">By {{ this.extra.author }}. {{ this.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
-			<img class="banner" src="{{ this.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
+			<h1 class="headline">{{ page.title }}</h2>
+			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+			<img class="banner" src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
-		<hr />
 		<article>
-			{{ this.content | safe }}
+			{{ page.content | safe }}
 		</article>
-		{% if this.extra.reddit or this.extra.twitter %}
+		{% if page.extra.reddit or page.extra.twitter %}
 		<hr />
 		<div class="social">
-			{% if this.extra.reddit %}
-			<a href="{{ this.extra.reddit | safe }}" target="_blank" class="button arrow">
-				<img src="https://static.graphite.rs/icons/reddit.svg" /><span>Comment on Reddit</span>
+			{% if page.extra.reddit %}
+			<a href="{{ page.extra.reddit | safe }}" target="_blank" class="button arrow">
+				<img src="https://static.graphite.rs/icons/reddit__2.svg" /><span>Comment on Reddit</span>
 			</a>
 			{% endif %}
-			{% if this.extra.twitter %}
-			<a href="{{ this.extra.twitter | safe }}" target="_blank" class="button arrow">
+			{% if page.extra.twitter %}
+			<a href="{{ page.extra.twitter | safe }}" target="_blank" class="button arrow">
 				<img src="https://static.graphite.rs/icons/twitter.svg" /><span>Comment on Twitter</span>
 			</a>
 			{% endif %}
@@ -42,4 +37,8 @@
 		{% endif %}
 	</div>
 </section>
-{% endblock content %}
+{%- if not page.summary -%}
+{{ throw(message = "ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page will be missing its preview text." | safe) }}
+{%- endif -%}
+{%- endblock content -%}
+
