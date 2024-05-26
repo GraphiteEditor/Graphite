@@ -555,7 +555,7 @@ pub struct NodeNetwork {
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// If the root node is none, then exports must be disconnected
 	pub root_node: Option<RootNode>,
-	/// Temporary fields to store metadata for import/export UI only nodes
+	/// Temporary fields to store metadata for import/export UI only nodes, eventually will be replaced with lines leading to edges
 	pub imports_metadata: (NodeId, IVec2),
 	pub exports_metadata: (NodeId, IVec2),
 }

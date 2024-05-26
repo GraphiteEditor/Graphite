@@ -2,8 +2,6 @@
 	import { getContext, onMount, tick } from "svelte";
 	import { fade } from "svelte/transition";
 
-	import { c } from "vite/dist/node/types.d-AKzkD8vd";
-
 	import { FADE_TRANSITION } from "@graphite/consts";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
@@ -483,6 +481,8 @@
 	}
 
 	function doubleClick(e: MouseEvent) {
+		if ((e.target as HTMLElement).closest("[data-visibility-button]")) return;
+
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
 		if (nodeId !== undefined) {
@@ -974,6 +974,7 @@
 				</div>
 				<IconButton
 					class={"visibility"}
+					data-visibility-button
 					action={(e) => (toggleNodeVisibilityGraph(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}

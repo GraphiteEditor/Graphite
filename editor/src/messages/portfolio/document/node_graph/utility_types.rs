@@ -9,24 +9,24 @@ pub enum FrontendGraphDataType {
 	General,
 	#[serde(rename = "raster")]
 	Raster,
-	#[serde(rename = "color")]
+	#[serde(rename = "general")]
 	Color,
 	#[serde(rename = "general")]
 	Text,
 	#[serde(rename = "vector")]
-	Subpath,
+	VectorData,
 	#[serde(rename = "number")]
 	Number,
 	#[serde(rename = "general")]
 	Boolean,
 	/// Refers to the mathematical vector, with direction and magnitude.
 	#[serde(rename = "number")]
-	Vector,
-	#[serde(rename = "raster")]
+	MathVector,
+	#[serde(rename = "group")]
 	GraphicGroup,
 	#[serde(rename = "artboard")]
 	Artboard,
-	#[serde(rename = "color")]
+	#[serde(rename = "general")]
 	Palette,
 }
 
@@ -36,11 +36,11 @@ impl FrontendGraphDataType {
 			TaggedValue::String(_) => Self::Text,
 			TaggedValue::F64(_) | TaggedValue::U32(_) | TaggedValue::DAffine2(_) => Self::Number,
 			TaggedValue::Bool(_) => Self::Boolean,
-			TaggedValue::DVec2(_) | TaggedValue::IVec2(_) => Self::Vector,
+			TaggedValue::DVec2(_) | TaggedValue::IVec2(_) => Self::MathVector,
 			TaggedValue::Image(_) => Self::Raster,
 			TaggedValue::ImageFrame(_) => Self::Raster,
 			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
+			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
 			TaggedValue::Artboard(_) | TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			TaggedValue::Palette(_) => Self::Palette,
@@ -63,7 +63,7 @@ impl FrontendGraphDataType {
 					x if x == TypeId::of::<String>() => Self::Text,
 					x if x == TypeId::of::<f64>() || x == TypeId::of::<u32>() || x == TypeId::of::<glam::DAffine2>() => Self::Number,
 					x if x == TypeId::of::<bool>() => Self::Boolean,
-					x if x == TypeId::of::<glam::f64::DVec2>() || x == TypeId::of::<glam::u32::UVec2>() || x == TypeId::of::<glam::IVec2>() => Self::Vector,
+					x if x == TypeId::of::<glam::f64::DVec2>() || x == TypeId::of::<glam::u32::UVec2>() || x == TypeId::of::<glam::IVec2>() => Self::MathVector,
 					x if x == TypeId::of::<graphene_core::raster::Image<Color>>() || x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => Self::Raster,
 					x if x == TypeId::of::<Color>() => Self::Color,
 					x if x == TypeId::of::<Vec<Color>>() => Self::Palette,
@@ -71,7 +71,7 @@ impl FrontendGraphDataType {
 						|| x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>()
 						|| x == TypeId::of::<graphene_core::vector::VectorData>() =>
 					{
-						Self::Subpath
+						Self::VectorData
 					}
 					x if x == TypeId::of::<graphene_core::GraphicGroup>() => Self::GraphicGroup,
 					x if x == TypeId::of::<graphene_core::Artboard>() || x == TypeId::of::<graphene_core::ArtboardGroup>() => Self::Artboard,

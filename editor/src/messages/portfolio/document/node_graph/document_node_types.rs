@@ -2187,7 +2187,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				..Default::default()
 			}),
 			inputs: vec![DocumentInputType::none(), DocumentInputType::value("Radius", TaggedValue::F64(50.), false)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::circle_properties,
 			..Default::default()
 		},
@@ -2200,7 +2200,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Radius X", TaggedValue::F64(50.), false),
 				DocumentInputType::value("Radius Y", TaggedValue::F64(25.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::ellipse_properties,
 			..Default::default()
 		},
@@ -2216,7 +2216,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Corner Radius", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Clamped", TaggedValue::Bool(true), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::rectangle_properties,
 			..Default::default()
 		},
@@ -2229,7 +2229,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Sides", TaggedValue::U32(6), false),
 				DocumentInputType::value("Radius", TaggedValue::F64(50.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::regular_polygon_properties,
 			..Default::default()
 		},
@@ -2243,7 +2243,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Radius", TaggedValue::F64(50.), false),
 				DocumentInputType::value("Inner Radius", TaggedValue::F64(25.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::star_properties,
 			..Default::default()
 		},
@@ -2256,7 +2256,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., -50.)), false),
 				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(0., 50.)), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::line_properties,
 			..Default::default()
 		},
@@ -2268,7 +2268,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::none(),
 				DocumentInputType::value("Points", TaggedValue::VecDVec2(vec![DVec2::new(0., -50.), DVec2::new(25., 0.), DVec2::new(0., 50.)]), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::spline_properties,
 			..Default::default()
 		},
@@ -2280,7 +2280,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
 				DocumentInputType::value("Colinear Manipulators", TaggedValue::ManipulatorGroupIds(vec![]), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2307,7 +2307,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::transform::CullNode<_>"),
 			manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2320,7 +2320,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
 				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::node_section_font,
 			..Default::default()
 		},
@@ -2364,7 +2364,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
 				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
 			],
-			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::VectorData)],
 			properties: node_properties::transform_properties,
 			..Default::default()
 		},
@@ -2376,7 +2376,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), true),
 			],
-			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::VectorData)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2393,7 +2393,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
 				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Color::BLACK), (1., Color::WHITE)]), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::fill_properties,
 			..Default::default()
 		},
@@ -2411,7 +2411,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
 				DocumentInputType::value("Miter Limit", TaggedValue::F64(4.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::stroke_properties,
 			..Default::default()
 		},
@@ -2420,7 +2420,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::BoundingBoxNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
@@ -2429,7 +2429,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::SolidifyStrokeNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
@@ -2443,7 +2443,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Angle", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Instances", TaggedValue::U32(5), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::repeat_properties,
 			..Default::default()
 		},
@@ -2457,7 +2457,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Radius", TaggedValue::F64(5.), false),
 				DocumentInputType::value("Instances", TaggedValue::U32(5), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::circular_repeat_properties,
 			..Default::default()
 		},
@@ -2470,7 +2470,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Lower Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Operation", TaggedValue::BooleanOperation(vector::misc::BooleanOperation::Union), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::boolean_operation_properties,
 			..Default::default()
 		},
@@ -2488,7 +2488,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Random Scale Bias", TaggedValue::F64(1.), false),
 				DocumentInputType::value("Random Rotation", TaggedValue::F64(0.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::copy_to_points_properties,
 			..Default::default()
 		},
@@ -2533,7 +2533,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Stop Offset", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Adaptive Spacing", TaggedValue::Bool(false), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::sample_points_properties,
 			..Default::default()
 		},
@@ -2545,7 +2545,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Separation Disk Diameter", TaggedValue::F64(10.), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::poisson_disk_points_properties,
 			..Default::default()
 		},
@@ -2554,7 +2554,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Vector",
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::SplinesFromPointsNode"),
 			inputs: vec![DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true)],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
@@ -2576,7 +2576,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Centroid Type", TaggedValue::CentroidType(graphene_core::vector::misc::CentroidType::Area), false),
 			],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Vector)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::MathVector)],
 			properties: node_properties::centroid_properties,
 			manual_composition: Some(concrete!(())),
 			..Default::default()
@@ -2591,7 +2591,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Start Index", TaggedValue::U32(0), false),
 				DocumentInputType::value("Time", TaggedValue::F64(0.5), false),
 			],
-			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::Subpath)],
+			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			manual_composition: Some(concrete!(Footprint)),
 			properties: node_properties::morph_properties,
 			..Default::default()

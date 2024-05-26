@@ -151,7 +151,7 @@ impl DocumentMetadata {
 
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
-	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
+	pub fn load_structure(&mut self, graph: &NodeNetwork) {
 		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
 		self.artboards = HashSet::new();
 		self.folders = HashSet::new();

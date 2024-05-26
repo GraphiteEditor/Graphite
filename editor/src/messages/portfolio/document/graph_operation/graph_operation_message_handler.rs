@@ -74,7 +74,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 
 				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
-				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, document_metadata, parent, insert_index);
+				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent, insert_index);
 
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
 
@@ -129,7 +129,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 				ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![layer.to_node()], reconnect, responses);
 
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
@@ -214,7 +214,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::InsertNodeAtStackIndex { node_id, parent, insert_index } => {
-				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, document_metadata, parent, insert_index);
+				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent, insert_index);
 				let Some(post_node_id) = post_node_id else {
 					log::error!("Post node should exist in InsertLayerAtStackIndex");
 					return;
@@ -563,7 +563,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
 					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
 				}
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -626,14 +626,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					error!("Creating new custom layer failed");
 				}
 
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -647,7 +647,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
@@ -658,7 +658,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				for &artboard in document_metadata.all_artboards() {
 					responses.add(GraphOperationMessage::DeleteLayer { layer: artboard, reconnect: true });
 				}
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewSvg {
 				id,
@@ -681,7 +681,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
-				load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::SetNodePosition { node_id, position } => {
 				let Some(node) = document_network.nodes.get_mut(&node_id) else {
@@ -709,7 +709,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
 					*node_input = input;
 					if structure_changed {
-						load_network_structure(document_network, document_metadata, selected_nodes, collapsed);
+						load_network_structure(document_network, document_metadata, collapsed);
 					}
 				}
 			}
@@ -744,7 +744,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				document_metadata.load_structure(document_network, selected_nodes);
+				document_metadata.load_structure(document_network);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
@@ -776,7 +776,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
-				document_metadata.load_structure(document_network, selected_nodes);
+				document_metadata.load_structure(document_network);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated)
 			}
 		}
@@ -787,8 +787,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 	}
 }
 
-pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, selected_nodes: &mut SelectedNodes, collapsed: &mut CollapsedLayers) {
-	document_metadata.load_structure(document_network, selected_nodes);
+pub fn load_network_structure(document_network: &NodeNetwork, document_metadata: &mut DocumentMetadata, collapsed: &mut CollapsedLayers) {
+	document_metadata.load_structure(document_network);
 	collapsed.0.retain(|&layer| document_metadata.layer_exists(layer));
 }
 

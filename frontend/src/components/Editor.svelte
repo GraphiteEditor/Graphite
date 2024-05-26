@@ -113,8 +113,8 @@
 		--color-data-raster-dim: #8b7752;
 		--color-data-vector: #65bbe5;
 		--color-data-vector-dim: #4b778c;
-		--color-data-color: #dce472;
-		--color-data-color-dim: #898d55;
+		--color-data-group: #6b84e8;
+		--color-data-group-dim: #4a557b;
 		--color-data-artboard: #70a898;
 		--color-data-artboard-dim: #3a6156;
 

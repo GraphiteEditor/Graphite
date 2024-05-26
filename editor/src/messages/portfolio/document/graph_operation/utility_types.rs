@@ -162,7 +162,7 @@ impl<'a> ModifyInputsContext<'a> {
 	///      ↑      if skip_layer_nodes == 2, return (NonLayerNode, Some(Layer3), 0)
 	/// -> Layer3   input_index: 3
 	///             if skip_layer_nodes == 3, return (Layer3, None, 0)
-	pub fn get_post_node_with_index(network: &NodeNetwork, metadata: &DocumentMetadata, parent: LayerNodeIdentifier, insert_index: usize) -> (Option<NodeId>, Option<NodeId>, usize) {
+	pub fn get_post_node_with_index(network: &NodeNetwork, parent: LayerNodeIdentifier, insert_index: usize) -> (Option<NodeId>, Option<NodeId>, usize) {
 		let post_node_information = if parent != LayerNodeIdentifier::ROOT_PARENT {
 			Some((parent.to_node(), 1))
 		} else {
@@ -238,7 +238,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
 		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
 		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, self.document_metadata, parent, skip_layer_nodes);
+		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, parent, skip_layer_nodes);
 
 		if let Some(post_node_id) = post_node_id {
 			if let Some(pre_node_id) = pre_node_id {
@@ -756,10 +756,6 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 		for delete_node_id in delete_nodes {
-			let Some(delete_node) = network.nodes.get(&delete_node_id) else {
-				continue;
-			};
-
 			ModifyInputsContext::remove_node(network, selected_nodes, delete_node_id, reconnect, responses);
 		}
 	}

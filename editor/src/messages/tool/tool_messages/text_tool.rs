@@ -214,6 +214,7 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		//TODO: Should always set visibility for document network, but node_id is not a layer so it crashes
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
 			responses.add(GraphOperationMessage::SetVisibility { layer: LayerNodeIdentifier::new(node_id, &document.network), visible: !editable });
 		}
@@ -251,7 +252,7 @@ impl TextToolData {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Cannot edit ROOT_PARENT in TextTooLData")
 		}
-		
+
 		if tool_state == TextToolFsmState::Editing {
 			self.set_editing(false, font_cache, document, responses);
 		}

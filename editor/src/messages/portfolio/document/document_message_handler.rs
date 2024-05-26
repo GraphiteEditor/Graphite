@@ -330,13 +330,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				self.metadata.load_structure(&self.network, &mut self.selected_nodes);
+				self.metadata.load_structure(&self.network);
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
 				let parent = self.new_layer_parent(false);
-				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.network, &self.selected_nodes, parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
 
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
@@ -477,7 +477,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						shift_self: true,
 					});
 				}
-				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.network, &self.selected_nodes, parent);
+				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
 				responses.add(GraphOperationMessage::NewCustomLayer {
@@ -1463,7 +1463,7 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.metadata().active_artboard())
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, network: &NodeNetwork, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
 		parent
 			.children(metadata)
 			.enumerate()

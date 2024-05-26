@@ -137,7 +137,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::MathVector, false);
 
 	assist(&mut widgets);
 
@@ -230,7 +230,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::MathVector, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -259,7 +259,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::MathVector, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -322,7 +322,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Subpath, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
@@ -2045,7 +2045,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let resolution = {
 		use graphene_std::imaginate::pick_safe_imaginate_resolution;
 
-		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector, false);
+		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::MathVector, false);
 
 		let round = |x: DVec2| {
 			let (x, y) = pick_safe_imaginate_resolution(x.into());

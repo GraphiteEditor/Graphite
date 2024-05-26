@@ -353,7 +353,7 @@ impl SelectToolData {
 			};
 			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(document.network(), &copy_ids).collect();
 
-			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.network, &document.selected_nodes, parent);
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata,  &document.selected_nodes, parent);
 
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
