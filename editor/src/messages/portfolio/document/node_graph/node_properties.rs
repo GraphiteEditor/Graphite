@@ -18,6 +18,7 @@ use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
 
 use glam::{DVec2, IVec2, UVec2};
+use graphene_std::vector::misc::BooleanOperation;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_holder();
@@ -321,7 +322,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Subpath, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
@@ -609,6 +610,36 @@ fn luminance_calculation(document_node: &DocumentNode, node_id: NodeId, index: u
 		]);
 	}
 	LayoutGroup::Row { widgets }.with_tooltip("Formula used to calculate the luminance of a pixel")
+}
+
+fn boolean_operation_radio_buttons(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
+
+	if let &NodeInput::Value {
+		tagged_value: TaggedValue::BooleanOperation(calculation),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let operations = BooleanOperation::list();
+		let icons = BooleanOperation::icons();
+		let mut entries = Vec::with_capacity(operations.len());
+
+		for (operation, icon) in operations.into_iter().zip(icons.into_iter()) {
+			entries.push(
+				RadioEntryData::new(format!("{operation:?}"))
+					.icon(icon)
+					.tooltip(operation.to_string())
+					.on_update(update_value(move |_| TaggedValue::BooleanOperation(operation), node_id, index))
+					.on_commit(commit_value),
+			);
+		}
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(calculation as u32)).widget_holder(),
+		]);
+	}
+	LayoutGroup::Row { widgets }
 }
 
 fn line_cap_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
@@ -2341,6 +2372,13 @@ pub fn circular_repeat_properties(document_node: &DocumentNode, node_id: NodeId,
 		LayoutGroup::Row { widgets: radius },
 		LayoutGroup::Row { widgets: instances },
 	]
+}
+
+pub fn boolean_operation_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let other_vector_data = vector_widget(document_node, node_id, 1, "Lower Vector Data", true);
+	let opeartion = boolean_operation_radio_buttons(document_node, node_id, 2, "Operation", true);
+
+	vec![LayoutGroup::Row { widgets: other_vector_data }, opeartion]
 }
 
 pub fn copy_to_points_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
