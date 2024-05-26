@@ -97,6 +97,7 @@ import AlignTop from "@graphite-frontend/assets/icon-16px-solid/align-top.svg";
 import AlignVerticalCenter from "@graphite-frontend/assets/icon-16px-solid/align-vertical-center.svg";
 import Artboard from "@graphite-frontend/assets/icon-16px-solid/artboard.svg";
 import BooleanDifference from "@graphite-frontend/assets/icon-16px-solid/boolean-difference.svg";
+import BooleanDivide from "@graphite-frontend/assets/icon-16px-solid/boolean-divide.svg";
 import BooleanIntersect from "@graphite-frontend/assets/icon-16px-solid/boolean-intersect.svg";
 import BooleanSubtractBack from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-back.svg";
 import BooleanSubtractFront from "@graphite-frontend/assets/icon-16px-solid/boolean-subtract-front.svg";
@@ -171,6 +172,7 @@ const SOLID_16PX = {
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
 	Artboard: { svg: Artboard, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
+	BooleanDivide: { svg: BooleanDivide, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },
 	BooleanSubtractFront: { svg: BooleanSubtractFront, size: 16 },
