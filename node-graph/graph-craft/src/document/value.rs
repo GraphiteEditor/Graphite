@@ -78,6 +78,7 @@ pub enum TaggedValue {
 	RenderOutput(RenderOutput),
 	Palette(Vec<Color>),
 	CentroidType(graphene_core::vector::misc::CentroidType),
+	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 }
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -158,6 +159,7 @@ impl Hash for TaggedValue {
 			Self::RenderOutput(x) => x.hash(state),
 			Self::Palette(x) => x.hash(state),
 			Self::CentroidType(x) => x.hash(state),
+			Self::BooleanOperation(x) => x.hash(state),
 		}
 	}
 }
@@ -225,6 +227,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RenderOutput(x) => Box::new(x),
 			TaggedValue::Palette(x) => Box::new(x),
 			TaggedValue::CentroidType(x) => Box::new(x),
+			TaggedValue::BooleanOperation(x) => Box::new(x),
 		}
 	}
 
@@ -303,6 +306,7 @@ impl<'a> TaggedValue {
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
 			TaggedValue::Palette(_) => concrete!(Vec<Color>),
 			TaggedValue::CentroidType(_) => concrete!(graphene_core::vector::misc::CentroidType),
+			TaggedValue::BooleanOperation(_) => concrete!(graphene_core::vector::misc::BooleanOperation),
 		}
 	}
 
@@ -371,6 +375,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::transform::Footprint>() => Ok(TaggedValue::Footprint(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<Color>>() => Ok(TaggedValue::Palette(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::misc::CentroidType>() => Ok(TaggedValue::CentroidType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::misc::BooleanOperation>() => Ok(TaggedValue::BooleanOperation(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}

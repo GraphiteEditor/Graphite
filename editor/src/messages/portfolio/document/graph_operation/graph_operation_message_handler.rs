@@ -5,13 +5,13 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
-use bezier_rs::{ManipulatorGroup, Subpath};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
+use graphene_std::vector::convert_usvg_path;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -96,6 +96,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			GraphOperationMessage::CreateBooleanOperationNode { node_id, operation } => {
+				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation")
+					.expect("Failed to create a Boolean Operation node")
+					.to_document_node_default_inputs(
+						[
+							Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+							Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+							Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+						],
+						Default::default(),
+					);
+				document_network.nodes.insert(node_id, new_boolean_operation_node);
+			}
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
 				let Some(node_to_disconnect) = document_network.nodes.get(&node_id) else {
 					warn!("Node {} not found in DisconnectInput", node_id);
@@ -173,6 +186,82 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					shift: IVec2::new(0, 3),
 					shift_self: true,
 				});
+			}
+			GraphOperationMessage::InsertBooleanOperation { operation } => {
+				let mut selected_layers = selected_nodes.selected_layers(&document_metadata);
+
+				let first_selected_layer = selected_layers.next();
+				let second_selected_layer = selected_layers.next();
+				let other_selected_layer = selected_layers.next();
+
+				let (Some(upper_layer), Some(lower_layer), None) = (first_selected_layer, second_selected_layer, other_selected_layer) else {
+					return;
+				};
+
+				let Some(upper_layer_node) = document_network.nodes.get(&upper_layer.to_node()) else { return };
+				let Some(lower_layer_node) = document_network.nodes.get(&lower_layer.to_node()) else { return };
+
+				let Some(NodeInput::Node {
+					node_id: upper_node_id,
+					output_index: upper_output_index,
+					..
+				}) = upper_layer_node.inputs.get(1).cloned()
+				else {
+					return;
+				};
+				let Some(NodeInput::Node {
+					node_id: lower_node_id,
+					output_index: lower_output_index,
+					..
+				}) = lower_layer_node.inputs.get(1).cloned()
+				else {
+					return;
+				};
+
+				let boolean_operation_node_id = NodeId::new();
+
+				// Store a history step before doing anything
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Create the new Boolean Operation node
+				responses.add(GraphOperationMessage::CreateBooleanOperationNode {
+					node_id: boolean_operation_node_id,
+					operation,
+				});
+
+				// Insert it in the upper layer's chain, right before it enters the upper layer
+				responses.add(GraphOperationMessage::InsertNodeBetween {
+					post_node_id: upper_layer.to_node(),
+					post_node_input_index: 1,
+					insert_node_id: boolean_operation_node_id,
+					insert_node_output_index: 0,
+					insert_node_input_index: 0,
+					pre_node_id: upper_node_id,
+					pre_node_output_index: upper_output_index,
+				});
+
+				// Connect the lower chain to the Boolean Operation node's lower input
+				responses.add(NodeGraphMessage::SetNodeInput {
+					node_id: boolean_operation_node_id,
+					input_index: 1,
+					input: NodeInput::node(lower_node_id, lower_output_index),
+				});
+
+				// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
+				responses.add(DocumentMessage::DeleteLayer { id: lower_layer.to_node() });
+
+				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
+				responses.add(NodeGraphMessage::SetNodePosition {
+					node_id: boolean_operation_node_id,
+					position: upper_layer_node.metadata.position,
+				});
+
+				// After the previous step, the Boolean Operation node is overlapping the upper layer, so we need to shift and its entire chain to the left by its width plus some padding
+				responses.add(NodeGraphMessage::ShiftUpstream {
+					node_id: boolean_operation_node_id,
+					shift: (-8, 0).into(),
+					shift_self: true,
+				})
 			}
 			GraphOperationMessage::InsertNodeBetween {
 				post_node_id,
@@ -638,48 +727,4 @@ fn apply_usvg_fill(fill: &Option<usvg::Fill>, modify_inputs: &mut ModifyInputsCo
 			}
 		});
 	}
-}
-
-fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<ManipulatorGroupId>> {
-	let mut subpaths = Vec::new();
-	let mut groups = Vec::new();
-
-	let mut points = path.data.points().iter();
-	let to_vec = |p: &usvg::tiny_skia_path::Point| DVec2::new(p.x as f64, p.y as f64);
-
-	for verb in path.data.verbs() {
-		match verb {
-			usvg::tiny_skia_path::PathVerb::Move => {
-				subpaths.push(Subpath::new(std::mem::take(&mut groups), false));
-				let Some(start) = points.next().map(to_vec) else { continue };
-				groups.push(ManipulatorGroup::new(start, Some(start), Some(start)));
-			}
-			usvg::tiny_skia_path::PathVerb::Line => {
-				let Some(end) = points.next().map(to_vec) else { continue };
-				groups.push(ManipulatorGroup::new(end, Some(end), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Quad => {
-				let Some(handle) = points.next().map(to_vec) else { continue };
-				let Some(end) = points.next().map(to_vec) else { continue };
-				if let Some(last) = groups.last_mut() {
-					last.out_handle = Some(last.anchor + (2. / 3.) * (handle - last.anchor));
-				}
-				groups.push(ManipulatorGroup::new(end, Some(end + (2. / 3.) * (handle - end)), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Cubic => {
-				let Some(first_handle) = points.next().map(to_vec) else { continue };
-				let Some(second_handle) = points.next().map(to_vec) else { continue };
-				let Some(end) = points.next().map(to_vec) else { continue };
-				if let Some(last) = groups.last_mut() {
-					last.out_handle = Some(first_handle);
-				}
-				groups.push(ManipulatorGroup::new(end, Some(second_handle), Some(end)));
-			}
-			usvg::tiny_skia_path::PathVerb::Close => {
-				subpaths.push(Subpath::new(std::mem::take(&mut groups), true));
-			}
-		}
-	}
-	subpaths.push(Subpath::new(groups, false));
-	subpaths
 }
