@@ -328,10 +328,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(responses),
 			DocumentMessage::DocumentStructureChanged => {
-				let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-					warn!("No network in DocumentStructureChanged");
-					return;
-				};
 				self.update_layers_panel_options_bar_widgets(responses);
 
 				self.metadata.load_structure(&self.network, &mut self.selected_nodes);

@@ -102,13 +102,14 @@ impl SelectedNodes {
 	}
 
 	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
-		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
+		self.0
+			.iter()
+			.filter(|node_id| network.nodes.contains_key(*node_id) || **node_id == network.imports_metadata.0 || **node_id == network.exports_metadata.0)
 	}
 
 	// Only get selected nodes that are in the current network, and that are not import/export nodes
 	pub fn selected_nodes_filtered<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
-		self.selected_nodes(network)
-			.filter(|node_id| **node_id != network.imports_metadata.0 && **node_id != network.exports_metadata.0)
+		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {

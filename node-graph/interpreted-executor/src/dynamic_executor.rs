@@ -58,14 +58,6 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<(), GraphErrors> {
-		log::debug!(
-			"update proto_network: {:?}",
-			proto_network
-				.nodes
-				.iter()
-				.for_each(|proto_node| { log::debug!("proto node {:?}: {:?}", proto_node.0, proto_node.1.original_location.path) })
-		);
-
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network)?;
 		let mut orphans = self.tree.update(proto_network, &self.typing_context).await?;
@@ -141,7 +133,6 @@ impl BorrowTree {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		//TODO: self.nodes are retained when closing and creating a new document, while means that the .push_node is not called for some nodes, and they are not added
 		// to the borrow tree, so document_node_types does not return types for those nodes
-		log::debug!("self.nodes: {:?}", self.nodes);
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;
