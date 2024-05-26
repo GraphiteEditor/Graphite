@@ -29,6 +29,7 @@ pub enum TaggedValue {
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
+	AnimatableF64(Vec<(f64, f64)>),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
 	ImageFrame(graphene_core::raster::ImageFrame<Color>),
@@ -104,6 +105,7 @@ impl Hash for TaggedValue {
 				Self::DVec2(*x).hash(state)
 			}
 			Self::DAffine2(x) => x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::AnimatableF64(x) => x.iter().for_each(|(t, v)| (Self::F64(*t), Self::F64(*v)).hash(state)),
 			Self::Image(x) => x.hash(state),
 			Self::ImaginateCache(x) => x.hash(state),
 			Self::Color(x) => x.hash(state),
@@ -184,6 +186,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
 			TaggedValue::DAffine2(x) => Box::new(x),
+			TaggedValue::AnimatableF64(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::ImaginateCache(x) => Box::new(x),
 			TaggedValue::ImageFrame(x) => Box::new(x),
@@ -264,6 +267,7 @@ impl<'a> TaggedValue {
 			TaggedValue::IVec2(_) => concrete!(IVec2),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
+			TaggedValue::AnimatableF64(_) => concrete!(Vec<(f64, f64)>),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
 			TaggedValue::ImaginateCache(_) => concrete!(ImaginateCache),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame<Color>),

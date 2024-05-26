@@ -126,6 +126,15 @@ fn monitor_node() -> DocumentNode {
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	vec![
 		DocumentNodeDefinition {
+			name: "Animatable Number",
+			category: "Animation",
+			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+			inputs: vec![DocumentInputType::value("Keyframes", TaggedValue::AnimatableF64(vec![(0., 0.)]), false)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
+			properties: node_properties::animatable_number_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			name: "Boolean",
 			category: "Inputs",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),

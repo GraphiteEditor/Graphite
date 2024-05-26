@@ -364,6 +364,152 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
+fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index: usize, node_id: NodeId, input_index: usize) {
+	let label = TextLabel::new(format!("Keyframe {}", index + 1));
+	row.push(label.widget_holder());
+	let on_update = |is_value: bool| {
+		let positions = positions.clone();
+		move |x: &NumberInput| {
+			let mut new_positions = positions.clone();
+			if is_value {
+				new_positions[index].1 = x.value.unwrap();
+			} else {
+				new_positions[index].0 = x.value.unwrap();
+			}
+			TaggedValue::AnimatableF64(new_positions)
+		}
+	};
+	let timestamp = NumberInput::new(Some(positions[index].0))
+		.min(0.)
+		.on_update(update_value(on_update(false), node_id, input_index))
+		.on_commit(commit_value);
+	let value = NumberInput::new(Some(positions[index].1))
+		.on_update(update_value(on_update(true), node_id, input_index))
+		.on_commit(commit_value);
+	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	row.push(timestamp.widget_holder());
+	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	row.push(value.widget_holder());
+	let mut skip_separator = false;
+	// Remove button
+	if positions.len() != 1 {
+		let on_update = {
+			let old_positions = positions.clone();
+			move |_: &IconButton| {
+				let mut new_positions = old_positions.clone();
+				new_positions.remove(index);
+				TaggedValue::AnimatableF64(new_positions)
+			}
+		};
+
+		skip_separator = true;
+		row.push(Separator::new(SeparatorType::Related).widget_holder());
+		row.push(
+			IconButton::new("Remove", 16)
+				.tooltip("Remove this keyframe")
+				.on_update(update_value(on_update, node_id, input_index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		])
+	}
+	widgets
+}
+
+fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index: usize, node_id: NodeId, input_index: usize) {
+	let label = TextLabel::new(format!("Keyframe {}", index + 1));
+	row.push(label.widget_holder());
+	let on_update = |is_value: bool| {
+		let positions = positions.clone();
+		move |x: &NumberInput| {
+			let mut new_positions = positions.clone();
+			if is_value {
+				new_positions[index].1 = x.value.unwrap();
+			} else {
+				new_positions[index].0 = x.value.unwrap();
+			}
+			TaggedValue::AnimatableF64(new_positions)
+		}
+	};
+	let timestamp = NumberInput::new(Some(positions[index].0))
+		.min(0.)
+		.on_update(update_value(on_update(false), node_id, input_index))
+		.on_commit(commit_value);
+	let value = NumberInput::new(Some(positions[index].1))
+		.on_update(update_value(on_update(true), node_id, input_index))
+		.on_commit(commit_value);
+	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	row.push(timestamp.widget_holder());
+	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	row.push(value.widget_holder());
+	let mut skip_separator = false;
+	// Remove button
+	if positions.len() != 1 {
+		let on_update = {
+			let old_positions = positions.clone();
+			move |_: &IconButton| {
+				let mut new_positions = old_positions.clone();
+				new_positions.remove(index);
+				TaggedValue::AnimatableF64(new_positions)
+			}
+		};
+
+		skip_separator = true;
+		row.push(Separator::new(SeparatorType::Related).widget_holder());
+		row.push(
+			IconButton::new("Remove", 16)
+				.tooltip("Remove this keyframe")
+				.on_update(update_value(on_update, node_id, input_index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		);
+	}
+	// Add button
+	let on_update = {
+		let old_positions = positions.clone();
+		move |_: &IconButton| {
+			let mut new_positions = old_positions.clone();
+			new_positions.push((0., 0.));
+			new_positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+			TaggedValue::AnimatableF64(new_positions)
+		}
+	};
+
+	if !skip_separator {
+		row.push(Separator::new(SeparatorType::Related).widget_holder());
+	}
+	row.push(
+		IconButton::new("Add", 16)
+			.tooltip("Add keyframe")
+			.on_update(update_value(on_update, node_id, input_index))
+			.on_commit(commit_value)
+			.widget_holder(),
+	);
+}
+
+fn animation_widget(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, node_id: NodeId, input_index: usize) {
+	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::AnimatableF64(animation_positions),
+		exposed: false,
+	} = &document_node.inputs[input_index]
+	{
+		log::debug!("Animation positions: {:?}", animation_positions);
+		for index in 0..animation_positions.len() {
+			animation_row(&mut widgets, &animation_positions, index, node_id, input_index);
+
+			let widgets = std::mem::take(&mut widgets);
+			rows.push(LayoutGroup::Row { widgets });
+		}
+
+		if widgets.is_empty() {
+			widgets.push(TextLabel::new("").widget_holder());
+			add_blank_assist(&mut widgets);
+		}
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		rows.push(LayoutGroup::Row { widgets });
+	}
+}
+
 // TODO: Generalize this instead of using a separate function per dropdown menu enum
 fn color_channel(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
@@ -835,6 +981,12 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 	let opacity = number_widget(document_node, node_id, 3, "Opacity", NumberInput::default().mode_range().min(0.).max(100.).unit("%"), true);
 
 	vec![backdrop, blend_mode, LayoutGroup::Row { widgets: opacity }]
+}
+
+pub fn animatable_number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	let mut rows = Vec::new();
+	animation_widget(&mut rows, document_node, node_id, 0);
+	rows
 }
 
 pub fn number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
