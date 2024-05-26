@@ -192,11 +192,11 @@ fn solidify_stroke(vector_data: VectorData) -> VectorData {
 		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
 		if subpath_out.1.is_some() {
 			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(subpath_out.0);
-			result.append_subpath(subpath_out.1.unwrap());
+			result.append_subpath(subpath_out.0, false);
+			result.append_subpath(subpath_out.1.unwrap(), false);
 		} else {
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out.0);
+			result.append_subpath(subpath_out.0, false);
 		}
 	}
 
@@ -508,7 +508,7 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
 		}
 
-		result.append_subpath(source_path);
+		result.append_subpath(source_path, true);
 	}
 	// Mismatched subpath count
 	for mut source_path in source_paths {

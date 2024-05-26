@@ -72,6 +72,18 @@ impl BezierHandles {
 		}
 	}
 
+	pub fn move_start(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } = self {
+			*handle_start += delta
+		}
+	}
+
+	pub fn move_end(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_end, .. } = self {
+			*handle_end += delta
+		}
+	}
+
 	/// Returns a Bezier curve that results from applying the transformation function to each handle point in the Bezier.
 	#[must_use]
 	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {

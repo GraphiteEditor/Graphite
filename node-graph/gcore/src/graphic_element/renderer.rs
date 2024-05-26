@@ -330,7 +330,6 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
 		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 

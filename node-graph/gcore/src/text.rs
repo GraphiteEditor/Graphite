@@ -17,5 +17,5 @@ pub struct TextGeneratorNode<Text, FontName, Size> {
 #[node_fn(TextGeneratorNode)]
 fn generate_text<'a: 'input, T>(editor: EditorApi<'a, T>, text: String, font_name: Font, font_size: f64) -> crate::vector::VectorData {
 	let buzz_face = editor.font_cache.get(&font_name).map(|data| load_face(data));
-	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, font_size, None))
+	crate::vector::VectorData::from_subpaths(to_path(&text, buzz_face, font_size, None), false)
 }

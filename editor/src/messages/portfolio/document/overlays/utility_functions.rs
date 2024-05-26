@@ -41,17 +41,17 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 			};
 			match bezier.handles {
 				bezier_rs::BezierHandles::Quadratic { handle } if not_under_anchor(handle) => {
-					overlay_context.line(handle, bezier.start, );
-					overlay_context.line(handle, bezier.end, );
+					overlay_context.line(handle, bezier.start);
+					overlay_context.line(handle, bezier.end);
 					overlay_context.manipulator_handle(handle, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)));
 				}
 				bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => {
 					if not_under_anchor(handle_start) {
-						overlay_context.line(handle_start, bezier.start, );
+						overlay_context.line(handle_start, bezier.start);
 						overlay_context.manipulator_handle(handle_start, is_selected(selected, ManipulatorPointId::PrimaryHandle(segment_id)));
 					}
 					if not_under_anchor(handle_end) {
-						overlay_context.line(handle_end, bezier.end, );
+						overlay_context.line(handle_end, bezier.end);
 						overlay_context.manipulator_handle(handle_end, is_selected(selected, ManipulatorPointId::EndHandle(segment_id)));
 					}
 				}

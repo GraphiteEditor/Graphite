@@ -190,11 +190,8 @@ impl SegmentDomain {
 		let after = self.end_point.iter().copied().position(|other_end| other_end == start || other_end == end);
 		let before = self.start_point.iter().copied().position(|other_start| other_start == start || other_start == end);
 		let (index, flip) = match (before, after) {
-			(Some(before), Some(after)) if before < after => (before, self.start_point[before] == start),
-			(Some(before), None) => (before, self.start_point[before] == start),
-
 			(_, Some(after)) => (after + 1, self.end_point[after] == end),
-
+			(Some(before), _) => (before, self.start_point[before] == start),
 			(None, None) => (self.ids.len(), false),
 		};
 		self.ids.insert(index, id);
@@ -248,8 +245,20 @@ impl SegmentDomain {
 		}
 	}
 
-	pub fn connected(&self, point: PointId) -> usize {
-		self.start_point.iter().filter(|&&val| val == point).count() + self.end_point.iter().filter(|&&val| val == point).count()
+	pub fn start_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
+		self.start_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
+	}
+
+	pub fn end_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
+		self.end_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
+	}
+
+	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
+		self.start_connected(point).chain(self.end_connected(point))
+	}
+
+	pub fn connected_count(&self, point: PointId) -> usize {
+		self.all_connected(point).count()
 	}
 }
 
@@ -297,6 +306,10 @@ impl RegionDomain {
 
 	fn _resolve_id(&self, id: RegionId) -> Option<usize> {
 		self.ids.iter().position(|&check_id| check_id == id)
+	}
+
+	pub fn next_id(&self) -> RegionId {
+		self.ids.iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(RegionId::ZERO)
 	}
 
 	pub fn segment_range_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut core::ops::RangeInclusive<SegmentId>)> {

@@ -223,7 +223,7 @@ impl FreehandToolData {
 				*current += delta;
 				responses.add(GraphOperationMessage::Vector {
 					layer,
-					modification_type: VectorModificationType::ApplyDelta { point: *id, delta },
+					modification_type: VectorModificationType::ApplyPointDelta { point: *id, delta },
 				});
 				*id
 			} else {

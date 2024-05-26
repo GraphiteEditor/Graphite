@@ -328,7 +328,8 @@
 			}
 
 			// If no buttons are down, we are stuck in the drag state after having released the mouse, so we should exit.
-			if (e.buttons === 0) {
+			// For some reason on firefox in wayland the button is -1 and the buttons is 0.
+			if (e.buttons === 0 && e.button !== -1) {
 				document.exitPointerLock();
 				return;
 			}

@@ -105,8 +105,11 @@ impl LayoutHolder for PathTool {
 			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
-				let new_x = number_input.value.unwrap_or(x.unwrap());
-				PathToolMessage::SelectedPointXChanged { new_x }.into()
+				if let Some(new_x) = number_input.value.or(x) {
+					PathToolMessage::SelectedPointXChanged { new_x }.into()
+				} else {
+					Message::NoOp
+				}
 			})
 			.widget_holder();
 
@@ -118,8 +121,11 @@ impl LayoutHolder for PathTool {
 			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
-				let new_y = number_input.value.unwrap_or(y.unwrap());
-				PathToolMessage::SelectedPointYChanged { new_y }.into()
+				if let Some(new_y) = number_input.value.or(y) {
+					PathToolMessage::SelectedPointYChanged { new_y }.into()
+				} else {
+					Message::NoOp
+				}
 			})
 			.widget_holder();
 
@@ -633,13 +639,13 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(new_x, coordinates.y), layer);
+					shape_editor.reposition_control_point(&id, &document.network, &document.metadata, DVec2::new(new_x, coordinates.y), layer, responses);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network, &document.metadata, DVec2::new(coordinates.x, new_y), layer);
+					shape_editor.reposition_control_point(&id, &document.network, &document.metadata, DVec2::new(coordinates.x, new_y), layer, responses);
 				}
 				PathToolFsmState::Ready
 			}
@@ -759,49 +765,41 @@ struct SingleSelectedPoint {
 /// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
 /// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
 fn get_selection_status(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, shape_state: &mut ShapeState) -> SelectionStatus {
-	// let mut selection_layers = shape_state.selected_shape_state.iter().map(|(k, v)| (*k, v.selected_points_count()));
-	// let total_selected_points = selection_layers.clone().map(|(_, v)| v).sum::<usize>();
+	let mut selection_layers = shape_state.selected_shape_state.iter().map(|(k, v)| (*k, v.selected_points_count()));
+	let total_selected_points = selection_layers.clone().map(|(_, v)| v).sum::<usize>();
 
-	// // Check to see if only one manipulator group in a single shape is selected
-	// if total_selected_points == 1 {
-	// 	let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
-	// 		return SelectionStatus::None;
-	// 	};
-	// 	let Some(subpaths) = get_subpaths(layer, document_network) else {
-	// 		return SelectionStatus::None;
-	// 	};
-	// 	let colinear_manipulators = get_colinear_manipulators(layer, document_network);
-	// 	let Some(point) = shape_state.selected_points().next() else {
-	// 		return SelectionStatus::None;
-	// 	};
-	// 	let Some(manipulator) = get_manipulator_from_id(subpaths, point.group) else {
-	// 		return SelectionStatus::None;
-	// 	};
-	// 	let Some(local_position) = point.manipulator_type.get_position(manipulator) else {
-	// 		return SelectionStatus::None;
-	// 	};
+	// Check to see if only one manipulator group in a single shape is selected
+	if total_selected_points == 1 {
+		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
+			return SelectionStatus::None;
+		};
+		let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+			return SelectionStatus::None;
+		};
+		let Some(&point) = shape_state.selected_points().next() else {
+			return SelectionStatus::None;
+		};
+		let Some(local_position) = point.get_position(&vector_data) else {
+			return SelectionStatus::None;
+		};
 
-	// 	let coordinates = document_metadata.transform_to_document(layer).transform_point2(local_position);
-	// 	let manipulator_angle = if colinear_manipulators.contains(&point.group) {
-	// 		ManipulatorAngle::Colinear
-	// 	} else {
-	// 		ManipulatorAngle::Free
-	// 	};
+		let coordinates = document_metadata.transform_to_document(layer).transform_point2(local_position);
+		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
-	// 	return SelectionStatus::One(SingleSelectedPoint {
-	// 		coordinates,
-	// 		layer,
-	// 		id: *point,
-	// 		manipulator_angle,
-	// 	});
-	// };
+		return SelectionStatus::One(SingleSelectedPoint {
+			coordinates,
+			layer,
+			id: point,
+			manipulator_angle,
+		});
+	};
 
-	// // Check to see if multiple manipulator groups are selected
-	// if total_selected_points > 1 {
-	// 	return SelectionStatus::Multiple(MultipleSelectedPoints {
-	// 		manipulator_angle: shape_state.selected_manipulator_angles(document_network),
-	// 	});
-	// }
+	// Check to see if multiple manipulator groups are selected
+	if total_selected_points > 1 {
+		return SelectionStatus::Multiple(MultipleSelectedPoints {
+			manipulator_angle: shape_state.selected_manipulator_angles(document_network, document_metadata),
+		});
+	}
 
 	SelectionStatus::None
 }

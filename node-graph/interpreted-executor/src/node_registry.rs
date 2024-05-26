@@ -794,7 +794,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
 			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::vector::PointId>>,
-			params: [Vec<graphene_core::vector::PointId>]
+			params: [Vec<[graphene_core::vector::HandleId; 2]>]
 		),
 		register_node!(graphene_core::vector::PathModify<_>, input: VectorData, params: [graphene_core::vector::VectorModification]),
 		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),

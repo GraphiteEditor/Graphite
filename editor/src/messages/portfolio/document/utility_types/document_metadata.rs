@@ -84,7 +84,10 @@ impl DocumentMetadata {
 			}
 			return Some(modified);
 		}
-		self.click_targets.get(&layer).map(|click| click.iter().map(|click| &click.subpath)).map(VectorData::from_subpaths)
+		self.click_targets
+			.get(&layer)
+			.map(|click| click.iter().map(|click| &click.subpath))
+			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
 	/// Access the [`NodeRelations`] of a layer.

@@ -23,7 +23,7 @@ pub struct VectorData {
 	pub alpha_blending: AlphaBlending,
 	/// A list of all manipulator groups (referenced in `subpaths`) that have colinear handles (where they're locked at 180° angles from one another).
 	/// This gets read in `graph_operation_message_handler.rs` by calling `inputs.as_mut_slice()` (search for the string `"Shape does not have both `subpath` and `colinear_manipulators` inputs"` to find it).
-	pub colinear_manipulators: Vec<PointId>,
+	pub colinear_manipulators: Vec<[HandleId; 2]>,
 
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
@@ -58,17 +58,14 @@ impl VectorData {
 
 	/// Construct some new vector data from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<bezier_rs::Subpath<PointId>>) -> Self {
-		Self::from_subpaths([subpath])
+		Self::from_subpaths([subpath], false)
 	}
 
 	/// Push a subpath to the vector data
-	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>) {
-		let subpath = subpath.borrow();
+	pub fn append_subpath(&mut self, subpath: impl Borrow<bezier_rs::Subpath<PointId>>, preserve_id: bool) {
+		let subpath: &bezier_rs::Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
-		for point in subpath.manipulator_groups() {
-			let id = if self.point_domain.ids().contains(&point.id) { self.point_domain.next_id() } else { point.id };
-			self.point_domain.push(id, point.anchor, Vec::new());
-		}
+		let mut point_id = self.point_domain.next_id();
 
 		let handles = |a: &ManipulatorGroup<_>, b: &ManipulatorGroup<_>| match (a.out_handle, b.in_handle) {
 			(None, None) => bezier_rs::BezierHandles::Linear,
@@ -76,36 +73,57 @@ impl VectorData {
 			(Some(handle_start), Some(handle_end)) => bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
 		};
 		let [mut first_seg, mut last_seg] = [None, None];
-		let mut id = self.segment_domain.next_id();
+		let mut segment_id = self.segment_domain.next_id();
+		let mut last_point = None;
+		let mut first_point = None;
 		for pair in subpath.manipulator_groups().windows(2) {
-			let id = id.next_id();
+			let start = last_point.unwrap_or_else(|| {
+				let id = if preserve_id && !self.point_domain.ids().contains(&pair[0].id) {
+					pair[0].id
+				} else {
+					point_id.next_id()
+				};
+				self.point_domain.push(id, pair[0].anchor, Vec::new());
+				id
+			});
+			first_point = Some(first_point.unwrap_or(start));
+			let end = if preserve_id && !self.point_domain.ids().contains(&pair[1].id) {
+				pair[1].id
+			} else {
+				point_id.next_id()
+			};
+			self.point_domain.push(end, pair[1].anchor, Vec::new());
+
+			let id = segment_id.next_id();
 			first_seg = Some(first_seg.unwrap_or(id));
 			last_seg = Some(id);
-			self.segment_domain.push(id, pair[0].id, pair[1].id, handles(&pair[0], &pair[1]), stroke_id);
+			self.segment_domain.push(id, start, end, handles(&pair[0], &pair[1]), stroke_id);
+
+			last_point = Some(end);
 		}
 
 		let fill_id = FillId::ZERO;
 
 		if subpath.closed() {
-			if let (Some(last), Some(first)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first()) {
-				let id = id.next_id();
+			if let (Some(last), Some(first), Some(first_id), Some(last_id)) = (subpath.manipulator_groups().last(), subpath.manipulator_groups().first(), first_point, last_point) {
+				let id = segment_id.next_id();
 				first_seg = Some(first_seg.unwrap_or(id));
 				last_seg = Some(id);
-				self.segment_domain.push(id, last.id, first.id, handles(last, first), stroke_id);
+				self.segment_domain.push(id, last_id, first_id, handles(last, first), stroke_id);
 			}
 
 			if let [Some(first_seg), Some(last_seg)] = [first_seg, last_seg] {
-				self.region_domain.push(RegionId::generate(), first_seg..=last_seg, fill_id);
+				self.region_domain.push(self.region_domain.next_id(), first_seg..=last_seg, fill_id);
 			}
 		}
 	}
 
 	/// Construct some new vector data from subpaths with an identity transform and black fill.
-	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>) -> Self {
+	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<bezier_rs::Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector_data = Self::empty();
 
 		for subpath in subpaths.into_iter() {
-			vector_data.append_subpath(subpath);
+			vector_data.append_subpath(subpath, preserve_id);
 		}
 
 		vector_data
@@ -154,7 +172,18 @@ impl VectorData {
 
 	/// Points connected to a single segment
 	pub fn single_connected_points(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.point_domain.ids().iter().copied().filter(|&point| self.segment_domain.connected(point) == 1)
+		self.point_domain.ids().iter().copied().filter(|&point| self.segment_domain.connected_count(point) == 1)
+	}
+
+	pub fn colinear(&self, point: ManipulatorPointId) -> bool {
+		let has_handle = |target| self.colinear_manipulators.iter().flatten().any(|&handle| handle == target);
+		match point {
+			ManipulatorPointId::Anchor(id) => {
+				self.segment_domain.start_connected(id).all(|segment| has_handle(HandleId::primary(segment))) && self.segment_domain.end_connected(id).all(|segment| has_handle(HandleId::end(segment)))
+			}
+			ManipulatorPointId::PrimaryHandle(segment) => has_handle(HandleId::primary(segment)),
+			ManipulatorPointId::EndHandle(segment) => has_handle(HandleId::end(segment)),
+		}
 	}
 }
 
@@ -180,6 +209,27 @@ impl ManipulatorPointId {
 		}
 	}
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum HandleType {
+	Primary,
+	End,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct HandleId {
+	ty: HandleType,
+	segment: SegmentId,
+}
+impl HandleId {
+	pub const fn primary(segment: SegmentId) -> Self {
+		Self { ty: HandleType::Primary, segment }
+	}
+	pub const fn end(segment: SegmentId) -> Self {
+		Self { ty: HandleType::End, segment }
+	}
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SelectedType {

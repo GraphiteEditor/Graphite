@@ -393,7 +393,7 @@ impl<'a> Selected<'a> {
 			let viewport_point = viewspace.transform_point2(position);
 			let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
 			let delta = new_pos_viewport;
-			let modification = VectorModificationType::ApplyDelta { point, delta };
+			let modification = VectorModificationType::ApplyPointDelta { point, delta };
 
 			responses.add(GraphOperationMessage::Vector {
 				layer,
@@ -440,7 +440,7 @@ impl<'a> Selected<'a> {
 						for &(point, delta) in points {
 							self.responses.add(GraphOperationMessage::Vector {
 								layer,
-								modification_type: VectorModificationType::ApplyDelta { point, delta },
+								modification_type: VectorModificationType::ApplyPointDelta { point, delta },
 							});
 						}
 					}

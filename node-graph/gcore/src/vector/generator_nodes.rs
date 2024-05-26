@@ -1,8 +1,7 @@
+use super::HandleId;
 use crate::vector::{PointId, VectorData};
 use crate::Node;
-
 use bezier_rs::Subpath;
-
 use glam::DVec2;
 
 #[derive(Debug, Clone, Copy)]
@@ -45,7 +44,7 @@ trait CornerRadius {
 impl CornerRadius for f64 {
 	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])])
+		super::VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4]))
 	}
 }
 impl CornerRadius for [f64; 4] {
@@ -65,7 +64,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)])
+		super::VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius))
 	}
 }
 
@@ -131,8 +130,8 @@ pub struct PathGenerator<ColinearManipulators> {
 }
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
-	let mut vector_data = super::VectorData::from_subpaths(path_data);
+fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<[HandleId; 2]>) -> super::VectorData {
+	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
 	vector_data.colinear_manipulators = colinear_manipulators;
 	vector_data
 }

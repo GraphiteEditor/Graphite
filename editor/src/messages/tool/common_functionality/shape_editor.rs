@@ -8,9 +8,10 @@ use crate::messages::prelude::*;
 use bezier_rs::{Bezier, ManipulatorGroup, TValue};
 use graph_craft::document::NodeNetwork;
 use graphene_core::transform::Transform;
-use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorModificationType};
+use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorData, VectorModificationType};
 
 use glam::DVec2;
+use graphene_std::vector::SegmentId;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {
@@ -444,64 +445,72 @@ impl ShapeState {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
+	pub fn move_primary(&self, segment: SegmentId, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::ApplyPrimaryDelta { segment, delta },
+		});
+	}
+	pub fn move_end(&self, segment: SegmentId, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::ApplyEndDelta { segment, delta },
+		});
+	}
+
+	pub fn move_anchor(&self, point: PointId, vector_data: &VectorData, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::ApplyPointDelta { point, delta },
+		});
+		for segment in vector_data.segment_domain.start_connected(point) {
+			self.move_primary(segment, delta, layer, responses);
+		}
+		for segment in vector_data.segment_domain.end_connected(point) {
+			self.move_end(segment, delta, layer, responses);
+		}
+	}
+
 	/// Moves a control point to a `new_position` in document space.
 	/// Returns `Some(())` if successful and `None` otherwise.
 	pub fn reposition_control_point(
 		&self,
 		point: &ManipulatorPointId,
-		responses: &mut VecDeque<Message>,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
+		network: &NodeNetwork,
+		metadata: &DocumentMetadata,
 		new_position: DVec2,
 		layer: LayerNodeIdentifier,
+		responses: &mut VecDeque<Message>,
 	) -> Option<()> {
-		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
-		// let transform = document_metadata.transform_to_document(layer).inverse();
-		// let position = transform.transform_point2(new_position);
-		// let group = vector_data.manipulator_group_id(point.group)?;
-		// let delta = position - point.manipulator_type.get_position(&group)?;
+		let vector_data = metadata.compute_modified_vector(layer, network)?;
+		let transform = metadata.transform_to_document(layer).inverse();
+		let position = transform.transform_point2(new_position);
+		let current_position = point.get_position(&vector_data)?;
+		let delta = position - current_position;
 
-		// if point.manipulator_type.is_handle() {
-		// 	responses.add(GraphOperationMessage::Vector {
-		// 		layer,
-		// 		modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: false },
-		// 	});
-		// }
-
-		// let mut move_point = |point: ManipulatorPointId| {
-		// 	// let Some(position) = point.manipulator_type.get_position(&group) else {
-		// 	// 	return;
-		// 	// };
-		// 	// responses.add(GraphOperationMessage::Vector {
-		// 	// 	layer,
-		// 	// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position: (position + delta) },
-		// 	// });
-		// };
-
-		// move_point(*point);
-		// // if !point.manipulator_type.is_handle() {
-		// // 	move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-		// // 	move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-		// // }
+		match *point {
+			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector_data, delta, layer, responses),
+			ManipulatorPointId::PrimaryHandle(segment) => self.move_primary(segment, delta, layer, responses),
+			ManipulatorPointId::EndHandle(segment) => self.move_end(segment, delta, layer, responses),
+		}
 
 		Some(())
 	}
 
 	/// Iterates over the selected manipulator groups, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
-	pub fn selected_manipulator_angles(&self, document_network: &NodeNetwork) -> ManipulatorAngle {
+	pub fn selected_manipulator_angles(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
-		// let mut points_colinear_status = self
-		// 	.selected_shape_state
-		// 	.iter()
-		// 	.map(|(&layer, selection_state)| (graph_modification_utils::get_colinear_manipulators(layer, document_network), selection_state))
-		// 	.flat_map(|(colinear_manipulators, selection_state)| selection_state.selected_points.iter().map(|selected_point| colinear_manipulators.contains(&selected_point.group)));
+		let mut points_colinear_status = self
+			.selected_shape_state
+			.iter()
+			.map(|(&layer, selection_state)| (document_metadata.compute_modified_vector(layer, document_network), selection_state))
+			.flat_map(|(data, selection_state)| selection_state.selected_points.iter().map(move |&point| data.as_ref().map_or(false, |data| data.colinear(point))));
 
-		// let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
-		// if points_colinear_status.any(|point| first_is_colinear != point) {
-		// 	return ManipulatorAngle::Mixed;
-		// }
-		let first_is_colinear = false;
+		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
+		if points_colinear_status.any(|point| first_is_colinear != point) {
+			return ManipulatorAngle::Mixed;
+		}
 		match first_is_colinear {
 			false => ManipulatorAngle::Free,
 			true => ManipulatorAngle::Colinear,
