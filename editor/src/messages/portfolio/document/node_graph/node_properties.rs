@@ -8,6 +8,8 @@ use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
+use graphene_core::animation::KeyframeF64;
+use graphene_core::animation::KeyframesF64;
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -415,7 +417,7 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index
 	widgets
 }
 
-fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index: usize, node_id: NodeId, input_index: usize) {
+fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<KeyframeF64>, index: usize, node_id: NodeId, input_index: usize) {
 	let label = TextLabel::new(format!("Keyframe {}", index + 1));
 	row.push(label.widget_holder());
 	let on_update = |is_value: bool| {
@@ -423,18 +425,18 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index
 		move |x: &NumberInput| {
 			let mut new_positions = positions.clone();
 			if is_value {
-				new_positions[index].1 = x.value.unwrap();
+				new_positions[index].value = x.value.unwrap();
 			} else {
-				new_positions[index].0 = x.value.unwrap();
+				new_positions[index].time = x.value.unwrap();
 			}
-			TaggedValue::AnimatableF64(new_positions)
+			TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 		}
 	};
-	let timestamp = NumberInput::new(Some(positions[index].0))
+	let timestamp = NumberInput::new(Some(positions[index].time))
 		.min(0.)
 		.on_update(update_value(on_update(false), node_id, input_index))
 		.on_commit(commit_value);
-	let value = NumberInput::new(Some(positions[index].1))
+	let value = NumberInput::new(Some(positions[index].value))
 		.on_update(update_value(on_update(true), node_id, input_index))
 		.on_commit(commit_value);
 	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -449,7 +451,7 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index
 			move |_: &IconButton| {
 				let mut new_positions = old_positions.clone();
 				new_positions.remove(index);
-				TaggedValue::AnimatableF64(new_positions)
+				TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 			}
 		};
 
@@ -468,9 +470,9 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index
 		let old_positions = positions.clone();
 		move |_: &IconButton| {
 			let mut new_positions = old_positions.clone();
-			new_positions.push((0., 0.));
-			new_positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-			TaggedValue::AnimatableF64(new_positions)
+			new_positions.push(KeyframeF64::new(0., 0.));
+			new_positions.sort_unstable_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+			TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 		}
 	};
 
@@ -489,13 +491,13 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index
 fn animation_widget(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, node_id: NodeId, input_index: usize) {
 	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
 	if let NodeInput::Value {
-		tagged_value: TaggedValue::AnimatableF64(animation_positions),
+		tagged_value: TaggedValue::AnimationF64(animation_positions),
 		exposed: false,
 	} = &document_node.inputs[input_index]
 	{
 		log::debug!("Animation positions: {:?}", animation_positions);
-		for index in 0..animation_positions.len() {
-			animation_row(&mut widgets, &animation_positions, index, node_id, input_index);
+		for index in 0..animation_positions.keyframes.len() {
+			animation_row(&mut widgets, &animation_positions.keyframes, index, node_id, input_index);
 
 			let widgets = std::mem::take(&mut widgets);
 			rows.push(LayoutGroup::Row { widgets });

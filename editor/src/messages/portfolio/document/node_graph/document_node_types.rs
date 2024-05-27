@@ -11,6 +11,8 @@ use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
+use graphene_core::animation::KeyframeF64;
+use graphene_core::animation::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -128,9 +130,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Animatable Number",
 			category: "Animation",
-			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-			inputs: vec![DocumentInputType::value("Keyframes", TaggedValue::AnimatableF64(vec![(0., 0.)]), false)],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
+			implementation: DocumentNodeImplementation::proto("graphene_core::ops::AnimationIdentityNode"),
+			inputs: vec![DocumentInputType::value(
+				"Keyframes",
+				TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0.)])),
+				false,
+			)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::AnimatableNumber)],
 			properties: node_properties::animatable_number_properties,
 			..Default::default()
 		},

@@ -3,6 +3,7 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdentityNode;
 use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 
+use graphene_core::animation::AnimationIdentityNode;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::Then;
@@ -184,6 +185,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
+			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
+		)],
+		vec![(
+			ProtoNodeIdentifier::new("graphene_core::ops::AnimationIdentityNode"),
+			|_| Box::pin(async move { FutureWrapperNode::new(AnimationIdentityNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		)],
 		// TODO: create macro to impl for all types

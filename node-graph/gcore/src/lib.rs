@@ -7,6 +7,7 @@ extern crate alloc;
 #[cfg(feature = "log")]
 extern crate log;
 
+pub mod animation;
 pub mod consts;
 pub mod generic;
 pub mod logic;
