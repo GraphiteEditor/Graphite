@@ -1,4 +1,3 @@
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::DialogMessageData;
 use crate::messages::prelude::*;
@@ -99,7 +98,7 @@ impl Dispatcher {
 					queue.add(MenuBarMessage::SendLayout);
 
 					// Load the default font
-					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
+					let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
 				Message::Batched(messages) => {

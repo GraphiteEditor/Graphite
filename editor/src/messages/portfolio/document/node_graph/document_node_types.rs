@@ -1,6 +1,5 @@
 use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -2317,7 +2316,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			inputs: vec![
 				DocumentInputType::none(),
 				DocumentInputType::value("Text", TaggedValue::String("Lorem ipsum".to_string()), false),
-				DocumentInputType::value("Font", TaggedValue::Font(Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into())), false),
+				DocumentInputType::value(
+					"Font",
+					TaggedValue::Font(Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into())),
+					false,
+				),
 				DocumentInputType::value("Size", TaggedValue::F64(24.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],

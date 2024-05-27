@@ -679,6 +679,10 @@ impl NodeNetwork {
 		{
 			return true;
 		}
+
+		if self.exports_metadata.0 == target_node_id {
+			return true;
+		}
 		// Get the outputs
 		let mut stack = self
 			.exports

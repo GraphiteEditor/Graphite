@@ -26,7 +26,7 @@ pub struct GraphOperationMessageData<'a> {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct GraphOperationMessageHandler {}
 
-// GraphOperationMessageHandler always modifed the document network. This is so changes to the layers panel will only affect the document network.
+// GraphOperationMessageHandler always modified the document network. This is so changes to the layers panel will only affect the document network.
 // For changes to the selected network, use NodeGraphMessageHandler. No NodeGraphMessage's should be added here, since they will affect the selected nested network.
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
@@ -133,20 +133,22 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
-				let Some(node_to_disconnect) = document_network.nodes.get(&node_id) else {
-					warn!("Node {} not found in GraphOperationMessage::DisconnectInput", node_id);
-					return;
-				};
-				let Some(node_type) = resolve_document_node_type(&node_to_disconnect.name) else {
-					warn!("Node {} not in library", node_to_disconnect.name);
-					return;
-				};
-				let Some(existing_input) = node_to_disconnect.inputs.get(input_index) else {
-					warn!("Node does not have an input at the selected index");
+				let Some(existing_input) = document_network.nodes.get(&node_id).map_or_else(
+					|| {
+						if input_index == 0 {
+							responses.add(NodeGraphMessage::SetRootNode { root_node: None })
+						};
+						document_network.exports.get(input_index)
+					},
+					|node| node.inputs.get(input_index),
+				) else {
+					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
 					return;
 				};
 
-				let mut input = node_type.inputs[input_index].default.clone();
+				let tagged_value = ModifyInputsContext::get_tagged_value(document_network, Vec::new(), node_id, &node_graph.resolved_types, input_index);
+
+				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = existing_input.is_exposed();
 				}
@@ -688,7 +690,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Failed to find node {node_id} when setting position");
 					return;
 				};
-
 				node.metadata.position = position;
 			}
 			GraphOperationMessage::SetName { layer, name } => {
@@ -701,16 +702,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {
-				if let Some(node) = document_network.nodes.get_mut(&node_id) {
-					let Some(node_input) = node.inputs.get_mut(input_index) else {
-						error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
-						return;
-					};
-					let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
-					*node_input = input;
-					if structure_changed {
-						load_network_structure(document_network, document_metadata, collapsed);
-					}
+				if ModifyInputsContext::set_input(document_network, node_id, input_index, input, true) {
+					load_network_structure(document_network, document_metadata, collapsed);
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
@@ -723,24 +716,24 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_visible(layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
-					responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
-			GraphOperationMessage::ToggleVisibility { layer } => {
-				let visible = !document_metadata.node_is_visible(layer.to_node());
+			GraphOperationMessage::ToggleVisibility { node_id } => {
+				let visible = !document_metadata.node_is_visible(node_id);
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+				responses.add(GraphOperationMessage::SetVisibility { node_id, visible });
 			}
-			GraphOperationMessage::SetVisibility { layer, visible } => {
+			GraphOperationMessage::SetVisibility { node_id, visible } => {
 				// Set what we determined shall be the visibility of the node
-				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else {
-					log::error!("Could not get node {:?} in GraphOperationMessage::SetVisibility", layer.to_node());
+				let Some(node) = document_network.nodes.get_mut(&node_id) else {
+					log::error!("Could not get node {:?} in GraphOperationMessage::SetVisibility", node_id);
 					return;
 				};
 				node.visible = visible;
 
 				// Only generate node graph if one of the selected nodes is connected to the output
-				if document_network.connected_to_output(layer.to_node()) {
+				if document_network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
@@ -755,24 +748,24 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
-					responses.add(GraphOperationMessage::SetVisibility { layer, visible });
+					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
-			GraphOperationMessage::ToggleLocked { layer } => {
-				let Some(node) = document_network.nodes.get(&layer.to_node()) else {
-					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", layer.to_node());
+			GraphOperationMessage::ToggleLocked { node_id } => {
+				let Some(node) = document_network.nodes.get(&node_id) else {
+					log::error!("Cannot get node {:?} in GraphOperationMessage::ToggleLocked", node_id);
 					return;
 				};
 
 				let locked = !node.locked;
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(GraphOperationMessage::SetLocked { layer, locked });
+				responses.add(GraphOperationMessage::SetLocked { node_id, locked });
 			}
-			GraphOperationMessage::SetLocked { layer, locked } => {
-				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else { return };
+			GraphOperationMessage::SetLocked { node_id, locked } => {
+				let Some(node) = document_network.nodes.get_mut(&node_id) else { return };
 				node.locked = locked;
 
-				if document_network.connected_to_output(layer.to_node()) {
+				if document_network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
@@ -842,7 +835,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 			warn!("Skip image")
 		}
 		usvg::Node::Text(text) => {
-			let font = Font::new(crate::consts::DEFAULT_FONT_FAMILY.to_string(), crate::consts::DEFAULT_FONT_STYLE.to_string());
+			let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_core::consts::DEFAULT_FONT_STYLE.to_string());
 			modify_inputs.insert_text(text.chunks.iter().map(|chunk| chunk.text.clone()).collect(), font, 24., layer);
 			modify_inputs.fill_set(Fill::Solid(Color::BLACK));
 		}

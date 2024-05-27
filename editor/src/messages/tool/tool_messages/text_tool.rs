@@ -2,7 +2,6 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -34,8 +33,8 @@ impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
 			font_size: 24,
-			font_name: DEFAULT_FONT_FAMILY.into(),
-			font_style: DEFAULT_FONT_STYLE.into(),
+			font_name: graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
+			font_style: graphene_core::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 		}
 	}
@@ -216,7 +215,10 @@ impl TextToolData {
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		//TODO: Should always set visibility for document network, but node_id is not a layer so it crashes
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
-			responses.add(GraphOperationMessage::SetVisibility { layer: LayerNodeIdentifier::new(node_id, &document.network), visible: !editable });
+			responses.add(GraphOperationMessage::SetVisibility {
+				node_id,
+				visible: !editable,
+			});
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {

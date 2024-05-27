@@ -15,6 +15,7 @@ use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
 
 use glam::{DAffine2, DVec2, IVec2};
+use graphene_std::ArtboardGroup;
 
 use super::transform_utils::{self, LayerBounds};
 
@@ -517,6 +518,29 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
+	/// Returns a true if the network structure is updated
+	pub fn set_input(network: &mut NodeNetwork, node_id: NodeId, input_index: usize, input: NodeInput, is_document_network: bool) -> bool {
+		let mut load_network_structure = false;
+		if let Some(node) = network.nodes.get_mut(&node_id) {
+			let Some(node_input) = node.inputs.get_mut(input_index) else {
+				error!("Tried to set input {input_index} to {input:?}, but the index was invalid. Node {node_id}:\n{node:#?}");
+				return false;
+			};
+			let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+			*node_input = input;
+			//Only load network structure for changes to document_network
+			load_network_structure = structure_changed && is_document_network;
+		} else if node_id == network.exports_metadata.0 {
+			let Some(export) = network.exports.get_mut(input_index) else {
+				error!("Tried to set export {input_index} to {input:?}, but the index was invalid. Network:\n{network:#?}");
+				return false;
+			};
+			*export = input;
+			//Only load network structure for changes to document_network
+			load_network_structure = is_document_network;
+		}
+		load_network_structure
+	}
 	pub fn fill_set(&mut self, fill: Fill) {
 		self.modify_inputs("Fill", false, |inputs, _node_id, _metadata| {
 			let fill_type = match fill {
@@ -767,6 +791,9 @@ impl<'a> ModifyInputsContext<'a> {
 			return false;
 		}
 		network.nodes.remove(&node_id);
+		if network.root_node.is_some_and(|root_node| root_node.id == node_id) {
+			network.root_node = None;
+		}
 		selected_nodes.retain_selected_nodes(|&id| id != node_id);
 		responses.add(BroadcastEvent::SelectionChanged);
 		true
@@ -826,5 +853,52 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 		true
+	}
+
+	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
+	pub fn get_tagged_value(
+		document_network: &NodeNetwork,
+		network_path: Vec<NodeId>,
+		node_id: NodeId,
+		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+		input_index: usize,
+	) -> TaggedValue {
+		let Some(network) = document_network.nested_network(&network_path) else {
+			log::error!("Could not get network in get_tagged_value");
+			return TaggedValue::None;
+		};
+		//TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
+		let node_id_path = &[&network_path[..], &[node_id]].concat();
+		let input_type = resolved_types.inputs.get(&graph_craft::document::Source {
+			node: node_id_path.clone(),
+			index: input_index,
+		});
+		if let Some(input_type) = input_type {
+			TaggedValue::try_from_type(input_type)
+		} else if node_id == network.exports_metadata.0 {
+			if let Some(parent_node_id) = network_path.last() {
+				let mut parent_path = network_path.clone();
+				parent_path.pop();
+				let parent_node = document_network
+					.nested_network(&parent_path)
+					.expect("Parent path should always exist")
+					.nodes
+					.get(&parent_node_id)
+					.expect("Last path node should always exist in parent network");
+
+				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, &resolved_types, network_path);
+				output_types.iter().nth(input_index).map_or_else(
+					|| {
+						warn!("Could not find output type for export node {node_id}");
+						TaggedValue::None
+					},
+					|output_type| output_type.clone().map_or(TaggedValue::None, |input| TaggedValue::try_from_type(&input)),
+				)
+			} else {
+				TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY)
+			}
+		} else {
+			TaggedValue::None
+		}
 	}
 }

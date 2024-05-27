@@ -179,18 +179,18 @@ pub enum GraphOperationMessage {
 	},
 	ToggleSelectedVisibility,
 	ToggleVisibility {
-		layer: LayerNodeIdentifier,
+		node_id: NodeId,
 	},
 	SetVisibility {
-		layer: LayerNodeIdentifier,
+		node_id: NodeId,
 		visible: bool,
 	},
 	ToggleSelectedLocked,
 	ToggleLocked {
-		layer: LayerNodeIdentifier,
+		node_id: NodeId,
 	},
 	SetLocked {
-		layer: LayerNodeIdentifier,
+		node_id: NodeId,
 		locked: bool,
 	},
 }

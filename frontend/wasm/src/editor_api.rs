@@ -694,9 +694,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
-		let message = GraphOperationMessage::ToggleVisibility {
-			layer: LayerNodeIdentifier::new_unchecked(node_id),
-		};
+		let message = GraphOperationMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
 	}
 
@@ -722,8 +720,8 @@ impl EditorHandle {
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, id: u64) {
-		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
-		let message = GraphOperationMessage::ToggleLocked { layer };
+		let node_id = NodeId(id);
+		let message = GraphOperationMessage::ToggleLocked { node_id };
 		self.dispatch(message);
 	}
 

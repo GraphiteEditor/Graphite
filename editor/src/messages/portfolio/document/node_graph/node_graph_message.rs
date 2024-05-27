@@ -71,6 +71,9 @@ pub enum NodeGraphMessage {
 	PasteNodes {
 		serialized_nodes: String,
 	},
+	SetRootNode {
+		root_node: Option<graph_craft::document::RootNode>,
+	},
 	RunDocumentGraph,
 	SelectedNodesAdd {
 		nodes: Vec<NodeId>,
@@ -90,10 +93,6 @@ pub enum NodeGraphMessage {
 	SetNodeInput {
 		node_id: NodeId,
 		input_index: usize,
-		input: NodeInput,
-	},
-	SetNetworkExport {
-		export_index: usize,
 		input: NodeInput,
 	},
 	SetQualifiedInputValue {
