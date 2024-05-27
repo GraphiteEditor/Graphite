@@ -339,6 +339,7 @@ impl NodeRuntime {
 				None.or_else(|| try_downcast::<VectorData>(introspected_data.as_ref()))
 					.or_else(|| try_downcast::<ImageFrame<Color>>(introspected_data.as_ref()))
 					.or_else(|| try_downcast::<GraphicElement>(introspected_data.as_ref()))
+					.or_else(|| try_downcast::<graphene_core::Artboard>(introspected_data.as_ref()))
 			} {
 				self.upstream_transforms.insert(parent_network_node_id, transform);
 			}
