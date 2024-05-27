@@ -210,12 +210,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				let Some(network) = document_network.nested_network_mut(&self.network) else {
-					error!("No network");
-					return;
-				};
-
-				ModifyInputsContext::delete_nodes(network, selected_nodes, node_ids, reconnect, responses);
+				ModifyInputsContext::delete_nodes(document_network, selected_nodes, node_ids, reconnect, responses, self.network.clone(), &self.resolved_types);
 				// Load structure if the selected network is the document network
 				if self.network.is_empty() {
 					load_network_structure(document_network, document_metadata, collapsed);
@@ -258,7 +253,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let tagged_value = ModifyInputsContext::get_tagged_value(document_network, self.network.clone(), node_id, &self.resolved_types, input_index);
+				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
 
 				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {
@@ -279,14 +274,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
 						self.network.push(node);
 					}
-					if let Some(network) = document_network.nested_network_mut(&self.network) {
-						if let Some(NodeInput::Node { node_id, output_index, .. }) = network.exports.get(0) {
-							network.root_node = Some(RootNode {
-								id: *node_id,
-								output_index: *output_index,
-							});
-						}
-					}
+
 					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 				}
 				self.update_selected(document_network, selected_nodes, responses);
@@ -961,7 +949,7 @@ impl NodeGraphMessageHandler {
 					link_start_output_index: *output_index,
 					link_end: network.exports_metadata.0,
 					link_end_input_index: i,
-					dashed: network.root_node.is_some_and(|root_node| root_node.id != *node_id) && *output_index == 0,
+					dashed: network.root_node.is_some_and(|root_node| root_node.id != *node_id) && i == 0,
 				})
 			}
 		}
@@ -1033,7 +1021,7 @@ impl NodeGraphMessageHandler {
 				.map(|(_, input_type)| input_type)
 				.collect();
 
-			let output_types = Self::get_output_types(node, &self.resolved_types, node_id_path.clone());
+			let output_types = Self::get_output_types(node, &self.resolved_types, &node_id_path);
 			let primary_output_type = output_types.get(0).expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
 				FrontendGraphDataType::with_type(&output_type)
@@ -1080,7 +1068,7 @@ impl NodeGraphMessageHandler {
 				primary_output,
 				exposed_outputs,
 				position: node.metadata.position.into(),
-				previewed: network.outputs_contain(node_id),
+				previewed: network.exports.get(0).is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id)),
 				visible: node.visible,
 				locked: node.locked,
 				errors: None,
@@ -1148,23 +1136,24 @@ impl NodeGraphMessageHandler {
 			let mut import_node_outputs = Vec::new();
 			for index in 0..number_of_imports {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
-				let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned().or_else(|| {
-					// If type should only be determined from resolved_types then remove this
-					let mut parent_network_path = self.network.clone();
-					let Some(parent_node_id) = parent_network_path.pop() else {
-						log::error!("Could not get parent node id from {:?}", parent_network_path);
-						return None;
-					};
-					let Some(parent_network) = document_network.nested_network(&parent_network_path) else {
-						log::error!("Could not get network for node {parent_node_id}");
-						return None;
-					};
-					let Some(parent_node) = parent_network.nodes.get(&parent_node_id) else {
-						log::error!("Could not get node for {parent_node_id}");
-						return None;
-					};
-					parent_node.inputs.get(index).and_then(|input| input.as_value().map(|tagged_value| tagged_value.ty()))
-				});
+				let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
+				// This determines the import node types from the parent NodeInput::Value tagged value, for now disconnected nodes will be fully grayed out. Eventually the compilation process will need to get types for disconnected nodes
+				// .or_else(|| {
+				// let mut parent_network_path = self.network.clone();
+				// let Some(parent_node_id) = parent_network_path.pop() else {
+				// 	log::error!("Could not get parent node id from {:?}", parent_network_path);
+				// 	return None;
+				// };
+				// let Some(parent_network) = document_network.nested_network(&parent_network_path) else {
+				// 	log::error!("Could not get network for node {parent_node_id}");
+				// 	return None;
+				// };
+				// let Some(parent_node) = parent_network.nodes.get(&parent_node_id) else {
+				// 	log::error!("Could not get node for {parent_node_id}");
+				// 	return None;
+				// };
+				// parent_node.inputs.get(index).and_then(|input| input.as_value().map(|tagged_value| tagged_value.ty()))
+				// });
 				let frontend_data_type = if let Some(input_type) = input_type.clone() {
 					FrontendGraphDataType::with_type(&input_type)
 				} else {
@@ -1288,7 +1277,7 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: Vec<NodeId>) -> Vec<Option<Type>> {
+	pub fn get_output_types(node: &DocumentNode, resolved_types: &ResolvedDocumentNodeTypes, node_id_path: &Vec<NodeId>) -> Vec<Option<Type>> {
 		let mut output_types = Vec::new();
 
 		let primary_output_type = resolved_types.outputs.get(&Source { node: node_id_path.clone(), index: 0 }).cloned();

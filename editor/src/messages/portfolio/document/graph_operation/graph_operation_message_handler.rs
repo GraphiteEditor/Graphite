@@ -127,7 +127,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot delete ROOT_PARENT");
 					return;
 				}
-				ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![layer.to_node()], reconnect, responses);
+				ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![layer.to_node()], reconnect, responses, Vec::new(), &node_graph.resolved_types);
 
 				load_network_structure(document_network, document_metadata, collapsed);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -146,7 +146,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				};
 
-				let tagged_value = ModifyInputsContext::get_tagged_value(document_network, Vec::new(), node_id, &node_graph.resolved_types, input_index);
+				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &Vec::new(), node_id, &node_graph.resolved_types, input_index);
 
 				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {

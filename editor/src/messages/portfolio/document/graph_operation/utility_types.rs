@@ -719,7 +719,19 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Deletes all nodes in node_ids and any sole dependents in the horizontal chain if the node to delete is a layer node
-	pub fn delete_nodes(network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_ids: Vec<NodeId>, reconnect: bool, responses: &mut VecDeque<Message>) {
+	/// network is the network that the node to be deleted is part of
+	pub fn delete_nodes(
+		document_network: &mut NodeNetwork,
+		selected_nodes: &mut SelectedNodes,
+		node_ids: Vec<NodeId>,
+		reconnect: bool,
+		responses: &mut VecDeque<Message>,
+		network_path: Vec<NodeId>,
+		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+	) {
+		let Some(network) = document_network.nested_network(&network_path) else {
+			return;
+		};
 		let mut delete_nodes = HashSet::new();
 
 		for node_id in &node_ids {
@@ -780,16 +792,28 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 		for delete_node_id in delete_nodes {
-			ModifyInputsContext::remove_node(network, selected_nodes, delete_node_id, reconnect, responses);
+			ModifyInputsContext::remove_node(document_network, selected_nodes, delete_node_id, reconnect, responses, &network_path, resolved_types);
 		}
 	}
 
 	/// Tries to remove a node from the network, returning true on success.
-	fn remove_node(network: &mut NodeNetwork, selected_nodes: &mut SelectedNodes, node_id: NodeId, reconnect: bool, responses: &mut VecDeque<Message>) -> bool {
-		if !ModifyInputsContext::remove_references_from_network(network, node_id, reconnect) {
+	fn remove_node(
+		document_network: &mut NodeNetwork,
+		selected_nodes: &mut SelectedNodes,
+		node_id: NodeId,
+		reconnect: bool,
+		responses: &mut VecDeque<Message>,
+		network_path: &Vec<NodeId>,
+		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+	) -> bool {
+		if !ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect, network_path, resolved_types) {
 			log::error!("could not remove_references_from_network");
 			return false;
 		}
+		let Some(network) = document_network.nested_network_mut(&network_path) else {
+			return false;
+		};
+
 		network.nodes.remove(&node_id);
 		if network.root_node.is_some_and(|root_node| root_node.id == node_id) {
 			network.root_node = None;
@@ -799,7 +823,16 @@ impl<'a> ModifyInputsContext<'a> {
 		true
 	}
 
-	fn remove_references_from_network(network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool) -> bool {
+	fn remove_references_from_network(
+		document_network: &mut NodeNetwork,
+		deleting_node_id: NodeId,
+		reconnect: bool,
+		network_path: &Vec<NodeId>,
+		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+	) -> bool {
+		let Some(network) = document_network.nested_network(network_path) else {
+			return false;
+		};
 		let mut reconnect_to_input: Option<NodeInput> = None;
 
 		if reconnect {
@@ -812,42 +845,70 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		for (node_id, node) in network.nodes.iter_mut() {
-			if *node_id == deleting_node_id {
+		let mut nodes_to_set_input = Vec::new();
+		for (node_id, input_index, input) in network
+			.nodes
+			.iter()
+			.filter_map(|(node_id, node)| {
+				if *node_id == deleting_node_id {
+					None
+				} else {
+					Some(node.inputs.iter().enumerate().map(|(index, input)| (*node_id, index, input)))
+				}
+			})
+			.flatten()
+			.chain(network.exports.iter().enumerate().map(|(index, input)| (network.exports_metadata.0, index, input)))
+		{
+			let NodeInput::Node {
+				node_id: upstream_node_id,
+				output_index,
+				..
+			} = input
+			else {
+				continue;
+			};
+			if *upstream_node_id != deleting_node_id {
 				continue;
 			}
-			for (input_index, input) in node.inputs.iter_mut().enumerate() {
-				let NodeInput::Node {
-					node_id: upstream_node_id,
-					output_index,
-					..
-				} = input
-				else {
-					continue;
-				};
-				if *upstream_node_id != deleting_node_id {
-					continue;
+
+			// Only reconnect if the output index for the node to be deleted is 0
+			if *output_index != 0 {
+				reconnect_to_input = None
+			};
+			if reconnect_to_input.is_some() {
+				// None means to use reconnect_to_input, which can be safely unwrapped
+				nodes_to_set_input.push((node_id, input_index, None));
+			} else {
+				//Disconnect input
+				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
+				let value_input = NodeInput::value(tagged_value, true);
+				nodes_to_set_input.push((node_id, input_index, Some(value_input)));
+			}
+		}
+
+		let Some(network) = document_network.nested_network_mut(network_path) else {
+			return false;
+		};
+		let is_document_network = network_path.is_empty();
+		for (node_id, input_index, value_input) in nodes_to_set_input {
+			if let Some(value_input) = value_input {
+				ModifyInputsContext::set_input(network, node_id, input_index, value_input, is_document_network);
+				if network.root_node.is_some_and(|root_node| root_node.id == deleting_node_id) {
+					//Update the root node to be None
+					network.root_node = None;
 				}
+			}
+			// Reconnect to node upstream of the deleted node
+			else {
+				ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input.clone().unwrap(), is_document_network);
 
-				let Some(node_type) = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name) else {
-					warn!("Removing input of invalid node type '{}'", node.name);
-					return false;
-				};
-
-				if let NodeInput::Value { tagged_value, .. } = &node_type.inputs[input_index].default {
-					let mut refers_to_output_node = false;
-
-					// Use the first input node as the new input if deleting node's first input is a node,
-					// and the current node uses its primary output too
-					if let Some(reconnect_to_input) = &reconnect_to_input {
-						if *output_index == 0 {
-							refers_to_output_node = true;
-							*input = reconnect_to_input.clone()
-						}
-					}
-
-					if !refers_to_output_node {
-						*input = NodeInput::value(tagged_value.clone(), true);
+				if network.root_node.is_some_and(|root_node| root_node.id == deleting_node_id) {
+					// Update the root node to be the reconnected node
+					if let NodeInput::Node { node_id, output_index, .. } = reconnect_to_input.as_ref().unwrap() {
+						network.root_node = Some(RootNode {
+							id: *node_id,
+							output_index: *output_index,
+						});
 					}
 				}
 			}
@@ -856,9 +917,9 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
-	pub fn get_tagged_value(
+	pub fn get_input_tagged_value(
 		document_network: &NodeNetwork,
-		network_path: Vec<NodeId>,
+		network_path: &Vec<NodeId>,
 		node_id: NodeId,
 		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
 		input_index: usize,
