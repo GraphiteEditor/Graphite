@@ -149,6 +149,8 @@ export class FrontendNodeLink {
 	readonly linkEnd!: bigint;
 
 	readonly linkEndInputIndex!: bigint;
+
+	readonly dashed!: boolean;
 }
 
 export class FrontendNodeType {

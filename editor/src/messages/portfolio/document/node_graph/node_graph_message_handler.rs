@@ -927,6 +927,7 @@ impl NodeGraphMessageHandler {
 						link_start_output_index,
 						link_end,
 						link_end_input_index,
+						dashed: false,
 					})
 				} else if let NodeInput::Network { import_index, .. } = *input {
 					Some(FrontendNodeLink {
@@ -934,6 +935,7 @@ impl NodeGraphMessageHandler {
 						link_start_output_index: import_index,
 						link_end,
 						link_end_input_index,
+						dashed: false,
 					})
 				} else {
 					None
@@ -948,16 +950,18 @@ impl NodeGraphMessageHandler {
 				link_start_output_index: root_node.output_index,
 				link_end: network.exports_metadata.0,
 				link_end_input_index: 0,
+				dashed: false,
 			});
 		}
 		// Connect rest of exports to their actual export field since they are not affected by previewing
-		for (i, export) in network.exports.iter().enumerate().skip(1) {
+		for (i, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
 				links.push(FrontendNodeLink {
 					link_start: *node_id,
 					link_start_output_index: *output_index,
 					link_end: network.exports_metadata.0,
 					link_end_input_index: i,
+					dashed: network.root_node.is_some_and(|root_node| root_node.id != *node_id) && *output_index == 0,
 				})
 			}
 		}

@@ -146,6 +146,7 @@ pub struct FrontendNodeLink {
 	pub link_end: NodeId,
 	#[serde(rename = "linkEndInputIndex")]
 	pub link_end_input_index: usize,
+	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

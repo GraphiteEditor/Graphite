@@ -26,7 +26,7 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	type LinkPath = { pathString: string; dataType: string; thick: boolean };
+	type LinkPath = { pathString: string; dataType: string; thick: boolean; dashed: boolean };
 
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
@@ -136,7 +136,7 @@
 
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
 			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
-			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
+			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd, false);
 		}
 		return undefined;
 	}
@@ -179,7 +179,7 @@
 			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
 			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && Number(link.linkEndInputIndex) == 0) || false;
 
-			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
+			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd, link.dashed)];
 		});
 	}
 
@@ -259,14 +259,14 @@
 			.join(" ");
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean, dashed: boolean): LinkPath {
 		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
 		const outputPortRect = outputPort.getBoundingClientRect();
 
 		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
 		const dataType = outputPort.getAttribute("data-datatype") || "general";
 
-		return { pathString, dataType, thick: verticalIn && verticalOut };
+		return { pathString, dataType, thick: verticalIn && verticalOut, dashed };
 	}
 
 	function scroll(e: WheelEvent) {
@@ -861,8 +861,14 @@
 	<!-- Node connection links -->
 	<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
 		<svg>
-			{#each linkPaths as { pathString, dataType, thick }}
-				<path d={pathString} style:--data-line-width={`${thick ? 8 : 2}px`} style:--data-color={`var(--color-data-${dataType})`} style:--data-color-dim={`var(--color-data-${dataType}-dim)`} />
+			{#each linkPaths as { pathString, dataType, thick, dashed }}
+				<path
+					d={pathString}
+					style:--data-line-width={`${thick ? 8 : 2}px`}
+					style:--data-color={`var(--color-data-${dataType})`}
+					style:--data-color-dim={`var(--color-data-${dataType}-dim)`}
+					style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+				/>
 			{/each}
 		</svg>
 	</div>
@@ -1250,6 +1256,7 @@
 					fill: none;
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);
+					stroke-dasharray: var(--data-dasharray);
 				}
 			}
 		}

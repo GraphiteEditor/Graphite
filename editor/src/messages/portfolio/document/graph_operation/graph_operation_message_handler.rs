@@ -332,7 +332,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 
 				// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
-				responses.add(DocumentMessage::DeleteLayer { layer: lower_layer });
+				responses.add(GraphOperationMessage::DeleteLayer { layer: lower_layer, reconnect: true });
 
 				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
 				responses.add(GraphOperationMessage::SetNodePosition {
