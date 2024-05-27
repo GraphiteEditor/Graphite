@@ -1,9 +1,8 @@
 use std::io::{Read, Seek};
-use thiserror::Error;
 
 use super::file::TiffRead;
 use super::values::Rational;
-use super::IfdTagType;
+use super::{IfdTagType, TiffError};
 
 pub struct TypeAscii;
 pub struct TypeByte;
@@ -26,7 +25,7 @@ pub trait PrimitiveType {
 
 	fn get_size(type_: IfdTagType) -> Option<u32>;
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError>;
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError>;
 }
 
 impl PrimitiveType for TypeAscii {
@@ -39,12 +38,12 @@ impl PrimitiveType for TypeAscii {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let value = file.read_ascii()?;
 		if value.is_ascii() {
 			Ok(value)
 		} else {
-			Err(DecoderError::InvalidValue)
+			Err(TiffError::InvalidValue)
 		}
 	}
 }
@@ -59,7 +58,7 @@ impl PrimitiveType for TypeByte {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_u8()?)
 	}
 }
@@ -74,7 +73,7 @@ impl PrimitiveType for TypeShort {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_u16()?)
 	}
 }
@@ -89,7 +88,7 @@ impl PrimitiveType for TypeLong {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_u32()?)
 	}
 }
@@ -104,7 +103,7 @@ impl PrimitiveType for TypeRational {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let numerator = TypeLong::read_primitive(type_, file)?;
 		let denominator = TypeLong::read_primitive(type_, file)?;
 
@@ -122,7 +121,7 @@ impl PrimitiveType for TypeSByte {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_i8()?)
 	}
 }
@@ -137,7 +136,7 @@ impl PrimitiveType for TypeSShort {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_i16()?)
 	}
 }
@@ -152,7 +151,7 @@ impl PrimitiveType for TypeSLong {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_i32()?)
 	}
 }
@@ -167,7 +166,7 @@ impl PrimitiveType for TypeSRational {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		let numerator = TypeSLong::read_primitive(type_, file)?;
 		let denominator = TypeSLong::read_primitive(type_, file)?;
 
@@ -185,7 +184,7 @@ impl PrimitiveType for TypeFloat {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_f32()?)
 	}
 }
@@ -200,7 +199,7 @@ impl PrimitiveType for TypeDouble {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(file.read_f64()?)
 	}
 }
@@ -212,7 +211,7 @@ impl PrimitiveType for TypeUndefined {
 		todo!()
 	}
 
-	fn read_primitive<R: Read + Seek>(_: IfdTagType, _: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(_: IfdTagType, _: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		todo!()
 	}
 }
@@ -229,7 +228,7 @@ impl PrimitiveType for TypeNumber {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(match type_ {
 			IfdTagType::Byte => TypeByte::read_primitive(type_, file)?.into(),
 			IfdTagType::Short => TypeShort::read_primitive(type_, file)?.into(),
@@ -251,7 +250,7 @@ impl PrimitiveType for TypeSNumber {
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 		Ok(match type_ {
 			IfdTagType::SByte => TypeSByte::read_primitive(type_, file)?.into(),
 			IfdTagType::SShort => TypeSShort::read_primitive(type_, file)?.into(),
@@ -264,21 +263,21 @@ impl PrimitiveType for TypeSNumber {
 pub trait TagType {
 	type Output;
 
-	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError>;
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError>;
 }
 
 impl<T: PrimitiveType> TagType for T {
 	type Output = T::Output;
 
-	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| DecoderError::InvalidType)?;
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
 		if count != 1 {
-			return Err(DecoderError::InvalidCount);
+			return Err(TiffError::InvalidCount);
 		}
 
-		let size = T::get_size(type_).ok_or(DecoderError::InvalidType)?;
+		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
@@ -299,11 +298,11 @@ pub struct ConstArray<T: PrimitiveType, const N: usize> {
 impl<T: PrimitiveType> TagType for Array<T> {
 	type Output = Vec<T::Output>;
 
-	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| DecoderError::InvalidType)?;
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
-		let size = T::get_size(type_).ok_or(DecoderError::InvalidType)?;
+		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
@@ -320,15 +319,15 @@ impl<T: PrimitiveType> TagType for Array<T> {
 impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 	type Output = [T::Output; N];
 
-	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, DecoderError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| DecoderError::InvalidType)?;
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
 		if count != N.try_into()? {
-			return Err(DecoderError::InvalidCount);
+			return Err(TiffError::InvalidCount);
 		}
 
-		let size = T::get_size(type_).ok_or(DecoderError::InvalidType)?;
+		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
@@ -338,22 +337,6 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 		for _ in 0..count {
 			ans.push(T::read_primitive(type_, file)?);
 		}
-		ans.try_into().map_err(|_| DecoderError::InvalidCount)
+		ans.try_into().map_err(|_| TiffError::InvalidCount)
 	}
-}
-
-#[derive(Error, Debug)]
-pub enum DecoderError {
-	#[error("The value was invalid")]
-	InvalidValue,
-	#[error("The type was invalid")]
-	InvalidType,
-	#[error("The count was invalid")]
-	InvalidCount,
-	#[error("The tag was invalid")]
-	InvalidTag,
-	#[error("An error occurred when converting integer from one type to another")]
-	ConversionError(#[from] std::num::TryFromIntError),
-	#[error("An IO Error ocurred")]
-	IoError(#[from] std::io::Error),
 }

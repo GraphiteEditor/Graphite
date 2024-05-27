@@ -3195,6 +3195,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
+name = "libraw-rs"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24ec60aab878560c299c6e70a0c6dc2278a2159ac6fe09650917266b8985387f"
+dependencies = [
+ "libraw-rs-sys",
+]
+
+[[package]]
+name = "libraw-rs-sys"
+version = "0.0.4+libraw-0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba094a3b8b04cc42fdeafaff06f81d3b13a7d01cc7a8eae55b943dae1b65c3cc"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "libredox"
 version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4582,7 +4601,9 @@ checksum = "9c8a99fddc9f0ba0a85884b8d14e3592853e787d581ca1816c91349b10e4eeab"
 name = "raw-rs"
 version = "0.0.1"
 dependencies = [
+ "libraw-rs",
  "num_enum 0.7.2",
+ "test-each",
  "thiserror",
 ]
 
@@ -6026,6 +6047,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "test-each"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d822711cf1d4a8d8adc34414c26c85f9144c692903c45a47a04ee4ffb360e5bc"
+dependencies = [
+ "test-each-codegen",
+]
+
+[[package]]
+name = "test-each-codegen"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad5bbe324addbdc5ee683822d0812e9bb63fbeabff10baf0d11fcfc7a0ff2122"
+dependencies = [
+ "glob",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
 ]
 
 [[package]]

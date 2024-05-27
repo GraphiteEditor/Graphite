@@ -1,4 +1,4 @@
-mod file;
+pub mod file;
 pub mod tags;
 mod types;
 pub mod values;
@@ -6,9 +6,10 @@ pub mod values;
 use file::TiffRead;
 use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use std::io::{Read, Seek};
+use thiserror::Error;
 
 use tags::Tag;
-use types::{DecoderError, TagType};
+use types::TagType;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u16)]
@@ -22,7 +23,7 @@ pub enum TagId {
 	SamplesPerPixel = 0x115,
 	RowsPerStrip = 0x116,
 	StripByteCounts = 0x117,
-	SubIfd = 0x14a,
+	SonySubIfd = 0x14a,
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
 	CfaPatternDim = 0x828d,
@@ -50,7 +51,7 @@ pub enum IfdTagType {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct IfdEntry {
+pub struct IfdEntry {
 	tag: TagId,
 	type_: u16,
 	count: u32,
@@ -58,7 +59,7 @@ struct IfdEntry {
 }
 
 #[derive(Clone, Debug)]
-struct Ifd {
+pub struct Ifd {
 	current_ifd_offset: u32,
 	ifd_entries: Vec<IfdEntry>,
 	next_ifd_offset: u32,
@@ -110,11 +111,27 @@ impl Ifd {
 		self.ifd_entries.iter()
 	}
 
-	pub fn get<T: TagType, R: Read + Seek>(&self, tag: Tag<T>, file: &mut TiffRead<R>) -> Result<T::Output, DecoderError> {
+	pub fn get<T: TagType, R: Read + Seek>(&self, tag: Tag<T>, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
 		let tag_id = tag.id();
-		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(DecoderError::InvalidTag)?.try_into()?;
+		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(TiffError::InvalidTag)?.try_into()?;
 
 		file.seek_from_start(self.current_ifd_offset + 2 + 12 * index + 2)?;
 		T::read(file)
 	}
+}
+
+#[derive(Error, Debug)]
+pub enum TiffError {
+	#[error("The value was invalid")]
+	InvalidValue,
+	#[error("The type was invalid")]
+	InvalidType,
+	#[error("The count was invalid")]
+	InvalidCount,
+	#[error("The tag was invalid")]
+	InvalidTag,
+	#[error("An error occurred when converting integer from one type to another")]
+	ConversionError(#[from] std::num::TryFromIntError),
+	#[error("An IO Error ocurred")]
+	IoError(#[from] std::io::Error),
 }

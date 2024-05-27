@@ -15,3 +15,7 @@ documentation = "https://docs.rs/raw-rs"
 [dependencies]
 num_enum = "0.7.2"
 thiserror.workspace = true
+
+[dev-dependencies]
+libraw-rs = "0.0.4"
+test-each = "0.2.1"
