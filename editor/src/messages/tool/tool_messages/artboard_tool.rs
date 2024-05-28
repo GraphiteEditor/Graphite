@@ -161,7 +161,11 @@ impl ArtboardToolData {
 		}
 
 		let center = from_center.then_some(bounds.center_of_transformation);
-		let (position, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
+		let (min, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
+		let max = min + size;
+		let position = min.min(max);
+		let size = (max - min).abs();
+
 		responses.add(GraphOperationMessage::ResizeArtboard {
 			id: self.selected_artboard.unwrap().to_node(),
 			location: position.round().as_ivec2(),
@@ -279,6 +283,10 @@ impl Fsm for ArtboardToolFsmState {
 
 				let start = root_transform.transform_point2(start);
 				let size = root_transform.transform_vector2(size);
+				let end = start + size;
+				let size = (start - end).abs();
+				let start = start.min(end);
+
 				if let Some(artboard) = tool_data.selected_artboard {
 					if artboard == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("selected artboard cannot be ROOT_PARENT");
@@ -289,7 +297,6 @@ impl Fsm for ArtboardToolFsmState {
 							dimensions: size.round().as_ivec2(),
 						});
 					}
-					
 				} else {
 					let id = NodeId(generate_uuid());
 
@@ -403,13 +410,12 @@ impl Fsm for ArtboardToolFsmState {
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("selected artboard cannot be ROOT_PARENT");
 					} else {
-responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap().to_node(),
-						location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
-						dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
-					});
+						responses.add(GraphOperationMessage::ResizeArtboard {
+							id: tool_data.selected_artboard.unwrap().to_node(),
+							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
+							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
+						});
 					}
-					
 				}
 
 				ArtboardToolFsmState::Ready
