@@ -210,7 +210,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 			"brx",
 			move |x: f64| -> (DVec2, DVec2) {
 				let diff = bottom_right.x - x;
-				(DVec2::new(offset.x + diff / 2., offset.x), DVec2::new(scale.x + diff / 2., offset.y))
+				(DVec2::new(offset.x - diff / 2., offset.x), DVec2::new(scale.x - diff / 2., offset.y))
 			},
 			footprint,
 			node_id,
@@ -222,7 +222,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 			"bry",
 			move |y: f64| -> (DVec2, DVec2) {
 				let diff = bottom_right.y - y;
-				(DVec2::new(offset.x, diff / 2. + offset.y), DVec2::new(scale.x, diff / 2. + offset.y))
+				(DVec2::new(offset.x, diff / 2. - offset.y), DVec2::new(scale.x, diff / 2. - offset.y))
 			},
 			footprint,
 			node_id,
