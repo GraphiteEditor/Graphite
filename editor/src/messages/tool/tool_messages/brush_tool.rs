@@ -318,7 +318,7 @@ impl Fsm for BrushToolFsmState {
 				let layer = loaded_layer.unwrap_or_else(|| new_brush_layer(document, responses));
 				tool_data.layer = Some(layer);
 
-				let parent = layer.parent(document.metadata()).unwrap_or_default();
+				let parent = layer.parent(document.metadata()).unwrap_or_else(|| document.new_layer_parent(true));
 				let parent_transform = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
 				let layer_position = tool_data.transform.inverse().transform_point2(parent_transform);
 
