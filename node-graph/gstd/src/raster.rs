@@ -733,8 +733,9 @@ fn mandelbrot_node(footprint: Footprint) -> ImageFrame<Color> {
 
 	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
 
-	let width = footprint.transform.transform_vector2(DVec2::X * size.x).length() as u32;
-	let height = footprint.transform.transform_vector2(DVec2::Y * size.y).length() as u32;
+	let scale = footprint.scale();
+	let width = (size.x * scale.x) as u32;
+	let height = (size.y * scale.y) as u32;
 
 	let mut data = Vec::with_capacity(width as usize * height as usize);
 	let max_iter = 255;

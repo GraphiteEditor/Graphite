@@ -200,6 +200,16 @@ impl Footprint {
 		let end = inverse.transform_point2(self.resolution.as_dvec2());
 		AxisAlignedBbox { start, end }
 	}
+
+	pub fn scale(&self) -> DVec2 {
+		let x = self.transform.transform_vector2((1., 0.).into()).length();
+		let y = self.transform.transform_vector2((0., 1.).into()).length();
+		DVec2::new(x, y)
+	}
+
+	pub fn offset(&self) -> DVec2 {
+		self.transform.transform_point2(DVec2::ZERO)
+	}
 }
 
 #[derive(Debug, Clone, Copy)]
