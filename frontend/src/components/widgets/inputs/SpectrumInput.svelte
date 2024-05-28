@@ -9,17 +9,11 @@
 	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient }>();
 
 	export let gradient: Gradient;
-
 	export let activeMarkerIndex = 0 as number | undefined;
-
-	let markerTrack: LayoutRow | undefined;
-
 	// export let disabled = false;
 	// export let tooltip: string | undefined = undefined;
 
-	export function activeIndex() {
-		return activeMarkerIndex;
-	}
+	let markerTrack: LayoutRow | undefined;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		activeMarkerIndex = index;
@@ -33,6 +27,7 @@
 	function markerPosition(e: MouseEvent): number | undefined {
 		const markerTrackRect = markerTrack?.div()?.getBoundingClientRect();
 		if (!markerTrackRect) return;
+
 		const ratio = (e.clientX - markerTrackRect.left) / markerTrackRect.width;
 
 		return Math.max(0, Math.min(1, ratio));
@@ -41,8 +36,10 @@
 	function insertStop(e: MouseEvent) {
 		let position = markerPosition(e);
 		if (position === undefined) return;
+
 		let before = gradient.stops.findLast((value) => value.position < position);
 		let after = gradient.stops.find((value) => value.position > position);
+
 		let color = Color.fromCSS("black") as Color;
 		if (before && after) {
 			let t = (position - before.position) / (after.position - before.position);
@@ -52,12 +49,13 @@
 		} else if (after) {
 			color = after.color;
 		}
+
 		let index = gradient.stops.findIndex((value) => value.position > position);
-		if (index === -1) {
-			index = gradient.stops.length;
-		}
+		if (index === -1) index = gradient.stops.length;
+
 		gradient.stops.splice(index, 0, { position, color });
 		activeMarkerIndex = index;
+
 		dispatch("activeMarkerIndexChange", index);
 		dispatch("gradient", gradient);
 	}
@@ -65,14 +63,15 @@
 	function deleteStop(e: KeyboardEvent) {
 		if (e.key.toLowerCase() !== "delete" && e.key.toLowerCase() !== "backspace") return;
 		if (activeMarkerIndex === undefined) return;
+		if (gradient.stops.length <= 2) return;
+
 		gradient.stops.splice(activeMarkerIndex, 1);
 		if (gradient.stops.length === 0) {
 			activeMarkerIndex = undefined;
-			dispatch("activeMarkerIndexChange", undefined);
 		} else {
 			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, activeMarkerIndex));
-			dispatch("activeMarkerIndexChange", activeMarkerIndex);
 		}
+		dispatch("activeMarkerIndexChange", activeMarkerIndex);
 		dispatch("gradient", gradient);
 	}
 
@@ -85,7 +84,7 @@
 		setPosition(index, position);
 	}
 
-	export function setPosition(index: number, position: number) {
+	function setPosition(index: number, position: number) {
 		const active = gradient.stops[index];
 		active.position = position;
 		gradient.stops.sort((a, b) => a.position - b.position);
@@ -146,9 +145,8 @@
 		"--gradient-end": gradient.lastColor()?.toRgbCSS() || "black",
 		"--gradient-stops": gradient.toLinearGradientCSSNoAlpha(),
 	}}
-	on:dblclick={insertStop}
 >
-	<LayoutRow class="gradient-strip"></LayoutRow>
+	<LayoutRow class="gradient-strip" on:dblclick={insertStop}></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each gradient.stops as marker, index}
 			<svg

@@ -3,8 +3,8 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB, type Gradient, type FillColorChoice } from "@graphite/wasm-communication/messages";
-	import { Color } from "@graphite/wasm-communication/messages";
+	import { type HSV, type RGB, type FillColorChoice } from "@graphite/wasm-communication/messages";
+	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -35,9 +35,6 @@
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillColorChoice; startHistoryTransaction: undefined }>();
 
 	export let colorOrGradient: FillColorChoice;
-	$: (() => {
-		console.log("ColorPicker.svelte: colorOrGradient:", colorOrGradient);
-	})();
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
@@ -48,7 +45,7 @@
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
 	// Gradient color stops
-	$: gradient = colorOrGradient instanceof Color ? undefined : colorOrGradient;
+	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
 	$: selectedGradientColour = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
@@ -180,8 +177,6 @@
 			stop.color = colorToEmit;
 			gradient = gradient;
 		}
-
-		console.log("Emitting", gradient || colorToEmit);
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
@@ -341,10 +336,7 @@
 						{gradient}
 						on:gradient={() => {
 							gradient = gradient;
-							if (gradient) {
-								console.log("Emitting just the gradient", gradient);
-								dispatch("colorOrGradient", gradient);
-							}
+							if (gradient) dispatch("colorOrGradient", gradient);
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}

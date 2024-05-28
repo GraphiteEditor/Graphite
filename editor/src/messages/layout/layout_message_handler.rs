@@ -4,8 +4,8 @@ use crate::messages::prelude::*;
 
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
-
 use graphene_std::vector::style::{FillColorChoice, GradientStops};
+
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default)]

@@ -18,10 +18,6 @@
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
 
-	$: (() => {
-		console.log("ColorButton.svelte value:", value);
-	})();
-
 	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
 </script>
 
