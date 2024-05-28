@@ -551,9 +551,10 @@
 					margin-left: 4px;
 					border-radius: 2px;
 					flex: 0 0 auto;
-					background: var(--color-transparent-checkered-background);
+					background-image: var(--color-transparent-checkered-background);
 					background-size: var(--color-transparent-checkered-background-size-mini);
 					background-position: var(--color-transparent-checkered-background-position-mini);
+					background-repeat: var(--color-transparent-checkered-background-repeat);
 
 					&:first-child {
 						margin-left: 20px;

@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
 
-use graphene_std::vector::style::FillColorChoice;
+use graphene_std::vector::style::{FillColorChoice, GradientStops};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default)]
@@ -84,25 +84,63 @@ impl LayoutMessageHandler {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (color_button.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let update_value = value.as_object().expect("ColorButton update was not of type: object");
-						let parsed_color = (|| {
-							let is_none = update_value.get("none")?.as_bool()?;
+						let decode_color = |color: &serde_json::map::Map<String, serde_json::value::Value>| -> Option<Color> {
+							let red = color.get("red").and_then(|x| x.as_f64()).map(|x| x as f32);
+							let green = color.get("green").and_then(|x| x.as_f64()).map(|x| x as f32);
+							let blue = color.get("blue").and_then(|x| x.as_f64()).map(|x| x as f32);
+							let alpha = color.get("alpha").and_then(|x| x.as_f64()).map(|x| x as f32);
 
-							if !is_none {
-								Some(FillColorChoice::Solid(Color::from_rgbaf32(
-									update_value.get("red")?.as_f64()? as f32,
-									update_value.get("green")?.as_f64()? as f32,
-									update_value.get("blue")?.as_f64()? as f32,
-									update_value.get("alpha")?.as_f64()? as f32,
-								)?))
-							// TODO: Add FillColorChoice::Gradient
-							} else {
-								Some(FillColorChoice::None)
+							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha) {
+								if let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) {
+									return Some(color);
+								}
 							}
+							None
+						};
+
+						(|| {
+							let update_value = value.as_object().expect("ColorButton update was not of type: object");
+
+							// None
+							let is_none = update_value.get("none").and_then(|x| x.as_bool());
+							if is_none == Some(true) {
+								color_button.value = FillColorChoice::None;
+								return (color_button.on_update.callback)(color_button);
+							}
+
+							// Solid
+							if let Some(color) = decode_color(update_value) {
+								color_button.value = FillColorChoice::Solid(color);
+								return (color_button.on_update.callback)(color_button);
+							}
+
+							// Gradient
+							let gradient = update_value.get("stops").and_then(|x| x.as_array());
+							if let Some(stops) = gradient {
+								let gradient_stops = stops
+									.iter()
+									.filter_map(|stop| {
+										stop.as_object().and_then(|stop| {
+											let position = stop.get("position").and_then(|x| x.as_f64());
+											let color = stop.get("color").and_then(|x| x.as_object());
+
+											if let (Some(position), Some(color_object)) = (position, color) {
+												if let Some(color) = decode_color(color_object) {
+													return Some((position, color));
+												}
+											}
+
+											None
+										})
+									})
+									.collect::<Vec<_>>();
+
+								color_button.value = FillColorChoice::Gradient(GradientStops(gradient_stops));
+								return (color_button.on_update.callback)(color_button);
+							}
+
+							panic!("ColorButton update was not able to be parsed with color data: {color_button:?}");
 						})()
-						.unwrap_or_else(|| panic!("ColorButton update was not able to be parsed with color data: {color_button:?}"));
-						color_button.value = parsed_color;
-						(color_button.on_update.callback)(color_button)
 					}
 				};
 

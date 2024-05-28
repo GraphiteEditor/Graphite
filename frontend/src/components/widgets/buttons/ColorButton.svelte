@@ -1,21 +1,26 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { FillColorChoice } from "@graphite/wasm-communication/messages";
 	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ value: Color; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ value: FillColorChoice; startHistoryTransaction: undefined }>();
 
 	let open = false;
 
-	export let value: Color | Gradient;
+	export let value: FillColorChoice;
 	export let disabled = false;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
+
+	$: (() => {
+		console.log("ColorButton.svelte value:", value);
+	})();
 
 	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
 </script>
@@ -30,10 +35,8 @@
 		on:open={({ detail }) => (open = detail)}
 		colorOrGradient={value}
 		on:colorOrGradient={({ detail }) => {
-			if (detail instanceof Color) {
-				value = detail;
-				dispatch("value", detail);
-			}
+			value = detail;
+			dispatch("value", detail);
 		}}
 		on:startHistoryTransaction={() => {
 			// This event is sent to the backend so it knows to start a transaction for the history system. See discussion for some explanation:
@@ -75,9 +78,14 @@
 			margin-top: 2px;
 			width: calc(100% - 4px);
 			height: calc(100% - 4px);
-			background: var(--chosen-gradient), var(--color-transparent-checkered-background);
-			background-size: var(--color-transparent-checkered-background-size);
-			background-position: var(--color-transparent-checkered-background-position);
+			background-image: var(--chosen-gradient), var(--color-transparent-checkered-background);
+			background-size:
+				100% 100%,
+				var(--color-transparent-checkered-background-size);
+			background-position:
+				0 0,
+				var(--color-transparent-checkered-background-position);
+			background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 		}
 
 		&.none {

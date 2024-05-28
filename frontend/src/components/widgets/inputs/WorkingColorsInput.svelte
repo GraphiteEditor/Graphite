@@ -20,7 +20,7 @@
 		{ position: 0.75, color: Color.fromCSS("#f8eadd") as Color },
 		{ position: 1, color: Color.fromCSS("#85cbda") as Color },
 	]);
-	let primaryOpen = true;
+	let primaryOpen = false;
 	let secondaryOpen = false;
 
 	function clickPrimarySwatch() {
@@ -95,8 +95,13 @@
 				padding: 0;
 				box-sizing: border-box;
 				background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
+				background-size:
+					100% 100%,
+					var(--color-transparent-checkered-background-size);
+				background-position:
+					0 0,
+					var(--color-transparent-checkered-background-position);
+				background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 				overflow: hidden;
 
 				&:hover,

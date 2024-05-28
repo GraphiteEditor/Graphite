@@ -85,7 +85,7 @@
 	styles={{
 		"--gradient-start": gradient.firstColor()?.toRgbCSS() || "black",
 		"--gradient-end": gradient.lastColor()?.toRgbCSS() || "black",
-		"--gradient-stops": gradient.toLinearGradientCSS(),
+		"--gradient-stops": gradient.toLinearGradientCSSNoAlpha(),
 	}}
 >
 	<LayoutRow class="gradient-strip"></LayoutRow>

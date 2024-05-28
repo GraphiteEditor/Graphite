@@ -29,7 +29,7 @@ pub enum GradientType {
 
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct GradientStops(pub Vec<(f64, Color)>);
 
 impl std::hash::Hash for GradientStops {
@@ -42,17 +42,35 @@ impl std::hash::Hash for GradientStops {
 	}
 }
 
+impl Default for GradientStops {
+	fn default() -> Self {
+		Self(vec![(0., Color::BLACK), (1., Color::WHITE)])
+	}
+}
+
 /// A gradient fill.
 ///
 /// Contains the start and end points, along with the colors at varying points along the length.
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
 pub struct Gradient {
 	pub stops: GradientStops,
 	pub gradient_type: GradientType,
 	pub start: DVec2,
 	pub end: DVec2,
 	pub transform: DAffine2,
+}
+
+impl Default for Gradient {
+	fn default() -> Self {
+		Self {
+			stops: GradientStops::default(),
+			gradient_type: GradientType::Linear,
+			start: DVec2::new(0., 0.5),
+			end: DVec2::new(1., 0.5),
+			transform: DAffine2::IDENTITY,
+		}
+	}
 }
 
 impl core::hash::Hash for Gradient {
@@ -226,7 +244,7 @@ impl Fill {
 		match self {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
-			// TODO: Should correctly sample the gradient
+			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
 			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
 		}
 	}
@@ -267,18 +285,30 @@ impl Fill {
 		}
 	}
 
-	/// Check if the fill is not none
-	pub fn is_some(&self) -> bool {
-		*self != Self::None
-	}
-
 	/// Extract a gradient from the fill
 	pub fn as_gradient(&self) -> Option<&Gradient> {
-		if let Self::Gradient(gradient) = self {
-			Some(gradient)
-		} else {
-			None
+		match self {
+			Self::Gradient(gradient) => Some(gradient),
+			_ => None,
 		}
+	}
+}
+
+impl From<Color> for Fill {
+	fn from(color: Color) -> Fill {
+		Fill::Solid(color)
+	}
+}
+
+impl From<Option<Color>> for Fill {
+	fn from(color: Option<Color>) -> Fill {
+		Fill::solid_or_none(color)
+	}
+}
+
+impl From<Gradient> for Fill {
+	fn from(gradient: Gradient) -> Fill {
+		Fill::Gradient(gradient)
 	}
 }
 
@@ -313,9 +343,33 @@ impl FillColorChoice {
 		let Self::Gradient(gradient) = self else { return None };
 		Some(gradient)
 	}
+
+	/// Convert this [`FillColorChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
+	/// If a gradient isn't provided, default gradient positional information is used in cases where the [`FillColorChoice`] is a [`Gradient`].
+	pub fn to_fill(&self, existing_gradient: Option<&Gradient>) -> Fill {
+		match self {
+			Self::None => Fill::None,
+			Self::Solid(color) => Fill::Solid(*color),
+			Self::Gradient(stops) => {
+				let mut fill = existing_gradient.cloned().unwrap_or_default();
+				fill.stops = stops.clone();
+				Fill::Gradient(fill)
+			}
+		}
+	}
 }
 
-/// Enum describing the type of [Fill]
+impl From<Fill> for FillColorChoice {
+	fn from(fill: Fill) -> Self {
+		match fill {
+			Fill::None => FillColorChoice::None,
+			Fill::Solid(color) => FillColorChoice::Solid(color),
+			Fill::Gradient(gradient) => FillColorChoice::Gradient(gradient.stops),
+		}
+	}
+}
+
+/// Enum describing the type of [Fill].
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum FillType {

@@ -225,7 +225,12 @@ export class Gradient {
 	}
 
 	toLinearGradientCSS(): string {
-		const pieces = this.stops.map((stop) => `${stop.color.toRgbCSS()} ${stop.position * 100}%`);
+		const pieces = this.stops.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
+		return `linear-gradient(to right, ${pieces.join(", ")})`;
+	}
+
+	toLinearGradientCSSNoAlpha(): string {
+		const pieces = this.stops.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
 		return `linear-gradient(to right, ${pieces.join(", ")})`;
 	}
 
@@ -727,11 +732,24 @@ export class CheckboxInput extends WidgetProps {
 }
 
 export class ColorButton extends WidgetProps {
-	@Transform((value) => {
-		console.log(value);
-		return value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha);
+	@Transform(({ value }) => {
+		const gradient = value["Gradient"];
+		if (gradient) {
+			const stops = gradient.map(([position, color]: [number, color: { red: number; green: number; blue: number; alpha: number }]) => ({
+				position,
+				color: new Color(color.red, color.green, color.blue, color.alpha),
+			}));
+			return new Gradient(stops);
+		}
+
+		const solid = value["Solid"];
+		if (solid) {
+			return new Color(solid.red, solid.green, solid.blue, solid.alpha);
+		}
+
+		return new Color("none");
 	})
-	value!: FillColorChoice; // Color | Gradient | undefined;
+	value!: FillColorChoice;
 
 	disabled!: boolean;
 
@@ -742,6 +760,8 @@ export class ColorButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
+
+export type FillColorChoice = Color | Gradient;
 
 type MenuEntryCommon = {
 	label: string;

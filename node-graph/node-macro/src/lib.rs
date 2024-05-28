@@ -6,21 +6,42 @@ use syn::{
 	PredicateType, ReturnType, Token, TraitBound, Type, TypeImplTrait, TypeParam, TypeParamBound, TypeTuple, WhereClause, WherePredicate,
 };
 
+/// Used to construct a proto node implementation.
+/// A convenient combination of the [`node_impl`] and [`node_new`] proc macros as one.
 #[proc_macro_attribute]
 pub fn node_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
+	// Performs the `node_impl` macro's functionality of attaching an `impl Node for ThisNodeStruct` block to the node struct
 	let mut imp = node_impl_proxy(attr.clone(), item.clone());
+
+	// Performs the `node_new` macro's functionality of attaching a `new` constructor method to the node struct
 	let new = node_new_impl(attr, item);
+
+	// Combines the two pieces of Rust source code
 	imp.extend(new);
 	imp
 }
-#[proc_macro_attribute]
-pub fn node_new(attr: TokenStream, item: TokenStream) -> TokenStream {
-	node_new_impl(attr, item)
-}
 
+/// This can be called on multiple functions, together with [`node_new`] on
+/// Attaches an `impl Node for ThisNodeStruct` block to the node struct, containing an implementation of the node's `eval` method.
 #[proc_macro_attribute]
 pub fn node_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 	node_impl_proxy(attr, item)
+}
+
+fn node_impl_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
+	let fn_item = item.clone();
+	let function = parse_macro_input!(fn_item as ItemFn);
+	if function.sig.asyncness.is_some() {
+		node_impl_impl(attr, item, Asyncness::AllAsync)
+	} else {
+		node_impl_impl(attr, item, Asyncness::Sync)
+	}
+}
+
+/// Attaches an `impl ThisNodeStruct` block to the node struct, containing a `new` constructor method.
+#[proc_macro_attribute]
+pub fn node_new(attr: TokenStream, item: TokenStream) -> TokenStream {
+	node_new_impl(attr, item)
 }
 
 fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -59,7 +80,7 @@ fn node_new_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 		impl <#(#args),*> #node_name<#(#args),*>
 		{
 			pub const fn new(#(#parameter_idents: #struct_generics_iter),*) -> Self{
-				Self{
+				Self {
 					#(#parameter_idents,)*
 					#(#arg_idents: core::marker::PhantomData,)*
 				}
@@ -83,15 +104,6 @@ fn node_args(node: &syn::PathSegment) -> Vec<Type> {
 	}
 }
 
-fn node_impl_proxy(attr: TokenStream, item: TokenStream) -> TokenStream {
-	let fn_item = item.clone();
-	let function = parse_macro_input!(fn_item as ItemFn);
-	if function.sig.asyncness.is_some() {
-		node_impl_impl(attr, item, Asyncness::AllAsync)
-	} else {
-		node_impl_impl(attr, item, Asyncness::Sync)
-	}
-}
 enum Asyncness {
 	Sync,
 	AllAsync,

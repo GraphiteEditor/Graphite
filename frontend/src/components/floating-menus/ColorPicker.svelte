@@ -3,7 +3,7 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB, type Gradient } from "@graphite/wasm-communication/messages";
+	import { type HSV, type RGB, type Gradient, type FillColorChoice } from "@graphite/wasm-communication/messages";
 	import { Color } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -32,9 +32,12 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: Color | Gradient; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillColorChoice; startHistoryTransaction: undefined }>();
 
-	export let colorOrGradient: Color | Gradient;
+	export let colorOrGradient: FillColorChoice;
+	$: (() => {
+		console.log("ColorPicker.svelte: colorOrGradient:", colorOrGradient);
+	})();
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
@@ -175,6 +178,8 @@
 			stop.color = colorToEmit;
 			gradient = gradient;
 		}
+
+		console.log("Emitting", gradient || colorToEmit);
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
@@ -333,6 +338,10 @@
 						{gradient}
 						on:gradient={() => {
 							gradient = gradient;
+							if (gradient) {
+								console.log("Emitting just the gradient", gradient);
+								dispatch("colorOrGradient", gradient);
+							}
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						bind:this={gradientSpectrumInputWidget}
@@ -518,31 +527,27 @@
 				}
 
 				.hue-picker {
+					--selection-needle-color: var(--hue-color-contrasting);
 					background-blend-mode: screen;
 					background:
 						// Reds
-						linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
+						linear-gradient(to top, #ff0000ff calc(100% / 6), #ff000000 calc(200% / 6), #ff000000 calc(400% / 6), #ff0000ff calc(500% / 6)),
 						// Greens
-						linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%),
+						linear-gradient(to top, #00ff0000 0%, #00ff00ff calc(100% / 6), #00ff00ff 50%, #00ff0000 calc(400% / 6)),
 						// Blues
-						linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
-					--selection-needle-color: var(--hue-color-contrasting);
+						linear-gradient(to top, #0000ff00 calc(200% / 6), #0000ffff 50%, #0000ffff calc(500% / 6), #0000ff00 100%);
 				}
 
 				.alpha-picker {
-					background: linear-gradient(to bottom, var(--opaque-color), transparent);
 					--selection-needle-color: var(--new-color-contrasting);
-
-					&::before {
-						content: "";
-						width: 100%;
-						height: 100%;
-						z-index: -1;
-						position: relative;
-						background: var(--color-transparent-checkered-background);
-						background-size: var(--color-transparent-checkered-background-size);
-						background-position: var(--color-transparent-checkered-background-position);
-					}
+					background-image: linear-gradient(to bottom, var(--opaque-color), transparent), var(--color-transparent-checkered-background);
+					background-size:
+						100% 100%,
+						var(--color-transparent-checkered-background-size);
+					background-position:
+						0 0,
+						var(--color-transparent-checkered-background-position);
+					background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 				}
 
 				.selection-circle {
@@ -681,7 +686,7 @@
 				}
 
 				.new-color {
-					background: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
+					background-image: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
 
 					.text-label {
 						text-align: left;
@@ -704,8 +709,13 @@
 				.old-color {
 					width: 50%;
 					height: 100%;
-					background-size: var(--color-transparent-checkered-background-size);
-					background-position: var(--color-transparent-checkered-background-position);
+					background-size:
+						100% 100%,
+						var(--color-transparent-checkered-background-size);
+					background-position:
+						0 0,
+						var(--color-transparent-checkered-background-position);
+					background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 
 					&.none {
 						background: var(--color-none);

@@ -137,7 +137,9 @@ pub struct ColorButton {
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,
 
+	// TODO: Implement
 	// pub disabled: bool,
+	//
 	pub tooltip: String,
 
 	#[serde(skip)]
