@@ -215,10 +215,7 @@ impl TextToolData {
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		//TODO: Should always set visibility for document network, but node_id is not a layer so it crashes
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
-			responses.add(GraphOperationMessage::SetVisibility {
-				node_id,
-				visible: !editable,
-			});
+			responses.add(GraphOperationMessage::SetVisibility { node_id, visible: !editable });
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
@@ -434,7 +431,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap()],
+					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
 					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});

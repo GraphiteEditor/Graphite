@@ -671,6 +671,7 @@ impl NodeNetwork {
 
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
+		// Export/Import UI nodes can only be selected from the nested_network, so no need to check if self includes them
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
 			Some(self)
 		} else {

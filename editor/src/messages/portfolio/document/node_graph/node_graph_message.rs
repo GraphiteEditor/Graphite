@@ -97,7 +97,7 @@ pub enum NodeGraphMessage {
 		input: NodeInput,
 	},
 	SetQualifiedInputValue {
-		node_path: Vec<NodeId>,
+		node_id: NodeId,
 		input_index: usize,
 		value: TaggedValue,
 	},
