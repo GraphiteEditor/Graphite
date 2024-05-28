@@ -2022,7 +2022,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
-			context.network,
+			context.document_network,
 			&imaginate_node,
 			|network| {
 				network

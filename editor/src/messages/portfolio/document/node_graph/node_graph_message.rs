@@ -44,7 +44,7 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ExitNestedNetwork {
-		depth_of_nesting: usize,
+		steps_back: usize,
 	},
 	ExposeInput {
 		node_id: NodeId,
@@ -71,6 +71,7 @@ pub enum NodeGraphMessage {
 	PasteNodes {
 		serialized_nodes: String,
 	},
+	PrintSelectedNodeCoordinates,
 	SetRootNode {
 		root_node: Option<graph_craft::document::RootNode>,
 	},

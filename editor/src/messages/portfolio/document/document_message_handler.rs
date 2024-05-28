@@ -456,11 +456,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Insert node right above the folder
 					//TODO: downstream node can be none if it is the root node
-					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder)
-					else {
-						log::error!("Downstream node should always exist when inserting layer");
-						return;
-					};
+					let (folder_downstream_node_id, folder_downstream_input_index) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder).unwrap_or((self.network.exports_metadata.0, 0));
+
 					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: folder_downstream_node_id,
 						post_node_input_index: folder_downstream_input_index,

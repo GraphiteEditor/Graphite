@@ -71,7 +71,7 @@ pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub nested_path: &'a [NodeId],
 	pub executor: &'a mut NodeGraphExecutor,
-	pub network: &'a NodeNetwork,
+	pub document_network: &'a NodeNetwork,
 	pub metadata: &'a mut DocumentMetadata,
 }
 
@@ -205,7 +205,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Graphic Element".to_string(),
 							inputs: vec![NodeInput::network(generic!(T), 1)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicElementNode"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-4, 6) },
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-14, -1) }, // To Graphic Element
 							..Default::default()
 						},
 					),
@@ -216,7 +216,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Graphic Group".to_string(),
 							inputs: vec![NodeInput::network(generic!(T), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ToGraphicGroupNode"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-8, 0) },
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-14, -3) }, // To Graphic Group
 							..Default::default()
 						},
 					),
@@ -225,8 +225,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeId(2),
 						DocumentNode {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(0, 3) },
-							is_layer: true,
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-7, -1) }, // Monitor
 							..monitor_node()
 						},
 					),
@@ -235,15 +234,18 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
+							//TODO: Swap inputs here, in the ConstructLayerNode struct/function, and node_registry.rs
 							inputs: vec![NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
-							metadata: DocumentNodeMetadata { position: glam::IVec2::new(0, 0) },
-							is_layer: true,
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(1, -3) }, // ConstructLayer
 							..Default::default()
 						},
 					),
 				]
 				.into(),
+				root_node: Some(RootNode { id: NodeId(3), output_index: 0 }),
+				imports_metadata: (NodeId(generate_uuid()), (-26, -4).into()),
+				exports_metadata: (NodeId(generate_uuid()), (8, -4).into()),
 				..Default::default()
 			}),
 			inputs: vec![
@@ -273,6 +275,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(TaggedValue), 5),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, -3) }, // To Artboard
 							..Default::default()
 						},
 					),
@@ -282,6 +285,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeId(1),
 						DocumentNode {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-2, -3) }, // Monitor
 							..monitor_node()
 						},
 					),
@@ -290,16 +294,21 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "Add to Artboards".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
+							//TODO: Swap inputs here, in the AddArtboardNode struct/function, and node_registry.rs
 							inputs: vec![
 								NodeInput::node(NodeId(1), 0),
 								NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
+							metadata: DocumentNodeMetadata { position: glam::IVec2::new(6, -4) }, // Add to Artboards
 							..Default::default()
 						},
 					),
 				]
 				.into(),
+				imports_metadata: (NodeId(generate_uuid()), (-21, -5).into()),
+				exports_metadata: (NodeId(generate_uuid()), (14, -5).into()),
+				root_node: Some(RootNode { id: NodeId(2), output_index: 0 }),
 				..Default::default()
 			}),
 			inputs: vec![

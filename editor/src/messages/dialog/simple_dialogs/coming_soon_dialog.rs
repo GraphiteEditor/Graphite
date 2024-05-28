@@ -3,7 +3,7 @@ use crate::messages::prelude::*;
 
 /// A dialog to notify users of an unfinished issue, optionally with an issue number.
 pub struct ComingSoonDialog {
-	pub issue: Option<i32>,
+	pub issue: Option<u32>,
 }
 
 impl DialogLayoutHolder for ComingSoonDialog {

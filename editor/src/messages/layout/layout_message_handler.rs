@@ -186,6 +186,7 @@ impl LayoutMessageHandler {
 						let callback_message = (number_input.on_update.callback)(number_input);
 						responses.add(callback_message);
 					}
+					//TODO: This crashes when the cursor is in a text box, such as in the Text node, and the transform node is clicked (https://github.com/GraphiteEditor/Graphite/issues/1761)
 					Value::String(str) => match str.as_str() {
 						"Increment" => responses.add((number_input.increment_callback_increase.callback)(number_input)),
 						"Decrement" => responses.add((number_input.increment_callback_decrease.callback)(number_input)),

@@ -578,7 +578,7 @@ impl Default for NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
 			root_node: Default::default(),
-			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-20, -4))),
+			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-25, -4))),
 			exports_metadata: (NodeId(generate_uuid()), IVec2::new(8, -4)),
 		}
 	}
@@ -667,6 +667,24 @@ impl NodeNetwork {
 			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
 		}
 		network
+	}
+
+	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path
+	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
+		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
+			Some(self)
+		} else {
+			self.nested_network(nested_path)
+		}
+	}
+
+	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path
+	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
+		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
+			Some(self)
+		} else {
+			self.nested_network_mut(nested_path)
+		}
 	}
 
 	/// Check if the specified node id is connected to the output
@@ -1021,7 +1039,7 @@ impl NodeNetwork {
 		}
 
 		if let DocumentNodeImplementation::Network(mut inner_network) = node.implementation {
-			// Connect all network inputs to either the parent network nodes, or newly created value nodes.
+			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 			//Match the document node input and the inputs of the inner network
@@ -1050,6 +1068,29 @@ impl NodeNetwork {
 				}
 				self.nodes.insert(nested_node_id, nested_node);
 			}
+			//TODO: Add support for flattening exports that are NodeInput::Network (https://github.com/GraphiteEditor/Graphite/issues/1762)
+			// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
+			// for (i, export) in inner_network.exports.iter().enumerate() {
+			// 	if let NodeInput::Network { import_index, .. } = export {
+			// 		let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+			// 		match *parent_input {
+			// 			// If the input to self is a node, connect the corresponding output of the inner network to it
+			// 			NodeInput::Node { node_id, output_index, lambda } => {
+			// 				inner_network.populate_first_network_export(&mut node, node_id, output_index, lambda, i, node.original_location.outputs(i), 0);
+			// 			}
+			// 			NodeInput::Network { import_index, .. } => {
+			// 				let parent_input_index = import_index;
+			// 				let Some(NodeInput::Network { import_index, .. }) = inner_network.exports.get_mut(i) else {
+			// 					log::error!("Nested node should have a network input");
+			// 					continue;
+			// 				};
+			// 				*import_index = parent_input_index;
+			// 			}
+			// 			NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
+			// 			NodeInput::Inline(_) => (),
+			// 		}
+			// 	}
+			// }
 
 			// Connect all nodes that were previously connected to this node to the nodes of the inner network
 			for (i, export) in inner_network.exports.into_iter().enumerate() {
@@ -1077,6 +1118,15 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 		}
 	}
+
+	/// Locate the export that is a [`NodeInput::Network`] at index `offset` and replace it with a [`NodeInput::Node`].
+	// fn populate_first_network_export(&mut self, node: &mut DocumentNode, node_id: NodeId, output_index: usize, lambda: bool, export_index: usize, source: impl Iterator<Item = Source>, skip: usize) {
+	// 	self.exports[export_index] = NodeInput::Node { node_id, output_index, lambda };
+	// 	let input_source = &mut node.original_location.inputs_source;
+	// 	for source in source {
+	// 		input_source.insert(source, output_index + node.original_location.skip_inputs - skip);
+	// 	}
+	// }
 
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();

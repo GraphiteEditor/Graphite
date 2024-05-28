@@ -13,6 +13,7 @@ use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::ArtboardGroup;
@@ -727,9 +728,9 @@ impl<'a> ModifyInputsContext<'a> {
 		reconnect: bool,
 		responses: &mut VecDeque<Message>,
 		network_path: Vec<NodeId>,
-		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+		resolved_types: &ResolvedDocumentNodeTypes,
 	) {
-		let Some(network) = document_network.nested_network(&network_path) else {
+		let Some(network) = document_network.nested_network_for_selected_nodes(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return;
 		};
 		let mut delete_nodes = HashSet::new();
@@ -804,13 +805,14 @@ impl<'a> ModifyInputsContext<'a> {
 		reconnect: bool,
 		responses: &mut VecDeque<Message>,
 		network_path: &Vec<NodeId>,
-		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+		resolved_types: &ResolvedDocumentNodeTypes,
 	) -> bool {
-		if !ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect, network_path, resolved_types) {
+		if !ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect, selected_nodes, network_path, resolved_types) {
 			log::error!("could not remove_references_from_network");
 			return false;
 		}
-		let Some(network) = document_network.nested_network_mut(&network_path) else {
+		let selected_nodes_iter = selected_nodes.selected_nodes_ref().iter();
+		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes_iter) else {
 			return false;
 		};
 
@@ -827,10 +829,11 @@ impl<'a> ModifyInputsContext<'a> {
 		document_network: &mut NodeNetwork,
 		deleting_node_id: NodeId,
 		reconnect: bool,
+		selected_nodes: &mut SelectedNodes,
 		network_path: &Vec<NodeId>,
-		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
+		resolved_types: &ResolvedDocumentNodeTypes,
 	) -> bool {
-		let Some(network) = document_network.nested_network(network_path) else {
+		let Some(network) = document_network.nested_network_for_selected_nodes(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return false;
 		};
 		let mut reconnect_to_input: Option<NodeInput> = None;
@@ -886,7 +889,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		let Some(network) = document_network.nested_network_mut(network_path) else {
+		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return false;
 		};
 		let is_document_network = network_path.is_empty();
@@ -917,13 +920,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
-	pub fn get_input_tagged_value(
-		document_network: &NodeNetwork,
-		network_path: &Vec<NodeId>,
-		node_id: NodeId,
-		resolved_types: &interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes,
-		input_index: usize,
-	) -> TaggedValue {
+	pub fn get_input_tagged_value(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> TaggedValue {
 		let Some(network) = document_network.nested_network(&network_path) else {
 			log::error!("Could not get network in get_tagged_value");
 			return TaggedValue::None;

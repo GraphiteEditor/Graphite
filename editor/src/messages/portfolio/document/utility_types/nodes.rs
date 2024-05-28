@@ -101,15 +101,11 @@ impl SelectedNodes {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
+	// All selected nodes must be in the same network
 	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
 		self.0
 			.iter()
 			.filter(|node_id| network.nodes.contains_key(*node_id) || **node_id == network.imports_metadata.0 || **node_id == network.exports_metadata.0)
-	}
-
-	// Only get selected nodes that are in the current network, and that are not import/export nodes
-	pub fn selected_nodes_filtered<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
-		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
@@ -124,16 +120,43 @@ impl SelectedNodes {
 		self.0.retain(f);
 	}
 
-	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>) {
-		self.0 = new;
+	//TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, but cannot be distinguished. Instead of set_selected_nodes, add_selected_nodes should be used.
+	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, document_network: &NodeNetwork, network_path: &Vec<NodeId>) {
+		let Some(network) = document_network.nested_network(network_path) else {
+			return;
+		};
+		let mut new_nodes = new;
+
+		// If any nodes to add are in the document network, clear selected nodes in the current network
+		if new_nodes.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
+			new_nodes.retain(|selected_node| {
+				document_network.nodes.contains_key(selected_node) || document_network.imports_metadata.0 == *selected_node || document_network.exports_metadata.0 == *selected_node
+			});
+		}
+		// If not, then clear any nodes that are not in the current network
+		else {
+			new_nodes.retain(|selected_node| network.nodes.contains_key(selected_node) || network.imports_metadata.0 == *selected_node || network.exports_metadata.0 == *selected_node);
+		}
+		self.0 = new_nodes;
 	}
 
-	pub fn add_selected_nodes(&mut self, iter: impl IntoIterator<Item = NodeId>) {
-		self.0.extend(iter);
+	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>, document_network: &NodeNetwork, network_path: &Vec<NodeId>) {
+		let Some(network) = document_network.nested_network(network_path) else {
+			return;
+		};
+		// If the nodes to add are in the document network, clear selected nodes in the current network
+		if new.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {
+			self.retain_selected_nodes(|selected_node| {
+				document_network.nodes.contains_key(selected_node) || document_network.imports_metadata.0 == *selected_node || document_network.exports_metadata.0 == *selected_node
+			});
+		} else {
+			self.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node) || network.imports_metadata.0 == *selected_node || network.exports_metadata.0 == *selected_node);
+		}
+		self.0.extend(new);
 	}
 
 	pub fn clear_selected_nodes(&mut self) {
-		self.set_selected_nodes(Vec::new());
+		self.0 = Vec::new();
 	}
 }
 

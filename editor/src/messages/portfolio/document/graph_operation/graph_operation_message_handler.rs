@@ -132,6 +132,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				load_network_structure(document_network, document_metadata, collapsed);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			// Make sure to also update NodeGraphMessage::DisconnectInput when changing this
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
 				let Some(existing_input) = document_network.nodes.get(&node_id).map_or_else(
 					|| {
@@ -356,11 +357,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				pre_node_output_index,
 				pre_node_id,
 			} => {
-				let Some(post_node) = document_network.nodes.get(&post_node_id) else {
-					error!("Post node not found");
-					return;
-				};
-				let Some((post_node_input_index, _)) = post_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(post_node_input_index) else {
+				let post_node = document_network.nodes.get(&post_node_id);
+				let Some((post_node_input_index, _)) = post_node
+					.map_or(&document_network.exports, |post_node| &post_node.inputs)
+					.iter()
+					.enumerate()
+					.filter(|input| input.1.is_exposed())
+					.nth(post_node_input_index)
+				else {
 					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
 					return;
 				};
