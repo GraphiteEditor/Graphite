@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeLong, TypeNumber, TypeShort};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeShort};
 use super::TagId;
 
 pub struct Tag<T: TagType> {
@@ -34,7 +34,7 @@ pub const STRIP_OFFSETS: Tag<Array<TypeNumber>> = Tag::new(TagId::StripOffsets, 
 pub const SAMPLES_PER_PIXEL: Tag<TypeShort> = Tag::new(TagId::SamplesPerPixel, "Samples per Pixel");
 pub const ROWS_PER_STRIP: Tag<TypeNumber> = Tag::new(TagId::RowsPerStrip, "Rows per Strip");
 pub const STRIP_BYTE_COUNTS: Tag<Array<TypeNumber>> = Tag::new(TagId::StripByteCounts, "Strip Byte Counts");
-pub const SONY_SUBIFD: Tag<TypeLong> = Tag::new(TagId::SonySubIfd, "Sony SubIFD");
+pub const SUBIFD: Tag<TypeIfd> = Tag::new(TagId::SubIfd, "SubIFD");
 pub const JPEG_OFFSET: Tag<TypeLong> = Tag::new(TagId::JpegOffset, "Jpeg Offset");
 pub const JPEG_LENGTH: Tag<TypeLong> = Tag::new(TagId::JpegLength, "Jpeg Length");
 pub const CFA_PATTERN_DIM: Tag<ConstArray<TypeShort, 2>> = Tag::new(TagId::CfaPatternDim, "CFA Pattern Dimension");

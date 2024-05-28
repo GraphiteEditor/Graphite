@@ -2,7 +2,7 @@ use std::io::{Read, Seek};
 
 use super::file::TiffRead;
 use super::values::Rational;
-use super::{IfdTagType, TiffError};
+use super::{Ifd, IfdTagType, TiffError};
 
 pub struct TypeAscii;
 pub struct TypeByte;
@@ -19,6 +19,7 @@ pub struct TypeUndefined;
 
 pub struct TypeNumber;
 pub struct TypeSNumber;
+pub struct TypeIfd;
 
 pub trait PrimitiveType {
 	type Output;
@@ -257,6 +258,22 @@ impl PrimitiveType for TypeSNumber {
 			IfdTagType::SLong => TypeSLong::read_primitive(type_, file)?,
 			_ => unreachable!(),
 		})
+	}
+}
+
+impl PrimitiveType for TypeIfd {
+	type Output = Ifd;
+
+	fn get_size(type_: IfdTagType) -> Option<u32> {
+		match type_ {
+			IfdTagType::Long => Some(4),
+			_ => None,
+		}
+	}
+
+	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let offset = TypeLong::read_primitive(type_, file)?;
+		Ok(Ifd::new_from_offset(file, offset)?)
 	}
 }
 

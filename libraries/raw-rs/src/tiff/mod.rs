@@ -23,7 +23,7 @@ pub enum TagId {
 	SamplesPerPixel = 0x115,
 	RowsPerStrip = 0x116,
 	StripByteCounts = 0x117,
-	SonySubIfd = 0x14a,
+	SubIfd = 0x14a,
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
 	CfaPatternDim = 0x828d,
@@ -62,7 +62,7 @@ pub struct IfdEntry {
 pub struct Ifd {
 	current_ifd_offset: u32,
 	ifd_entries: Vec<IfdEntry>,
-	next_ifd_offset: u32,
+	next_ifd_offset: Option<u32>,
 }
 
 impl Ifd {
@@ -91,6 +91,7 @@ impl Ifd {
 		}
 
 		let next_ifd_offset = file.read_u32()?;
+		let next_ifd_offset = if next_ifd_offset == 0 { Some(next_ifd_offset) } else { None };
 
 		Ok(Ifd {
 			current_ifd_offset: offset,
@@ -100,7 +101,7 @@ impl Ifd {
 	}
 
 	fn next_ifd<R: Read + Seek>(&self, file: &mut TiffRead<R>) -> std::io::Result<Self> {
-		Ifd::new_from_offset(file, self.next_ifd_offset)
+		Ifd::new_from_offset(file, self.next_ifd_offset.unwrap_or(0))
 	}
 
 	pub fn ifd_entries(&self) -> &[IfdEntry] {
