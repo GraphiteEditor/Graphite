@@ -48,9 +48,11 @@
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
 	// Gradient color stops
-	let gradient: Gradient | undefined = colorOrGradient instanceof Color ? undefined : colorOrGradient;
+	$: gradient = colorOrGradient instanceof Color ? undefined : colorOrGradient;
+	let activeIndex = 0;
+	$: selectedGradientColour = gradient?.atIndex(activeIndex)?.color || (Color.fromCSS("black") as Color);
 	// Currently viewed color
-	let color: Color = colorOrGradient instanceof Color ? colorOrGradient : colorOrGradient.firstColor() || (Color.fromCSS("black") as Color);
+	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColour;
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
@@ -286,6 +288,7 @@
 	}
 
 	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number>) {
+		activeIndex = index;
 		const color = gradient?.colorAtIndex(index);
 		const hsva = color?.toHSVA();
 		if (!color || !hsva) return;
@@ -344,6 +347,7 @@
 							}
 						}}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
+						activeMarkerIndex={activeIndex}
 						bind:this={gradientSpectrumInputWidget}
 					/>
 					{#if gradientSpectrumInputWidget}

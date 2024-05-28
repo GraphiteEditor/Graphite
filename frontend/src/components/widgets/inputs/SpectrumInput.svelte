@@ -10,7 +10,7 @@
 
 	export let gradient: Gradient;
 
-	let activeMarkerIndex = 0;
+	export let activeMarkerIndex = 0;
 
 	let markerTrack: LayoutRow | undefined;
 
@@ -23,14 +23,14 @@
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		activeMarkerIndex = index;
-		dispatch("activeMarkerIndexChange", activeMarkerIndex);
+		dispatch("activeMarkerIndexChange", index);
 
 		addEvents();
 
-		onPointerMove(e);
+		moveMarker(e, index);
 	}
 
-	function onPointerMove(e: PointerEvent) {
+	function moveMarker(e: PointerEvent, index: number) {
 		// Just in case the mouseup event is lost
 		if (e.buttons === 0) removeEvents();
 
@@ -38,11 +38,18 @@
 		if (!markerTrackRect) return;
 		const ratio = (e.clientX - markerTrackRect.left) / markerTrackRect.width;
 
-		const active = gradient.stops[activeMarkerIndex];
+		const active = gradient.stops[index];
 		active.position = Math.max(0, Math.min(1, ratio));
 		gradient.stops.sort((a, b) => a.position - b.position);
-		activeMarkerIndex = gradient.stops.indexOf(active);
+		if (gradient.stops.indexOf(active) !== activeMarkerIndex) {
+			activeMarkerIndex = gradient.stops.indexOf(active);
+			dispatch("activeMarkerIndexChange", gradient.stops.indexOf(active));
+		}
 		dispatch("gradient", gradient);
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		moveMarker(e, activeMarkerIndex);
 	}
 
 	function onPointerUp() {
