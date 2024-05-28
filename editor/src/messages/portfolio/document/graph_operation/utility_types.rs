@@ -1,3 +1,5 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
@@ -5,7 +7,7 @@ use crate::messages::prelude::*;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -17,6 +19,7 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2};
 use graphene_std::ArtboardGroup;
+use interpreted_executor::node_registry::NODE_REGISTRY;
 
 use super::transform_utils::{self, LayerBounds};
 
@@ -959,7 +962,62 @@ impl<'a> ModifyInputsContext<'a> {
 				TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY)
 			}
 		} else {
-			TaggedValue::None
+			// TODO: Once there is type inference (#1621), replace this workaround approach when disconnecting node inputs with NodeInput::Node(ToDefaultNode),
+			// TODO: which would be a new node that implements the Default trait (i.e. `Default::default()`)
+
+			// Resolve TaggedValue from Types defined for each proto node in node_registry
+			let Some(node) = network.nodes.get(&node_id) else {
+				return TaggedValue::None;
+			};
+
+			fn get_type_from_node(node: &DocumentNode, input_index: usize) -> TaggedValue {
+				match &node.implementation {
+					DocumentNodeImplementation::ProtoNode(protonode) => {
+						let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
+							log::error!("Could not get hashmap for proto node: {protonode:?}");
+							return TaggedValue::None;
+						};
+
+						let mut all_node_io_types = node_io_hashmap.keys().collect::<Vec<_>>();
+						all_node_io_types.sort_by_key(|node_io_types| {
+							let mut hasher = DefaultHasher::new();
+							node_io_types.hash(&mut hasher);
+							hasher.finish()
+						});
+						let Some(node_types) = all_node_io_types.first() else {
+							log::error!("Could not get node_types from hashmap");
+							return TaggedValue::None;
+						};
+
+						let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
+
+						let Some(input_type) = std::iter::once(node_types.input.clone())
+							.chain(node_types.parameters.clone().into_iter())
+							.nth(input_index + skip_footprint)
+						else {
+							log::error!("Could not get type");
+							return TaggedValue::None;
+						};
+
+						TaggedValue::try_from_type(&input_type)
+					}
+					DocumentNodeImplementation::Network(network) => {
+						for node in &network.nodes {
+							for (network_node_input_index, input) in node.1.inputs.iter().enumerate() {
+								if let NodeInput::Network { import_index, .. } = input {
+									if *import_index == input_index {
+										return get_type_from_node(&node.1, network_node_input_index);
+									}
+								}
+							}
+						}
+						log::error!("Could not get tagged value from internal network");
+						TaggedValue::None
+					}
+					_ => TaggedValue::None,
+				}
+			}
+			get_type_from_node(node, input_index)
 		}
 	}
 }
