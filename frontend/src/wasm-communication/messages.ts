@@ -225,11 +225,17 @@ export class Gradient {
 	}
 
 	toLinearGradientCSS(): string {
+		if (this.stops.length === 1) {
+			return `linear-gradient(to right, ${this.stops[0].color.toHexOptionalAlpha()} 0%, ${this.stops[0].color.toHexOptionalAlpha()} 100%)`;
+		}
 		const pieces = this.stops.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
 		return `linear-gradient(to right, ${pieces.join(", ")})`;
 	}
 
 	toLinearGradientCSSNoAlpha(): string {
+		if (this.stops.length === 1) {
+			return `linear-gradient(to right, ${this.stops[0].color.toHexNoAlpha()} 0%, ${this.stops[0].color.toHexNoAlpha()} 100%)`;
+		}
 		const pieces = this.stops.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
 		return `linear-gradient(to right, ${pieces.join(", ")})`;
 	}
@@ -354,6 +360,10 @@ export class Color {
 	equals(other: Color): boolean {
 		if (this.none && other.none) return true;
 		return Math.abs(this.red - other.red) < 1e-6 && Math.abs(this.green - other.green) < 1e-6 && Math.abs(this.blue - other.blue) < 1e-6 && Math.abs(this.alpha - other.alpha) < 1e-6;
+	}
+
+	lerp(other: Color, t: number): Color {
+		return new Color(this.red * (1 - t) + other.red * t, this.green * (1 - t) + other.green * t, this.blue * (1 - t) + other.blue * t, this.alpha * (1 - t) + other.alpha * t);
 	}
 
 	toHexNoAlpha(): string | undefined {

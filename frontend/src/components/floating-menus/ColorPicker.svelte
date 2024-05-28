@@ -49,8 +49,8 @@
 
 	// Gradient color stops
 	$: gradient = colorOrGradient instanceof Color ? undefined : colorOrGradient;
-	let activeIndex = 0;
-	$: selectedGradientColour = gradient?.atIndex(activeIndex)?.color || (Color.fromCSS("black") as Color);
+	let activeIndex = 0 as number | undefined;
+	$: selectedGradientColour = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
 	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColour;
 	// New color components
@@ -175,7 +175,7 @@
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
-		const stop = gradientSpectrumInputWidget && gradient?.atIndex(gradientSpectrumInputWidget.activeIndex());
+		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
 		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
 			stop.color = colorToEmit;
 			gradient = gradient;
@@ -287,9 +287,9 @@
 		}
 	}
 
-	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number>) {
+	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number | undefined>) {
 		activeIndex = index;
-		const color = gradient?.colorAtIndex(index);
+		const color = index === undefined ? undefined : gradient?.colorAtIndex(index);
 		const hsva = color?.toHSVA();
 		if (!color || !hsva) return;
 
@@ -350,12 +350,11 @@
 						activeMarkerIndex={activeIndex}
 						bind:this={gradientSpectrumInputWidget}
 					/>
-					{#if gradientSpectrumInputWidget}
+					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
 						<NumberInput
-							value={(gradient.positionAtIndex(gradientSpectrumInputWidget.activeIndex()) || 0) * 100}
+							value={(gradient.positionAtIndex(activeIndex) || 0) * 100}
 							on:value={({ detail }) => {
-								const stop = gradientSpectrumInputWidget && gradient?.atIndex(gradientSpectrumInputWidget.activeIndex());
-								if (stop && detail !== undefined) stop.position = detail / 100;
+								if (gradientSpectrumInputWidget && activeIndex !== undefined && detail !== undefined) gradientSpectrumInputWidget.setPosition(activeIndex, detail / 100);
 							}}
 							displayDecimalPlaces={0}
 							min={0}
