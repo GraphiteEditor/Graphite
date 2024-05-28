@@ -307,7 +307,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::new(
-				document_before_copy.network.root_node.expect("Root node should exist in copy_paste_single_layer").id,
+				document_before_copy.network.previous_root_node.expect("Root node should exist in copy_paste_single_layer").id,
 				&document_before_copy.network,
 			),
 			insert_index: -1,
@@ -344,7 +344,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::new(
-				document_before_copy.network.root_node.expect("Root node should exist in copy_paste_single_layer_from_middle").id,
+				document_before_copy.network.previous_root_node.expect("Root node should exist in copy_paste_single_layer_from_middle").id,
 				&document_before_copy.network,
 			),
 			insert_index: -1,
@@ -391,7 +391,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::new(
-				document_before_copy.network.root_node.expect("Root node should exist in copy_paste_deleted_layers").id,
+				document_before_copy.network.previous_root_node.expect("Root node should exist in copy_paste_deleted_layers").id,
 				&document_before_copy.network,
 			),
 			insert_index: -1,
@@ -399,7 +399,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
 			parent: LayerNodeIdentifier::new(
-				document_before_copy.network.root_node.expect("Root node should exist in copy_paste_deleted_layers").id,
+				document_before_copy.network.previous_root_node.expect("Root node should exist in copy_paste_deleted_layers").id,
 				&document_before_copy.network,
 			),
 			insert_index: -1,

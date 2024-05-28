@@ -553,8 +553,9 @@ pub struct NodeNetwork {
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// If the root node is none, then exports must be disconnected
-	pub root_node: Option<RootNode>,
+	/// Used to save the root node while previewing. Should never be the same as the primary export. If the root node is none, then exports must be disconnected,
+	/// or the primary export is the root node.
+	pub previous_root_node: Option<RootNode>,
 	/// Temporary fields to store metadata for import/export UI only nodes, eventually will be replaced with lines leading to edges
 	pub imports_metadata: (NodeId, IVec2),
 	pub exports_metadata: (NodeId, IVec2),
@@ -569,7 +570,7 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.root_node.hash(state);
+		self.previous_root_node.hash(state);
 	}
 }
 impl Default for NodeNetwork {
@@ -577,7 +578,7 @@ impl Default for NodeNetwork {
 		NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
-			root_node: Default::default(),
+			previous_root_node: Default::default(),
 			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-25, -4))),
 			exports_metadata: (NodeId(generate_uuid()), IVec2::new(8, -4)),
 		}
@@ -591,18 +592,47 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
-	// Unused
-	pub fn input_types(&self) -> impl Iterator<Item = Type> + '_ {
-		// self.imports.iter().map(move |id| self.nodes[id].inputs.get(0).map(|i| i.ty()).unwrap_or(concrete!(())))
-		// New implementation would iterate through all nodes, and get type for all NodeInput::Network inputs
-		std::iter::empty()
+	/// Returns the root node of the network, or None if no nodes are connected to the output
+	pub fn get_root_node(&self) -> Option<RootNode> {
+		self.previous_root_node.or_else(|| {
+			self.exports.get(0).and_then(|primary_input| {
+				if let NodeInput::Node { node_id, output_index, .. } = primary_input {
+					Some(RootNode {
+						id: *node_id,
+						output_index: *output_index,
+					})
+				} else {
+					None
+				}
+			})
+		})
+	}
+
+	/// Sets the root node only if a node is being previewed
+	pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
+		if self.previous_root_node.is_some() {
+			if let NodeInput::Node { node_id: preview_node_id, .. } = self.exports.get(0).expect("Primary export should exist") {
+				//Only continue previewing if the new root node is not the same as the primary export, in which case the preview ends
+				if *preview_node_id != node_id {
+					self.previous_root_node = Some(RootNode { id: node_id, output_index });
+				} else {
+					self.previous_root_node = None;
+				}
+			} else {
+				log::error!("Cannot set root node when there are no nodes connected to primary export");
+			}
+		}
+	}
+
+	/// Sets the root node to None, in the case that the primary export is disconnected
+	pub fn reset_root_node(&mut self) {
+		self.previous_root_node = None;
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(NodeId(0), node)].into_iter().collect(),
-			root_node: None,
 			..Default::default()
 		}
 	}
@@ -632,7 +662,7 @@ impl NodeNetwork {
 		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {
-			if let Some(pos) = self.root_node.and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
+			if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
 				node.metadata.position = pos + IVec2::new(8, 0);
 			}
 		}
@@ -807,7 +837,7 @@ impl<'a> Iterator for FlowIter<'a> {
 			let mut node_id = self.stack.pop()?;
 
 			if node_id == NodeId(0) {
-				if let Some(root_node) = self.network.root_node {
+				if let Some(root_node) = self.network.get_root_node() {
 					node_id = root_node.id
 				} else {
 					return None;
@@ -838,7 +868,7 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		if let Some(root_node) = self.root_node.as_mut() {
+		if let Some(root_node) = self.previous_root_node.as_mut() {
 			root_node.id = f(root_node.id);
 		}
 		let nodes = std::mem::take(&mut self.nodes);

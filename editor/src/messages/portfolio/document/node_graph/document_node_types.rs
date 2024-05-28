@@ -243,7 +243,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					),
 				]
 				.into(),
-				root_node: Some(RootNode { id: NodeId(3), output_index: 0 }),
 				imports_metadata: (NodeId(generate_uuid()), (-26, -4).into()),
 				exports_metadata: (NodeId(generate_uuid()), (8, -4).into()),
 				..Default::default()
@@ -308,7 +307,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				.into(),
 				imports_metadata: (NodeId(generate_uuid()), (-21, -5).into()),
 				exports_metadata: (NodeId(generate_uuid()), (14, -5).into()),
-				root_node: Some(RootNode { id: NodeId(2), output_index: 0 }),
 				..Default::default()
 			}),
 			inputs: vec![

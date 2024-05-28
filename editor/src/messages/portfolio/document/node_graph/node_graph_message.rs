@@ -72,9 +72,6 @@ pub enum NodeGraphMessage {
 		serialized_nodes: String,
 	},
 	PrintSelectedNodeCoordinates,
-	SetRootNode {
-		root_node: Option<graph_craft::document::RootNode>,
-	},
 	RunDocumentGraph,
 	SelectedNodesAdd {
 		nodes: Vec<NodeId>,

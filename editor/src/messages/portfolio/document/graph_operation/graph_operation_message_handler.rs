@@ -41,7 +41,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		match message {
 			GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index } => {
 				let shift = document_network
-					.root_node
+					.get_root_node()
 					.and_then(|root_node| {
 						nodes.get(&root_node.id).and_then(|node| {
 							if parent == LayerNodeIdentifier::ROOT_PARENT {
@@ -95,7 +95,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						input: NodeInput::node(*new_layer_id, 0),
 					})
 				} else {
-					document_network.root_node = Some(graph_craft::document::RootNode { id: *new_layer_id, output_index: 0 });
 					if let Some(primary_export) = document_network.exports.get_mut(0) {
 						*primary_export = NodeInput::node(*new_layer_id, 0)
 					}
@@ -134,15 +133,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			// Make sure to also update NodeGraphMessage::DisconnectInput when changing this
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
-				let Some(existing_input) = document_network.nodes.get(&node_id).map_or_else(
-					|| {
-						if input_index == 0 {
-							responses.add(NodeGraphMessage::SetRootNode { root_node: None })
-						};
-						document_network.exports.get(input_index)
-					},
-					|node| node.inputs.get(input_index),
-				) else {
+				let Some(existing_input) = document_network
+					.nodes
+					.get(&node_id)
+					.map_or_else(|| document_network.exports.get(input_index), |node| node.inputs.get(input_index))
+				else {
 					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
 					return;
 				};

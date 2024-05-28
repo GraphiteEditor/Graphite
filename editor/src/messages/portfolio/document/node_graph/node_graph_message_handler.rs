@@ -124,11 +124,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					// Connecting a document node output to the Export node input
 					(Some(output_node_id), None) => {
-						let root_node = Some(RootNode {
-							id: output_node_id,
-							output_index: output_node_connector_index,
-						});
-						responses.add(NodeGraphMessage::SetRootNode { root_node });
 						let input = NodeInput::node(output_node_id, output_node_connector_index);
 						responses.add(NodeGraphMessage::SetNodeInput {
 							node_id: network.exports_metadata.0,
@@ -235,15 +230,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let Some(existing_input) = network.nodes.get(&node_id).map_or_else(
-					|| {
-						if input_index == 0 {
-							responses.add(NodeGraphMessage::SetRootNode { root_node: None })
-						};
-						network.exports.get(input_index)
-					},
-					|node| node.inputs.get(input_index),
-				) else {
+				let Some(existing_input) = network.nodes.get(&node_id).map_or_else(|| network.exports.get(input_index), |node| node.inputs.get(input_index)) else {
 					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
 					return;
 				};
@@ -399,14 +386,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					input: post_input,
 				});
 
-				if post_node_id == network.exports_metadata.0 {
-					responses.add(NodeGraphMessage::SetRootNode {
-						root_node: Some(RootNode {
-							id: insert_node_id,
-							output_index: insert_node_output_index,
-						}),
-					})
-				}
 				let insert_input = if pre_node_id == network.imports_metadata.0 {
 					NodeInput::network(generic!(T), pre_node_output_index)
 				} else {
@@ -532,13 +511,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						log::debug!("{output}");
 					}
 				}
-			}
-			NodeGraphMessage::SetRootNode { root_node } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
-					warn!("No network");
-					return;
-				};
-				network.root_node = root_node;
 			}
 			NodeGraphMessage::RunDocumentGraph => {
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id });
@@ -804,21 +776,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				if let Some(export) = network.exports.get_mut(0) {
-					if let NodeInput::Node { node_id, .. } = export {
+					if let NodeInput::Node { node_id, output_index, .. } = export {
+						let previous_export_id = *node_id;
+						let previous_output_index = *output_index;
 						// End preview, set export back to root node
 						if *node_id == toggle_id {
-							if let Some(root_node) = network.root_node {
+							if let Some(root_node) = network.previous_root_node {
 								*export = NodeInput::node(root_node.id, 0);
-							} else {
-								responses.add(NodeGraphMessage::DisconnectInput {
-									node_id: network.exports_metadata.0,
-									input_index: 0,
-								})
+								network.reset_root_node();
 							}
 						} else {
 							*export = NodeInput::node(toggle_id, 0);
+							if let Some(previous_root_node) = network.previous_root_node {
+								if previous_root_node.id == toggle_id {
+									network.reset_root_node();
+								}
+							} else {
+								network.previous_root_node = Some(RootNode {
+									id: previous_export_id,
+									output_index: previous_output_index,
+								});
+							}
 						}
 					} else {
+						// Set node as export, and don't update root node since it is the new root node
 						*export = NodeInput::node(toggle_id, 0);
 					}
 				}
@@ -930,8 +911,8 @@ impl NodeGraphMessageHandler {
 			if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
-				// Prevent showing "End Preview if the root node is the output"
-				if !(is_output && network.root_node.is_some_and(|root_node| root_node.id == node_id)) && network == current_network {
+				// Prevent showing "End Preview"/"Preview" if the root node is the output
+				if !(is_output && network.get_root_node().is_some_and(|root_node| root_node.id == node_id)) && network == current_network {
 					let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
 						.icon(Some("Rescale".to_string()))
 						.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
@@ -1038,7 +1019,7 @@ impl NodeGraphMessageHandler {
 			.collect::<Vec<_>>();
 
 		// Connect primary export to root node, since previewing a node will change the primary export
-		if let Some(root_node) = network.root_node {
+		if let Some(root_node) = network.get_root_node() {
 			links.push(FrontendNodeLink {
 				link_start: root_node.id,
 				link_start_output_index: root_node.output_index,
@@ -1050,7 +1031,7 @@ impl NodeGraphMessageHandler {
 		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
 		for (i, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let dashed = network.root_node.is_some_and(|root_node| root_node.id != *node_id) && i == 0;
+				let dashed = network.get_root_node().is_some_and(|root_node| root_node.id != *node_id) && i == 0;
 				if dashed || i != 0 {
 					links.push(FrontendNodeLink {
 						link_start: *node_id,
@@ -1166,7 +1147,7 @@ impl NodeGraphMessageHandler {
 				});
 			}
 			let is_export = network.exports.get(0).is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network.root_node.is_some_and(|root_node| root_node.id == node_id);
+			let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
 			let previewed = is_export && !is_root_node;
 
 			nodes.push(FrontendNode {
@@ -1212,7 +1193,7 @@ impl NodeGraphMessageHandler {
 
 			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
 			let connected = if index == 0 {
-				network.root_node.map(|root_node| root_node.id)
+				network.get_root_node().map(|root_node| root_node.id)
 			} else {
 				if let NodeInput::Node { node_id, .. } = export {
 					Some(*node_id)

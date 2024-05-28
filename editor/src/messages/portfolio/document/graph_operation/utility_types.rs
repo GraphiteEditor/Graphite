@@ -5,7 +5,7 @@ use crate::messages::prelude::*;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork, RootNode};
+use graph_craft::document::{generate_uuid, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -132,22 +132,17 @@ impl<'a> ModifyInputsContext<'a> {
 	// Inserts a node as an export. If there is already a root node connected to the export, that node will be connected to the new node at node_input_index
 	pub fn insert_node_as_primary_export(&mut self, id: NodeId, mut new_node: DocumentNode, node_input_index: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
+		if let Some(root_node) = self.document_network.get_root_node() {
+			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
+		}
 		let Some(export) = self.document_network.exports.get_mut(0) else {
 			log::error!("Could not get primary export when adding node");
 			return None;
 		};
 		*export = NodeInput::node(id, 0);
 
-		if let Some(root_node) = self.document_network.root_node {
-			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, 0);
-		}
-
 		self.document_network.nodes.insert(id, new_node);
-		if let Some(root_node) = self.document_network.root_node.as_mut() {
-			root_node.id = id;
-		} else {
-			self.document_network.root_node = Some(RootNode { id, output_index: 0 });
-		}
+		self.document_network.update_root_node(id, 0);
 
 		ModifyInputsContext::shift_upstream(self.document_network, id, IVec2::new(-8, 3), false);
 
@@ -168,7 +163,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let post_node_information = if parent != LayerNodeIdentifier::ROOT_PARENT {
 			Some((parent.to_node(), 1))
 		} else {
-			network.root_node.map(|root_node| (root_node.id, 0))
+			network.get_root_node().map(|root_node| (root_node.id, 0))
 		};
 
 		let Some((mut post_node_id, mut post_node_input_index)) = post_node_information else {
@@ -264,7 +259,6 @@ impl<'a> ModifyInputsContext<'a> {
 			if let Some(export) = self.document_network.exports.get_mut(0) {
 				*export = NodeInput::node(new_id, 0);
 			}
-			self.document_network.root_node = Some(RootNode { id: new_id, output_index: 0 });
 		}
 
 		Some(new_id)
@@ -291,12 +285,12 @@ impl<'a> ModifyInputsContext<'a> {
 		//If the root node either doesn't exist or is a non artboard node, connect new artboard directly to export
 		if self
 			.document_network
-			.root_node
+			.get_root_node()
 			.map_or(true, |root_node| self.document_network.nodes.get(&root_node.id).map_or(false, |node| !node.is_artboard()))
 		{
 			self.insert_node_as_primary_export(new_id, artboard_node, 0)
 		} else {
-			let root_node = self.document_network.root_node.unwrap();
+			let root_node = self.document_network.get_root_node().unwrap();
 			// Get node that feeds into the root node. If it exists, connect the new artboard node in between.
 			let output_node_primary_input = self.document_network.nodes.get(&root_node.id)?.inputs.get(0);
 			let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
@@ -537,6 +531,16 @@ impl<'a> ModifyInputsContext<'a> {
 				return false;
 			};
 			*export = input;
+			if let NodeInput::Node { node_id, output_index, .. } = *export {
+				network.update_root_node(node_id, output_index);
+			} else if let NodeInput::Value { .. } = *export {
+				if input_index == 0 {
+					network.reset_root_node();
+				}
+			} else {
+				log::error!("Network export input not supported");
+			}
+
 			//Only load network structure for changes to document_network
 			load_network_structure = is_document_network;
 		}
@@ -761,7 +765,7 @@ impl<'a> ModifyInputsContext<'a> {
 				while let Some(current_node) = stack.pop() {
 					if let Some(downstream_nodes) = outward_links.get(&current_node) {
 						for downstream_node in downstream_nodes {
-							if network.root_node.expect("Root node should always exist if a node is being deleted").id == *downstream_node {
+							if network.get_root_node().is_some_and(|root_node| root_node.id == *downstream_node) {
 								can_delete = false;
 							} else if !delete_nodes.contains(downstream_node) {
 								stack.push(*downstream_node);
@@ -817,9 +821,6 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		network.nodes.remove(&node_id);
-		if network.root_node.is_some_and(|root_node| root_node.id == node_id) {
-			network.root_node = None;
-		}
 		selected_nodes.retain_selected_nodes(|&id| id != node_id);
 		responses.add(BroadcastEvent::SelectionChanged);
 		true
@@ -849,6 +850,8 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut nodes_to_set_input = Vec::new();
+		let root_node_input = network.get_root_node().map(|root_node| NodeInput::node(root_node.id, root_node.output_index));
+
 		for (node_id, input_index, input) in network
 			.nodes
 			.iter()
@@ -856,12 +859,26 @@ impl<'a> ModifyInputsContext<'a> {
 				if *node_id == deleting_node_id {
 					None
 				} else {
-					Some(node.inputs.iter().enumerate().map(|(index, input)| (*node_id, index, input)))
+					Some(node.inputs.iter().enumerate().map(|(index, input)| (*node_id, index, Some(input))))
 				}
 			})
 			.flatten()
-			.chain(network.exports.iter().enumerate().map(|(index, input)| (network.exports_metadata.0, index, input)))
-		{
+			.chain(network.exports.iter().enumerate().map(|(index, input)| {
+				//Use root node (solid line) instead of export node (previewed node) for first export
+				if index == 0 {
+					if network.get_root_node().is_some() {
+						(network.exports_metadata.0, index, None)
+					} else {
+						//Primary input is disconnected
+						(network.exports_metadata.0, index, Some(input))
+					}
+				} else {
+					(network.exports_metadata.0, index, Some(input))
+				}
+			})) {
+			//If input is None, then network.get_root_node() must be Some
+			let input = input.or_else(|| root_node_input.as_ref()).unwrap();
+
 			let NodeInput::Node {
 				node_id: upstream_node_id,
 				output_index,
@@ -896,24 +913,10 @@ impl<'a> ModifyInputsContext<'a> {
 		for (node_id, input_index, value_input) in nodes_to_set_input {
 			if let Some(value_input) = value_input {
 				ModifyInputsContext::set_input(network, node_id, input_index, value_input, is_document_network);
-				if network.root_node.is_some_and(|root_node| root_node.id == deleting_node_id) {
-					//Update the root node to be None
-					network.root_node = None;
-				}
 			}
 			// Reconnect to node upstream of the deleted node
 			else {
 				ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input.clone().unwrap(), is_document_network);
-
-				if network.root_node.is_some_and(|root_node| root_node.id == deleting_node_id) {
-					// Update the root node to be the reconnected node
-					if let NodeInput::Node { node_id, output_index, .. } = reconnect_to_input.as_ref().unwrap() {
-						network.root_node = Some(RootNode {
-							id: *node_id,
-							output_index: *output_index,
-						});
-					}
-				}
 			}
 		}
 		true
