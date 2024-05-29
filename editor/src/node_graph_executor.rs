@@ -469,6 +469,7 @@ impl NodeGraphExecutor {
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_core::application_io::ExportFormat::Svg,
+			animation_config: Default::default(),
 			view_mode: document.view_mode,
 			hide_artboards: false,
 			for_export: false,
@@ -503,6 +504,7 @@ impl NodeGraphExecutor {
 				..Default::default()
 			},
 			export_format: graphene_core::application_io::ExportFormat::Svg,
+			animation_config: Default::default(),
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
@@ -519,7 +521,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) = node_graph_output else {
-			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
+			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
 		let ExportConfig {

@@ -148,9 +148,24 @@ pub enum ExportFormat {
 	Canvas,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnimationConfig {
+	/// Frames per second of the animation
+	pub frame_rate: f64,
+	/// Time at which the render is done (with respect to animation channels)
+	pub time: f64,
+}
+
+impl Default for AnimationConfig {
+	fn default() -> Self {
+		Self { frame_rate: 30.0, time: 0.0 }
+	}
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
+	pub animation_config: AnimationConfig,
 	pub export_format: ExportFormat,
 	pub view_mode: ViewMode,
 	pub hide_artboards: bool,
