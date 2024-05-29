@@ -7,6 +7,7 @@ use crate::messages::prelude::*;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::Previewing;
 use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
@@ -145,7 +146,6 @@ impl<'a> ModifyInputsContext<'a> {
 		*export = NodeInput::node(id, 0);
 
 		self.document_network.nodes.insert(id, new_node);
-		self.document_network.update_root_node(id, 0);
 
 		ModifyInputsContext::shift_upstream(self.document_network, id, IVec2::new(-8, 3), false);
 
@@ -538,7 +538,7 @@ impl<'a> ModifyInputsContext<'a> {
 				network.update_root_node(node_id, output_index);
 			} else if let NodeInput::Value { .. } = *export {
 				if input_index == 0 {
-					network.reset_root_node();
+					network.stop_preview();
 				}
 			} else {
 				log::error!("Network export input not supported");
@@ -818,8 +818,7 @@ impl<'a> ModifyInputsContext<'a> {
 			log::error!("could not remove_references_from_network");
 			return false;
 		}
-		let selected_nodes_iter = selected_nodes.selected_nodes_ref().iter();
-		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes_iter) else {
+		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return false;
 		};
 
@@ -862,26 +861,12 @@ impl<'a> ModifyInputsContext<'a> {
 				if *node_id == deleting_node_id {
 					None
 				} else {
-					Some(node.inputs.iter().enumerate().map(|(index, input)| (*node_id, index, Some(input))))
+					Some(node.inputs.iter().enumerate().map(|(index, input)| (*node_id, index, input)))
 				}
 			})
 			.flatten()
-			.chain(network.exports.iter().enumerate().map(|(index, input)| {
-				//Use root node (solid line) instead of export node (previewed node) for first export
-				if index == 0 {
-					if network.get_root_node().is_some() {
-						(network.exports_metadata.0, index, None)
-					} else {
-						//Primary input is disconnected
-						(network.exports_metadata.0, index, Some(input))
-					}
-				} else {
-					(network.exports_metadata.0, index, Some(input))
-				}
-			})) {
-			//If input is None, then network.get_root_node() must be Some
-			let input = input.or_else(|| root_node_input.as_ref()).unwrap();
-
+			.chain(network.exports.iter().enumerate().map(|(index, input)| (network.exports_metadata.0, index, input)))
+		{
 			let NodeInput::Node {
 				node_id: upstream_node_id,
 				output_index,
@@ -912,14 +897,42 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return false;
 		};
+
+		if let Previewing::Yes { root_node_to_restore } = network.previewing {
+			if let Some(root_node_to_restore) = root_node_to_restore {
+				if root_node_to_restore.id == deleting_node_id {
+					network.start_previewing_without_restore();
+				}
+			}
+		}
+
 		let is_document_network = network_path.is_empty();
 		for (node_id, input_index, value_input) in nodes_to_set_input {
 			if let Some(value_input) = value_input {
-				ModifyInputsContext::set_input(network, node_id, input_index, value_input, is_document_network);
+				//Disconnect input to root node only if not previewing
+				if node_id != network.exports_metadata.0 || matches!(&network.previewing, Previewing::No) {
+					ModifyInputsContext::set_input(network, node_id, input_index, value_input, is_document_network);
+				} else if let Previewing::Yes { root_node_to_restore } = network.previewing {
+					if let Some(root_node) = root_node_to_restore {
+						if node_id == root_node.id {
+							network.start_previewing_without_restore();
+						} else {
+							ModifyInputsContext::set_input(network, node_id, input_index, NodeInput::node(root_node.id, root_node.output_index), is_document_network);
+						}
+					} else {
+						ModifyInputsContext::set_input(network, node_id, input_index, value_input, is_document_network);
+					}
+				}
 			}
 			// Reconnect to node upstream of the deleted node
-			else {
+			else if node_id != network.exports_metadata.0 || matches!(network.previewing, Previewing::No) {
 				ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input.clone().unwrap(), is_document_network);
+			}
+			// Reconnect previous root node to the export, or disconnect export
+			else if let Previewing::Yes { root_node_to_restore } = network.previewing {
+				if let Some(root_node) = root_node_to_restore {
+					ModifyInputsContext::set_input(network, node_id, input_index, NodeInput::node(root_node.id, root_node.output_index), is_document_network);
+				}
 			}
 		}
 		true

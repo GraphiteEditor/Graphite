@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::Previewing;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
@@ -148,7 +149,18 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = existing_input.is_exposed();
 				}
-				responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
+				if node_id == document_network.exports_metadata.0 {
+					// Since it is only possible to drag the solid line, there must be a root_node_to_restore
+					if let Previewing::Yes { .. } = document_network.previewing {
+						responses.add(GraphOperationMessage::StartPreviewingWithoutRestore { node_id });
+					}
+					// If there is no preview, then disconnect
+					else {
+						responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
+					}
+				} else {
+					responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
+				}
 				if document_network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
@@ -739,6 +751,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				document_metadata.load_structure(document_network);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			GraphOperationMessage::StartPreviewingWithoutRestore { node_id } => {
+				document_network.start_previewing_without_restore();
 			}
 			GraphOperationMessage::ToggleSelectedLocked => {
 				responses.add(DocumentMessage::StartTransaction);

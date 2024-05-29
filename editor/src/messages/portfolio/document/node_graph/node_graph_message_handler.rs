@@ -1,4 +1,4 @@
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, RootNode, Source};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, RootNode, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -241,7 +241,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = existing_input.is_exposed();
 				}
-				responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+				if node_id == network.exports_metadata.0 {
+					// Since it is only possible to drag the solid line, there must be a root_node_to_restore
+					if let Previewing::Yes { .. } = network.previewing {
+						responses.add(NodeGraphMessage::StartPreviewingWithoutRestore { node_id });
+					}
+					// If there is no preview, then disconnect
+					else {
+						responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+					}
+				} else {
+					responses.add(NodeGraphMessage::SetNodeInput { node_id, input_index, input });
+				}
 				if network.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
@@ -758,6 +769,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 				}
 			}
+			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {
+				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
+					return;
+				};
+				network.start_previewing_without_restore();
+			}
 			NodeGraphMessage::TogglePreview { node_id } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
@@ -776,31 +793,53 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				if let Some(export) = network.exports.get_mut(0) {
+					// If there currently an export
 					if let NodeInput::Node { node_id, output_index, .. } = export {
 						let previous_export_id = *node_id;
 						let previous_output_index = *output_index;
-						// End preview, set export back to root node
+						// The export is clicked
 						if *node_id == toggle_id {
-							if let Some(root_node) = network.previous_root_node {
-								*export = NodeInput::node(root_node.id, 0);
-								network.reset_root_node();
-							}
-						} else {
-							*export = NodeInput::node(toggle_id, 0);
-							if let Some(previous_root_node) = network.previous_root_node {
-								if previous_root_node.id == toggle_id {
-									network.reset_root_node();
+							// If the current export is clicked and is being previewed end the preview and set either export back to root node or disconnect
+							if let Previewing::Yes { root_node_to_restore } = network.previewing {
+								if let Some(root_node_to_restore) = root_node_to_restore {
+									*export = NodeInput::node(root_node_to_restore.id, root_node_to_restore.output_index);
+								} else {
+									responses.add(NodeGraphMessage::DisconnectInput {
+										node_id: network.exports_metadata.0,
+										input_index: 0,
+									});
 								}
-							} else {
-								network.previous_root_node = Some(RootNode {
-									id: previous_export_id,
-									output_index: previous_output_index,
-								});
+								network.stop_preview();
 							}
 						}
-					} else {
-						// Set node as export, and don't update root node since it is the new root node
+						// The export is not clicked
+						else {
+							*export = NodeInput::node(toggle_id, 0);
+							// There is currently a dashed line being drawn to the export node
+							if let Previewing::Yes { root_node_to_restore } = network.previewing {
+								// There is also a solid line being drawn
+								if let Some(root_node_to_restore) = root_node_to_restore {
+									// If the node with the solid line is clicked, then end preview
+									if root_node_to_restore.id == toggle_id {
+										network.stop_preview();
+									}
+								}
+								// There is a dashed line without a solid line.
+								else {
+									network.start_previewing_without_restore();
+								}
+							}
+							// There is no dashed line being drawn
+							else {
+								network.start_previewing(previous_export_id, previous_output_index);
+							}
+						}
+					}
+					// The primary export is disconnected
+					else {
+						// Set node as export and cancel any preview
 						*export = NodeInput::node(toggle_id, 0);
+						network.stop_preview();
 					}
 				}
 
@@ -1031,7 +1070,7 @@ impl NodeGraphMessageHandler {
 		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
 		for (i, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let dashed = network.get_root_node().is_some_and(|root_node| root_node.id != *node_id) && i == 0;
+				let dashed = matches!(network.previewing, Previewing::Yes { .. }) && i == 0;
 				if dashed || i != 0 {
 					links.push(FrontendNodeLink {
 						link_start: *node_id,

@@ -543,6 +543,17 @@ pub struct RootNode {
 	pub id: NodeId,
 	pub output_index: usize,
 }
+#[derive(PartialEq, Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Previewing {
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes {
+		root_node_to_restore: Option<RootNode>,
+	},
+	No,
+}
+
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
@@ -553,9 +564,8 @@ pub struct NodeNetwork {
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Used to save the root node while previewing. Should never be the same as the primary export. If the root node is none, then exports must be disconnected,
-	/// or the primary export is the root node.
-	pub previous_root_node: Option<RootNode>,
+	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
+	pub previewing: Previewing,
 	/// Temporary fields to store metadata for import/export UI only nodes, eventually will be replaced with lines leading to edges
 	pub imports_metadata: (NodeId, IVec2),
 	pub exports_metadata: (NodeId, IVec2),
@@ -570,7 +580,7 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.previous_root_node.hash(state);
+		self.previewing.hash(state);
 	}
 }
 impl Default for NodeNetwork {
@@ -578,7 +588,7 @@ impl Default for NodeNetwork {
 		NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
-			previous_root_node: Default::default(),
+			previewing: Previewing::No,
 			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-25, -4))),
 			exports_metadata: (NodeId(generate_uuid()), IVec2::new(8, -4)),
 		}
@@ -592,11 +602,12 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
-	/// Returns the root node of the network, or None if no nodes are connected to the output
+	/// Returns the root node (the node that the solid line is connect to) of the network, or None if no nodes are connected to the output
 	pub fn get_root_node(&self) -> Option<RootNode> {
-		self.previous_root_node.or_else(|| {
-			self.exports.get(0).and_then(|primary_input| {
-				if let NodeInput::Node { node_id, output_index, .. } = primary_input {
+		match self.previewing {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => self.exports.first().and_then(|export| {
+				if let NodeInput::Node { node_id, output_index, .. } = export {
 					Some(RootNode {
 						id: *node_id,
 						output_index: *output_index,
@@ -604,29 +615,41 @@ impl NodeNetwork {
 				} else {
 					None
 				}
-			})
-		})
+			}),
+		}
 	}
 
 	/// Sets the root node only if a node is being previewed
 	pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-		if self.previous_root_node.is_some() {
-			if let NodeInput::Node { node_id: preview_node_id, .. } = self.exports.get(0).expect("Primary export should exist") {
-				//Only continue previewing if the new root node is not the same as the primary export, in which case the preview ends
-				if *preview_node_id != node_id {
-					self.previous_root_node = Some(RootNode { id: node_id, output_index });
+		if let Previewing::Yes { root_node_to_restore } = self.previewing {
+			// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
+			if let Some(root_node_to_restore) = root_node_to_restore {
+				if root_node_to_restore.id != node_id {
+					self.start_previewing(node_id, output_index);
 				} else {
-					self.previous_root_node = None;
+					self.stop_preview();
 				}
 			} else {
-				log::error!("Cannot set root node when there are no nodes connected to primary export");
+				self.stop_preview();
 			}
 		}
 	}
 
-	/// Sets the root node to None, in the case that the primary export is disconnected
-	pub fn reset_root_node(&mut self) {
-		self.previous_root_node = None;
+	/// Start previewing with a restore node
+	pub fn start_previewing(&mut self, previous_node_id: NodeId, output_index: usize) {
+		self.previewing = Previewing::Yes {
+			root_node_to_restore: Some(RootNode { id: previous_node_id, output_index }),
+		};
+	}
+
+	/// Start previewing without a restore node
+	pub fn start_previewing_without_restore(&mut self) {
+		self.previewing = Previewing::Yes { root_node_to_restore: None };
+	}
+
+	/// Stops preview, does not reset export
+	pub fn stop_preview(&mut self) {
+		self.previewing = Previewing::No;
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {
@@ -701,8 +724,7 @@ impl NodeNetwork {
 
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
-		// Export/Import UI nodes can only be selected from the nested_network, so no need to check if self includes them
-		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
+		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
 		} else {
 			self.nested_network(nested_path)
@@ -868,8 +890,10 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		if let Some(root_node) = self.previous_root_node.as_mut() {
-			root_node.id = f(root_node.id);
+		if let Previewing::Yes { root_node_to_restore } = &mut self.previewing {
+			if let Some(root_node_to_restore) = root_node_to_restore.as_mut() {
+				root_node_to_restore.id = f(root_node_to_restore.id);
+			}
 		}
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes

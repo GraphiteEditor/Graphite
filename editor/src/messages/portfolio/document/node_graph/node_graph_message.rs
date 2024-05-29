@@ -122,6 +122,9 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
+	StartPreviewingWithoutRestore{
+		node_id: NodeId,
+	},
 	TogglePreview {
 		node_id: NodeId,
 	},

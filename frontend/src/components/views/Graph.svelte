@@ -391,7 +391,6 @@
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
 			// Output: Begin dragging out a new link
 			if (isOutput) {
-				console.log("frontendNode.primaryOutput?.connected: ", frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined);
 				// Disallow creating additional vertical output links from an already-connected layer
 				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected.length != 0) return;
 
@@ -410,7 +409,7 @@
 
 				// Set the link to draw from the input that a previous link was on
 
-				const linkIndex = $nodeGraph.links.findIndex((value) => value.linkEnd === nodeId && value.linkEndInputIndex === BigInt(inputIndex));
+				const linkIndex = $nodeGraph.links.filter((link) => !link.dashed).findIndex((value) => value.linkEnd === nodeId && value.linkEndInputIndex === BigInt(inputIndex));
 				if (linkIndex === -1) return;
 
 				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
@@ -485,7 +484,7 @@
 
 		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
 		const nodeId = node?.getAttribute("data-node") || undefined;
-		if (nodeId !== undefined) {
+		if (nodeId !== undefined && !e.altKey) {
 			const id = BigInt(nodeId);
 			editor.handle.enterNestedNetwork(id);
 		}
