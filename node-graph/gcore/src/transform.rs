@@ -178,6 +178,10 @@ pub struct Footprint {
 	pub resolution: glam::UVec2,
 	/// Quality of the render, this may be used by caching nodes to decide if the cached render is sufficient
 	pub quality: RenderQuality,
+	/// Time at which the render is done (with respect to animation channels)
+	pub time: f64,
+	/// Frames per second of the animation
+	pub fps: f64,
 	/// When the transform is set downstream, all upsream modifications have to be ignored
 	pub ignore_modifications: bool,
 }
@@ -188,6 +192,8 @@ impl Default for Footprint {
 			transform: DAffine2::IDENTITY,
 			resolution: glam::UVec2::new(1920, 1080),
 			quality: RenderQuality::Full,
+			time: 0.,
+			fps: 30.,
 			ignore_modifications: false,
 		}
 	}

@@ -130,13 +130,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Animatable Number",
 			category: "Animation",
-			implementation: DocumentNodeImplementation::proto("graphene_core::ops::AnimationIdentityNode"),
+			implementation: DocumentNodeImplementation::proto("graphene_core::animation::AnimationF64Node<_>"),
 			inputs: vec![DocumentInputType::value(
 				"Keyframes",
 				TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0.)])),
 				false,
 			)],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::AnimatableNumber)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
+			manual_composition: Some(concrete!(Footprint)),
 			properties: node_properties::animatable_number_properties,
 			..Default::default()
 		},

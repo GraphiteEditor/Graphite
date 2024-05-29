@@ -1,8 +1,8 @@
 use core::fmt::Debug;
-use std::hash::Hash;
 
 use dyn_any::{DynAny, StaticType};
 
+use crate::transform::Footprint;
 use crate::Node;
 
 #[derive(Debug, Copy, Clone, PartialEq, DynAny)]
@@ -32,7 +32,7 @@ impl KeyframesF64 {
 	}
 
 	pub fn get_value(&self, time: f64) -> f64 {
-		if self.keyframes.len() == 0 {
+		if self.keyframes.is_empty() {
 			return 0.;
 		}
 		if time <= self.keyframes[0].time {
@@ -51,26 +51,30 @@ impl KeyframesF64 {
 		assert!(ind > 0);
 		let k1 = &self.keyframes[ind - 1];
 		let k2 = &self.keyframes[ind];
-		return Self::interpolate(k1, k2, time);
+		Self::interpolate(k1, k2, time)
 	}
 
 	fn interpolate(k1: &KeyframeF64, k2: &KeyframeF64, time: f64) -> f64 {
 		assert!(k1.time < time && time < k2.time);
 		let t = (time - k1.time) / (k2.time - k1.time);
-		return k1.value + (k2.value - k1.value) * t;
+		k1.value + (k2.value - k1.value) * t
 	}
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct AnimationIdentityNode;
-impl<'i, O: 'i> Node<'i, O> for AnimationIdentityNode {
-	type Output = O;
-	fn eval(&'i self, input: O) -> Self::Output {
-		input
-	}
+#[derive(Debug, Copy, Clone)]
+pub struct AnimationF64Node<Keyframes> {
+	pub keyframes: Keyframes,
 }
-impl AnimationIdentityNode {
-	pub fn new() -> Self {
-		Self
-	}
+
+#[node_macro::node_fn(AnimationF64Node)]
+fn animation_f64_node(footprint: Footprint, keyframes: KeyframesF64) -> f64 {
+	keyframes.get_value(footprint.time)
 }
+
+// #[derive(Debug, Copy, Clone)]
+// pub struct AnimationF64Node;
+
+// #[node_macro::node_fn(AnimationF64Node)]
+// fn animation_f64_node(keyframes: KeyframesF64) -> f64 {
+// 	keyframes.get_value(0.)
+// }
