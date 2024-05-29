@@ -1,4 +1,4 @@
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, RootNode, Source};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
@@ -950,8 +950,10 @@ impl NodeGraphMessageHandler {
 			if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
-				// Prevent showing "End Preview"/"Preview" if the root node is the output
-				if !(is_output && network.get_root_node().is_some_and(|root_node| root_node.id == node_id)) && network == current_network {
+				// Prevent showing "End Preview"/"Preview" if the root node is the output, or the import/export node
+				let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
+				let is_import_or_export = node_id == network.imports_metadata.0 || node_id == network.exports_metadata.0;
+				if !(is_output && is_root_node && is_import_or_export) && network == current_network {
 					let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
 						.icon(Some("Rescale".to_string()))
 						.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")

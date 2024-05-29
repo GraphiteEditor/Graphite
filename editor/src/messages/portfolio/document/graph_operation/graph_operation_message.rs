@@ -185,9 +185,7 @@ pub enum GraphOperationMessage {
 		node_id: NodeId,
 		visible: bool,
 	},
-	StartPreviewingWithoutRestore {
-		node_id: NodeId,
-	},
+	StartPreviewingWithoutRestore,
 	ToggleSelectedLocked,
 	ToggleLocked {
 		node_id: NodeId,

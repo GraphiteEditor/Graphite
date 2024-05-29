@@ -152,7 +152,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if node_id == document_network.exports_metadata.0 {
 					// Since it is only possible to drag the solid line, there must be a root_node_to_restore
 					if let Previewing::Yes { .. } = document_network.previewing {
-						responses.add(GraphOperationMessage::StartPreviewingWithoutRestore { node_id });
+						responses.add(GraphOperationMessage::StartPreviewingWithoutRestore);
 					}
 					// If there is no preview, then disconnect
 					else {
@@ -752,7 +752,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
-			GraphOperationMessage::StartPreviewingWithoutRestore { node_id } => {
+			GraphOperationMessage::StartPreviewingWithoutRestore => {
 				document_network.start_previewing_without_restore();
 			}
 			GraphOperationMessage::ToggleSelectedLocked => {

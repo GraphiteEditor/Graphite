@@ -138,6 +138,7 @@ impl<'a> ModifyInputsContext<'a> {
 		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
 		if let Some(root_node) = self.document_network.get_root_node() {
 			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
+			ModifyInputsContext::shift_upstream(self.document_network, root_node.id, IVec2::new(8, 0), true);
 		}
 		let Some(export) = self.document_network.exports.get_mut(0) else {
 			log::error!("Could not get primary export when adding node");
@@ -285,39 +286,8 @@ impl<'a> ModifyInputsContext<'a> {
 			],
 			Default::default(),
 		);
-		//If the root node either doesn't exist or is a non artboard node, connect new artboard directly to export
-		if self
-			.document_network
-			.get_root_node()
-			.map_or(true, |root_node| self.document_network.nodes.get(&root_node.id).map_or(false, |node| !node.is_artboard()))
-		{
-			self.insert_node_as_primary_export(new_id, artboard_node, 0)
-		} else {
-			let root_node = self.document_network.get_root_node().unwrap();
-			// Get node that feeds into the root node. If it exists, connect the new artboard node in between.
-			let output_node_primary_input = self.document_network.nodes.get(&root_node.id)?.inputs.get(0);
-			let created_node_id = if let NodeInput::Node { node_id, .. } = &output_node_primary_input? {
-				let pre_node = self.document_network.nodes.get(node_id)?;
-				// If the node currently connected the Output is an artboard, connect to input 0 (Artboards input) of the new artboard. Else connect to the Over input.
-				let artboard_input_index = if pre_node.is_artboard() { 0 } else { 1 };
 
-				self.insert_between(
-					new_id,
-					artboard_node,
-					NodeInput::node(*node_id, 0),
-					artboard_input_index,
-					root_node.id,
-					NodeInput::node(new_id, 0),
-					0,
-					IVec2::new(0, 3),
-				)
-			} else {
-				//Else connect the new artboard directly to the root node.
-				self.insert_node_before(new_id, root_node.id, 0, artboard_node, IVec2::new(-8, 3))
-			};
-
-			created_node_id
-		}
+		self.insert_node_as_primary_export(new_id, artboard_node, 0)
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
@@ -768,7 +738,11 @@ impl<'a> ModifyInputsContext<'a> {
 				while let Some(current_node) = stack.pop() {
 					if let Some(downstream_nodes) = outward_links.get(&current_node) {
 						for downstream_node in downstream_nodes {
-							if network.get_root_node().is_some_and(|root_node| root_node.id == *downstream_node) {
+							// If the traversal reaches the root node, and the root node should not be deleted, then the current node is not a sole dependent
+							if network
+								.get_root_node()
+								.is_some_and(|root_node| root_node.id == *downstream_node && !delete_nodes.contains(&root_node.id))
+							{
 								can_delete = false;
 							} else if !delete_nodes.contains(downstream_node) {
 								stack.push(*downstream_node);
@@ -793,7 +767,6 @@ impl<'a> ModifyInputsContext<'a> {
 						}
 					}
 				}
-
 				if can_delete {
 					delete_nodes.insert(upstream_id);
 				}
@@ -823,7 +796,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		network.nodes.remove(&node_id);
-		selected_nodes.retain_selected_nodes(|&id| id != node_id);
+		selected_nodes.retain_selected_nodes(|&id| id != node_id || id == network.exports_metadata.0 || id == network.imports_metadata.0);
 		responses.add(BroadcastEvent::SelectionChanged);
 		true
 	}
@@ -852,7 +825,6 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut nodes_to_set_input = Vec::new();
-		let root_node_input = network.get_root_node().map(|root_node| NodeInput::node(root_node.id, root_node.output_index));
 
 		for (node_id, input_index, input) in network
 			.nodes

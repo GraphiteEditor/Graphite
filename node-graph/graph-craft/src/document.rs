@@ -602,7 +602,7 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
-	/// Returns the root node (the node that the solid line is connect to) of the network, or None if no nodes are connected to the output
+	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
 	pub fn get_root_node(&self) -> Option<RootNode> {
 		match self.previewing {
 			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
