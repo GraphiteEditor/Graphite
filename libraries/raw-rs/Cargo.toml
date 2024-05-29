@@ -18,4 +18,4 @@ thiserror.workspace = true
 
 [dev-dependencies]
 libraw-rs = "0.0.4"
-test-each = "0.2.1"
+downloader = "0.2.7"
