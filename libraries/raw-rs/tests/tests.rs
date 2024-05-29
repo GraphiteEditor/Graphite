@@ -19,31 +19,35 @@ fn test_images_matches_with_libraw() {
 
 	let mut failed_tests = 0;
 
-	read_dir(BASE_PATH).unwrap().map(|dir_entry| dir_entry.unwrap().path()).filter(|path| path.is_file()).for_each(|path| {
-		let mut f = File::open(&path).unwrap();
-		let mut content = vec![];
-		f.read_to_end(&mut content).unwrap();
+	read_dir(BASE_PATH)
+		.unwrap()
+		.map(|dir_entry| dir_entry.unwrap().path())
+		.filter(|path| path.is_file() && path.file_name().map(|file_name| file_name != ".gitkeep").unwrap_or(false))
+		.for_each(|path| {
+			let mut f = File::open(&path).unwrap();
+			let mut content = vec![];
+			f.read_to_end(&mut content).unwrap();
 
-		print!("{} => ", path.display());
+			print!("{} => ", path.display());
 
-		let raw_image = match test_raw_data(&content) {
-			Err(err_msg) => {
-				failed_tests += 1;
-				return println!("{}", err_msg);
-			}
-			Ok(raw_image) => raw_image,
-		};
+			let raw_image = match test_raw_data(&content) {
+				Err(err_msg) => {
+					failed_tests += 1;
+					return println!("{}", err_msg);
+				}
+				Ok(raw_image) => raw_image,
+			};
 
-		// TODO: The code below is kept commented because raw data to final image processing is
-		// incomplete. Remove this once it is done.
+			// TODO: The code below is kept commented because raw data to final image processing is
+			// incomplete. Remove this once it is done.
 
-		// if let Err(err_msg) = test_final_image(&content, raw_image) {
-		// 	failed_tests += 1;
-		// 	return println!("{}", err_msg);
-		// };
+			// if let Err(err_msg) = test_final_image(&content, raw_image) {
+			// 	failed_tests += 1;
+			// 	return println!("{}", err_msg);
+			// };
 
-		println!("Passed");
-	});
+			println!("Passed");
+		});
 
 	if failed_tests != 0 {
 		panic!("{} images have failed the tests", failed_tests);

@@ -1,1 +1,2 @@
-tests/images/
+tests/images/*
+!tests/images/.gitkeep
