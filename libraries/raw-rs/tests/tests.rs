@@ -34,8 +34,8 @@ fn test_images_matches_with_libraw() {
 			Ok(raw_image) => raw_image,
 		};
 
-        // TODO: The code below is kept commented because raw data to final image processing is
-        // incomplete. Remove this once it is done.
+		// TODO: The code below is kept commented because raw data to final image processing is
+		// incomplete. Remove this once it is done.
 
 		// if let Err(err_msg) = test_final_image(&content, raw_image) {
 		// 	failed_tests += 1;
