@@ -10,7 +10,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	assert!(strip_offsets.len() == strip_byte_counts.len());
 
 	let image_width: usize = ifd.get(IMAGE_WIDTH, file).unwrap().try_into().unwrap();
-	let image_length: usize = ifd.get(IMAGE_LENGTH, file).unwrap().try_into().unwrap();
+	let image_height: usize = ifd.get(IMAGE_LENGTH, file).unwrap().try_into().unwrap();
 	let rows_per_strip: usize = ifd.get(ROWS_PER_STRIP, file).unwrap().try_into().unwrap();
 	let bits_per_sample: usize = ifd.get(BITS_PER_SAMPLE, file).unwrap().into();
 	let bytes_per_sample: usize = bits_per_sample.div_ceil(8);
@@ -24,10 +24,10 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	let cfa_pattern = ifd.get(CFA_PATTERN, file).unwrap();
 
-	let rows_per_strip_last = image_length % rows_per_strip;
+	let rows_per_strip_last = image_height % rows_per_strip;
 	let bytes_per_row = bytes_per_sample * samples_per_pixel * image_width;
 
-	let mut image: Vec<u16> = Vec::with_capacity(image_length * image_width);
+	let mut image: Vec<u16> = Vec::with_capacity(image_height * image_width);
 
 	for i in 0..strip_offsets.len() {
 		file.seek_from_start(strip_offsets[i]).unwrap();
@@ -42,6 +42,6 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	RawImage {
 		data: image,
 		width: image_width,
-		height: image_length,
+		height: image_height,
 	}
 }
