@@ -79,8 +79,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
 
-				if let (Some(downstream_node), Some(upstream_node)) = (downstream_node, upstream_node) {
-					responses.add(GraphOperationMessage::InsertNodeBetween {
+				match (downstream_node, upstream_node) {
+					(Some(downstream_node), Some(upstream_node)) => responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: downstream_node,
 						post_node_input_index: input_index,
 						insert_node_output_index: 0,
@@ -88,19 +88,27 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: upstream_node,
-					})
-				} else if let Some(downstream_node) = downstream_node {
-					responses.add(GraphOperationMessage::SetNodeInput {
+					}),
+					(Some(downstream_node), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node,
 						input_index: input_index,
 						input: NodeInput::node(*new_layer_id, 0),
-					})
-				} else {
-					if let Some(primary_export) = document_network.exports.get_mut(0) {
-						*primary_export = NodeInput::node(*new_layer_id, 0)
+					}),
+					(None, Some(upstream_node)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+						post_node_id: document_network.exports_metadata.0,
+						post_node_input_index: 0,
+						insert_node_output_index: 0,
+						insert_node_id: *new_layer_id,
+						insert_node_input_index: 0,
+						pre_node_output_index: 0,
+						pre_node_id: upstream_node,
+					}),
+					(None, None) => {
+						if let Some(primary_export) = document_network.exports.get_mut(0) {
+							*primary_export = NodeInput::node(*new_layer_id, 0)
+						}
 					}
-				}
-
+				};
 				responses.add(GraphOperationMessage::ShiftUpstream {
 					node_id: *new_layer_id,
 					shift: IVec2::new(0, 3),
@@ -167,51 +175,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
-				//TODO: downstream node can be none if it is the root node
-				//TODO: .collect_outwards_links() is very inefficient. Replace node_id with a layer, and disconnect most upstream non layer node, before the next layer node
-				let outwards_links = document_network.collect_outwards_links();
-
-				let Some(downstream_node_id) = outwards_links.get(&node_id).and_then(|outward_links| outward_links.get(0)) else {
-					log::error!("Downstream node should always exist when moving layer");
-					return;
-				};
-				let Some(downstream_node) = document_network.nodes.get(downstream_node_id) else { return };
-				let mut downstream_input_index = None;
-				for input_index in 0..2 {
-					if let Some(NodeInput::Node { node_id: input_id, .. }) = downstream_node.inputs.get(input_index) {
-						if *input_id == node_id {
-							downstream_input_index = Some(input_index)
-						}
-					}
-				}
-				let Some(downstream_input_index) = downstream_input_index else {
-					log::error!("Downstream input_index should always exist when moving layer");
-					return;
-				};
-
-				let layer_to_move_sibling_input = document_network.nodes.get(&node_id).and_then(|node| node.inputs.get(0));
-				if let Some(NodeInput::Node { node_id, .. }) = layer_to_move_sibling_input.and_then(|node_input| if reconnect_to_sibling { Some(node_input) } else { None }) {
-					let upstream_sibling_id = *node_id;
-
-					let Some(downstream_node) = document_network.nodes.get_mut(downstream_node_id) else { return };
-					if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get_mut(downstream_input_index) {
-						*node_id = upstream_sibling_id;
-					}
-
-					let upstream_shift = IVec2::new(0, -3);
-					responses.add(GraphOperationMessage::ShiftUpstream {
-						node_id: upstream_sibling_id,
-						shift: upstream_shift,
-						shift_self: true,
-					});
-				} else {
-					// Disconnect node directly downstream if upstream sibling doesn't exist
-					responses.add(GraphOperationMessage::DisconnectInput {
-						node_id: *downstream_node_id,
-						input_index: downstream_input_index,
-					});
-				}
-
+				ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect_to_sibling, selected_nodes, &Vec::new(), &node_graph.resolved_types);
 				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index: 0 });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
@@ -225,10 +189,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::InsertNodeAtStackIndex { node_id, parent, insert_index } => {
 				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent, insert_index);
-				let Some(post_node_id) = post_node_id else {
-					log::error!("Post node should exist in InsertLayerAtStackIndex");
-					return;
-				};
+
 				// `layer_to_move` should always correspond to a node.
 				let Some(layer_to_move_node) = document_network.nodes.get(&node_id) else {
 					log::error!("Layer node not found when inserting node {} at index {}", node_id, insert_index);
@@ -236,9 +197,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 
 				// Move current layer to post node.
-				let post_node = document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node");
 				let current_position = layer_to_move_node.metadata.position;
-				let new_position = post_node.metadata.position;
+				let new_position = if let Some(post_node_id) = post_node_id {
+					document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node").metadata.position
+				} else if let Some(root_node) = document_network.get_root_node() {
+					document_network.nodes.get(&root_node.id).expect("Root node id should always refer to a node").metadata.position + IVec2::new(8, -3)
+				} else {
+					document_network.exports_metadata.1
+				};
 
 				// If moved to top of a layer stack, move to the left of the post node. If moved within a stack, move directly on the post node. The stack will be shifted down later.
 				let offset_to_post_node = if insert_index == 0 {
@@ -253,23 +219,35 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					shift_self: true,
 				});
 
-				// Update post_node input to layer_to_move.
-				if let Some(upstream_node) = pre_node_id {
-					responses.add(GraphOperationMessage::InsertNodeBetween {
+				match (post_node_id, pre_node_id) {
+					(Some(post_node_id), Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: post_node_id,
 						post_node_input_index: post_node_input_index,
 						insert_node_output_index: 0,
 						insert_node_id: node_id,
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
-						pre_node_id: upstream_node,
-					})
-				} else {
-					responses.add(GraphOperationMessage::SetNodeInput {
+						pre_node_id: pre_node_id,
+					}),
+					(None, Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+						post_node_id: document_network.exports_metadata.0,
+						post_node_input_index: 0,
+						insert_node_output_index: 0,
+						insert_node_id: node_id,
+						insert_node_input_index: 0,
+						pre_node_output_index: 0,
+						pre_node_id: pre_node_id,
+					}),
+					(Some(post_node_id), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: post_node_id,
 						input_index: post_node_input_index,
 						input: NodeInput::node(node_id, 0),
-					})
+					}),
+					(None, None) => {
+						if let Some(primary_export) = document_network.exports.get_mut(0) {
+							*primary_export = NodeInput::node(node_id, 0)
+						}
+					}
 				}
 
 				// Shift stack down, starting at the moved node.

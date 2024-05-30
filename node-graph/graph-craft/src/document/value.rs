@@ -380,7 +380,7 @@ impl<'a> TaggedValue {
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
 		}
 	}
-	pub fn try_from_type(input: &Type) -> Self {
+	pub fn from_type(input: &Type) -> Self {
 		match input {
 			Type::Generic(_) => {
 				log::debug!("Generic type should be resolved");
@@ -459,7 +459,7 @@ impl<'a> TaggedValue {
 					_ => TaggedValue::None,
 				}
 			}
-			Type::Fn(_, output) => TaggedValue::try_from_type(output),
+			Type::Fn(_, output) => TaggedValue::from_type(output),
 			Type::Future(_) => {
 				log::debug!("Future type not used");
 				TaggedValue::None

@@ -134,26 +134,29 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	// Inserts a node as an export. If there is already a root node connected to the export, that node will be connected to the new node at node_input_index
-	pub fn insert_node_as_primary_export(&mut self, id: NodeId, mut new_node: DocumentNode, node_input_index: usize) -> Option<NodeId> {
-		assert!(!self.document_network.nodes.contains_key(&id), "Creating already existing node");
-		if let Some(root_node) = self.document_network.get_root_node() {
+	pub fn insert_node_as_primary_export(document_network: &mut NodeNetwork, id: NodeId, mut new_node: DocumentNode) -> Option<NodeId> {
+		assert!(!document_network.nodes.contains_key(&id), "Creating already existing node");
+		if let Some(root_node) = document_network.get_root_node() {
+			let previous_root_node = document_network.nodes.get_mut(&root_node.id).expect("Root node should always exist");
+			//Insert whatever non artboard node previously fed into export as a child of the new node
+			let node_input_index = if new_node.is_artboard() && !previous_root_node.is_artboard() { 1 } else { 0 };
 			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
-			ModifyInputsContext::shift_upstream(self.document_network, root_node.id, IVec2::new(8, 0), true);
+			ModifyInputsContext::shift_upstream(document_network, root_node.id, IVec2::new(8, 0), true);
 		}
-		let Some(export) = self.document_network.exports.get_mut(0) else {
+		let Some(export) = document_network.exports.get_mut(0) else {
 			log::error!("Could not get primary export when adding node");
 			return None;
 		};
 		*export = NodeInput::node(id, 0);
 
-		self.document_network.nodes.insert(id, new_node);
+		document_network.nodes.insert(id, new_node);
 
-		ModifyInputsContext::shift_upstream(self.document_network, id, IVec2::new(-8, 3), false);
+		ModifyInputsContext::shift_upstream(document_network, id, IVec2::new(-8, 3), false);
 
 		Some(id)
 	}
 	/// Starts at any folder, or the output, and skips layer nodes based on insert_index. Non layer nodes are always skipped. Returns the post node id, pre node id, and the input index.
-	///      -----> Post node input_index: 0
+	///       -----> Post node input_index: 0
 	///      |      if skip_layer_nodes == 0, return (Post node, Some(Layer1), 1)
 	/// -> Layer1   input_index: 1
 	///      ↑      if skip_layer_nodes == 1, return (Layer1, Some(Layer2), 0)
@@ -173,13 +176,19 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some((mut post_node_id, mut post_node_input_index)) = post_node_information else {
 			return (None, None, 0);
 		};
+
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
+
+		if parent == LayerNodeIdentifier::ROOT_PARENT {
+			if insert_index == 0 {
+				return (None, Some(post_node_id), 0);
+			}
+			current_index += 1;
+		}
+
 		loop {
 			if current_index == insert_index {
-				if parent == LayerNodeIdentifier::ROOT_PARENT {
-					post_node_input_index = 1;
-				}
 				break;
 			}
 			let next_node_in_stack_id = network
@@ -235,9 +244,19 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, skip_layer_nodes: usize) -> Option<NodeId> {
 		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
-		// Get the node which the new layer will output to (post node). First check if the output_node_id is the Output node, and set the output_node_id to the top-most artboard,
-		// if there is one. Then skip layers based on skip_layer_nodes from the post_node.
 		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
+
+		let mut parent = parent;
+		if parent == LayerNodeIdentifier::ROOT_PARENT {
+			if let Some(root_node) = self.document_network.get_root_node() {
+				// If the current root node is the artboard, then the new layer should be a child of the artboard
+				let current_root_node = self.document_network.nodes.get(&root_node.id).expect("Root node should always exist");
+				if current_root_node.is_artboard() && current_root_node.is_layer {
+					parent = LayerNodeIdentifier::new(root_node.id, &self.document_network);
+				}
+			}
+		}
+
 		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
 		let (post_node_id, pre_node_id, post_node_input_index) = Self::get_post_node_with_index(self.document_network, parent, skip_layer_nodes);
 
@@ -259,10 +278,7 @@ impl<'a> ModifyInputsContext<'a> {
 			};
 		} else {
 			//If post_node does not exist, then network is empty
-			self.document_network.nodes.insert(new_id, new_layer_node);
-			if let Some(export) = self.document_network.exports.get_mut(0) {
-				*export = NodeInput::node(new_id, 0);
-			}
+			ModifyInputsContext::insert_node_as_primary_export(self.document_network, new_id, new_layer_node);
 		}
 
 		Some(new_id)
@@ -287,7 +303,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 
-		self.insert_node_as_primary_export(new_id, artboard_node, 0)
+		ModifyInputsContext::insert_node_as_primary_export(self.document_network, new_id, artboard_node)
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
@@ -801,7 +817,7 @@ impl<'a> ModifyInputsContext<'a> {
 		true
 	}
 
-	fn remove_references_from_network(
+	pub fn remove_references_from_network(
 		document_network: &mut NodeNetwork,
 		deleting_node_id: NodeId,
 		reconnect: bool,
@@ -898,7 +914,9 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			// Reconnect to node upstream of the deleted node
 			else if node_id != network.exports_metadata.0 || matches!(network.previewing, Previewing::No) {
-				ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input.clone().unwrap(), is_document_network);
+				if let Some(reconnect_to_input) = reconnect_to_input.clone() {
+					ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input, is_document_network);
+				}
 			}
 			// Reconnect previous root node to the export, or disconnect export
 			else if let Previewing::Yes { root_node_to_restore } = network.previewing {
@@ -923,7 +941,7 @@ impl<'a> ModifyInputsContext<'a> {
 			index: input_index,
 		});
 		if let Some(input_type) = input_type {
-			TaggedValue::try_from_type(input_type)
+			TaggedValue::from_type(input_type)
 		} else if node_id == network.exports_metadata.0 {
 			if let Some(parent_node_id) = network_path.last() {
 				let mut parent_path = network_path.clone();
@@ -941,7 +959,7 @@ impl<'a> ModifyInputsContext<'a> {
 						warn!("Could not find output type for export node {node_id}");
 						TaggedValue::None
 					},
-					|output_type| output_type.clone().map_or(TaggedValue::None, |input| TaggedValue::try_from_type(&input)),
+					|output_type| output_type.clone().map_or(TaggedValue::None, |output| TaggedValue::from_type(&output)),
 				)
 			} else {
 				TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY)
@@ -984,7 +1002,7 @@ impl<'a> ModifyInputsContext<'a> {
 							return TaggedValue::None;
 						};
 
-						TaggedValue::try_from_type(&input_type)
+						TaggedValue::from_type(&input_type)
 					}
 					DocumentNodeImplementation::Network(network) => {
 						for node in &network.nodes {

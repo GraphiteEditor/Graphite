@@ -1,3 +1,4 @@
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
@@ -839,7 +840,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					else {
 						// Set node as export and cancel any preview
 						*export = NodeInput::node(toggle_id, 0);
-						network.stop_preview();
+						network.start_previewing_without_restore();
 					}
 				}
 
@@ -1088,19 +1089,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_nodes(&self, document_network: &NodeNetwork, network: &NodeNetwork, links: &[FrontendNodeLink]) -> Vec<FrontendNode> {
-		let mut encapsulating_path = self.network.clone();
-		let number_of_imports = if let Some(encapsulating_node) = encapsulating_path.pop() {
-			document_network
-				.nested_network(&encapsulating_path)
-				.expect("Encapsulating path should always exist")
-				.nodes
-				.get(&encapsulating_node)
-				.expect("Last path node should always exist in encapsulating network")
-				.inputs
-				.len()
-		} else {
-			1
-		};
 		let connected_node_to_output_lookup = links
 			.iter()
 			.map(|link| ((link.link_start, link.link_start_output_index), (link.link_end, link.link_end_input_index)))
@@ -1129,9 +1117,26 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
+				let definition_name = document_node_types::resolve_document_node_type(&node.name).and_then(|node_definition| {
+					let node_implementation = &node.implementation;
+					let definition_implementation = &node_definition.implementation;
+					//Only use definition input names if the node implementation is the same as the definition implementation
+					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
+						node_definition.inputs.get(index).map(|input| input.name.to_string())
+					} else {
+						None
+					}
+				});
+
+				let input_name = definition_name.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())).unwrap_or(
+					ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, index)
+						.ty()
+						.to_string(),
+				);
+
 				FrontendGraphInput {
 					data_type: frontend_data_type,
-					name: "Placeholder".to_string(),
+					name: input_name,
 					resolved_type: input_type.map(|input| format!("{input:?}")),
 					connected: None,
 				}
@@ -1178,10 +1183,23 @@ impl NodeGraphMessageHandler {
 				} else {
 					FrontendGraphDataType::General
 				};
+
+				let output_name = if index > 0 {
+					document_node_types::resolve_document_node_type(&node.name)
+						.and_then(|node_definition| {
+							// If a node has multiple outputs, node and definition must have Network implementations
+							node_definition.outputs.get(index).map(|output| output.name.to_string())
+						})
+						.unwrap_or(format!("Output {}", index + 1))
+				} else {
+					// First output is not named
+					"First output name".to_string()
+				};
+
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
 				exposed_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
-					name: format!("Output {}", index + 2),
+					name: output_name,
 					resolved_type: exposed_output.clone().map(|input| format!("{input:?}")),
 					connected,
 					connected_index,
@@ -1190,6 +1208,20 @@ impl NodeGraphMessageHandler {
 			let is_export = network.exports.get(0).is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
 			let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
 			let previewed = is_export && !is_root_node;
+
+			log::debug!("self.node_graph_errors: {:?}", self.node_graph_errors);
+			let errors = self
+				.node_graph_errors
+				.iter()
+				.find(|error| error.node_path == *node_id_path)
+				.map(|error| format!("{:?}", error.error.clone()))
+				.or_else(|| {
+					if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(node_id_path)) {
+						Some("Node graph type error within this node".to_string())
+					} else {
+						None
+					}
+				});
 
 			nodes.push(FrontendNode {
 				id: node_id,
@@ -1205,20 +1237,67 @@ impl NodeGraphMessageHandler {
 				previewed,
 				visible: node.visible,
 				locked: node.locked,
-				errors: None,
+				errors: errors,
 				ui_only: false,
 			});
 		}
 
-		// Add import/export UI only nodes
+		// Get import/export names from parent node definition input/outputs. None means to use type, or "Import/Export + index" if type can't be determined
+		let mut import_names = Vec::new();
+		let mut export_names = vec![None; network.exports.len()];
+
+		let mut encapsulating_path = self.network.clone();
+		if let Some(encapsulating_node) = encapsulating_path.pop() {
+			let parent_node = document_network
+				.nested_network(&encapsulating_path)
+				.expect("Encapsulating path should always exist")
+				.nodes
+				.get(&encapsulating_node)
+				.expect("Last path node should always exist in encapsulating network");
+
+			let parent_definition = document_node_types::resolve_document_node_type(&parent_node.name);
+			let node_implementation = &parent_node.implementation;
+
+			// Get all import names from definition
+			for (index, _) in parent_node.inputs.iter().enumerate() {
+				let definition_name = parent_definition.and_then(|node_definition| {
+					//Only use definition input names if the parent implementation is the same as the definition implementation
+					let definition_implementation = &node_definition.implementation;
+					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
+						node_definition.inputs.get(index).map(|input| input.name.to_string())
+					} else {
+						None
+					}
+				});
+
+				import_names.push(definition_name);
+			}
+
+			// Get all export names from definition
+			for (index, _) in network.exports.iter().enumerate() {
+				let definition_name = parent_definition.and_then(|node_definition| {
+					//Only use definition input names if the parent implementation is the same as the definition implementation
+					let definition_implementation = &node_definition.implementation;
+					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
+						node_definition.outputs.get(index).map(|output| output.name.to_string())
+					} else {
+						None
+					}
+				});
+				export_names[index] = definition_name;
+			}
+		}
+
+		// Add Export UI only node
 		let mut export_node_inputs = Vec::new();
 		for (index, export) in network.exports.iter().enumerate() {
-			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, .. } = export {
+			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
+				let node = network.nodes.get(node_id).expect("Node should always exist");
 				let node_id_path = &[&self.network[..], &[*node_id]].concat();
-				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index });
+				let output_types = Self::get_output_types(node, &self.resolved_types, &node_id_path);
 
-				if let Some(input_type) = input_type {
-					(FrontendGraphDataType::with_type(&input_type), Some(input_type.clone()))
+				if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
+					(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
 				} else {
 					(FrontendGraphDataType::General, None)
 				}
@@ -1242,9 +1321,16 @@ impl NodeGraphMessageHandler {
 					None
 				}
 			};
+
+			let definition_name = export_names[index].clone();
+			// Export_names is pre-initialized with None, so this is safe
+			let export_name = definition_name
+				.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
+				.unwrap_or(format!("Export {}", index + 1));
+
 			export_node_inputs.push(FrontendGraphInput {
 				data_type: frontend_data_type,
-				name: format!("Export {}", index + 1),
+				name: export_name,
 				resolved_type: input_type.map(|input| format!("{input:?}")),
 				connected,
 			});
@@ -1266,37 +1352,27 @@ impl NodeGraphMessageHandler {
 			errors: None,
 			ui_only: true,
 		});
+
+		// Add Import UI only node
 		if document_network != network {
 			let mut import_node_outputs = Vec::new();
-			for index in 0..number_of_imports {
+			for (index, definition_name) in import_names.into_iter().enumerate() {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
 				let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
-				// This determines the import node types from the parent NodeInput::Value tagged value, for now disconnected nodes will be fully grayed out. Eventually the compilation process will need to get types for disconnected nodes
-				// .or_else(|| {
-				// let mut parent_network_path = self.network.clone();
-				// let Some(parent_node_id) = parent_network_path.pop() else {
-				// 	log::error!("Could not get parent node id from {:?}", parent_network_path);
-				// 	return None;
-				// };
-				// let Some(parent_network) = document_network.nested_network(&parent_network_path) else {
-				// 	log::error!("Could not get network for node {parent_node_id}");
-				// 	return None;
-				// };
-				// let Some(parent_node) = parent_network.nodes.get(&parent_node_id) else {
-				// 	log::error!("Could not get node for {parent_node_id}");
-				// 	return None;
-				// };
-				// parent_node.inputs.get(index).and_then(|input| input.as_value().map(|tagged_value| tagged_value.ty()))
-				// });
+
 				let frontend_data_type = if let Some(input_type) = input_type.clone() {
 					FrontendGraphDataType::with_type(&input_type)
 				} else {
 					FrontendGraphDataType::General
 				};
 
+				let import_name = definition_name
+					.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
+					.unwrap_or(format!("Export {}", index + 1));
+
 				import_node_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,
-					name: format!("Import {}", index + 1),
+					name: import_name,
 					resolved_type: input_type.map(|input| format!("{input:?}")),
 					connected,
 					connected_index,
