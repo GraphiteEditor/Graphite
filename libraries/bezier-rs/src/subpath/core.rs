@@ -232,6 +232,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 
 	/// Constructs a rounded rectangle with `corner1` and `corner2` as the two corners and `corner_radii` as the radii of the corners: `[top_left, top_right, bottom_right, bottom_left]`.
 	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radii: [f64; 4]) -> Self {
+		if corner_radii.iter().all(|radii| radii.abs() < f64::EPSILON * 100.) {
+			return Self::new_rect(corner1, corner2);
+		}
+
 		use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
 		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<PointId>> {
@@ -245,10 +249,8 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 			let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 			vec![
-				ManipulatorGroup::new_anchor(point1),
 				ManipulatorGroup::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
 				ManipulatorGroup::new(point2, Some(point2 + handle_offset * (corner - point2).normalize()), None),
-				ManipulatorGroup::new_anchor(point2),
 			]
 		};
 		Self::new(

@@ -3,6 +3,8 @@ use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
 
+use super::HandleId;
+
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
@@ -41,7 +43,6 @@ create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 pub struct PointDomain {
 	id: Vec<PointId>,
 	positions: Vec<DVec2>,
-	g1_continous: Vec<Vec<[SegmentId; 2]>>,
 }
 
 impl core::hash::Hash for PointDomain {
@@ -56,32 +57,27 @@ impl PointDomain {
 		Self {
 			id: Vec::new(),
 			positions: Vec::new(),
-			g1_continous: Vec::new(),
 		}
 	}
 
 	pub fn clear(&mut self) {
 		self.id.clear();
 		self.positions.clear();
-		self.g1_continous.clear();
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&PointId) -> bool) {
 		let mut keep = self.id.iter().map(&f);
 		self.positions.retain(|_| keep.next().unwrap_or_default());
-		let mut keep = self.id.iter().map(&f);
-		self.g1_continous.retain(|_| keep.next().unwrap_or_default());
 		self.id.retain(f);
 	}
 
-	pub fn push(&mut self, id: PointId, position: DVec2, g1_continous: Vec<[SegmentId; 2]>) {
+	pub fn push(&mut self, id: PointId, position: DVec2) {
 		if self.id.contains(&id) {
 			warn!("Duplicate point");
 			return;
 		}
 		self.id.push(id);
 		self.positions.push(position);
-		self.g1_continous.push(g1_continous);
 	}
 
 	pub fn positions(&self) -> &[DVec2] {
@@ -91,10 +87,6 @@ impl PointDomain {
 	pub fn positions_mut(&mut self) -> impl Iterator<Item = (PointId, &mut DVec2)> {
 		self.id.iter().copied().zip(self.positions.iter_mut())
 	}
-	pub fn g1_continous_mut(&mut self) -> impl Iterator<Item = (PointId, &mut Vec<[SegmentId; 2]>)> {
-		self.id.iter().copied().zip(self.g1_continous.iter_mut())
-	}
-
 	pub fn ids(&self) -> &[PointId] {
 		&self.id
 	}
@@ -214,6 +206,13 @@ impl SegmentDomain {
 		self.ids.iter().copied().zip(self.stroke.iter_mut())
 	}
 
+	pub fn segment_start_from_id(&self, segment: SegmentId) -> Option<PointId> {
+		self.resolve_id(segment).and_then(|index| self.start_point.get(index)).copied()
+	}
+	pub fn segment_end_from_id(&self, segment: SegmentId) -> Option<PointId> {
+		self.resolve_id(segment).and_then(|index| self.end_point.get(index)).copied()
+	}
+
 	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.ids.len(), self.handles.len());
 		debug_assert_eq!(self.ids.len(), self.start_point.len());
@@ -253,8 +252,8 @@ impl SegmentDomain {
 		self.end_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
 	}
 
-	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
-		self.start_connected(point).chain(self.end_connected(point))
+	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = HandleId> + '_ {
+		self.start_connected(point).map(HandleId::primary).chain(self.end_connected(point).map(HandleId::end))
 	}
 
 	pub fn connected_count(&self, point: PointId) -> usize {

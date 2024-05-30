@@ -83,7 +83,7 @@ impl VectorData {
 				} else {
 					point_id.next_id()
 				};
-				self.point_domain.push(id, pair[0].anchor, Vec::new());
+				self.point_domain.push(id, pair[0].anchor);
 				id
 			});
 			first_point = Some(first_point.unwrap_or(start));
@@ -92,7 +92,7 @@ impl VectorData {
 			} else {
 				point_id.next_id()
 			};
-			self.point_domain.push(end, pair[1].anchor, Vec::new());
+			self.point_domain.push(end, pair[1].anchor);
 
 			let id = segment_id.next_id();
 			first_seg = Some(first_seg.unwrap_or(id));
@@ -208,6 +208,37 @@ impl ManipulatorPointId {
 			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
 		}
 	}
+	pub fn get_handle_pair(self, vector_data: &VectorData) -> Option<[HandleId; 2]> {
+		match self {
+			ManipulatorPointId::Anchor(point) => vector_data.segment_domain.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				let point = vector_data.segment_domain.segment_start_from_id(segment)?;
+				let current = HandleId::primary(segment);
+				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
+				other.map(|other| [current, other])
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				let point = vector_data.segment_domain.segment_end_from_id(segment)?;
+				let current = HandleId::end(segment);
+				let other = vector_data.segment_domain.all_connected(point).find(|&value| value != current);
+				other.map(|other| [current, other])
+			}
+		}
+	}
+	pub fn get_point(self, vector_data: &VectorData) -> Option<PointId> {
+		match self {
+			ManipulatorPointId::Anchor(point) => Some(point),
+			ManipulatorPointId::PrimaryHandle(segment) => vector_data.segment_domain.segment_start_from_id(segment),
+			ManipulatorPointId::EndHandle(segment) => vector_data.segment_domain.segment_end_from_id(segment),
+		}
+	}
+	pub fn as_handle(self) -> Option<HandleId> {
+		match self {
+			ManipulatorPointId::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
+			ManipulatorPointId::EndHandle(segment) => Some(HandleId::end(segment)),
+			ManipulatorPointId::Anchor(point) => None,
+		}
+	}
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -218,8 +249,8 @@ pub enum HandleType {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HandleId {
-	ty: HandleType,
-	segment: SegmentId,
+	pub ty: HandleType,
+	pub segment: SegmentId,
 }
 impl HandleId {
 	pub const fn primary(segment: SegmentId) -> Self {
@@ -227,6 +258,19 @@ impl HandleId {
 	}
 	pub const fn end(segment: SegmentId) -> Self {
 		Self { ty: HandleType::End, segment }
+	}
+	pub fn to_point(self) -> ManipulatorPointId {
+		match self.ty {
+			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
+			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
+		}
+	}
+	pub fn move_pos(self, delta: DVec2) -> VectorModificationType {
+		let Self { ty, segment } = self;
+		match ty {
+			HandleType::Primary => VectorModificationType::ApplyPrimaryDelta { segment, delta },
+			HandleType::End => VectorModificationType::ApplyEndDelta { segment, delta },
+		}
 	}
 }
 

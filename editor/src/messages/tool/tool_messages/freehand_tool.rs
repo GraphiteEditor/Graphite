@@ -13,7 +13,7 @@ use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
-use graphene_std::vector::{PointId, SegmentId};
+use graphene_std::vector::{HandleId, PointId, SegmentId};
 
 #[derive(Default)]
 pub struct FreehandTool {
@@ -183,6 +183,7 @@ struct FreehandToolData {
 	start: Option<(PointId, DVec2)>,
 	end: Option<(PointId, DVec2)>,
 	segment: Option<SegmentId>,
+	last_segment: Option<SegmentId>,
 
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
@@ -212,6 +213,7 @@ impl FreehandToolData {
 				self.start = Some(point);
 				self.end = None;
 				self.required_tangent = self.last_tangent;
+				self.last_segment = self.segment;
 				self.segment = None;
 			}
 			return;
@@ -241,11 +243,12 @@ impl FreehandToolData {
 		let end = set_point(&mut self.end, bezier.end, layer, responses);
 
 		let handles = bezier.handles;
-		if let Some(segment) = self.segment {
+		let segment = if let Some(segment) = self.segment {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
 				modification_type: VectorModificationType::SetHandles { segment, handles },
 			});
+			segment
 		} else {
 			let id = SegmentId::generate();
 			self.segment = Some(id);
@@ -253,6 +256,20 @@ impl FreehandToolData {
 				layer,
 				modification_type: VectorModificationType::InsertSegment { id, start, end, handles },
 			});
+			id
+		};
+
+		// Mirror handles if appropriate
+		if let Some(last_segment) = self.last_segment {
+			if last_segment != segment {
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: VectorModificationType::SetG1Continous {
+						handles: [HandleId::end(last_segment), HandleId::primary(segment)],
+						enabled: true,
+					},
+				});
+			}
 		}
 
 		self.last_tangent = match bezier.handles {
@@ -305,6 +322,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.start = None;
 				tool_data.end = None;
 				tool_data.segment = None;
+				tool_data.last_segment = None;
 				tool_data.dragged = false;
 
 				let layer = if let Some((layer, point, pos)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {

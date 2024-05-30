@@ -9,7 +9,6 @@ pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
 	delta: HashMap<PointId, DVec2>,
-	g1_continous: HashMap<PointId, HashMap<[SegmentId; 2], bool>>,
 }
 
 impl PointModification {
@@ -24,13 +23,6 @@ impl PointModification {
 			}
 			*pos += delta;
 		}
-		for (id, g1_continous) in point_domain.g1_continous_mut() {
-			let Some(change) = self.g1_continous.get(&id) else { continue };
-			g1_continous.retain(|current| change.get(current) != Some(&false));
-			for (&add, _) in change.iter().filter(|(_, enable)| **enable) {
-				g1_continous.push(add);
-			}
-		}
 
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
@@ -38,9 +30,7 @@ impl PointModification {
 				warn!("invalid position");
 				continue;
 			}
-			let get_continous = |continous: &HashMap<[SegmentId; 2], bool>| continous.iter().filter(|(_, enabled)| **enabled).map(|(val, _)| *val).collect();
-			let g1_continous = self.g1_continous.get(&add_id).map(get_continous).unwrap_or_default();
-			point_domain.push(add_id, position, g1_continous);
+			point_domain.push(add_id, position);
 		}
 	}
 	fn push(&mut self, id: PointId, pos: DVec2) {
@@ -231,6 +221,8 @@ pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
 	regions: RegionModification,
+	add_g1_continous: HashSet<[HandleId; 2]>,
+	remove_g1_continous: HashSet<[HandleId; 2]>,
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -241,7 +233,7 @@ pub enum VectorModificationType {
 	RemoveSegment { id: SegmentId },
 	RemovePoint { id: PointId },
 
-	SetG1Continous { point: PointId, segments: [SegmentId; 2], enabled: bool },
+	SetG1Continous { handles: [HandleId; 2], enabled: bool },
 	ApplyPointDelta { point: PointId, delta: DVec2 },
 	ApplyPrimaryDelta { segment: SegmentId, delta: DVec2 },
 	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
@@ -253,6 +245,14 @@ impl VectorModification {
 		self.points.apply(&mut vector_data.point_domain);
 		self.segments.apply(&mut vector_data.segment_domain, &vector_data.point_domain);
 		self.regions.apply(&mut vector_data.region_domain);
+		vector_data
+			.colinear_manipulators
+			.retain(|val| !self.remove_g1_continous.contains(val) && !self.remove_g1_continous.contains(&[val[1], val[0]]));
+		for handles in &self.add_g1_continous {
+			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) {
+				vector_data.colinear_manipulators.push(*handles);
+			}
+		}
 	}
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
 		match vector_data_modification {
@@ -262,8 +262,20 @@ impl VectorModification {
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
 			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
 
-			VectorModificationType::SetG1Continous { point, segments, enabled } => {
-				self.points.g1_continous.entry(*point).or_default().insert(*segments, *enabled);
+			VectorModificationType::SetG1Continous { handles, enabled } => {
+				if *enabled {
+					if !self.add_g1_continous.contains(&[handles[1], handles[0]]) {
+						self.add_g1_continous.insert(*handles);
+					}
+					self.remove_g1_continous.remove(handles);
+					self.remove_g1_continous.remove(&[handles[1], handles[0]]);
+				} else {
+					if !self.remove_g1_continous.contains(&[handles[1], handles[0]]) {
+						self.remove_g1_continous.insert(*handles);
+					}
+					self.add_g1_continous.remove(handles);
+					self.add_g1_continous.remove(&[handles[1], handles[0]]);
+				}
 			}
 
 			VectorModificationType::ApplyPointDelta { point, delta } => {

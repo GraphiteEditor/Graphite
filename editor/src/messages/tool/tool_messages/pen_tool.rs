@@ -17,7 +17,7 @@ use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorModificationType};
 use graphene_core::Color;
-use graphene_std::vector::SegmentId;
+use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Default)]
 pub struct PenTool {
@@ -202,8 +202,11 @@ struct PenToolData {
 	snap_manager: SnapManager,
 	latest_point: Option<(PointId, DVec2)>,
 	latest_handle: Option<BezierHandles>,
+	latest_segment: Option<SegmentId>,
 	next_point: DVec2,
 	next_handle_start: DVec2,
+
+	g1_continous: bool,
 
 	angle: f64,
 	auto_panning: AutoPanning,
@@ -211,6 +214,7 @@ struct PenToolData {
 impl PenToolData {
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
 	fn bend_from_previous_point(&mut self, mut snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) {
+		self.g1_continous = true;
 		let document = snap_data.document;
 		let mouse = snap_data.input.mouse.position;
 		self.drag_handle(snap_data, transform, mouse, ModifierState::default(), responses);
@@ -221,6 +225,7 @@ impl PenToolData {
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
 			self.latest_handle = None;
+			self.latest_segment = None;
 		}
 	}
 
@@ -261,15 +266,22 @@ impl PenToolData {
 			end
 		});
 
-		let modification_type = VectorModificationType::InsertSegment {
-			id: SegmentId::generate(),
-			start,
-			end,
-			handles,
-		};
+		let id = SegmentId::generate();
+		let modification_type = VectorModificationType::InsertSegment { id, start, end, handles };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		info!("Finish place handle");
 
+		// Mirror
+		if let Some(last_segment) = self.latest_segment {
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::SetG1Continous {
+					handles: [HandleId::end(last_segment), HandleId::primary(id)],
+					enabled: true,
+				},
+			});
+		}
+		self.latest_segment = self.g1_continous.then_some(id);
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
@@ -280,6 +292,9 @@ impl PenToolData {
 		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(self.next_point), false);
 		if let Some(BezierHandles::Cubic { handle_end, .. }) = self.latest_handle.as_mut().filter(|_| colinear) {
 			*handle_end = self.next_point * 2. - self.next_handle_start;
+			self.g1_continous = true;
+		} else {
+			self.g1_continous = false;
 		}
 
 		responses.add(OverlaysMessage::Draw);
@@ -493,6 +508,7 @@ impl Fsm for PenToolFsmState {
 					tool_data.next_handle_start = pos;
 				}
 				tool_data.latest_handle = None;
+				tool_data.latest_segment = None;
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle
@@ -579,6 +595,7 @@ impl Fsm for PenToolFsmState {
 
 				tool_data.layer = None;
 				tool_data.latest_handle = None;
+				tool_data.latest_segment = None;
 				tool_data.latest_point = None;
 				tool_data.snap_manager.cleanup(responses);
 

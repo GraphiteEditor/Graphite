@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use super::graph_modification_utils::{self, get_colinear_manipulators};
 use super::snapping::{are_manipulator_handles_colinear, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE};
@@ -11,7 +13,7 @@ use graphene_core::transform::Transform;
 use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorData, VectorModificationType};
 
 use glam::DVec2;
-use graphene_std::vector::SegmentId;
+use graphene_std::vector::{HandleId, SegmentId};
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ManipulatorAngle {
@@ -464,10 +466,17 @@ impl ShapeState {
 			modification_type: VectorModificationType::ApplyPointDelta { point, delta },
 		});
 		for segment in vector_data.segment_domain.start_connected(point) {
-			self.move_primary(segment, delta, layer, responses);
+			if vector_data.segment_from_id(segment).is_some_and(|bezier| bezier.handle_start().is_some()) {
+				self.move_primary(segment, delta, layer, responses);
+			}
 		}
 		for segment in vector_data.segment_domain.end_connected(point) {
-			self.move_end(segment, delta, layer, responses);
+			let Some(bezier) = vector_data.segment_from_id(segment) else { continue };
+			if bezier.handle_end().is_some() {
+				self.move_end(segment, delta, layer, responses);
+			} else if bezier.handle_start().is_some() {
+				self.move_primary(segment, delta, layer, responses);
+			}
 		}
 	}
 
@@ -490,8 +499,20 @@ impl ShapeState {
 
 		match *point {
 			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector_data, delta, layer, responses),
-			ManipulatorPointId::PrimaryHandle(segment) => self.move_primary(segment, delta, layer, responses),
-			ManipulatorPointId::EndHandle(segment) => self.move_end(segment, delta, layer, responses),
+			ManipulatorPointId::PrimaryHandle(segment) => {
+				self.move_primary(segment, delta, layer, responses);
+				if let Some(handles) = point.get_handle_pair(&vector_data) {
+					let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+			ManipulatorPointId::EndHandle(segment) => {
+				self.move_end(segment, delta, layer, responses);
+				if let Some(handles) = point.get_handle_pair(&vector_data) {
+					let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
 		}
 
 		Some(())
@@ -517,69 +538,60 @@ impl ShapeState {
 		}
 	}
 
-	pub fn convert_manipulator_handles_to_colinear(&self, subpath: &bezier_rs::Subpath<PointId>, index: usize, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
-		let manipulator_groups = subpath.manipulator_groups();
-		let manipulator = manipulator_groups[index];
+	pub fn convert_manipulator_handles_to_colinear(&self, vector_data: &VectorData, point_id: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier) {
+		let Some(anchor_position) = ManipulatorPointId::Anchor(point_id).get_position(vector_data) else {
+			return;
+		};
+		let Some(handles) = ManipulatorPointId::Anchor(point_id).get_handle_pair(&vector_data) else {
+			return;
+		};
+
+		let handle_positions = handles.map(|handle| handle.to_point().get_position(vector_data));
 
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
-		let mut previous_position = index.checked_sub(1).and_then(|index| manipulator_groups.get(index));
-		let mut next_position = manipulator_groups.get(index + 1);
+		let points = handles.map(|handle| {
+			vector_data
+				.segment_domain
+				.segment_start_from_id(handle.segment)
+				.filter(|&id| id != point_id)
+				.or_else(|| vector_data.segment_domain.segment_end_from_id(handle.segment))
+		});
+		let anchor_positions = points.map(|point| point.and_then(|point| ManipulatorPointId::Anchor(point).get_position(vector_data)));
 
-		// Wrapping around closed path
-		if subpath.closed() {
-			previous_position = previous_position.or_else(|| manipulator_groups.last());
-			next_position = next_position.or_else(|| manipulator_groups.first());
-		}
-
-		let anchor_position = manipulator.anchor;
 		// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-		let length_previous = previous_position.map(|group| (group.anchor - anchor_position).length() / 3.);
-		let length_next = next_position.map(|group| (group.anchor - anchor_position).length() / 3.);
+		let lengths = anchor_positions.map(|position| position.map(|position| (position - anchor_position).length() / 3.));
 
 		// Use the position relative to the anchor
-		let previous_angle = previous_position.map(|group| (group.anchor - anchor_position)).map(|pos| pos.y.atan2(pos.x));
-		let next_angle = next_position.map(|group| (group.anchor - anchor_position)).map(|pos| pos.y.atan2(pos.x));
+		let directions = anchor_positions.map(|position| position.map(|position| (position - anchor_position)).and_then(DVec2::try_normalize));
 
 		// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-		let handle_direction = match (previous_angle, next_angle) {
-			(Some(previous), Some(next)) => (previous + next) / 2. + core::f64::consts::FRAC_PI_2,
-			(None, Some(val)) => core::f64::consts::PI + val,
-			(Some(val), None) => val,
+		let mut handle_direction = match (directions[0], directions[1]) {
+			(Some(previous), Some(next)) => (previous - next).try_normalize().unwrap_or(next.perp()),
+			(Some(val), None) | (None, Some(val)) => val,
 			(None, None) => return,
 		};
 
 		// Set the manipulator to have colinear handles
-		// responses.add(GraphOperationMessage::Vector {
-		// 	layer,
-		// 	modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: true },
-		// });
-
-		let (sin, cos) = handle_direction.sin_cos();
-		let mut handle_vector = DVec2::new(cos, sin);
+		let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// Flip the vector if it is not facing towards the same direction as the anchor
-		if previous_position
-			.filter(|&group| (group.anchor - anchor_position).normalize_or_zero().dot(handle_vector) < 0.)
-			.is_some() || next_position.filter(|&group| (group.anchor - anchor_position).normalize_or_zero().dot(handle_vector) > 0.).is_some()
+		if anchor_positions[0].filter(|&group| (group - anchor_position).normalize_or_zero().dot(handle_direction) < 0.).is_some()
+			|| anchor_positions[1].filter(|&group| (group - anchor_position).normalize_or_zero().dot(handle_direction) > 0.).is_some()
 		{
-			handle_vector = -handle_vector;
+			handle_direction = -handle_direction;
 		}
 
 		// Push both in and out handles into the correct position
-		// if let Some(in_handle) = length_previous.map(|length| anchor_position + handle_vector * length) {
-		// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-		// 	responses.add(GraphOperationMessage::Vector {
-		// 		layer,
-		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position: in_handle },
-		// 	});
-		// }
-		// if let Some(out_handle) = length_next.map(|length| anchor_position - handle_vector * length) {
-		// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-		// 	responses.add(GraphOperationMessage::Vector {
-		// 		layer,
-		// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position: out_handle },
-		// 	});
-		// }
+		if let Some(new_position) = lengths[0].map(|length| anchor_position + handle_direction * length) {
+			let modification_type = handles[0].move_pos(new_position - handle_positions[0].unwrap_or_default());
+
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+		if let Some(new_position) = lengths[1].map(|length| anchor_position - handle_direction * length) {
+			let modification_type = handles[1].move_pos(new_position - handle_positions[1].unwrap_or_default());
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 	}
 
 	/// Converts all selected points to colinear while moving the handles to ensure their 180° angle separation.
@@ -587,66 +599,57 @@ impl ShapeState {
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
 	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler) -> Option<()> {
-		// let mut skip_set = HashSet::new();
+		let mut skip_set = HashSet::new();
 
-		// for (&layer, layer_state) in self.selected_shape_state.iter() {
-		// 	let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+		for (&layer, layer_state) in self.selected_shape_state.iter() {
+			let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
 
-		// 	for point in layer_state.selected_points.iter() {
-		// 		if skip_set.contains(&point.group) {
-		// 			continue;
-		// 		};
+			for &point in layer_state.selected_points.iter() {
+				let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
+				if skip_set.contains(&handles) || skip_set.contains(&[handles[1], handles[0]]) {
+					continue;
+				};
 
-		// 		skip_set.insert(point.group);
+				skip_set.insert(handles);
 
-		// 		let out_selected = layer_state.selected_points.contains(&ManipulatorPointId {
-		// 			group: point.group,
-		// 			manipulator_type: SelectedType::OutHandle,
-		// 		});
-		// 		let in_selected = layer_state.selected_points.contains(&ManipulatorPointId {
-		// 			group: point.group,
-		// 			manipulator_type: SelectedType::InHandle,
-		// 		});
-		// 		// let group = vector_data.manipulator_group_id(point.group)?;
+				let [selected0, selected1] = handles.map(|handle| layer_state.selected_points.contains(&handle.to_point()));
+				let [Some(pos0), Some(pos1)] = handles.map(|handle| handle.to_point().get_position(&vector_data)) else {
+					continue;
+				};
 
-		// 		// match (out_selected, in_selected) {
-		// 		// 	// If the out handle is selected, only move the angle of the in handle
-		// 		// 	(true, false) => {
-		// 		// 		let out_handle = ManipulatorPointId::new(point.group, SelectedType::OutHandle);
-		// 		// 		if let Some(position) = group.out_handle {
-		// 		// 			responses.add(GraphOperationMessage::Vector {
-		// 		// 				layer,
-		// 		// 				modification_type: VectorModificationType::SetManipulatorPosition { point: out_handle, position },
-		// 		// 			});
-		// 		// 		}
-		// 		// 	}
-		// 		// 	// If the in handle is selected, only move the angle of the out handle
-		// 		// 	(false, true) => {
-		// 		// 		let in_handle = ManipulatorPointId::new(point.group, SelectedType::InHandle);
-		// 		// 		if let Some(position) = group.in_handle {
-		// 		// 			responses.add(GraphOperationMessage::Vector {
-		// 		// 				layer,
-		// 		// 				modification_type: VectorModificationType::SetManipulatorPosition { point: in_handle, position },
-		// 		// 			});
-		// 		// 		}
-		// 		// 	}
-		// 		// 	// If both or neither handles are selected, average the angles of the handles weighted proportional to their lengths
-		// 		// 	// TODO: This is bugged, it doesn't successfully average the angles
-		// 		// 	(_, _) => {
-		// 		// 		let found = vector_data.stroke_bezier_paths().find_map(|subpath| {
-		// 		// 			let group_slice = subpath.manipulator_groups();
-		// 		// 			let index = group_slice.iter().position(|manipulator| manipulator.id == group.id)?;
-		// 		// 			// TODO: try subpath closed? wrapping
-		// 		// 			Some((subpath, index))
-		// 		// 		});
+				let Some(anchor) = point.get_point(&vector_data).and_then(|id| vector_data.point_domain.pos_from_id(id)) else {
+					continue;
+				};
 
-		// 		// 		if let Some((subpath, index)) = found {
-		// 		// 			self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
-		// 		// 		}
-		// 		// 	}
-		// 		// }
-		// 	}
-		// }
+				if (selected0 || selected1) && !(selected0 && selected1) {
+					// If one handle is selected, only move the other handle
+					let [(selected_handle, selected_position), (unselected_handle, unselected_position)] = if selected0 {
+						[(handles[0], pos0), (handles[1], pos1)]
+					} else {
+						[(handles[1], pos1), (handles[0], pos0)]
+					};
+					let position = anchor * 2. - selected_position;
+					let modification_type = unselected_handle.move_pos(position - unselected_position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				} else {
+					// If both handles are selected, average the angles of the handles
+					// We could normalise these directions?
+					let mut handle0_direction = pos0 - anchor;
+					let mut handle1_direction = pos1 - anchor;
+					// Prevent division by zero if handles are on top of each other
+					if !(handle0_direction - handle1_direction).length_squared().recip().is_finite() {
+						handle0_direction = handle0_direction.perp();
+						handle1_direction = -handle0_direction;
+					}
+					let new0 = anchor + handle0_direction.project_onto(handle0_direction - handle1_direction);
+					let new1 = anchor + handle1_direction.project_onto(handle1_direction - handle0_direction);
+					let modification_type = handles[0].move_pos(new0 - pos0);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					let modification_type = handles[1].move_pos(new1 - pos1);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+		}
 
 		Some(())
 	}
@@ -1044,16 +1047,20 @@ impl ShapeState {
 	}
 
 	/// Set whether the handles of the selected points should be colinear.
-	pub fn set_colinear_handles_state_on_selected(&self, colinear: bool, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	for point in &state.selected_points {
-		// 		let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: point.group, colinear };
-		// 		responses.add(GraphOperationMessage::Vector {
-		// 			layer,
-		// 			modification_type: modification,
-		// 		});
-		// 	}
-		// }
+	pub fn set_colinear_handles_state_on_selected(&self, enabled: bool, metadata: &DocumentMetadata, network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = metadata.compute_modified_vector(layer, network) else { continue };
+			for &point in &state.selected_points {
+				let Some(handles) = point.get_handle_pair(&vector_data) else {
+					continue;
+				};
+				let modification = VectorModificationType::SetG1Continous { handles, enabled };
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: modification,
+				});
+			}
+		}
 	}
 
 	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
@@ -1187,72 +1194,51 @@ impl ShapeState {
 	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
 	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
-	pub fn flip_smooth_sharp(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
+	pub fn flip_smooth_sharp(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, target: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
 			let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
 
 			let transform_to_screenspace = document_metadata.transform_to_viewport(layer);
 			let mut result = None;
-			let mut result_subpath = None;
 			let mut closest_distance_squared = tolerance * tolerance;
 
 			// Find the closest anchor point on the current layer
-			for subpath in vector_data.stroke_bezier_paths() {
-				let mut set_result = false;
-				for (manipulator_index, manipulator) in subpath.manipulator_groups().iter().enumerate() {
-					let screenspace = transform_to_screenspace.transform_point2(manipulator.anchor);
-					let distance_squared = screenspace.distance_squared(position);
+			for (&id, &anchor) in vector_data.point_domain.ids().iter().zip(vector_data.point_domain.positions()) {
+				let screenspace = transform_to_screenspace.transform_point2(anchor);
+				let distance_squared = screenspace.distance_squared(target);
 
-					if distance_squared < closest_distance_squared {
-						closest_distance_squared = distance_squared;
-						result = Some((manipulator_index, *manipulator));
-						set_result = true;
-					}
-				}
-				if set_result {
-					result_subpath = Some(subpath);
+				if distance_squared < closest_distance_squared {
+					closest_distance_squared = distance_squared;
+					result = Some((id, anchor));
 				}
 			}
-			let (index, manipulator) = result?;
-			let subpath = result_subpath?;
-			let anchor_position = manipulator.anchor;
+			let (id, anchor) = result?;
+			let handles = vector_data.segment_domain.all_connected(id);
+			let mut positions = handles
+				.filter_map(|handle| handle.to_point().get_position(&vector_data))
+				.filter(|&handle| !anchor.abs_diff_eq(handle, 1e-5));
 
 			// Check by comparing the handle positions to the anchor if this manipulator group is a point
-			let already_sharp = match (manipulator.in_handle, manipulator.out_handle) {
-				// Check if both handles are zero-length (sharp)
-				(Some(in_handle), Some(out_handle)) => anchor_position.abs_diff_eq(in_handle, 1e-10) && anchor_position.abs_diff_eq(out_handle, 1e-10),
-				// Check if the only one handle is zero-length (sharp)
-				(Some(handle), None) | (None, Some(handle)) => anchor_position.abs_diff_eq(handle, 1e-10),
-				// No handles mean zero-length (sharp)
-				(None, None) => true,
+			let already_sharp = positions.next().is_none();
+
+			if already_sharp {
+				self.convert_manipulator_handles_to_colinear(&vector_data, id, responses, layer);
+			} else {
+				for handle in vector_data.segment_domain.all_connected(id) {
+					// Set handle position to anchor position
+					let Some(position) = handle.to_point().get_position(&vector_data) else { continue };
+					let modification_type = handle.move_pos(anchor - position);
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+					// Set the manipulator to have non-colinear handles
+					for &handles in &vector_data.colinear_manipulators {
+						if handles.contains(&handle) {
+							let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+				}
 			};
-
-			// if already_sharp {
-			// 	self.convert_manipulator_handles_to_colinear(&subpath, index, responses, layer);
-			// } else {
-			// 	// Set in handle position to anchor position
-			// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::InHandle);
-			// 	let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
-			// 	responses.add(GraphOperationMessage::Vector {
-			// 		layer,
-			// 		modification_type: modification,
-			// 	});
-
-			// 	// Set out handle position to anchor position
-			// 	let point = ManipulatorPointId::new(manipulator.id, SelectedType::OutHandle);
-			// 	let modification = VectorModificationType::SetManipulatorPosition { point, position: anchor_position };
-			// 	responses.add(GraphOperationMessage::Vector {
-			// 		layer,
-			// 		modification_type: modification,
-			// 	});
-
-			// 	// Set the manipulator to have non-colinear handles
-			// 	let modification = VectorModificationType::SetManipulatorColinearHandlesState { id: manipulator.id, colinear: false };
-			// 	responses.add(GraphOperationMessage::Vector {
-			// 		layer,
-			// 		modification_type: modification,
-			// 	});
-			// };
 
 			Some(true)
 		};

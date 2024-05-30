@@ -26,7 +26,14 @@ fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
-	super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2))
+	let mut ellipse = super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2));
+	let len = ellipse.segment_domain.ids().len();
+	for i in 0..len {
+		ellipse
+			.colinear_manipulators
+			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
+	}
+	ellipse
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -120,7 +127,11 @@ pub struct SplineGenerator<Positions> {
 
 #[node_macro::node_fn(SplineGenerator)]
 fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
-	super::VectorData::from_subpath(Subpath::new_cubic_spline(positions))
+	let mut spline = super::VectorData::from_subpath(Subpath::new_cubic_spline(positions));
+	for pair in spline.segment_domain.ids().windows(2) {
+		spline.colinear_manipulators.push([HandleId::end(pair[0]), HandleId::primary(pair[1])]);
+	}
+	spline
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
