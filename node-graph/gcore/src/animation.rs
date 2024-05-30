@@ -2,7 +2,7 @@ use core::fmt::Debug;
 
 use dyn_any::{DynAny, StaticType};
 
-use crate::transform::Footprint;
+use crate::application_io::EditorApi;
 use crate::Node;
 
 #[derive(Debug, Copy, Clone, PartialEq, DynAny)]
@@ -63,18 +63,10 @@ impl KeyframesF64 {
 
 #[derive(Debug, Copy, Clone)]
 pub struct AnimationF64Node<Keyframes> {
-	pub keyframes: Keyframes,
+	keyframes: Keyframes,
 }
 
 #[node_macro::node_fn(AnimationF64Node)]
-fn animation_f64_node(footprint: Footprint, keyframes: KeyframesF64) -> f64 {
-	keyframes.get_value(footprint.time)
+fn animation_f64_node<'a: 'input, T>(editor: EditorApi<'a, T>, keyframes: KeyframesF64) -> f64 {
+	keyframes.get_value(editor.render_config.animation_config.time)
 }
-
-// #[derive(Debug, Copy, Clone)]
-// pub struct AnimationF64Node;
-
-// #[node_macro::node_fn(AnimationF64Node)]
-// fn animation_f64_node(keyframes: KeyframesF64) -> f64 {
-// 	keyframes.get_value(0.)
-// }

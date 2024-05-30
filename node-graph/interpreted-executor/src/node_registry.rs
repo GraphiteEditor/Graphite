@@ -3,7 +3,6 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdentityNode;
 use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 
-use graphene_core::animation::AnimationF64Node;
 use graphene_core::animation::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
@@ -188,8 +187,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
 			NodeIOTypes::new(generic!(I), generic!(I), vec![]),
 		)],
-		register_node!(graphene_core::animation::AnimationF64Node<_>, input: Footprint, params: [KeyframesF64]),
-		// register_node!(graphene_core::animation::AnimationF64Node<>, input: KeyframesF64, params: []),
+		register_node!(graphene_core::animation::AnimationF64Node<_>, input: WasmEditorApi, params: [KeyframesF64]),
 		// TODO: create macro to impl for all types
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [u32]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: u32, params: [&u32]),
