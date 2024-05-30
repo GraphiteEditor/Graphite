@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use bezier_rs::Subpath;
+use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::Previewing;
 use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
@@ -14,12 +15,12 @@ use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, FillType, Stroke};
+use graphene_core::Type;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2};
-use graphene_std::ArtboardGroup;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
 use super::transform_utils::{self, LayerBounds};
@@ -841,6 +842,8 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let mut nodes_to_set_input = Vec::new();
+		// Boolean flag if the downstream input can be reconnected to the upstream node
+		let mut can_reconnect = true;
 
 		for (node_id, input_index, input) in network
 			.nodes
@@ -855,25 +858,24 @@ impl<'a> ModifyInputsContext<'a> {
 			.flatten()
 			.chain(network.exports.iter().enumerate().map(|(index, input)| (network.exports_metadata.0, index, input)))
 		{
-			let NodeInput::Node {
-				node_id: upstream_node_id,
-				output_index,
-				..
-			} = input
-			else {
+			let NodeInput::Node { node_id: upstream_node_id, .. } = input else {
 				continue;
 			};
 			if *upstream_node_id != deleting_node_id {
 				continue;
 			}
 
+			// Do not reconnect export to import until (#1762) is solved
+			if node_id == network.exports_metadata.0 && reconnect_to_input.as_ref().is_some_and(|reconnect| matches!(reconnect, NodeInput::Network { .. })) {
+				can_reconnect = false
+			}
+
 			// Only reconnect if the output index for the node to be deleted is 0
-			if *output_index != 0 {
-				reconnect_to_input = None
-			};
-			if reconnect_to_input.is_some() {
+			if can_reconnect && reconnect_to_input.is_some() {
 				// None means to use reconnect_to_input, which can be safely unwrapped
 				nodes_to_set_input.push((node_id, input_index, None));
+				// Only one node can be reconnected
+				can_reconnect = false;
 			} else {
 				//Disconnect input
 				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
@@ -928,11 +930,10 @@ impl<'a> ModifyInputsContext<'a> {
 		true
 	}
 
-	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
-	pub fn get_input_tagged_value(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> TaggedValue {
+	pub fn get_input_type(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
 		let Some(network) = document_network.nested_network(&network_path) else {
 			log::error!("Could not get network in get_tagged_value");
-			return TaggedValue::None;
+			return concrete!(());
 		};
 		//TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_id_path = &[&network_path[..], &[node_id]].concat();
@@ -941,7 +942,7 @@ impl<'a> ModifyInputsContext<'a> {
 			index: input_index,
 		});
 		if let Some(input_type) = input_type {
-			TaggedValue::from_type(input_type)
+			input_type.clone()
 		} else if node_id == network.exports_metadata.0 {
 			if let Some(parent_node_id) = network_path.last() {
 				let mut parent_path = network_path.clone();
@@ -957,28 +958,28 @@ impl<'a> ModifyInputsContext<'a> {
 				output_types.iter().nth(input_index).map_or_else(
 					|| {
 						warn!("Could not find output type for export node {node_id}");
-						TaggedValue::None
+						concrete!(())
 					},
-					|output_type| output_type.clone().map_or(TaggedValue::None, |output| TaggedValue::from_type(&output)),
+					|output_type| output_type.clone().map_or(concrete!(()), |output| output),
 				)
 			} else {
-				TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY)
+				concrete!(graphene_core::ArtboardGroup)
 			}
 		} else {
 			// TODO: Once there is type inference (#1621), replace this workaround approach when disconnecting node inputs with NodeInput::Node(ToDefaultNode),
 			// TODO: which would be a new node that implements the Default trait (i.e. `Default::default()`)
 
-			// Resolve TaggedValue from Types defined for each proto node in node_registry
+			// Resolve types from proto nodes in node_registry
 			let Some(node) = network.nodes.get(&node_id) else {
-				return TaggedValue::None;
+				return concrete!(());
 			};
 
-			fn get_type_from_node(node: &DocumentNode, input_index: usize) -> TaggedValue {
+			fn get_type_from_node(node: &DocumentNode, input_index: usize) -> Type {
 				match &node.implementation {
 					DocumentNodeImplementation::ProtoNode(protonode) => {
 						let Some(node_io_hashmap) = NODE_REGISTRY.get(&protonode) else {
 							log::error!("Could not get hashmap for proto node: {protonode:?}");
-							return TaggedValue::None;
+							return concrete!(());
 						};
 
 						let mut all_node_io_types = node_io_hashmap.keys().collect::<Vec<_>>();
@@ -989,7 +990,7 @@ impl<'a> ModifyInputsContext<'a> {
 						});
 						let Some(node_types) = all_node_io_types.first() else {
 							log::error!("Could not get node_types from hashmap");
-							return TaggedValue::None;
+							return concrete!(());
 						};
 
 						let skip_footprint = if node.manual_composition.is_some() { 1 } else { 0 };
@@ -999,10 +1000,10 @@ impl<'a> ModifyInputsContext<'a> {
 							.nth(input_index + skip_footprint)
 						else {
 							log::error!("Could not get type");
-							return TaggedValue::None;
+							return concrete!(());
 						};
 
-						TaggedValue::from_type(&input_type)
+						input_type
 					}
 					DocumentNodeImplementation::Network(network) => {
 						for node in &network.nodes {
@@ -1014,13 +1015,17 @@ impl<'a> ModifyInputsContext<'a> {
 								}
 							}
 						}
-						log::error!("Could not get tagged value from internal network");
-						TaggedValue::None
+						// Input is disconnected
+						concrete!(())
 					}
-					_ => TaggedValue::None,
+					_ => concrete!(()),
 				}
 			}
 			get_type_from_node(node, input_index)
 		}
+	}
+	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
+	pub fn get_input_tagged_value(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> TaggedValue {
+		TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index))
 	}
 }

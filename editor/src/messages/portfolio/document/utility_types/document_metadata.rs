@@ -159,7 +159,7 @@ impl DocumentMetadata {
 		self.locked = HashSet::new();
 		// Should refer to output node
 
-		let mut awaiting_horizontal_flow = vec![(NodeId(0), LayerNodeIdentifier::ROOT_PARENT)];
+		let mut awaiting_horizontal_flow = vec![(NodeId(70327487124), LayerNodeIdentifier::ROOT_PARENT)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {

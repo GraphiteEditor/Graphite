@@ -799,7 +799,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
-		async_node!(graphene_core::ConstructLayerNode<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => graphene_core::GraphicElement, Footprint => GraphicGroup]),
+		async_node!(graphene_core::ConstructLayerNode<_, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup, Footprint => graphene_core::GraphicElement]),
 		register_node!(graphene_core::ToGraphicElementNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
@@ -809,7 +809,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: Artboard, params: []),
 		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
-		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => Artboard, Footprint => ArtboardGroup]),
+		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();
 	for (id, c, types) in node_types.into_iter().flatten() {

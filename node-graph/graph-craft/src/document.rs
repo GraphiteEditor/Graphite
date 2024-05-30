@@ -347,23 +347,33 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
-			let &mut NodeInput::Node { node_id: id, output_index, lambda } = input else {
-				continue;
+			let mut new_input = NodeInput::Value {
+				tagged_value: TaggedValue::None,
+				exposed: true,
 			};
-			if let Some(&new_id) = new_ids.get(&id) {
-				*input = NodeInput::Node {
-					node_id: new_id,
-					output_index,
-					lambda,
-				};
-			} else if let Some(mut new_input) = default_input(self.name.clone(), index) {
-				if let NodeInput::Value { exposed, .. } = &mut new_input {
-					*exposed = true;
+			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
+				if let Some(&new_id) = new_ids.get(&id) {
+					new_input = NodeInput::Node {
+						node_id: new_id,
+						output_index,
+						lambda,
+					};
+				} else if let Some(mut default_input) = default_input(self.name.clone(), index) {
+					if let NodeInput::Value { exposed, .. } = &mut default_input {
+						*exposed = true;
+					}
+					new_input = default_input;
 				}
-				*input = new_input;
-			} else {
-				warn!("Node does not exist in library with that many inputs");
+			//TODO: Get default input value from let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
+			} else if let &mut NodeInput::Network { .. } = input {
+				if let Some(mut default_input) = default_input(self.name.clone(), index) {
+					if let NodeInput::Value { exposed, .. } = &mut default_input {
+						*exposed = true;
+					}
+					new_input = default_input;
+				}
 			}
+			*input = new_input;
 		}
 		self
 	}
@@ -858,7 +868,8 @@ impl<'a> Iterator for FlowIter<'a> {
 		loop {
 			let mut node_id = self.stack.pop()?;
 
-			if node_id == NodeId(0) {
+			// Unique ID generated during load_structure
+			if node_id == NodeId(70327487124) {
 				if let Some(root_node) = self.network.get_root_node() {
 					node_id = root_node.id
 				} else {

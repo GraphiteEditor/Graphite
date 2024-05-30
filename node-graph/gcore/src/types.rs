@@ -214,6 +214,15 @@ impl Type {
 			Self::Future(_) => None,
 		}
 	}
+
+	pub fn nested_type(self) -> Type {
+		match self {
+			Self::Generic(_) => self,
+			Self::Concrete(_) => self,
+			Self::Fn(_, output) => output.nested_type(),
+			Self::Future(_) => self,
+		}
+	}
 }
 
 fn format_type(ty: &str) -> String {

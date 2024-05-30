@@ -1116,7 +1116,7 @@ impl NodeGraphMessageHandler {
 				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
 				//.or_else(|| input.as_value().map(|tagged_value| tagged_value.ty()));
 				//TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
-				let frontend_data_type = if let Some(input_type) = &input_type {
+				let frontend_data_type = if let Some(ref input_type) = input_type {
 					FrontendGraphDataType::with_type(input_type)
 				} else {
 					FrontendGraphDataType::General
@@ -1133,9 +1133,9 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
-				let input_name = definition_name.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string())).unwrap_or(
-					ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, index)
-						.ty()
+				let input_name = definition_name.unwrap_or(
+					ModifyInputsContext::get_input_type(document_network, &self.network, node_id, &self.resolved_types, index)
+						.nested_type()
 						.to_string(),
 				);
 
@@ -1339,6 +1339,13 @@ impl NodeGraphMessageHandler {
 				connected,
 			});
 		}
+		// Display error for document network export node
+		let errors = self
+			.node_graph_errors
+			.iter()
+			.find(|error| error.node_path.is_empty() && self.network.is_empty())
+			.map(|error| format!("{:?}", error.error.clone()));
+
 		nodes.push(FrontendNode {
 			id: network.exports_metadata.0,
 			is_layer: false,
@@ -1353,7 +1360,7 @@ impl NodeGraphMessageHandler {
 			previewed: false,
 			visible: true,
 			locked: false,
-			errors: None,
+			errors,
 			ui_only: true,
 		});
 
@@ -1372,7 +1379,7 @@ impl NodeGraphMessageHandler {
 
 				let import_name = definition_name
 					.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
-					.unwrap_or(format!("Export {}", index + 1));
+					.unwrap_or(format!("Import {}", index + 1));
 
 				import_node_outputs.push(FrontendGraphOutput {
 					data_type: frontend_data_type,

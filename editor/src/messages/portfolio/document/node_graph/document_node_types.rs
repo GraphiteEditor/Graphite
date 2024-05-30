@@ -234,8 +234,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "ConstructLayer".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
-							//TODO: Swap inputs here, in the ConstructLayerNode struct/function, and node_registry.rs
-							inputs: vec![NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
+							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructLayerNode<_, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(1, -3) }, // ConstructLayer
 							..Default::default()
@@ -293,10 +292,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						DocumentNode {
 							name: "Add to Artboards".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
-							//TODO: Swap inputs here, in the AddArtboardNode struct/function, and node_registry.rs
 							inputs: vec![
-								NodeInput::node(NodeId(1), 0),
 								NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(concrete!(ArtboardGroup))), 0),
+								NodeInput::node(NodeId(1), 0),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::AddArtboardNode<_, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(6, -4) }, // Add to Artboards
@@ -962,7 +960,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							NodeInput::network(concrete!(ImageFrame<Color>), 0),
 							NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
 						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::raster::ExtractChannelNode<_>")),
 						..Default::default()
 					},
 				]
@@ -2365,7 +2363,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				.collect(),
 				..Default::default()
 			}),
-			manual_composition: Some(concrete!(Footprint)),
+			//manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
