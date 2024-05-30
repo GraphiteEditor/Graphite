@@ -135,17 +135,17 @@ pub struct FrontendNode {
 	pub ui_only: bool,
 }
 
-// (link_start, link_end, link_end_input_index)
+// (wire_start, wire_end, wire_end_input_index)
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNodeLink {
-	#[serde(rename = "linkStart")]
-	pub link_start: NodeId,
-	#[serde(rename = "linkStartOutputIndex")]
-	pub link_start_output_index: usize,
-	#[serde(rename = "linkEnd")]
-	pub link_end: NodeId,
-	#[serde(rename = "linkEndInputIndex")]
-	pub link_end_input_index: usize,
+pub struct FrontendNodeWire {
+	#[serde(rename = "wireStart")]
+	pub wire_start: NodeId,
+	#[serde(rename = "wireStartOutputIndex")]
+	pub wire_start_output_index: usize,
+	#[serde(rename = "wireEnd")]
+	pub wire_end: NodeId,
+	#[serde(rename = "wireEndInputIndex")]
+	pub wire_end_input_index: usize,
 	pub dashed: bool,
 }
 

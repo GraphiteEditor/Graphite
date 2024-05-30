@@ -11,7 +11,7 @@ pub enum NodeGraphMessage {
 	// Messages
 	Init,
 	SelectedNodesUpdated,
-	ConnectNodesByLink {
+	ConnectNodesByWire {
 		output_node: NodeId,
 		output_node_connector_index: usize,
 		input_node: NodeId,
@@ -122,7 +122,7 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	StartPreviewingWithoutRestore{
+	StartPreviewingWithoutRestore {
 		node_id: NodeId,
 	},
 	TogglePreview {

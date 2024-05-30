@@ -55,7 +55,7 @@ pub struct ModifyInputsContext<'a> {
 	pub document_network: &'a mut NodeNetwork,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
 	pub responses: &'a mut VecDeque<Message>,
-	pub outwards_links: HashMap<NodeId, Vec<NodeId>>,
+	pub outwards_wires: HashMap<NodeId, Vec<NodeId>>,
 	pub layer_node: Option<NodeId>,
 }
 
@@ -63,7 +63,7 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
 	pub fn new(document_network: &'a mut NodeNetwork, document_metadata: &'a mut DocumentMetadata, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
 		Self {
-			outwards_links: document_network.collect_outwards_links(),
+			outwards_wires: document_network.collect_outwards_wires(),
 			document_network,
 			node_graph,
 			responses,
@@ -83,7 +83,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut id = id;
 		while !document.document_network.nodes.get(&id)?.is_layer {
-			id = document.outwards_links.get(&id)?.first().copied()?;
+			id = document.outwards_wires.get(&id)?.first().copied()?;
 		}
 
 		document.layer_node = Some(id);
@@ -743,7 +743,7 @@ impl<'a> ModifyInputsContext<'a> {
 				continue;
 			};
 
-			let outward_links = network.collect_outwards_links();
+			let outward_wires = network.collect_outwards_wires();
 
 			for (_, upstream_id) in network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 				// This does a downstream traversal starting from the current node, and ending at either a node in the delete_nodes set or the output.
@@ -752,7 +752,7 @@ impl<'a> ModifyInputsContext<'a> {
 				let mut can_delete = true;
 
 				while let Some(current_node) = stack.pop() {
-					if let Some(downstream_nodes) = outward_links.get(&current_node) {
+					if let Some(downstream_nodes) = outward_wires.get(&current_node) {
 						for downstream_node in downstream_nodes {
 							// If the traversal reaches the root node, and the root node should not be deleted, then the current node is not a sole dependent
 							if network
@@ -834,7 +834,7 @@ impl<'a> ModifyInputsContext<'a> {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				// Reconnect to the node below when deleting a layer node.
-				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) {
+				if matches!(&node.inputs.get(0), Some(NodeInput::Node { .. })) || matches!(&node.inputs.get(0), Some(NodeInput::Network { .. })) {
 					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}

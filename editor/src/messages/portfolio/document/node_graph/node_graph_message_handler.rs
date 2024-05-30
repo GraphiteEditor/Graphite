@@ -4,7 +4,7 @@ use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
-use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeLink};
+use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -71,7 +71,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::ConnectNodesByLink {
+			NodeGraphMessage::ConnectNodesByWire {
 				output_node,
 				output_node_connector_index,
 				input_node,
@@ -433,9 +433,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						warn!("No network");
 						return;
 					};
-					let links = Self::collect_links(network);
-					let nodes = self.collect_nodes(document_network, network, &links);
-					responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
+					let wires = Self::collect_wires(network);
+					let nodes = self.collect_nodes(document_network, network, &wires);
+					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
@@ -586,7 +586,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				debug_assert!(network.is_acyclic(), "Not acyclic. Network: {network:#?}");
-				let outwards_links = network.collect_outwards_links();
+				let outwards_wires = network.collect_outwards_wires();
 				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
 						if right.metadata.position.x < left.metadata.position.x {
@@ -618,12 +618,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Shift nodes connected to the output port of the specified node
-				for &descendant in outwards_links.get(&node_id).unwrap_or(&Vec::new()) {
+				for &descendant in outwards_wires.get(&node_id).unwrap_or(&Vec::new()) {
 					let shift = required_shift(node_id, descendant, network);
 					let mut stack = vec![descendant];
 					while let Some(id) = stack.pop() {
 						shift_node(id, shift, network);
-						stack.extend(outwards_links.get(&id).unwrap_or(&Vec::new()).iter().copied())
+						stack.extend(outwards_wires.get(&id).unwrap_or(&Vec::new()).iter().copied())
 					}
 				}
 
@@ -812,6 +812,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								}
 								network.stop_preview();
 							}
+							// The export is clicked and there is no preview
+							else {
+								network.start_previewing(previous_export_id, previous_output_index);
+							}
 						}
 						// The export is not clicked
 						else {
@@ -822,7 +826,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								if let Some(root_node_to_restore) = root_node_to_restore {
 									// If the node with the solid line is clicked, then end preview
 									if root_node_to_restore.id == toggle_id {
-										network.stop_preview();
+										network.start_previewing(toggle_id, 0);
 									}
 								}
 								// There is a dashed line without a solid line.
@@ -951,11 +955,12 @@ impl NodeGraphMessageHandler {
 			if let (Some(&node_id), None) = (selection.next(), selection.next()) {
 				// Is this node the current output
 				let is_output = network.outputs_contain(node_id);
+				let is_previewing = matches!(network.previewing, Previewing::Yes { .. });
+
 				// Prevent showing "End Preview"/"Preview" if the root node is the output, or the import/export node
-				let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
 				let is_import_or_export = node_id == network.imports_metadata.0 || node_id == network.exports_metadata.0;
-				if !(is_output && is_root_node && is_import_or_export) && network == current_network {
-					let output_button = TextButton::new(if is_output { "End Preview" } else { "Preview" })
+				if !is_import_or_export && network == current_network {
+					let output_button = TextButton::new(if is_output && is_previewing { "End Preview" } else { "Preview" })
 						.icon(Some("Rescale".to_string()))
 						.tooltip(if is_output { "Restore preview to the graph output" } else { "Preview selected node/layer" }.to_string() + " (Shortcut: Alt-click node/layer)")
 						.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
@@ -1026,32 +1031,32 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn collect_links(network: &NodeNetwork) -> Vec<FrontendNodeLink> {
-		let mut links = network
+	fn collect_wires(network: &NodeNetwork) -> Vec<FrontendNodeWire> {
+		let mut wires = network
 			.nodes
 			.iter()
-			.flat_map(|(link_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, link_end, index)))
-			.filter_map(|(input, &link_end, link_end_input_index)| {
+			.flat_map(|(wire_end, node)| node.inputs.iter().filter(|input| input.is_exposed()).enumerate().map(move |(index, input)| (input, wire_end, index)))
+			.filter_map(|(input, &wire_end, wire_end_input_index)| {
 				if let NodeInput::Node {
-					node_id: link_start,
-					output_index: link_start_output_index,
+					node_id: wire_start,
+					output_index: wire_start_output_index,
 					// TODO: add ui for lambdas
 					lambda: _,
 				} = *input
 				{
-					Some(FrontendNodeLink {
-						link_start,
-						link_start_output_index,
-						link_end,
-						link_end_input_index,
+					Some(FrontendNodeWire {
+						wire_start,
+						wire_start_output_index,
+						wire_end,
+						wire_end_input_index,
 						dashed: false,
 					})
 				} else if let NodeInput::Network { import_index, .. } = *input {
-					Some(FrontendNodeLink {
-						link_start: network.imports_metadata.0,
-						link_start_output_index: import_index,
-						link_end,
-						link_end_input_index,
+					Some(FrontendNodeWire {
+						wire_start: network.imports_metadata.0,
+						wire_start_output_index: import_index,
+						wire_end,
+						wire_end_input_index,
 						dashed: false,
 					})
 				} else {
@@ -1062,11 +1067,11 @@ impl NodeGraphMessageHandler {
 
 		// Connect primary export to root node, since previewing a node will change the primary export
 		if let Some(root_node) = network.get_root_node() {
-			links.push(FrontendNodeLink {
-				link_start: root_node.id,
-				link_start_output_index: root_node.output_index,
-				link_end: network.exports_metadata.0,
-				link_end_input_index: 0,
+			wires.push(FrontendNodeWire {
+				wire_start: root_node.id,
+				wire_start_output_index: root_node.output_index,
+				wire_end: network.exports_metadata.0,
+				wire_end_input_index: 0,
 				dashed: false,
 			});
 		}
@@ -1075,23 +1080,23 @@ impl NodeGraphMessageHandler {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
 				let dashed = matches!(network.previewing, Previewing::Yes { .. }) && i == 0;
 				if dashed || i != 0 {
-					links.push(FrontendNodeLink {
-						link_start: *node_id,
-						link_start_output_index: *output_index,
-						link_end: network.exports_metadata.0,
-						link_end_input_index: i,
+					wires.push(FrontendNodeWire {
+						wire_start: *node_id,
+						wire_start_output_index: *output_index,
+						wire_end: network.exports_metadata.0,
+						wire_end_input_index: i,
 						dashed,
 					})
 				}
 			}
 		}
-		links
+		wires
 	}
 
-	fn collect_nodes(&self, document_network: &NodeNetwork, network: &NodeNetwork, links: &[FrontendNodeLink]) -> Vec<FrontendNode> {
-		let connected_node_to_output_lookup = links
+	fn collect_nodes(&self, document_network: &NodeNetwork, network: &NodeNetwork, wires: &[FrontendNodeWire]) -> Vec<FrontendNode> {
+		let connected_node_to_output_lookup = wires
 			.iter()
-			.map(|link| ((link.link_start, link.link_start_output_index), (link.link_end, link.link_end_input_index)))
+			.map(|wire| ((wire.wire_start, wire.wire_start_output_index), (wire.wire_end, wire.wire_end_input_index)))
 			.fold(HashMap::new(), |mut acc, (key, value)| {
 				acc.entry(key)
 					.and_modify(|v: &mut (Vec<NodeId>, Vec<usize>)| {
@@ -1209,7 +1214,6 @@ impl NodeGraphMessageHandler {
 			let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
 			let previewed = is_export && !is_root_node;
 
-			log::debug!("self.node_graph_errors: {:?}", self.node_graph_errors);
 			let errors = self
 				.node_graph_errors
 				.iter()
@@ -1480,9 +1484,9 @@ impl NodeGraphMessageHandler {
 		metadata.load_structure(document_network);
 		Self::update_layer_panel(document_network, metadata, collapsed, responses);
 		if graph_open {
-			let links = Self::collect_links(network);
-			let nodes = self.collect_nodes(document_network, network, &links);
-			responses.add(FrontendMessage::UpdateNodeGraph { nodes, links });
+			let wires = Self::collect_wires(network);
+			let nodes = self.collect_nodes(document_network, network, &wires);
+			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path })
 		}
 	}
@@ -1546,7 +1550,6 @@ impl NodeGraphMessageHandler {
 	pub fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter(|&(&id, _)| !network.outputs_contain(id))
 			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
 			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
 	}

@@ -29,8 +29,8 @@ export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
 
-	@Type(() => FrontendNodeLink)
-	readonly links!: FrontendNodeLink[];
+	@Type(() => FrontendNodeWire)
+	readonly wires!: FrontendNodeWire[];
 }
 
 export class UpdateNodeTypes extends JsMessage {
@@ -141,14 +141,14 @@ export class FrontendNode {
 	readonly uiOnly!: boolean;
 }
 
-export class FrontendNodeLink {
-	readonly linkStart!: bigint;
+export class FrontendNodeWire {
+	readonly wireStart!: bigint;
 
-	readonly linkStartOutputIndex!: bigint;
+	readonly wireStartOutputIndex!: bigint;
 
-	readonly linkEnd!: bigint;
+	readonly wireEnd!: bigint;
 
-	readonly linkEndInputIndex!: bigint;
+	readonly wireEndInputIndex!: bigint;
 
 	readonly dashed!: boolean;
 }

@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type FrontendNode,
-	type FrontendNodeLink,
+	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
@@ -17,7 +17,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		nodes: [] as FrontendNode[],
-		links: [] as FrontendNodeLink[],
+		wires: [] as FrontendNodeWire[],
 		nodeTypes: [] as FrontendNodeType[],
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
@@ -29,7 +29,7 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;
-			state.links = updateNodeGraph.links;
+			state.wires = updateNodeGraph.wires;
 			const newThumbnails = new Map<bigint, string>();
 			// Transfer over any preexisting thumbnails from itself
 			state.nodes.forEach((node) => {

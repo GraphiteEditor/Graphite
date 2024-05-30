@@ -906,17 +906,17 @@ impl NodeNetwork {
 	}
 
 	/// Collect a hashmap of nodes with a list of the nodes that use it as input
-	pub fn collect_outwards_links(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut outwards_links: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+	pub fn collect_outwards_wires(&self) -> HashMap<NodeId, Vec<NodeId>> {
+		let mut outwards_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (current_node_id, node) in &self.nodes {
 			for input in &node.inputs {
 				if let NodeInput::Node { node_id, .. } = input {
-					let outward_links_entry = outwards_links.entry(*node_id).or_default();
-					outward_links_entry.push(*current_node_id);
+					let outward_wires_entry = outwards_wires.entry(*node_id).or_default();
+					outward_wires_entry.push(*current_node_id);
 				}
 			}
 		}
-		outwards_links
+		outwards_wires
 	}
 
 	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
