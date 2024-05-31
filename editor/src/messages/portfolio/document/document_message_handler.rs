@@ -1219,7 +1219,19 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		//serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
+			Ok(mut document) => {
+				for (_, node) in &mut document.network.nodes {
+					let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+					let default_definition_node = node_definition.default_document_node();
+
+					node.implementation = default_definition_node.implementation.clone();
+				}
+				Ok(document)
+			}
+			Err(e) => Err(e),
+		}
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {

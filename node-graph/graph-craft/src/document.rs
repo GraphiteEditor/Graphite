@@ -66,6 +66,45 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	Ok(s)
 }
 
+use serde::Deserialize;
+use serde::Deserializer;
+
+#[derive(Debug, Deserialize)]
+pub enum OldNodeInput {
+	/// A reference to another node in the same network from which this node can receive its input.
+	Node { node_id: NodeId, output_index: usize, lambda: bool },
+
+	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
+	Value { tagged_value: TaggedValue, exposed: bool },
+
+	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
+	Network(Type),
+
+	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
+	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
+	Inline(InlineRust),
+}
+
+fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let old_inputs = Vec::<OldNodeInput>::deserialize(deserializer)?;
+
+	// Convert Vec<NodeOutput> to Vec<NodeInput>
+	let inputs = old_inputs
+		.into_iter()
+		.map(|old_input| match old_input {
+			OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
+			OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
+			OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
+			OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
+		})
+		.collect();
+
+	Ok(inputs)
+}
+
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -84,6 +123,7 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
 	///   In the root network, it is resolved when evaluating the borrow tree.
+	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
 	///
@@ -564,20 +604,54 @@ pub enum Previewing {
 	No,
 }
 
+impl Default for Previewing {
+	fn default() -> Previewing {
+		Previewing::No
+	}
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NodeOutput {
+	pub node_id: NodeId,
+	pub node_output_index: usize,
+}
+
+fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let outputs = Vec::<NodeOutput>::deserialize(deserializer)?;
+
+	// Convert Vec<NodeOutput> to Vec<NodeInput>
+	let inputs = outputs.into_iter().map(|output| NodeInput::node(output.node_id, output.node_output_index)).collect();
+
+	Ok(inputs)
+}
+
+fn default_import_metadata() -> (NodeId, IVec2) {
+	(NodeId(generate_uuid()), IVec2::new(-25, -4))
+}
+fn default_export_metadata() -> (NodeId, IVec2) {
+	(NodeId(generate_uuid()), IVec2::new(8, -4))
+}
+
 #[derive(Clone, Debug, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
 	/// The list of data outputs that are exported from this network to the parent network.
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
-	#[serde(alias = "outputs")] // TODO: Eventually remove this alias (probably starting late 2024)
+	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
+	#[serde(default)]
 	pub previewing: Previewing,
 	/// Temporary fields to store metadata for import/export UI only nodes, eventually will be replaced with lines leading to edges
+	#[serde(default = "default_import_metadata")]
 	pub imports_metadata: (NodeId, IVec2),
+	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 }
 
@@ -598,9 +672,9 @@ impl Default for NodeNetwork {
 		NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
-			previewing: Previewing::No,
-			imports_metadata: (NodeId(generate_uuid()), (IVec2::new(-25, -4))),
-			exports_metadata: (NodeId(generate_uuid()), IVec2::new(8, -4)),
+			previewing: Default::default(),
+			imports_metadata: default_import_metadata(),
+			exports_metadata: default_export_metadata(),
 		}
 	}
 }
