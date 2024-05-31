@@ -165,7 +165,7 @@ impl DocumentMetadata {
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(0) { 0 } else { 1 }) {
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(70327487124) { 0 } else { 1 }) {
 				if !current_node.visible {
 					self.hidden.insert(current_node_id);
 				}

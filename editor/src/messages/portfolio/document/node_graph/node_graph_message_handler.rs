@@ -85,28 +85,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				//If input_node is none, then it is the UI only Export node
 				let input_node_id = if network.exports_metadata.0 == input_node { None } else { Some(input_node) };
 
-				let input_index = if network.exports_metadata.0 != input_node {
-					let Some(input_node) = network.nodes.get(&input_node) else {
-						error!("No to");
-						return;
-					};
-					let input_index = input_node
-						.inputs
-						.iter()
-						.enumerate()
-						.filter(|input| input.1.is_exposed())
-						.nth(input_node_connector_index)
-						.map(|enumerated_input| enumerated_input.0);
-
-					let Some(input_index) = input_index else {
-						error!("Failed to find actual index of connector index {input_node_connector_index} on node {input_node:#?}");
-						return;
-					};
-					input_index
-				} else {
-					input_node_connector_index
-				};
-
+				let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
 				responses.add(DocumentMessage::StartTransaction);
 
 				match (output_node_id, input_node_id) {
@@ -224,12 +203,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					reconnect,
 				});
 			}
+			// Input_index is the visible input index, not the actual input index
 			NodeGraphMessage::DisconnectInput { node_id, input_index } => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
+
+				let input_index = NodeGraphMessageHandler::get_input_index(network, node_id, input_index);
 
 				let Some(existing_input) = network.nodes.get(&node_id).map_or_else(|| network.exports.get(input_index), |node| node.inputs.get(input_index)) else {
 					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
@@ -1409,23 +1391,27 @@ impl NodeGraphMessageHandler {
 		}
 		nodes
 	}
-	fn collect_subgraph_names(subgraph_path: &Vec<NodeId>, network: &NodeNetwork) -> Vec<String> {
+	fn collect_subgraph_names(subgraph_path: &mut Vec<NodeId>, network: &NodeNetwork) -> Option<Vec<String>> {
 		let mut current_network = network;
-		subgraph_path
-			.iter()
-			.map(|node_id| {
-				let Some(node) = current_network.nodes.get(node_id) else {
-					log::error!("Could not find node id {node_id} in network");
-					return String::new();
-				};
-				if let Some(network) = node.implementation.get_network() {
-					current_network = network;
+		let mut subraph_names = Vec::new();
+		for node_id in subgraph_path.iter() {
+			let Some(node) = current_network.nodes.get(node_id) else {
+				// If node cannot be found and we are in a nested network, set subgraph_path to document network and return None, which runs send_graph again on the document network
+				if !subgraph_path.is_empty() {
+					subgraph_path.clear();
+					return None;
+				} else {
+					return Some(Vec::new());
 				}
+			};
+			if let Some(network) = node.implementation.get_network() {
+				current_network = network;
+			}
 
-				//TODO: Maybe replace with alias and default to name if it does not exist
-				node.name.clone()
-			})
-			.collect::<Vec<String>>()
+			//TODO: Maybe replace with alias and default to name if it does not exist
+			subraph_names.push(node.name.clone());
+		}
+		Some(subraph_names)
 	}
 	fn update_layer_panel(document_network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		for (&node_id, node) in &document_network.nodes {
@@ -1476,8 +1462,12 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&self, document_network: &NodeNetwork, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
-		let nested_path = Self::collect_subgraph_names(&self.network, document_network);
+	fn send_graph(&mut self, document_network: &NodeNetwork, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
+		// If a node cannot be found in collect_subgraph_names, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
+		let Some(nested_path) = Self::collect_subgraph_names(&mut self.network, document_network) else {
+			self.send_graph(document_network, metadata, collapsed, graph_open, responses);
+			return;
+		};
 
 		let Some(network) = document_network.nested_network(&self.network) else {
 			log::error!("Could not send graph since nested network does not exist");
@@ -1597,6 +1587,31 @@ impl NodeGraphMessageHandler {
 		(node.alias != "")
 			.then_some(node.alias.clone())
 			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() })
+	}
+
+	/// Get the actual input index from the visible input index where hidden inputs are skipped
+	fn get_input_index(network: &NodeNetwork, node_id: NodeId, visible_index: usize) -> usize {
+		if network.exports_metadata.0 != node_id {
+			let Some(input_node) = network.nodes.get(&node_id) else {
+				error!("Could not get node {node_id} in get_input_index");
+				return 0;
+			};
+			let input_index = input_node
+				.inputs
+				.iter()
+				.enumerate()
+				.filter(|input| input.1.is_exposed())
+				.nth(visible_index)
+				.map(|enumerated_input| enumerated_input.0);
+
+			let Some(input_index) = input_index else {
+				error!("Failed to find actual index of connector index {visible_index} on node {node_id:#?}");
+				return 0;
+			};
+			input_index
+		} else {
+			visible_index
+		}
 	}
 }
 

@@ -826,7 +826,16 @@ impl<'a> ModifyInputsContext<'a> {
 		network_path: &Vec<NodeId>,
 		resolved_types: &ResolvedDocumentNodeTypes,
 	) -> bool {
-		let Some(network) = document_network.nested_network_for_selected_nodes(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
+		let network_path = if selected_nodes
+			.selected_nodes_ref()
+			.iter()
+			.any(|node_id| document_network.nodes.contains_key(node_id) || document_network.exports_metadata.0 == *node_id || document_network.imports_metadata.0 == *node_id)
+		{
+			Vec::new()
+		} else {
+			network_path.clone()
+		};
+		let Some(network) = document_network.nested_network(&network_path) else {
 			return false;
 		};
 		let mut reconnect_to_input: Option<NodeInput> = None;
@@ -878,7 +887,7 @@ impl<'a> ModifyInputsContext<'a> {
 				can_reconnect = false;
 			} else {
 				//Disconnect input
-				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
+				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &network_path, node_id, resolved_types, input_index);
 				let value_input = NodeInput::value(tagged_value, true);
 				nodes_to_set_input.push((node_id, input_index, Some(value_input)));
 			}

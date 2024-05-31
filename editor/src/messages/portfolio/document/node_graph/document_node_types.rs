@@ -2504,7 +2504,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Sample Points",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0)], // Taken from output 0 of Sample Points
+				exports: vec![NodeInput::node(NodeId(2), 0)], // Taken from output 0 of Sample Points
 				nodes: [
 					DocumentNode {
 						name: "Lengths of Segments of Subpaths".to_string(),
@@ -2520,13 +2520,19 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							NodeInput::network(concrete!(f64), 2),  // From the document node's parameters
 							NodeInput::network(concrete!(f64), 3),  // From the document node's parameters
 							NodeInput::network(concrete!(bool), 4), // From the document node's parameters
-							NodeInput::node(NodeId(1), 0),          // From output 0 of Lengths of Segments of Subpaths
+							NodeInput::node(NodeId(0), 0),          // From output 0 of Lengths of Segments of Subpaths
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SamplePoints<_, _, _, _, _, _>")),
 						manual_composition: Some(concrete!(Footprint)),
 						..Default::default()
 					},
-					// TODO: Add a cache node here?
+					DocumentNode {
+						name: "MemoizeImpure".to_string(),
+						inputs: vec![NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+						manual_composition: Some(concrete!(Footprint)),
+						..Default::default()
+					},
 				]
 				.into_iter()
 				.enumerate()
@@ -2548,7 +2554,29 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Poisson-Disk Points",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_>"),
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: [
+					DocumentNode {
+						name: "Poisson-Disk Points".to_string(),
+						inputs: vec![NodeInput::network(concrete!(graphene_core::vector::VectorData), 0), NodeInput::network(concrete!(f64), 1)],
+						implementation: DocumentNodeImplementation::proto("graphene_core::vector::PoissonDiskPoints<_>"),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "MemoizeImpure".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode<_, _, _>")),
+						manual_composition: Some(concrete!(Footprint)),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Separation Disk Diameter", TaggedValue::F64(10.), false),
