@@ -181,7 +181,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
-				ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect_to_sibling, selected_nodes, &Vec::new(), &node_graph.resolved_types);
+				ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect_to_sibling, &Vec::new(), &node_graph.resolved_types);
 				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index: 0 });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {

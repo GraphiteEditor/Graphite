@@ -1092,6 +1092,7 @@ impl NodeGraphMessageHandler {
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
 			let node_id_path = &[&self.network[..], &[node_id]].concat();
+			let node_definition = document_node_types::resolve_document_node_type(&node.name);
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				//TODO: Only display input type if potential inputs in node_registry are all the same type
@@ -1104,7 +1105,7 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
-				let definition_name = document_node_types::resolve_document_node_type(&node.name).and_then(|node_definition| {
+				let definition_name = node_definition.and_then(|node_definition| {
 					let node_implementation = &node.implementation;
 					let definition_implementation = &node_definition.implementation;
 					//Only use definition input names if the node implementation is the same as the definition implementation
@@ -1152,17 +1153,21 @@ impl NodeGraphMessageHandler {
 				FrontendGraphDataType::General
 			};
 			let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, 0)).unwrap_or(&(Vec::new(), Vec::new())).clone();
-			let primary_output = Some(FrontendGraphOutput {
-				data_type: frontend_data_type,
-				name: "Output 1".to_string(),
-				resolved_type: primary_output_type.clone().map(|input| format!("{input:?}")),
-				connected,
-				connected_index,
-			});
+			let primary_output = if node.has_primary_output {
+				Some(FrontendGraphOutput {
+					data_type: frontend_data_type,
+					name: "Output 1".to_string(),
+					resolved_type: primary_output_type.clone().map(|input| format!("{input:?}")),
+					connected,
+					connected_index,
+				})
+			} else {
+				None
+			};
 
 			let mut exposed_outputs = Vec::new();
 			for (index, exposed_output) in output_types.iter().enumerate() {
-				if index == 0 {
+				if index == 0 && node.has_primary_output {
 					continue;
 				}
 				let frontend_data_type = if let Some(output_type) = &exposed_output {
@@ -1171,17 +1176,12 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
-				let output_name = if index > 0 {
-					document_node_types::resolve_document_node_type(&node.name)
-						.and_then(|node_definition| {
-							// If a node has multiple outputs, node and definition must have Network implementations
-							node_definition.outputs.get(index).map(|output| output.name.to_string())
-						})
-						.unwrap_or(format!("Output {}", index + 1))
-				} else {
-					// First output is not named
-					"First output name".to_string()
-				};
+				let output_name = node_definition
+					.and_then(|node_definition| {
+						// If a node has multiple outputs, node and definition must have Network implementations
+						node_definition.outputs.get(index).map(|output| output.name.to_string())
+					})
+					.unwrap_or(format!("Output {}", index + 1));
 
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
 				exposed_outputs.push(FrontendGraphOutput {

@@ -789,6 +789,17 @@ impl<'a> ModifyInputsContext<'a> {
 				}
 			}
 		}
+		let network_path = if selected_nodes
+			.selected_nodes_ref()
+			.iter()
+			.any(|node_id| document_network.nodes.contains_key(node_id) || document_network.exports_metadata.0 == *node_id || document_network.imports_metadata.0 == *node_id)
+		{
+			Vec::new()
+		} else {
+			network_path.clone()
+		};
+		selected_nodes.add_selected_nodes(delete_nodes.iter().cloned().collect(), document_network, &network_path);
+
 		for delete_node_id in delete_nodes {
 			ModifyInputsContext::remove_node(document_network, selected_nodes, delete_node_id, reconnect, responses, &network_path, resolved_types);
 		}
@@ -804,11 +815,11 @@ impl<'a> ModifyInputsContext<'a> {
 		network_path: &Vec<NodeId>,
 		resolved_types: &ResolvedDocumentNodeTypes,
 	) -> bool {
-		if !ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect, selected_nodes, network_path, resolved_types) {
+		if !ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect, &network_path, resolved_types) {
 			log::error!("could not remove_references_from_network");
 			return false;
 		}
-		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
+		let Some(network) = document_network.nested_network_mut(&network_path) else {
 			return false;
 		};
 
@@ -822,20 +833,10 @@ impl<'a> ModifyInputsContext<'a> {
 		document_network: &mut NodeNetwork,
 		deleting_node_id: NodeId,
 		reconnect: bool,
-		selected_nodes: &mut SelectedNodes,
 		network_path: &Vec<NodeId>,
 		resolved_types: &ResolvedDocumentNodeTypes,
 	) -> bool {
-		let network_path = if selected_nodes
-			.selected_nodes_ref()
-			.iter()
-			.any(|node_id| document_network.nodes.contains_key(node_id) || document_network.exports_metadata.0 == *node_id || document_network.imports_metadata.0 == *node_id)
-		{
-			Vec::new()
-		} else {
-			network_path.clone()
-		};
-		let Some(network) = document_network.nested_network(&network_path) else {
+		let Some(network) = document_network.nested_network(network_path) else {
 			return false;
 		};
 		let mut reconnect_to_input: Option<NodeInput> = None;
@@ -887,13 +888,13 @@ impl<'a> ModifyInputsContext<'a> {
 				can_reconnect = false;
 			} else {
 				//Disconnect input
-				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &network_path, node_id, resolved_types, input_index);
+				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
 				let value_input = NodeInput::value(tagged_value, true);
 				nodes_to_set_input.push((node_id, input_index, Some(value_input)));
 			}
 		}
 
-		let Some(network) = document_network.nested_network_for_selected_nodes_mut(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
+		let Some(network) = document_network.nested_network_mut(network_path) else {
 			return false;
 		};
 

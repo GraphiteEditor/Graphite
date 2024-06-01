@@ -400,6 +400,7 @@ impl DocumentNode {
 		P: Fn(String, usize) -> Option<NodeInput>,
 	{
 		for (index, input) in self.inputs.iter_mut().enumerate() {
+			// TODO: Get default input value from let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
 			let mut new_input = NodeInput::Value {
 				tagged_value: TaggedValue::None,
 				exposed: true,
@@ -417,7 +418,7 @@ impl DocumentNode {
 					}
 					new_input = default_input;
 				}
-			//TODO: Get default input value from let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
+				*input = new_input;
 			} else if let &mut NodeInput::Network { .. } = input {
 				if let Some(mut default_input) = default_input(self.name.clone(), index) {
 					if let NodeInput::Value { exposed, .. } = &mut default_input {
@@ -425,8 +426,8 @@ impl DocumentNode {
 					}
 					new_input = default_input;
 				}
+				*input = new_input;
 			}
-			*input = new_input;
 		}
 		self
 	}
