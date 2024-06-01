@@ -63,7 +63,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
-					document_node = document_node.map_ids(NodeGraphMessageHandler::default_node_input, &new_ids);
+					let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &Vec::new(), node_id, &node_graph.resolved_types, &document_node);
+					document_node = document_node.map_ids(default_inputs, &new_ids);
 
 					// Insert node into network
 					document_network.nodes.insert(node_id, document_node);
@@ -606,19 +607,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 						// Get the new, non-conflicting id
 						let node_id = *new_ids.get(&old_id).unwrap();
-						document_node = document_node.map_ids(NodeGraphMessageHandler::default_node_input, &new_ids);
+						let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &Vec::new(), node_id, &node_graph.resolved_types, &document_node);
+						document_node = document_node.map_ids(default_inputs, &new_ids);
 
 						// Insert node into network
-						modify_inputs.document_network.nodes.insert(node_id, document_node);
+						document_network.nodes.insert(node_id, document_node);
 					}
 
-					if let Some(layer_node) = modify_inputs.document_network.nodes.get_mut(&layer) {
+					if let Some(layer_node) = document_network.nodes.get_mut(&layer) {
 						if let Some(&input) = new_ids.get(&NodeId(0)) {
 							layer_node.inputs[1] = NodeInput::node(input, 0);
 						}
 					}
 
-					modify_inputs.responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					error!("Creating new custom layer failed");
 				}

@@ -934,6 +934,9 @@ impl<'a> ModifyInputsContext<'a> {
 			else if let Previewing::Yes { root_node_to_restore } = network.previewing {
 				if let Some(root_node) = root_node_to_restore {
 					ModifyInputsContext::set_input(network, node_id, input_index, NodeInput::node(root_node.id, root_node.output_index), is_document_network);
+				} else if let Some(reconnect_to_input) = reconnect_to_input.clone() {
+					ModifyInputsContext::set_input(network, node_id, input_index, reconnect_to_input, is_document_network);
+					network.start_previewing_without_restore();
 				}
 			}
 		}

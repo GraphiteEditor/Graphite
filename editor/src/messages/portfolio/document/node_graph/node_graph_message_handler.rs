@@ -11,7 +11,7 @@ use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentInputType, NodePropertiesContext};
+use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
@@ -142,14 +142,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::Copy => {
 				// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
+				let network_path = if selected_nodes
+					.selected_nodes_ref()
+					.iter()
+					.any(|node_id| document_network.nodes.contains_key(node_id) || document_network.exports_metadata.0 == *node_id || document_network.imports_metadata.0 == *node_id)
+				{
+					Vec::new()
+				} else {
+					self.network.clone()
+				};
+				let Some(network) = document_network.nested_network(&network_path) else {
 					warn!("No network in NodeGraphMessage::Copy ");
 					return;
 				};
 
 				// Collect the selected nodes
 				let new_ids = &selected_nodes.selected_nodes(network).copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
-				let copied_nodes: Vec<_> = Self::copy_nodes(network, new_ids).collect();
+				let copied_nodes = Self::copy_nodes(document_network, &network_path, &self.resolved_types, new_ids).collect::<Vec<_>>();
 
 				// Prefix to show that this is nodes
 				let mut copy_text = String::from("graphite/nodes: ");
@@ -267,7 +276,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(BroadcastEvent::SelectionChanged);
 
 					// Copy the selected nodes
-					let copied_nodes = Self::copy_nodes(network, new_ids).collect::<Vec<_>>();
+					let copied_nodes = Self::copy_nodes(document_network, &self.network, &self.resolved_types, new_ids).collect::<Vec<_>>();
 
 					// Select the new nodes
 					selected_nodes.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node));
@@ -433,7 +442,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						return;
 					}
 				};
-
 				if data.is_empty() {
 					return;
 				}
@@ -456,7 +464,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
-					document_node = document_node.map_ids(Self::default_node_input, &new_ids);
+					let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &self.network, node_id, &self.resolved_types, &document_node);
+					document_node = document_node.map_ids(default_inputs, &new_ids);
 
 					// Insert node into network
 					responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
@@ -1536,19 +1545,38 @@ impl NodeGraphMessageHandler {
 		});
 	}
 
-	/// Gets the default node input based on the node name and the input index
-	pub fn default_node_input(name: String, index: usize) -> Option<NodeInput> {
-		resolve_document_node_type(&name)
-			.and_then(|node| node.inputs.get(index))
-			.map(|input: &DocumentInputType| input.default.clone())
-	}
-
 	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
-	pub fn copy_nodes<'a>(network: &'a NodeNetwork, new_ids: &'a HashMap<NodeId, NodeId>) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
+	pub fn copy_nodes<'a>(
+		document_network: &'a NodeNetwork,
+		network_path: &'a Vec<NodeId>,
+		resolved_types: &'a ResolvedDocumentNodeTypes,
+		new_ids: &'a HashMap<NodeId, NodeId>,
+	) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
 		new_ids
 			.iter()
-			.filter_map(|(&id, &new)| network.nodes.get(&id).map(|node| (new, node.clone())))
-			.map(move |(new, node)| (new, node.map_ids(Self::default_node_input, new_ids)))
+			.filter_map(|(&id, &new)| {
+				document_network
+					.nested_network(network_path)
+					.and_then(|network| network.nodes.get(&id).map(|node| (new, id, node.clone())))
+			})
+			.map(move |(new, node_id, node)| {
+				let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, network_path, node_id, resolved_types, &node);
+				(new, node.map_ids(default_inputs, new_ids))
+			})
+	}
+
+	pub fn get_default_inputs(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, node: &DocumentNode) -> Vec<NodeInput> {
+		let mut default_inputs = Vec::new();
+		for (input_index, input) in node.inputs.iter().enumerate() {
+			let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
+			let mut exposed = true;
+			if let NodeInput::Value { exposed: input_exposed, .. } = input {
+				exposed = *input_exposed;
+			}
+			let default_input = NodeInput::value(tagged_value, exposed);
+			default_inputs.push(default_input);
+		}
+		default_inputs
 	}
 
 	pub fn eligible_to_be_layer(&self, document_network: &NodeNetwork, node_id: NodeId) -> bool {

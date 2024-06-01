@@ -394,39 +394,21 @@ impl DocumentNode {
 
 	/// Converts all node id inputs to a new id based on a HashMap.
 	///
-	/// If the node is not in the hashmap then a default input is found based on the node name and input index.
-	pub fn map_ids<P>(mut self, default_input: P, new_ids: &HashMap<NodeId, NodeId>) -> Self
-	where
-		P: Fn(String, usize) -> Option<NodeInput>,
-	{
-		for (index, input) in self.inputs.iter_mut().enumerate() {
-			// TODO: Get default input value from let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
-			let mut new_input = NodeInput::Value {
-				tagged_value: TaggedValue::None,
-				exposed: true,
-			};
+	/// If the node is not in the hashmap then a default input is found based on the compiled network
+	pub fn map_ids(mut self, default_inputs: Vec<NodeInput>, new_ids: &HashMap<NodeId, NodeId>) -> Self {
+		for (input_index, input) in self.inputs.iter_mut().enumerate() {
 			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
-					new_input = NodeInput::Node {
+					*input = NodeInput::Node {
 						node_id: new_id,
 						output_index,
 						lambda,
 					};
-				} else if let Some(mut default_input) = default_input(self.name.clone(), index) {
-					if let NodeInput::Value { exposed, .. } = &mut default_input {
-						*exposed = true;
-					}
-					new_input = default_input;
+				} else {
+					*input = default_inputs[input_index].clone();
 				}
-				*input = new_input;
 			} else if let &mut NodeInput::Network { .. } = input {
-				if let Some(mut default_input) = default_input(self.name.clone(), index) {
-					if let NodeInput::Value { exposed, .. } = &mut default_input {
-						*exposed = true;
-					}
-					new_input = default_input;
-				}
-				*input = new_input;
+				*input = default_inputs[input_index].clone();
 			}
 		}
 		self
@@ -1045,7 +1027,7 @@ impl NodeNetwork {
 			} else {
 				node.original_location = OriginalLocation {
 					path: Some(new_path),
-					inputs_exposed: vec![true; node.inputs.len()],
+					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
 					skip_inputs: if node.manual_composition.is_some() { 1 } else { 0 },
 					..Default::default()
 				}
@@ -1499,7 +1481,7 @@ mod test {
 	fn map_ids() {
 		let mut network = add_network();
 		network.map_ids(|id| NodeId(id.0 + 1));
-		let mapped_add = NodeNetwork {
+		let mut mapped_add = NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(2), 0)],
 			nodes: [
 				(
@@ -1525,6 +1507,10 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
+		network.exports_metadata.0 = NodeId(0);
+		network.imports_metadata.0 = NodeId(0);
+		mapped_add.exports_metadata.0 = NodeId(0);
+		mapped_add.imports_metadata.0 = NodeId(0);
 		assert_eq!(network, mapped_add);
 	}
 
@@ -1586,7 +1572,11 @@ mod test {
 		};
 		network.generate_node_paths(&[]);
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
-		let flat_network = flat_network();
+		network.exports_metadata.0 = NodeId(0);
+		network.imports_metadata.0 = NodeId(0);
+		let mut flat_network = flat_network();
+		flat_network.imports_metadata.0 = NodeId(0);
+		flat_network.exports_metadata.0 = NodeId(0);
 		println!("{flat_network:#?}");
 		println!("{network:#?}");
 
@@ -1615,7 +1605,7 @@ mod test {
 	#[test]
 	fn resolve_flatten_add_as_proto_network() {
 		let construction_network = ProtoNetwork {
-			inputs: vec![NodeId(10)],
+			inputs: Vec::new(),
 			output: NodeId(11),
 			nodes: [
 				(
@@ -1626,9 +1616,9 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![(NodeId(14), false)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 1)].into(),
+							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							outputs_source: HashMap::new(),
-							inputs_exposed: vec![false, false],
+							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
 						},
 
@@ -1651,7 +1641,22 @@ mod test {
 						..Default::default()
 					},
 				),
-				(NodeId(14), ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2)), vec![NodeId(1), NodeId(4)])),
+				(
+					NodeId(14),
+					ProtoNode {
+						identifier: "graphene_core::value::ClonedNode".into(),
+						input: ProtoNodeInput::None,
+						construction_args: ConstructionArgs::Value(TaggedValue::U32(2)),
+						original_location: OriginalLocation {
+							path: Some(vec![NodeId(1), NodeId(4)]),
+							inputs_source: HashMap::new(),
+							outputs_source: HashMap::new(),
+							inputs_exposed: vec![true, false],
+							skip_inputs: 0,
+						},
+						..Default::default()
+					},
+				),
 			]
 			.into_iter()
 			.collect(),
@@ -1676,9 +1681,9 @@ mod test {
 						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 0 }, 1)].into(),
+							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
 							outputs_source: HashMap::new(),
-							inputs_exposed: vec![false, false],
+							inputs_exposed: vec![true, true],
 							skip_inputs: 0,
 						},
 						..Default::default()
@@ -1697,7 +1702,7 @@ mod test {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
 							outputs_source: HashMap::new(),
-							inputs_exposed: vec![false, false],
+							inputs_exposed: vec![true, false],
 							skip_inputs: 0,
 						},
 						..Default::default()

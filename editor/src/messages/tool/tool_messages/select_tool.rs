@@ -351,7 +351,8 @@ impl SelectToolData {
 						copy_ids.insert(node_id, NodeId((index + 1) as u64));
 					});
 			};
-			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(document.network(), &copy_ids).collect();
+			let nodes: HashMap<NodeId, DocumentNode> =
+				NodeGraphMessageHandler::copy_nodes(document.network(), &document.node_graph_handler.network, &document.node_graph_handler.resolved_types, &copy_ids).collect();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.selected_nodes, parent);
 

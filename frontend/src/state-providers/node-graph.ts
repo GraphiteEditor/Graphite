@@ -30,13 +30,6 @@ export function createNodeGraphState(editor: Editor) {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;
 			state.wires = updateNodeGraph.wires;
-			const newThumbnails = new Map<bigint, string>();
-			// Transfer over any preexisting thumbnails from itself
-			state.nodes.forEach((node) => {
-				const thumbnail = state.thumbnails.get(node.id);
-				if (thumbnail) newThumbnails.set(node.id, thumbnail);
-			});
-			state.thumbnails = newThumbnails;
 			return state;
 		});
 	});
