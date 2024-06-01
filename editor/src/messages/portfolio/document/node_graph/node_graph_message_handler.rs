@@ -1144,7 +1144,17 @@ impl NodeGraphMessageHandler {
 				(node_input, frontend_graph_input)
 			});
 
-			let primary_input = inputs.next().filter(|(input, _)| input.is_exposed()).map(|(_, input_type)| input_type);
+			let primary_input = inputs
+				.next()
+				.filter(|(input, _)| {
+					// Don't show EditorApi input to nodes like "Text" in the document network
+					if document_network == network && matches!(input, NodeInput::Network { .. }) {
+						false
+					} else {
+						input.is_exposed()
+					}
+				})
+				.map(|(_, input_type)| input_type);
 			let exposed_inputs = inputs
 				.filter(|(input, _)| input.is_exposed() && !(matches!(input, NodeInput::Network { .. }) && document_network == network))
 				.map(|(_, input_type)| input_type)
@@ -1356,6 +1366,8 @@ impl NodeGraphMessageHandler {
 			let mut import_node_outputs = Vec::new();
 			for (index, definition_name) in import_names.into_iter().enumerate() {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
+				// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
+				// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
 				let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
 
 				let frontend_data_type = if let Some(input_type) = input_type.clone() {

@@ -85,6 +85,8 @@ impl DynamicExecutor {
 
 	pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes {
 		let mut resolved_document_node_types = ResolvedDocumentNodeTypes::default();
+		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
+		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI only import node.
 		for (source, &(protonode_id, protonode_index)) in self.tree.inputs_source_map() {
 			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
 			let Some(ty) = [&node_io.input].into_iter().chain(&node_io.parameters).nth(protonode_index) else {
@@ -206,7 +208,7 @@ impl BorrowTree {
 			ConstructionArgs::Value(value) => {
 				let upcasted = UpcastNode::new(value.to_owned());
 				let node = Box::new(upcasted) as TypeErasedBox<'_>;
-				let node = NodeContainer::new(node);
+				let node: std::rc::Rc<NodeContainer> = NodeContainer::new(node);
 				self.store_node(node, id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),

@@ -876,6 +876,11 @@ impl<'a> ModifyInputsContext<'a> {
 				can_reconnect = false
 			}
 
+			// Do not reconnect to EditorApi network input in the document network.
+			if network_path.is_empty() && reconnect_to_input.as_ref().is_some_and(|reconnect| matches!(reconnect, NodeInput::Network { .. })) {
+				can_reconnect = false
+			}
+
 			// Only reconnect if the output index for the node to be deleted is 0
 			if can_reconnect && reconnect_to_input.is_some() {
 				// None means to use reconnect_to_input, which can be safely unwrapped
