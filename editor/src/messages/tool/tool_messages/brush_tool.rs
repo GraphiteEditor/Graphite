@@ -356,7 +356,7 @@ impl Fsm for BrushToolFsmState {
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let parent = layer.parent(document.metadata()).unwrap_or(document.metadata.root());
+						let parent = layer.parent(document.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 						let parent_position = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
 						let layer_position = tool_data.transform.inverse().transform_point2(parent_position);
 

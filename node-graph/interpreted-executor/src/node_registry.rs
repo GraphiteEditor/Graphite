@@ -177,7 +177,7 @@ macro_rules! raster_node {
 	}};
 }
 
-//TODO: turn into hashmap
+// TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)>> = vec![
 		//register_node!(graphene_core::ops::IdentityNode, input: Any<'_>, params: []),

@@ -92,62 +92,6 @@ fn create_executor(_document_string: String) -> Result<DynamicExecutor, Box<dyn 
 	// Ok(executor)
 }
 
-//TODO: Remove this?
-// pub fn wrap_network_in_scope(mut network: NodeNetwork) -> NodeNetwork {
-// 	let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
-
-// 	network.generate_node_paths(&[]);
-// 	for id in node_ids {
-// 		network.flatten(id);
-// 	}
-
-// 	let mut network_inputs = Vec::new();
-// 	let mut input_type = None;
-// 	for (id, node) in network.nodes.iter() {
-// 		for input in node.inputs.iter() {
-// 			if let NodeInput::Network { .. } = input {
-// 				if input_type.is_none() {
-// 					input_type = Some(input.clone());
-// 				}
-// 				assert_eq!(input, input_type.as_ref().unwrap(), "Networks wrapped in scope must have the same input type");
-// 				network_inputs.push(*id);
-// 			}
-// 		}
-// 	}
-// 	let len = network_inputs.len();
-// 	network.imports = network_inputs;
-
-// 	// if the network has no inputs, it doesn't need to be wrapped in a scope
-// 	if len == 0 {
-// 		return network;
-// 	}
-
-// 	let inner_network = DocumentNode {
-// 		name: "Scope".to_string(),
-// 		implementation: DocumentNodeImplementation::Network(network),
-// 		inputs: core::iter::repeat(NodeInput::node(NodeId(0), 1)).take(len).collect(),
-// 		..Default::default()
-// 	};
-
-// 	// wrap the inner network in a scope
-// 	let nodes = vec![
-// 		begin_scope(),
-// 		inner_network,
-// 		DocumentNode {
-// 			name: "End Scope".to_string(),
-// 			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
-// 			inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-// 			..Default::default()
-// 		},
-// 	];
-// 	NodeNetwork {
-// 		imports: vec![NodeId(0)],
-// 		exports: vec![NodeInput::node(NodeId(2), 0)],
-// 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
-// 		..Default::default()
-// 	}
-// }
-
 fn begin_scope() -> DocumentNode {
 	DocumentNode {
 		name: "Begin Scope".to_string(),

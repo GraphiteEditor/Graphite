@@ -131,8 +131,6 @@ impl BorrowTree {
 	/// Pushes new nodes into the tree and return orphaned nodes
 	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
-		//TODO: self.nodes are retained when closing and creating a new document, while means that the .push_node is not called for some nodes, and they are not added
-		// to the borrow tree, so document_node_types does not return types for those nodes
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;

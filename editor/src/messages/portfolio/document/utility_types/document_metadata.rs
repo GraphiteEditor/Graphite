@@ -50,11 +50,6 @@ impl Default for DocumentMetadata {
 // =================================
 
 impl DocumentMetadata {
-	/// Get the root layer from the document.
-	pub fn root(&self) -> LayerNodeIdentifier {
-		LayerNodeIdentifier::ROOT_PARENT
-	}
-
 	pub fn all_layers(&self) -> DescendantsIter<'_> {
 		LayerNodeIdentifier::ROOT_PARENT.descendants(self)
 	}
@@ -223,11 +218,6 @@ impl DocumentMetadata {
 				}
 			}
 		}
-		// Will deselect nodes in nested networks
-		// selected_nodes
-		// 	.0
-		// 	.retain(|node| graph.nodes.contains_key(node) || graph.exports_metadata.0 == *node || graph.imports_metadata.0 == *node);
-
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
@@ -378,7 +368,7 @@ impl Default for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	//A conceptual node used to represent the parent of the root node layer stack
+	/// A conceptual node used to represent the UI only export node
 	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
@@ -675,7 +665,7 @@ pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 #[test]
 fn test_tree() {
 	let mut metadata = DocumentMetadata::default();
-	let root = metadata.root();
+	let root = LayerNodeIdentifier::ROOT_PARENT;
 	let metadata = &mut metadata;
 	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
 	assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);

@@ -317,7 +317,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
-					//Path will never include ROOT_PARENT, so this is safe
+					// Path will never include ROOT_PARENT, so this is safe
 					responses.add_front(DocumentMessage::DeleteLayer { layer: *path.last().unwrap() });
 				}
 			}
@@ -455,7 +455,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Insert node right above the folder
-					//TODO: downstream node can be none if it is the root node
+					// TODO: downstream node can be none if it is the root node
 					let (folder_downstream_node_id, folder_downstream_input_index) =
 						DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder).unwrap_or((self.network.exports_metadata.0, 0));
 
@@ -481,12 +481,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id: folder_id,
 					nodes: HashMap::new(),
-					parent: parent,
+					parent,
 					insert_index: calculated_insert_index,
 					alias: String::new(),
 				});
 
-				let parent: LayerNodeIdentifier = LayerNodeIdentifier::new_unchecked(folder_id);
+				let parent = LayerNodeIdentifier::new_unchecked(folder_id);
 				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: parent });
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
@@ -539,7 +539,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
-				// Artboards can only have None as the parent.
+				// Artboards can only have ROOT_PARENT as the parent.
 				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
@@ -985,7 +985,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Set the primary input for the node downstream of folder to the first layer node
-					//TODO: downstream node can be none if it is the root node
+					// TODO: downstream node can be none if it is the root node. A layer group connected directly to the export cannot be ungrouped
 					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
@@ -1219,20 +1219,20 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
-		// TODO: Comment out after upgrading demo artwork
-		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-			Ok(mut document) => {
-				for (_, node) in &mut document.network.nodes {
-					let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-					let default_definition_node = node_definition.default_document_node();
+		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
+		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
+		// 	Ok(mut document) => {
+		// 		for (_, node) in &mut document.network.nodes {
+		// 			let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+		// 			let default_definition_node = node_definition.default_document_node();
 
-					node.implementation = default_definition_node.implementation.clone();
-				}
-				Ok(document)
-			}
-			Err(e) => Err(e),
-		}
+		// 			node.implementation = default_definition_node.implementation.clone();
+		// 		}
+		// 		Ok(document)
+		// 	}
+		// 	Err(e) => Err(e),
+		// }
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
@@ -1253,7 +1253,6 @@ impl DocumentMessageHandler {
 	/// Called recursively by the entry function [`serialize_root`].
 	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
 		let mut space = 0;
-
 		for layer_node in folder.children(self.metadata()) {
 			data_section.push(layer_node.to_node().0);
 			space += 1;
@@ -1307,7 +1306,7 @@ impl DocumentMessageHandler {
 	pub fn serialize_root(&self) -> RawBuffer {
 		let mut structure_section = vec![NodeId(0).0];
 		let mut data_section = Vec::new();
-		self.serialize_structure(self.metadata().root(), &mut structure_section, &mut data_section, &mut vec![]);
+		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT, &mut structure_section, &mut data_section, &mut vec![]);
 
 		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
 		structure_section[0] = structure_section.len() as u64 - 1;
@@ -1457,15 +1456,6 @@ impl DocumentMessageHandler {
 				(downstream_node_id, downstream_input_index)
 			})
 	}
-
-	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
-	///
-	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	// fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> usize {
-	// 	let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
-	// 	let layer_ids_above = parent.children(self.metadata()).take(take_amount);
-	// 	layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as usize
-	// }
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {

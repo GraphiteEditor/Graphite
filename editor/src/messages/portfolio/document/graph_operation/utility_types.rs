@@ -1,15 +1,11 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
-
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
-use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
-use bezier_rs::Subpath;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::Previewing;
-use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{generate_uuid, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, Previewing};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
@@ -19,9 +15,11 @@ use graphene_core::Type;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
-
-use glam::{DAffine2, DVec2, IVec2};
 use interpreted_executor::node_registry::NODE_REGISTRY;
+
+use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2, IVec2};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use super::transform_utils::{self, LayerBounds};
 
@@ -48,8 +46,7 @@ pub enum VectorDataModification {
 	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
 
-// TODO: Generalize for any network, rewrite as static functions since there only a few fields are used for each function, so when calling only the necessary data will
-// be provided
+// TODO: Generalize for any network, rewrite as static functions since there only a few fields are used for each function, so when calling only the necessary data will be provided
 /// NodeGraphMessage or GraphOperationMessage cannot be added in ModifyInputsContext, since the functions are called by both messages handlers
 pub struct ModifyInputsContext<'a> {
 	pub document_metadata: &'a mut DocumentMetadata,
@@ -139,7 +136,7 @@ impl<'a> ModifyInputsContext<'a> {
 		assert!(!document_network.nodes.contains_key(&id), "Creating already existing node");
 		if let Some(root_node) = document_network.get_root_node() {
 			let previous_root_node = document_network.nodes.get_mut(&root_node.id).expect("Root node should always exist");
-			//Insert whatever non artboard node previously fed into export as a child of the new node
+			// Insert whatever non artboard node previously fed into export as a child of the new node
 			let node_input_index = if new_node.is_artboard() && !previous_root_node.is_artboard() { 1 } else { 0 };
 			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
 			ModifyInputsContext::shift_upstream(document_network, root_node.id, IVec2::new(8, 0), true);
@@ -278,7 +275,7 @@ impl<'a> ModifyInputsContext<'a> {
 				self.insert_node_before(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
 			};
 		} else {
-			//If post_node does not exist, then network is empty
+			// If post_node does not exist, then network is empty
 			ModifyInputsContext::insert_node_as_primary_export(self.document_network, new_id, new_layer_node);
 		}
 
@@ -462,7 +459,6 @@ impl<'a> ModifyInputsContext<'a> {
 			self.modify_new_node(name, update_input);
 		}
 
-		//self.node_graph.network.clear();
 		self.responses.add(PropertiesPanelMessage::Refresh);
 
 		if !skip_rerender {
@@ -503,7 +499,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	/// Returns a true if the network structure is updated
+	/// Returns true if the network structure is updated
 	pub fn set_input(network: &mut NodeNetwork, node_id: NodeId, input_index: usize, input: NodeInput, is_document_network: bool) -> bool {
 		let mut load_network_structure = false;
 		if let Some(node) = network.nodes.get_mut(&node_id) {
@@ -888,7 +884,7 @@ impl<'a> ModifyInputsContext<'a> {
 				can_reconnect = false;
 			} else {
 				//Disconnect input
-				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
+				let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index));
 				let value_input = NodeInput::value(tagged_value, true);
 				nodes_to_set_input.push((node_id, input_index, Some(value_input)));
 			}
@@ -943,12 +939,13 @@ impl<'a> ModifyInputsContext<'a> {
 		true
 	}
 
+	/// Get the Type for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
 	pub fn get_input_type(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
 		let Some(network) = document_network.nested_network(&network_path) else {
 			log::error!("Could not get network in get_tagged_value");
 			return concrete!(());
 		};
-		//TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
+		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
 		let node_id_path = &[&network_path[..], &[node_id]].concat();
 		let input_type = resolved_types.inputs.get(&graph_craft::document::Source {
 			node: node_id_path.clone(),
@@ -1036,9 +1033,5 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 			get_type_from_node(node, input_index)
 		}
-	}
-	/// Get the tagged_value for any node id and input index. Network path is the path to the encapsulating node (including the encapsulating node), node_id is the selected node
-	pub fn get_input_tagged_value(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> TaggedValue {
-		TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index))
 	}
 }

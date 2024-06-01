@@ -80,9 +80,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&output_node)) else {
 					return;
 				};
-				//If output_node_id is none, then it is the UI only Import node
+				// If output_node_id is None, then it is the UI only Import node
 				let output_node_id = if network.imports_metadata.0 == output_node { None } else { Some(output_node) };
-				//If input_node is none, then it is the UI only Export node
+				// If input_node_id is None, then it is the UI only Export node
 				let input_node_id = if network.exports_metadata.0 == input_node { None } else { Some(input_node) };
 
 				let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
@@ -137,7 +137,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
-
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Copy => {
@@ -227,7 +226,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &self.network, node_id, &self.resolved_types, input_index);
+				let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, &self.network, node_id, &self.resolved_types, input_index));
 
 				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {
@@ -312,8 +311,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 				self.update_selected(document_network, selected_nodes, responses);
-
-				//TODO: solve thumbnails not initially rendering
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
@@ -331,7 +328,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let NodeInput::Value { exposed, .. } = &mut input {
 					*exposed = new_exposed;
 				} else {
-					//TODO: Should network and node inputs be able to be disconnected?
+					// TODO: Should network and node inputs be able to be hidden?
 					log::error!("Could not hide/show input: {:?} since it is not NodeInput::Value", input);
 					return;
 				}
@@ -519,7 +516,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id });
 			}
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
-				selected_nodes.add_selected_nodes(nodes, &document_network, &self.network);
+				selected_nodes.add_selected_nodes(nodes, document_network, &self.network);
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
@@ -1104,10 +1101,9 @@ impl NodeGraphMessageHandler {
 			let node_definition = document_node_types::resolve_document_node_type(&node.name);
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
-				//TODO: Only display input type if potential inputs in node_registry are all the same type
+				// TODO: Only display input type if potential inputs in node_registry are all the same type
 				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
-				//.or_else(|| input.as_value().map(|tagged_value| tagged_value.ty()));
-				//TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
+				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
 				let frontend_data_type = if let Some(ref input_type) = input_type {
 					FrontendGraphDataType::with_type(input_type)
 				} else {
@@ -1117,7 +1113,7 @@ impl NodeGraphMessageHandler {
 				let definition_name = node_definition.and_then(|node_definition| {
 					let node_implementation = &node.implementation;
 					let definition_implementation = &node_definition.implementation;
-					//Only use definition input names if the node implementation is the same as the definition implementation
+					// Only use definition input names if the node implementation is the same as the definition implementation
 					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
 						node_definition.inputs.get(index).map(|input| input.name.to_string())
 					} else {
@@ -1256,7 +1252,7 @@ impl NodeGraphMessageHandler {
 			// Get all import names from definition
 			for (index, _) in parent_node.inputs.iter().enumerate() {
 				let definition_name = parent_definition.and_then(|node_definition| {
-					//Only use definition input names if the parent implementation is the same as the definition implementation
+					// Only use definition input names if the parent implementation is the same as the definition implementation
 					let definition_implementation = &node_definition.implementation;
 					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
 						node_definition.inputs.get(index).map(|input| input.name.to_string())
@@ -1271,7 +1267,7 @@ impl NodeGraphMessageHandler {
 			// Get all export names from definition
 			for (index, _) in network.exports.iter().enumerate() {
 				let definition_name = parent_definition.and_then(|node_definition| {
-					//Only use definition input names if the parent implementation is the same as the definition implementation
+					// Only use definition input names if the parent implementation is the same as the definition implementation
 					let definition_implementation = &node_definition.implementation;
 					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
 						node_definition.outputs.get(index).map(|output| output.name.to_string())
@@ -1417,7 +1413,7 @@ impl NodeGraphMessageHandler {
 				current_network = network;
 			}
 
-			//TODO: Maybe replace with alias and default to name if it does not exist
+			// TODO: Maybe replace with alias and default to name if it does not exist
 			subraph_names.push(node.name.clone());
 		}
 		Some(subraph_names)
@@ -1568,7 +1564,7 @@ impl NodeGraphMessageHandler {
 	pub fn get_default_inputs(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, node: &DocumentNode) -> Vec<NodeInput> {
 		let mut default_inputs = Vec::new();
 		for (input_index, input) in node.inputs.iter().enumerate() {
-			let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, network_path, node_id, resolved_types, input_index);
+			let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index));
 			let mut exposed = true;
 			if let NodeInput::Value { exposed: input_exposed, .. } = input {
 				exposed = *input_exposed;

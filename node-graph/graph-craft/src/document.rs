@@ -445,7 +445,7 @@ pub enum NodeInput {
 	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
 	Value { tagged_value: TaggedValue, exposed: bool },
 
-	//TODO: Remove import_type and get type from parent node input
+	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network { import_type: Type, import_index: usize },
 
@@ -1218,7 +1218,7 @@ impl NodeNetwork {
 				}
 				self.nodes.insert(nested_node_id, nested_node);
 			}
-			//TODO: Add support for flattening exports that are NodeInput::Network (https://github.com/GraphiteEditor/Graphite/issues/1762)
+			// TODO: Add support for flattening exports that are NodeInput::Network (https://github.com/GraphiteEditor/Graphite/issues/1762)
 			// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
 			// for (i, export) in inner_network.exports.iter().enumerate() {
 			// 	if let NodeInput::Network { import_index, .. } = export {

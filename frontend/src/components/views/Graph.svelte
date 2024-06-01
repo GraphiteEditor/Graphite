@@ -636,7 +636,6 @@
 		// If the node has been dragged on top of the wire then connect it into the middle.
 		if (wire) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
-			//TODO: Add support for import/export nodes
 			editor.handle.insertNodeBetween(wire.wireEnd, Number(wire.wireEndInputIndex), 0, selectedNodeId, 0, Number(wire.wireStartOutputIndex), wire.wireStart);
 			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
@@ -647,7 +646,6 @@
 
 		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
-			//TODO: Add support for import/export nodes
 			editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
 		disconnecting = undefined;
@@ -659,7 +657,6 @@
 			if (from !== undefined && to !== undefined) {
 				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
-				//TODO: Add support for import/export nodes
 				editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (wireInProgressFromConnector && !initialDisconnecting) {
@@ -713,7 +710,6 @@
 
 		if (from !== undefined) {
 			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-			//TODO: Add support for import/export nodes
 			editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 		}
 

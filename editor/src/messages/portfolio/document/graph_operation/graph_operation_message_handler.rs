@@ -158,7 +158,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				};
 
-				let tagged_value = ModifyInputsContext::get_input_tagged_value(document_network, &Vec::new(), node_id, &node_graph.resolved_types, input_index);
+				let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, &Vec::new(), node_id, &node_graph.resolved_types, input_index));
 
 				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {

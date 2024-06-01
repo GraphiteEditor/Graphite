@@ -120,7 +120,7 @@ impl SelectedNodes {
 		self.0.retain(f);
 	}
 
-	//TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, but cannot be distinguished. Instead of set_selected_nodes, add_selected_nodes should be used.
+	// TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected in the graph, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, since different nodes should be selected in each case, but cannot be distinguished. Currently it is not possible to shift+click a node in the node graph while a layer is selected. Instead of set_selected_nodes, add_selected_nodes should be used.
 	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, document_network: &NodeNetwork, network_path: &Vec<NodeId>) {
 		let Some(network) = document_network.nested_network(network_path) else {
 			return;
