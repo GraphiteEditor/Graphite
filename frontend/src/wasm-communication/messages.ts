@@ -84,7 +84,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "number" | "raster" | "vector" | "color" | "artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -943,7 +943,7 @@ export class TextAreaInput extends WidgetProps {
 export class ParameterExposeButton extends WidgetProps {
 	exposed!: boolean;
 
-	dataType!: string;
+	dataType!: FrontendGraphDataType;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;

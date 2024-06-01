@@ -65,11 +65,16 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	}
 	Ok(s)
 }
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum NodeInputVersions {
+	OldNodeInput(OldNodeInput),
+	NodeInput(NodeInput),
+}
 
-use serde::Deserialize;
-use serde::Deserializer;
-
-#[derive(Debug, Deserialize)]
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
 pub enum OldNodeInput {
 	/// A reference to another node in the same network from which this node can receive its input.
 	Node { node_id: NodeId, output_index: usize, lambda: bool },
@@ -85,20 +90,28 @@ pub enum OldNodeInput {
 	Inline(InlineRust),
 }
 
+// TODO: Eventually remove this (probably starting late 2024)
+use serde::Deserialize;
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
-	D: Deserializer<'de>,
+	D: serde::Deserializer<'de>,
 {
-	let old_inputs = Vec::<OldNodeInput>::deserialize(deserializer)?;
+	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
 
 	// Convert Vec<NodeOutput> to Vec<NodeInput>
-	let inputs = old_inputs
+	let inputs = input_versions
 		.into_iter()
-		.map(|old_input| match old_input {
-			OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
-			OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
-			OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
-			OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
+		.map(|old_input| {
+			let old_input = match old_input {
+				NodeInputVersions::OldNodeInput(old_input) => old_input,
+				NodeInputVersions::NodeInput(node_input) => return node_input,
+			};
+			match old_input {
+				OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
+				OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
+				OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
+				OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
+			}
 		})
 		.collect();
 
@@ -593,44 +606,58 @@ pub struct RootNode {
 	pub id: NodeId,
 	pub output_index: usize,
 }
-#[derive(PartialEq, Debug, Clone, Hash)]
+#[derive(PartialEq, Debug, Clone, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Previewing {
 	/// If there is a node to restore the connection to the export for, then it is stored in the option.
 	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes {
-		root_node_to_restore: Option<RootNode>,
-	},
+	Yes { root_node_to_restore: Option<RootNode> },
+	#[default]
 	No,
 }
 
-impl Default for Previewing {
-	fn default() -> Previewing {
-		Previewing::No
-	}
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+pub enum NodeExportVersions {
+	OldNodeInput(NodeOutput),
+	NodeInput(NodeInput),
 }
 
-#[derive(Debug, Deserialize)]
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
 pub struct NodeOutput {
 	pub node_id: NodeId,
 	pub node_output_index: usize,
 }
 
+// TODO: Eventually remove this (probably starting late 2024)
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
-	D: Deserializer<'de>,
+	D: serde::Deserializer<'de>,
 {
-	let outputs = Vec::<NodeOutput>::deserialize(deserializer)?;
+	let node_input_versions = Vec::<NodeExportVersions>::deserialize(deserializer)?;
 
 	// Convert Vec<NodeOutput> to Vec<NodeInput>
-	let inputs = outputs.into_iter().map(|output| NodeInput::node(output.node_id, output.node_output_index)).collect();
+	let inputs = node_input_versions
+		.into_iter()
+		.map(|node_input_version| {
+			let node_output = match node_input_version {
+				NodeExportVersions::OldNodeInput(node_output) => node_output,
+				NodeExportVersions::NodeInput(node_input) => return node_input,
+			};
+			NodeInput::node(node_output.node_id, node_output.node_output_index)
+		})
+		.collect();
 
 	Ok(inputs)
 }
 
+// TODO: Eventually remove this (probably starting late 2024)
 fn default_import_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(-25, -4))
 }
+// TODO: Eventually remove this (probably starting late 2024)
 fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(8, -4))
 }

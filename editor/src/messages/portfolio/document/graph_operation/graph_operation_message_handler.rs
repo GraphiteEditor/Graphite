@@ -140,6 +140,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				load_network_structure(document_network, document_metadata, collapsed);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			// TODO: Eventually remove this (probably starting late 2024)
+			GraphOperationMessage::DeleteLegacyOutputNode => {
+				if document_network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
+					ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![NodeId(0)], true, responses, Vec::new(), &node_graph.resolved_types);
+				}
+			}
 			// Make sure to also update NodeGraphMessage::DisconnectInput when changing this
 			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
 				let Some(existing_input) = document_network

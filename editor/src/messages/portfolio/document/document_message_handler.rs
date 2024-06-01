@@ -1219,7 +1219,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		//serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		// TODO: Comment out after upgrading demo artwork
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
 				for (_, node) in &mut document.network.nodes {

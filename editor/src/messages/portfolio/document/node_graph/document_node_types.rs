@@ -40,7 +40,7 @@ impl DocumentInputType {
 	}
 
 	pub fn value(name: &'static str, tagged_value: TaggedValue, exposed: bool) -> Self {
-		let data_type = FrontendGraphDataType::with_tagged_value(&tagged_value);
+		let data_type = FrontendGraphDataType::with_type(&tagged_value.ty());
 		let default = NodeInput::value(tagged_value, exposed);
 		Self { name, data_type, default }
 	}
@@ -130,7 +130,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Inputs",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Bool", TaggedValue::Bool(true), false)],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Boolean)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::boolean_properties,
 			..Default::default()
 		},
@@ -148,7 +148,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Inputs",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Color", TaggedValue::OptionalColor(None), false)],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Color)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::color_properties,
 			..Default::default()
 		},
@@ -250,7 +250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Graphical Data", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 			],
-			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::GraphicGroup)],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Graphic)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -621,7 +621,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					DocumentNode {
 						name: "Image Frame".to_string(),
 						inputs: vec![NodeInput::network(concrete!(graphene_core::raster::Image<Color>), 0), NodeInput::network(concrete!(DAffine2), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::ImageFrameNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::raster::ImageFrameNode<_, _>")),
 						..Default::default()
 					},
 					DocumentNode {
@@ -2126,7 +2126,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
 				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
 			],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
 			properties: node_properties::logic_operator_properties,
 			..Default::default()
 		},
@@ -2138,7 +2138,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
 				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
 			],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
 			properties: node_properties::logic_operator_properties,
 			..Default::default()
 		},
@@ -2150,7 +2150,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Operand A", TaggedValue::Bool(false), true),
 				DocumentInputType::value("Operand B", TaggedValue::Bool(false), true),
 			],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
 			properties: node_properties::logic_operator_properties,
 			..Default::default()
 		},
@@ -2159,7 +2159,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			category: "Logic",
 			implementation: DocumentNodeImplementation::proto("graphene_core::logic::LogicNotNode"),
 			inputs: vec![DocumentInputType::value("Input", TaggedValue::Bool(false), true)],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Boolean)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::General)],
 			properties: node_properties::node_no_properties,
 			..Default::default()
 		},
@@ -2612,7 +2612,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Centroid Type", TaggedValue::CentroidType(graphene_core::vector::misc::CentroidType::Area), false),
 			],
-			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::MathVector)],
+			outputs: vec![DocumentOutputType::new("Output", FrontendGraphDataType::Number)],
 			properties: node_properties::centroid_properties,
 			manual_composition: Some(concrete!(())),
 			..Default::default()
@@ -2691,7 +2691,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Max Size", TaggedValue::U32(8), true),
 			],
-			outputs: vec![DocumentOutputType::new("Colors", FrontendGraphDataType::Color)],
+			outputs: vec![DocumentOutputType::new("Colors", FrontendGraphDataType::General)],
 			properties: node_properties::image_color_palette,
 			..Default::default()
 		},

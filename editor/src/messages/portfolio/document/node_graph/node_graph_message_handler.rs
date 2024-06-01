@@ -1290,7 +1290,7 @@ impl NodeGraphMessageHandler {
 			}
 			// If type should only be determined from resolved_types then remove this
 			else if let NodeInput::Value { tagged_value, .. } = export {
-				(FrontendGraphDataType::with_tagged_value(tagged_value), Some(tagged_value.ty()))
+				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
 			} else if let NodeInput::Network { import_type, .. } = export {
 				(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
 			} else {

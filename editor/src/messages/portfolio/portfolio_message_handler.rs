@@ -378,10 +378,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 				}
-				responses.add(NodeGraphMessage::DeleteNodes {
-					node_ids: vec![NodeId(0)],
-					reconnect: true,
-				});
+				// TODO: Eventually remove this (probably starting late 2024)
+				responses.add(GraphOperationMessage::DeleteLegacyOutputNode);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {

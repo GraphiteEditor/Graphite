@@ -35,6 +35,8 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		reconnect: bool,
 	},
+	// TODO: Eventually remove this (probably starting late 2024)
+	DeleteLegacyOutputNode,
 	DisconnectInput {
 		node_id: NodeId,
 		input_index: usize,
