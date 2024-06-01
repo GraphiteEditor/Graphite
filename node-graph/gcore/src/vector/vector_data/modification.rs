@@ -234,10 +234,13 @@ pub enum VectorModificationType {
 	RemovePoint { id: PointId },
 
 	SetG1Continous { handles: [HandleId; 2], enabled: bool },
+	SetHandles { segment: SegmentId, handles: BezierHandles },
+	SetStartPoint { segment: SegmentId, id: PointId },
+	SetEndPoint { segment: SegmentId, id: PointId },
+
 	ApplyPointDelta { point: PointId, delta: DVec2 },
 	ApplyPrimaryDelta { segment: SegmentId, delta: DVec2 },
 	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
-	SetHandles { segment: SegmentId, handles: BezierHandles },
 }
 
 impl VectorModification {
@@ -277,6 +280,16 @@ impl VectorModification {
 					self.add_g1_continous.remove(&[handles[1], handles[0]]);
 				}
 			}
+			VectorModificationType::SetHandles { segment, handles } => {
+				self.segments.handle_primary.insert(*segment, handles.start());
+				self.segments.handle_end.insert(*segment, handles.end());
+			}
+			VectorModificationType::SetStartPoint { segment, id } => {
+				self.segments.start_point.insert(*segment, *id);
+			}
+			VectorModificationType::SetEndPoint { segment, id } => {
+				self.segments.end_point.insert(*segment, *id);
+			}
 
 			VectorModificationType::ApplyPointDelta { point, delta } => {
 				*self.points.delta.entry(*point).or_default() += *delta;
@@ -288,10 +301,6 @@ impl VectorModification {
 			VectorModificationType::ApplyEndDelta { segment, delta } => {
 				let pos = self.segments.handle_end.entry(*segment).or_default();
 				*pos = Some(pos.unwrap_or_default() + *delta);
-			}
-			VectorModificationType::SetHandles { segment, handles } => {
-				self.segments.handle_primary.insert(*segment, handles.start());
-				self.segments.handle_end.insert(*segment, handles.end());
 			}
 		}
 	}

@@ -617,7 +617,7 @@ impl ShapeState {
 					continue;
 				};
 
-				let Some(anchor) = point.get_point(&vector_data).and_then(|id| vector_data.point_domain.pos_from_id(id)) else {
+				let Some(anchor) = point.get_anchor(&vector_data).and_then(|id| vector_data.point_domain.pos_from_id(id)) else {
 					continue;
 				};
 
@@ -879,158 +879,136 @@ impl ShapeState {
 		// }
 	}
 
+	fn disolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {
+		// Delete point
+		let modification_type = VectorModificationType::RemovePoint { id: anchor };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// Delete connected segments
+		for HandleId { segment, .. } in vector_data.segment_domain.all_connected(anchor) {
+			let modification_type = VectorModificationType::RemoveSegment { id: segment };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		// Add in new segment if possible
+		if let Some(handles) = ManipulatorPointId::Anchor(anchor).get_handle_pair(vector_data) {
+			let opposites = handles.map(|handle| handle.opposite());
+			let [Some(start), Some(end)] = opposites.map(|opposite| opposite.to_point().get_anchor(vector_data)) else {
+				return;
+			};
+			let [Some(handle_start), Some(handle_end)] = opposites.map(|handle| {
+				handle
+					.to_point()
+					.get_position(vector_data)
+					.or_else(|| handle.to_point().get_anchor(vector_data).and_then(|anchor| vector_data.point_domain.pos_from_id(anchor)))
+			}) else {
+				return;
+			};
+			let modification_type = VectorModificationType::InsertSegment {
+				id: opposites[0].segment,
+				start,
+				end,
+				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
+			};
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+	}
+
 	/// Dissolve the selected points.
-	pub fn delete_selected_points(&self, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	for &point in &state.selected_points {
-		// 		responses.add(GraphOperationMessage::Vector {
-		// 			layer,
-		// 			modification_type: VectorModificationType::RemoveManipulatorPoint { point },
-		// 		})
-		// 	}
-		// }
+	pub fn delete_selected_points(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+				continue;
+			};
+			for &point in &state.selected_points {
+				match point {
+					ManipulatorPointId::Anchor(anchor) => {
+						Self::disolve_anchor(anchor, responses, layer, &vector_data);
+					}
+
+					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+						let Some(handle) = point.as_handle() else { continue };
+						let Some(handle_position) = point.get_position(&vector_data) else { continue };
+						let Some(anchor) = point.get_anchor(&vector_data) else { continue };
+						let Some(anchor_position) = vector_data.point_domain.pos_from_id(anchor) else { continue };
+
+						// Place the handle on top of the anchor
+						let modification_type = handle.move_pos(anchor_position - handle_position);
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+						// Disable the g1 continous
+						for &handles in &vector_data.colinear_manipulators {
+							if handles.contains(&handle) {
+								let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-		// 		continue;
-		// 	};
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+				continue;
+			};
+			for &delete in &state.selected_points {
+				let Some(point) = delete.get_anchor(&vector_data) else { continue };
+				let Some(pos) = vector_data.point_domain.pos_from_id(point) else { continue };
 
-		// 	let mut broken_subpaths = Vec::new();
-
-		// 	for subpath in vector_data.stroke_bezier_paths() {
-		// 		let mut points: Vec<_> = state
-		// 			.selected_points
-		// 			.iter()
-		// 			.filter_map(|&point| {
-		// 				let Some(manipulator_index) = subpath.manipulator_index_from_id(point.group) else {
-		// 					return None;
-		// 				};
-		// 				let Some(manipulator) = subpath.manipulator_from_id(point.group) else {
-		// 					return None;
-		// 				};
-		// 				Some((manipulator_index, manipulator))
-		// 			})
-		// 			.collect();
-
-		// 		if points.is_empty() {
-		// 			broken_subpaths.push(subpath.clone());
-		// 			continue;
-		// 		}
-
-		// 		points.sort_by(|&a, &b| match a.0 > b.0 {
-		// 			true => std::cmp::Ordering::Greater,
-		// 			false => std::cmp::Ordering::Less,
-		// 		});
-
-		// 		let mut last_manipulator_index = 0;
-		// 		let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
-		// 		let mut last_manipulator_group: Option<&ManipulatorGroup<PointId>> = None;
-		// 		for (i, &(manipulator_index, group)) in points.iter().enumerate() {
-		// 			if manipulator_index == 0 && !subpath.closed {
-		// 				last_manipulator_index = manipulator_index + 1;
-		// 				last_manipulator_group = Some(group);
-		// 				continue;
-		// 			}
-
-		// 			let mut segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-		// 			if i != 0 {
-		// 				segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
-		// 			}
-
-		// 			segment.push(ManipulatorGroup::new(group.anchor, group.in_handle, None));
-
-		// 			if subpath.closed && i == 0 {
-		// 				to_extend_with_last_group = Some(segment);
-		// 			} else {
-		// 				broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-		// 			}
-
-		// 			last_manipulator_index = manipulator_index + 1;
-		// 			last_manipulator_group = Some(group);
-		// 		}
-
-		// 		if last_manipulator_index == subpath.len() && !subpath.closed {
-		// 			continue;
-		// 		}
-
-		// 		let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-		// 		final_segment.insert(0, ManipulatorGroup::new(last_manipulator_group.unwrap().anchor, None, last_manipulator_group.unwrap().out_handle));
-
-		// 		if let Some(group) = to_extend_with_last_group {
-		// 			final_segment.extend(group);
-		// 		}
-
-		// 		broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
-		// 	}
-
-		// 	responses.add(GraphOperationMessage::Vector {
-		// 		layer,
-		// 		modification_type: VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths },
-		// 	});
-		// }
+				let mut used_initial_point = false;
+				for handle in vector_data.segment_domain.all_connected(point) {
+					// Disable the g1 continous
+					for &handles in &vector_data.colinear_manipulators {
+						if handles.contains(&handle) {
+							let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+					// Keep the existing point for the first segment
+					if !used_initial_point {
+						used_initial_point = true;
+						continue;
+					}
+					// Create new point
+					let id = PointId::generate();
+					let modification_type = VectorModificationType::InsertPoint { id, pos };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					// Update segment
+					let HandleId { ty, segment } = handle;
+					let modification_type = match ty {
+						graphene_std::vector::HandleType::Primary => VectorModificationType::SetStartPoint { segment, id },
+						graphene_std::vector::HandleType::End => VectorModificationType::SetEndPoint { segment, id },
+					};
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+		}
 	}
 
-	/// Delete point(s) and adjacent segments, which breaks a closed path as open, or an open path into multiple.
+	/// Delete point(s) and adjacent segments.
 	pub fn delete_point_and_break_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-		// 		continue;
-		// 	};
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+				continue;
+			};
 
-		// 	let mut broken_subpaths = Vec::new();
+			for &delete in &state.selected_points {
+				let Some(point) = delete.get_anchor(&vector_data) else { continue };
 
-		// 	for subpath in vector_data.stroke_bezier_paths() {
-		// 		let mut selected_points: Vec<_> = state.selected_points.iter().filter_map(|&point| subpath.manipulator_index_from_id(point.group)).collect();
+				// Delete point
+				let modification_type = VectorModificationType::RemovePoint { id: point };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-		// 		if selected_points.is_empty() {
-		// 			broken_subpaths.push(subpath.clone());
-		// 			continue;
-		// 		}
-
-		// selected_points.sort();
-
-		// // Required to remove duplicates when the handles and anchors are selected
-		// selected_points.dedup();
-
-		// 		let mut last_manipulator_index = 0;
-		// 		let mut to_extend_with_last_group: Option<Vec<ManipulatorGroup<PointId>>> = None;
-		// 		for (i, &manipulator_index) in selected_points.iter().enumerate() {
-		// 			if (manipulator_index == 0 || manipulator_index == 1) && !subpath.closed {
-		// 				last_manipulator_index = manipulator_index + 1;
-		// 				continue;
-		// 			}
-
-		// 			let segment = subpath.manipulator_groups()[last_manipulator_index..manipulator_index].to_vec();
-		// 			if subpath.closed && i == 0 {
-		// 				to_extend_with_last_group = Some(segment);
-		// 			} else {
-		// 				broken_subpaths.push(bezier_rs::Subpath::new(segment, false));
-		// 			}
-
-		// 			last_manipulator_index = manipulator_index + 1;
-		// 		}
-
-		// 		if (last_manipulator_index == subpath.len() || last_manipulator_index == subpath.len() - 1) && !subpath.closed {
-		// 			continue;
-		// 		}
-
-		// 		let mut final_segment = subpath.manipulator_groups()[last_manipulator_index..].to_vec();
-
-		// 		if let Some(group) = to_extend_with_last_group {
-		// 			final_segment.extend(group);
-		// 		}
-
-		// 		broken_subpaths.push(bezier_rs::Subpath::new(final_segment, false));
-		// 	}
-
-		// 	let modification = VectorModificationType::UpdateSubpaths { subpaths: broken_subpaths };
-		// 	responses.add(GraphOperationMessage::Vector {
-		// 		layer,
-		// 		modification_type: modification,
-		// 	});
-		// }
+				// Delete connectedsegments
+				for HandleId { segment, .. } in vector_data.segment_domain.all_connected(point) {
+					let modification_type = VectorModificationType::RemoveSegment { id: segment };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+			}
+		}
 	}
 
 	/// Toggle if the handles of the selected points should be colinear.

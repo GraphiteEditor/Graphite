@@ -195,14 +195,21 @@ struct ModifierState {
 	lock_angle: bool,
 	break_handle: bool,
 }
+#[derive(Clone, Debug)]
+struct LastPoint {
+	id: PointId,
+	pos: DVec2,
+	in_segment: Option<SegmentId>,
+	handle_start: DVec2,
+}
 
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
 	layer: Option<LayerNodeIdentifier>,
 	snap_manager: SnapManager,
-	latest_point: Option<(PointId, DVec2)>,
-	latest_handle: Option<BezierHandles>,
-	latest_segment: Option<SegmentId>,
+	latest_points: Vec<LastPoint>,
+	point_index: usize,
+	handle_end: Option<DVec2>,
 	next_point: DVec2,
 	next_handle_start: DVec2,
 
@@ -212,6 +219,18 @@ struct PenToolData {
 	auto_panning: AutoPanning,
 }
 impl PenToolData {
+	fn latest_point(&self) -> Option<&LastPoint> {
+		self.latest_points.get(self.point_index)
+	}
+	fn latest_point_mut(&mut self) -> Option<&mut LastPoint> {
+		self.latest_points.get_mut(self.point_index)
+	}
+	fn add_point(&mut self, point: LastPoint) {
+		self.point_index = (self.point_index + 1).min(self.latest_points.len());
+		self.latest_points.truncate(self.point_index);
+		self.latest_points.push(point);
+	}
+
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
 	fn bend_from_previous_point(&mut self, mut snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		self.g1_continous = true;
@@ -220,32 +239,37 @@ impl PenToolData {
 		self.drag_handle(snap_data, transform, mouse, ModifierState::default(), responses);
 
 		// Break the control
-		let Some((_, last_pos)) = self.latest_point else { return };
+		let Some(last_pos) = self.latest_point().map(|point| point.pos) else { return };
 		let transform = document.metadata.document_to_viewport * transform;
 		let on_top = transform.transform_point2(self.next_point).distance_squared(transform.transform_point2(last_pos)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		if on_top {
-			self.latest_handle = None;
-			self.latest_segment = None;
+			if let Some(point) = self.latest_point_mut() {
+				point.in_segment = None;
+			}
+			self.handle_end = None;
 		}
 	}
 
 	fn finish_placing_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
-		let handles = self.latest_handle;
-		let next_point = self.next_point;
-		self.latest_handle = Some(BezierHandles::Cubic {
-			handle_start: self.next_handle_start,
-			handle_end: self.next_handle_start,
-		});
+		let next_handle_start = self.next_handle_start;
+		let handle_start = self.latest_point()?.handle_start;
 		let mouse = snap_data.input.mouse.position;
+		let Some(handle_end) = self.handle_end else {
+			self.handle_end = Some(next_handle_start);
+			self.place_anchor(snap_data, transform, mouse, ModifierState::default(), responses);
+			self.latest_point_mut()?.handle_start = next_handle_start;
+			return None;
+		};
+		let next_point = self.next_point;
 		self.place_anchor(snap_data, transform, mouse, ModifierState::default(), responses);
-		let handles = handles?;
+		let handles = BezierHandles::Cubic { handle_start, handle_end };
 
 		// Get close path
 		let mut end = None;
 		let layer = self.layer?;
 		let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
-		let (start, _) = self.latest_point?;
+		let start = self.latest_point()?.id;
 		let transform = document.metadata.document_to_viewport * transform;
 		for id in vector_data.single_connected_points().filter(|&point| point != start) {
 			let Some(pos) = vector_data.point_domain.pos_from_id(id) else { continue };
@@ -262,7 +286,7 @@ impl PenToolData {
 			let end = PointId::generate();
 			let modification_type = VectorModificationType::InsertPoint { id: end, pos: next_point };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-			self.latest_point = Some((end, next_point));
+
 			end
 		});
 
@@ -272,7 +296,7 @@ impl PenToolData {
 		info!("Finish place handle");
 
 		// Mirror
-		if let Some(last_segment) = self.latest_segment {
+		if let Some(last_segment) = self.latest_point().and_then(|point| point.in_segment) {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
 				modification_type: VectorModificationType::SetG1Continous {
@@ -281,16 +305,23 @@ impl PenToolData {
 				},
 			});
 		}
-		self.latest_segment = self.g1_continous.then_some(id);
+		if !close_subpath {
+			self.add_point(LastPoint {
+				id: end,
+				pos: next_point,
+				in_segment: self.g1_continous.then_some(id),
+				handle_start: self.next_handle_start,
+			});
+		}
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
 	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 
-		let colinear = !modifiers.break_handle && self.latest_handle.is_some();
+		let colinear = !modifiers.break_handle && self.handle_end.is_some();
 		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(self.next_point), false);
-		if let Some(BezierHandles::Cubic { handle_end, .. }) = self.latest_handle.as_mut().filter(|_| colinear) {
+		if let Some(handle_end) = self.handle_end.as_mut().filter(|_| colinear) {
 			*handle_end = self.next_point * 2. - self.next_handle_start;
 			self.g1_continous = true;
 		} else {
@@ -303,9 +334,9 @@ impl PenToolData {
 	}
 
 	fn place_anchor(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let relative = self.latest_point.map(|(_, pos)| pos);
+		let relative = self.latest_point().map(|point| point.pos);
 		self.next_point = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, relative, true);
-		if let Some(BezierHandles::Cubic { handle_end, .. }) = self.latest_handle.as_mut() {
+		if let Some(handle_end) = self.handle_end.as_mut() {
 			*handle_end = self.next_point;
 			self.next_handle_start = self.next_point;
 		}
@@ -427,7 +458,8 @@ impl Fsm for PenToolFsmState {
 			}
 			(_, PenToolMessage::Overlays(mut overlay_context)) => {
 				let transform = document.metadata.document_to_viewport * transform;
-				if let (Some((_, start)), Some(handles)) = (tool_data.latest_point, tool_data.latest_handle) {
+				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
+					let handles = BezierHandles::Cubic { handle_start, handle_end };
 					let bezier = Bezier {
 						start,
 						handles,
@@ -440,10 +472,12 @@ impl Fsm for PenToolFsmState {
 				let next_point = transform.transform_point2(tool_data.next_point);
 				let next_handle_start = transform.transform_point2(tool_data.next_handle_start);
 				overlay_context.line(next_point, next_handle_start);
-				let start = tool_data.latest_point.map(|(_, start)| transform.transform_point2(start));
-				let handle = tool_data.latest_handle.map(|handle| handle.apply_transformation(|point| transform.transform_point2(point)));
+				let start = tool_data.latest_point().map(|point| transform.transform_point2(point.pos));
 
-				if let (Some(start), Some(BezierHandles::Cubic { handle_start, handle_end })) = (start, handle) {
+				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
+				let handle_end = tool_data.handle_end.map(|point| transform.transform_point2(point));
+
+				if let (Some(start), Some(handle_start), Some(handle_end)) = (start, handle_start, handle_end) {
 					overlay_context.line(start, handle_start);
 					overlay_context.line(next_point, handle_end);
 
@@ -478,7 +512,12 @@ impl Fsm for PenToolFsmState {
 
 				// Perform extension of an existing path
 				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
-					tool_data.latest_point = Some((point, position));
+					tool_data.add_point(LastPoint {
+						id: point,
+						pos: position,
+						in_segment: None,
+						handle_start: position,
+					});
 					tool_data.layer = Some(layer);
 					tool_data.next_point = position;
 					tool_data.next_handle_start = position;
@@ -503,18 +542,24 @@ impl Fsm for PenToolFsmState {
 					let pos = transform.inverse().transform_point2(snapped.snapped_point_document);
 					let modification_type = VectorModificationType::InsertPoint { id, pos };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					tool_data.latest_point = Some((id, pos));
+					tool_data.add_point(LastPoint {
+						id,
+						pos,
+						in_segment: None,
+						handle_start: pos,
+					});
 					tool_data.next_point = pos;
 					tool_data.next_handle_start = pos;
 				}
-				tool_data.latest_handle = None;
-				tool_data.latest_segment = None;
+				tool_data.handle_end = None;
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart) => {
-				responses.add(DocumentMessage::StartTransaction);
+				if tool_data.handle_end.is_some() {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				tool_data.bend_from_previous_point(SnapData::new(document, input), transform, responses);
 				PenToolFsmState::DraggingHandle
 			}
@@ -594,9 +639,9 @@ impl Fsm for PenToolFsmState {
 				// responses.add(message);
 
 				tool_data.layer = None;
-				tool_data.latest_handle = None;
-				tool_data.latest_segment = None;
-				tool_data.latest_point = None;
+				tool_data.handle_end = None;
+				tool_data.latest_points.clear();
+				tool_data.point_index = 0;
 				tool_data.snap_manager.cleanup(responses);
 
 				PenToolFsmState::Ready
@@ -606,12 +651,23 @@ impl Fsm for PenToolFsmState {
 
 				self
 			}
-			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => tool_data
-				.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
-				.unwrap_or(PenToolFsmState::PlacingAnchor),
-			(_, PenToolMessage::Redo) => tool_data
-				.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
-				.unwrap_or(PenToolFsmState::PlacingAnchor),
+			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
+				if tool_data.point_index > 0 {
+					tool_data.point_index -= 1;
+					tool_data
+						.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
+						.unwrap_or(PenToolFsmState::PlacingAnchor)
+				} else {
+					responses.add(PenToolMessage::Abort);
+					self
+				}
+			}
+			(_, PenToolMessage::Redo) => {
+				tool_data.point_index = (tool_data.point_index + 1).min(tool_data.latest_points.len().saturating_sub(1));
+				tool_data
+					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, ModifierState::default(), responses)
+					.unwrap_or(PenToolFsmState::PlacingAnchor)
+			}
 			_ => self,
 		}
 	}

@@ -225,7 +225,7 @@ impl ManipulatorPointId {
 			}
 		}
 	}
-	pub fn get_point(self, vector_data: &VectorData) -> Option<PointId> {
+	pub fn get_anchor(self, vector_data: &VectorData) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
 			ManipulatorPointId::PrimaryHandle(segment) => vector_data.segment_domain.segment_start_from_id(segment),
@@ -236,7 +236,7 @@ impl ManipulatorPointId {
 		match self {
 			ManipulatorPointId::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
 			ManipulatorPointId::EndHandle(segment) => Some(HandleId::end(segment)),
-			ManipulatorPointId::Anchor(point) => None,
+			ManipulatorPointId::Anchor(_) => None,
 		}
 	}
 }
@@ -253,23 +253,34 @@ pub struct HandleId {
 	pub segment: SegmentId,
 }
 impl HandleId {
+	#[must_use]
 	pub const fn primary(segment: SegmentId) -> Self {
 		Self { ty: HandleType::Primary, segment }
 	}
+	#[must_use]
 	pub const fn end(segment: SegmentId) -> Self {
 		Self { ty: HandleType::End, segment }
 	}
+	#[must_use]
 	pub fn to_point(self) -> ManipulatorPointId {
 		match self.ty {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
 	}
+	#[must_use]
 	pub fn move_pos(self, delta: DVec2) -> VectorModificationType {
 		let Self { ty, segment } = self;
 		match ty {
 			HandleType::Primary => VectorModificationType::ApplyPrimaryDelta { segment, delta },
 			HandleType::End => VectorModificationType::ApplyEndDelta { segment, delta },
+		}
+	}
+	#[must_use]
+	pub fn opposite(self) -> Self {
+		match self.ty {
+			HandleType::Primary => Self::end(self.segment),
+			HandleType::End => Self::primary(self.segment),
 		}
 	}
 }

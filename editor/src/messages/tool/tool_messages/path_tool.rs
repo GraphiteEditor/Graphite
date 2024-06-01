@@ -597,7 +597,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.delete_selected_points(responses);
+				shape_editor.delete_selected_points(&document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
