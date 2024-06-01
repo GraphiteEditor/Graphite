@@ -117,45 +117,49 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Stackable adjustment layers</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Procedurally alterable vector data</span>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Boolean operations for shapes</span>
+		</div>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Editable nested node subgraphs</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 0" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Imaginate (Stable Diffusion node/tool)</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 8" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Editable nested node subgraphs</span>
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>GPU-accelerated raster rendering</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
+			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Timeline with animation channels</span>
 		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Boolean operations for shapes</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>WebGPU accelerated rendering</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Adaptive resolution raster rendering</span>
-		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 26" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Interactive graph auto-layout</span>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 19" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Imported RAW photo processing</span>
 		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 14" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Adaptive resolution system</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 49" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>AI nodes and tools (e.g. magic wand)</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Procedurally alterable vector data</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
+			<span>Native desktop app (with <a target="_blank" href="https://tauri.app/">Tauri</a>)</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 13" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
@@ -164,10 +168,6 @@ Always on the bleeding edge and built to last— Graphite is written on a robust
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
 			<span>Fully-supported brush tool</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />
-			<span>Timeline with animation channels</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__2.png" alt="" />

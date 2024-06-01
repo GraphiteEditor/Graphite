@@ -498,7 +498,7 @@ impl NodeGraphExecutor {
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform,
+				transform: transform * DAffine2::from_scale(DVec2::splat(export_config.scale_factor)),
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
