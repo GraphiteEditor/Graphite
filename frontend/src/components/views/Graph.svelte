@@ -1147,11 +1147,6 @@
 		flex-direction: row;
 		flex-grow: 1;
 
-		> img {
-			position: absolute;
-			bottom: 0;
-		}
-
 		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
 		&::before {
 			content: "";
@@ -1165,6 +1160,16 @@
 			background-repeat: no-repeat, repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
+		}
+
+		> img {
+			position: absolute;
+			bottom: 0;
+		}
+
+		.breadcrumb-trail-buttons {
+			margin-top: 8px;
+			margin-left: 8px;
 		}
 
 		.context-menu {
