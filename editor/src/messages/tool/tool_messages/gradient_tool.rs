@@ -295,7 +295,7 @@ impl Fsm for GradientToolFsmState {
 				if selected_gradient.gradient.positions.len() == 1 {
 					if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
-							layer: layer,
+							layer,
 							fill: Fill::Solid(selected_gradient.gradient.positions[0].1),
 						});
 					}

@@ -276,6 +276,7 @@ impl SnapManager {
 				candidates.push(layer);
 			}
 		}
+
 		if let Some(root) = snap_data.document.network.get_root_node() {
 			if snap_data.document.network.nodes.get(&root.id).expect("Root should always be a node in find_candidates").is_layer {
 				add_candidates(LayerNodeIdentifier::new(root.id, &snap_data.document.network), snap_data, quad, &mut candidates);

@@ -4,11 +4,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use graph_craft::document::DocumentNode;
-use graph_craft::document::NodeId;
-use graph_craft::document::NodeInput;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::ImageFrame;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;

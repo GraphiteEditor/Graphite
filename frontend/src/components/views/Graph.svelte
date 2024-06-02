@@ -389,6 +389,7 @@
 		if (lmb && port && node) {
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
+
 			// Output: Begin dragging out a new wire
 			if (isOutput) {
 				// Disallow creating additional vertical output wires from an already-connected layer
@@ -1157,24 +1158,11 @@
 			position: absolute;
 			width: 100%;
 			height: 100%;
-			// background-size: var(--grid-spacing) var(--grid-spacing);
-			// background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			// background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
-			background-size:
-				100% 100%,
-				var(--grid-spacing) var(--grid-spacing),
-				var(--grid-spacing) var(--grid-spacing),
-				var(--grid-spacing) var(--grid-spacing);
-			background-position:
-				calc(var(--grid-offset-x) - 2px) calc(var(--grid-offset-y) - 2px),
-				calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius)),
-				calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius)),
-				calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at 2px 2px, white 2px, transparent 0),
-				radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0),
-				radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0),
+			background-size: var(--grid-spacing) var(--grid-spacing);
+			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-f-white) var(--dot-radius), transparent 0),
 				radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
-			background-repeat: no-repeat, repeat, repeat, repeat;
+			background-repeat: no-repeat, repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
 		}

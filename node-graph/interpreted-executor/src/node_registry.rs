@@ -100,7 +100,7 @@ macro_rules! async_node {
 							graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type>>>>::new()
 				),*);
 				// TODO: Propagate the future type through the node graph
-				//let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
+				// let params = vec![$(Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(concrete!($type)))))),*];
 				let params = vec![$(fn_type!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
@@ -180,7 +180,7 @@ macro_rules! raster_node {
 // TODO: turn into hashmap
 fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> {
 	let node_types: Vec<Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)>> = vec![
-		//register_node!(graphene_core::ops::IdentityNode, input: Any<'_>, params: []),
+		// register_node!(graphene_core::ops::IdentityNode, input: Any<'_>, params: []),
 		vec![(
 			ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
 			|_| Box::pin(async move { FutureWrapperNode::new(IdentityNode::new()).into_type_erased() }),
@@ -400,7 +400,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				Box::pin(async move {
 					let document_node: DowncastBothNode<(), graph_craft::document::DocumentNode> = DowncastBothNode::new(args[0].clone());
 					let editor_api: DowncastBothNode<(), WasmEditorApi> = DowncastBothNode::new(args[1].clone());
-					//let document_node = ClonedNode::new(document_node.eval(()));
+					// let document_node = ClonedNode::new(document_node.eval(()));
 					let node = graphene_std::gpu_nodes::MapGpuNode::new(document_node, editor_api);
 					let any: DynAnyNode<ImageFrame<Color>, _, _> = graphene_std::any::DynAnyNode::new(node);
 					any.into_type_erased()

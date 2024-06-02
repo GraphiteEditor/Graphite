@@ -42,7 +42,7 @@ impl<'a, I: StaticTypeSized + Sync + Pod + Send, O: StaticTypeSized + Send + Syn
 async fn execute_shader<I: Pod + Send + Sync, O: Pod + Send + Sync>(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>, shader: Vec<u32>, data: Vec<I>, entry_point: String) -> Option<Vec<O>> {
 	// Loads the shader from WGSL
 	dbg!(&shader);
-	//write shader to file
+	// write shader to file
 	use std::io::Write;
 	let mut file = std::fs::File::create("/tmp/shader.spv").unwrap();
 	file.write_all(bytemuck::cast_slice(&shader)).unwrap();

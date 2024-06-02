@@ -86,7 +86,7 @@ impl DynamicExecutor {
 	pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes {
 		let mut resolved_document_node_types = ResolvedDocumentNodeTypes::default();
 		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
-		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI only import node.
+		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
 		for (source, &(protonode_id, protonode_index)) in self.tree.inputs_source_map() {
 			let Some(node_io) = self.typing_context.type_of(protonode_id) else { continue };
 			let Some(ty) = [&node_io.input].into_iter().chain(&node_io.parameters).nth(protonode_index) else {
@@ -244,7 +244,7 @@ mod test {
 		let mut tree = BorrowTree::default();
 		let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32)), vec![]);
 		let context = TypingContext::default();
-		let future = tree.push_node(NodeId(0), val_1_protonode, &context); //.await.unwrap();
+		let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 		futures::executor::block_on(future).unwrap();
 		let _node = tree.get(NodeId(0)).unwrap();
 		let result = futures::executor::block_on(tree.eval(NodeId(0), ()));

@@ -98,7 +98,7 @@ enum Asyncness {
 }
 
 fn node_impl_impl(attr: TokenStream, item: TokenStream, asyncness: Asyncness) -> TokenStream {
-	//let node_name = parse_macro_input!(attr as Ident);
+	// let node_name = parse_macro_input!(attr as Ident);
 	let node = parse_macro_input!(attr as syn::PathSegment);
 
 	let function = parse_macro_input!(item as ItemFn);
@@ -317,7 +317,7 @@ fn input_node_bounds(parameter_inputs: Vec<Type>, node_generics: Vec<GenericPara
 				bounds: Punctuated::from_iter([TypeParamBound::Trait(TraitBound {
 					paren_token: None,
 					modifier: syn::TraitBoundModifier::None,
-					lifetimes: None, //syn::parse_quote!(for<'any_input>),
+					lifetimes: None, // syn::parse_quote!(for<'any_input>),
 					path: syn::parse_quote!(#bound),
 				})]),
 			})

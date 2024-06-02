@@ -52,9 +52,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	};
 
 	loop {
-		//println!("executing");
 		let _result = (&executor).execute(editor_api.clone()).await?;
-		//println!("result: {result:?}");
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
 }

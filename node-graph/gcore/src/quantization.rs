@@ -186,7 +186,7 @@ mod test {
 		let quantized = quantize_color(color, [quant; 4]);
 		assert_eq!(quantized.0, 0x7f7f7f7f);
 		let _dequantized = dequantize_color(quantized, [quant; 4]);
-		//assert_eq!(color, dequantized);
+		// assert_eq!(color, dequantized);
 	}
 
 	#[test]

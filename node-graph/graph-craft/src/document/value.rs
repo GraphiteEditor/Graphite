@@ -383,7 +383,7 @@ impl<'a> TaggedValue {
 	pub fn from_type(input: &Type) -> Self {
 		match input {
 			Type::Generic(_) => {
-				log::debug!("Generic type should be resolved");
+				log::warn!("Generic type should be resolved");
 				TaggedValue::None
 			}
 			Type::Concrete(concrete_type) => {
@@ -392,7 +392,7 @@ impl<'a> TaggedValue {
 				};
 				use std::any::TypeId;
 				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
-				//Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
+				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 				match internal_id {
 					x if x == TypeId::of::<()>() => TaggedValue::None,
 					x if x == TypeId::of::<String>() => TaggedValue::String(Default::default()),
@@ -462,7 +462,7 @@ impl<'a> TaggedValue {
 			}
 			Type::Fn(_, output) => TaggedValue::from_type(output),
 			Type::Future(_) => {
-				log::debug!("Future type not used");
+				log::warn!("Future type not used");
 				TaggedValue::None
 			}
 		}

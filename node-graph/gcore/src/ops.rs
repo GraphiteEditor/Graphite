@@ -429,17 +429,17 @@ mod test {
 	pub fn map_result() {
 		let value: ClonedNode<Result<&u32, ()>> = ClonedNode(Ok(&4u32));
 		assert_eq!(value.eval(()), Ok(&4u32));
-		//let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
+		// let type_erased_clone = clone as &dyn for<'a> Node<'a, &'a u32, Output = u32>;
 		let map_result = MapResultNode::new(ValueNode::new(FnNode::new(|x: &u32| *x)));
-		//et type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;
+		// let type_erased = &map_result as &dyn for<'a> Node<'a, Result<&'a u32, ()>, Output = Result<u32, ()>>;
 		assert_eq!(map_result.eval(Ok(&4u32)), Ok(4u32));
 		let fst = value.then(map_result);
-		//let type_erased = &fst as &dyn for<'a> Node<'a, (), Output = Result<u32, ()>>;
+		// let type_erased = &fst as &dyn for<'a> Node<'a, (), Output = Result<u32, ()>>;
 		assert_eq!(fst.eval(()), Ok(4u32));
 	}
 	#[test]
 	pub fn flat_map_result() {
-		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new()); //.then(FlatMapResultNode::new(FnNode::new(|x| Ok(x))));
+		let fst = ValueNode(Ok(&4u32)).then(CloneNode::new());
 		let fn_node: FnNode<_, &u32, Result<&u32, _>> = FnNode::new(|_| Err(8u32));
 		assert_eq!(fn_node.eval(&4u32), Err(8u32));
 		let flat_map = FlatMapResultNode::new(ValueNode::new(fn_node));

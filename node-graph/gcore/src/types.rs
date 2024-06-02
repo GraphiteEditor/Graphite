@@ -118,7 +118,7 @@ impl PartialEq for TypeDescriptor {
 			(Some(id), Some(other_id)) => id == other_id,
 			_ => {
 				// TODO: Add a flag to disable this warning
-				//warn!("TypeDescriptor::eq: comparing types without ids based on name");
+				// warn!("TypeDescriptor::eq: comparing types without ids based on name");
 				self.name == other.name
 			}
 		}

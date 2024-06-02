@@ -2363,7 +2363,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				.collect(),
 				..Default::default()
 			}),
-			//manual_composition: Some(concrete!(Footprint)),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
 				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
@@ -2816,12 +2815,6 @@ impl DocumentNodeDefinition {
 
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
-
-	// let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
-	// // Flatten is not necessary since the network is flattened during the compilation process
-	// for id in node_ids {
-	// 	network.flatten(id);
-	// }
 
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")

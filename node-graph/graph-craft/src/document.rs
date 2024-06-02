@@ -584,7 +584,7 @@ impl DocumentNodeImplementation {
 
 #[derive(Clone, Copy, Debug, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI only export node, and for restoring the default preview node.
+/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
 pub struct RootNode {
 	pub id: NodeId,
 	pub output_index: usize,
@@ -658,7 +658,7 @@ pub struct NodeNetwork {
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
 	#[serde(default)]
 	pub previewing: Previewing,
-	/// Temporary fields to store metadata for import/export UI only nodes, eventually will be replaced with lines leading to edges
+	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
 	#[serde(default = "default_import_metadata")]
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
@@ -1192,7 +1192,7 @@ impl NodeNetwork {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
-			//Match the document node input and the inputs of the inner network
+			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
@@ -1391,7 +1391,7 @@ impl NodeNetwork {
 
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
-		//let input_node = self.nodes.iter().find_map(|(node_id, node)| if node.name == "SetNode" { Some(node_id.clone()) } else { None });
+		// let input_node = self.nodes.iter().find_map(|(node_id, node)| if node.name == "SetNode" { Some(node_id.clone()) } else { None });
 		let mut nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 		nodes.sort_unstable_by_key(|(i, _)| *i);
 
@@ -1400,8 +1400,8 @@ impl NodeNetwork {
 			if let NodeInput::Node { node_id, .. } = output {
 				Some(ProtoNetwork {
 					inputs: Vec::new(), // Inputs field is not used. Should be deleted
-					//inputs: vec![input_node.expect("Set node should always exist")],
-					//inputs: self.imports.clone(),
+					// inputs: vec![input_node.expect("Set node should always exist")],
+					// inputs: self.imports.clone(),
 					output: node_id,
 					nodes: nodes.clone(),
 				})

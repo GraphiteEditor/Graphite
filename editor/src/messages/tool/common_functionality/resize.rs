@@ -33,9 +33,11 @@ impl Resize {
 		let Some(layer) = self.layer else {
 			return None;
 		};
+
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Resize layer cannot be ROOT_PARENT");
 		}
+
 		if !document.network().nodes.contains_key(&layer.to_node()) {
 			self.layer.take();
 			return None;

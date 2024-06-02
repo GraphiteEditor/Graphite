@@ -1,9 +1,3 @@
-use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
-use graph_craft::proto::GraphErrors;
-use graphene_core::*;
-use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
-
 use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
@@ -16,6 +10,13 @@ use crate::messages::portfolio::document::node_graph::utility_types::FrontendGra
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
+
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
+use graph_craft::proto::GraphErrors;
+use graphene_core::*;
+use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
+
 use glam::IVec2;
 
 #[derive(Debug)]
@@ -38,8 +39,8 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 }
-/// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those
-/// messages will always affect the document network.
+
+/// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
 		let NodeGraphHandlerData {
@@ -80,9 +81,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&output_node)) else {
 					return;
 				};
-				// If output_node_id is None, then it is the UI only Import node
+				// If `output_node_id` is None, then it is the UI-only "Import" node
 				let output_node_id = if network.imports_metadata.0 == output_node { None } else { Some(output_node) };
-				// If input_node_id is None, then it is the UI only Export node
+				// If `input_node_id` is None, then it is the UI-only "Export" node
 				let input_node_id = if network.exports_metadata.0 == input_node { None } else { Some(input_node) };
 
 				let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
@@ -191,6 +192,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
 				ModifyInputsContext::delete_nodes(document_network, selected_nodes, node_ids, reconnect, responses, self.network.clone(), &self.resolved_types);
+
 				// Load structure if the selected network is the document network
 				if self.network.is_empty() {
 					load_network_structure(document_network, document_metadata, collapsed);
@@ -205,6 +207,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: selected_nodes.selected_nodes(network).copied().collect(),
@@ -297,6 +300,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
+
 				if !self.eligible_to_be_layer(network, node_id) {
 					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
 				}
@@ -508,6 +512,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							network.exports_metadata.1.x, network.exports_metadata.1.y
 						);
 						output += "\r\n\r\n";
+						// KEEP THIS `debug!()` - Someday we can remove this once this development utility is no longer needed
 						log::debug!("{output}");
 					}
 				}
@@ -645,6 +650,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				let visible = !node.visible;
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetVisibility { node_id, visible });
 			}
@@ -658,6 +664,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					log::error!("Could not get node {node_id} in NodeGraphMessage::SetVisibility");
 					return;
 				};
+
 				node.visible = visible;
 
 				// Only generate node graph if one of the selected nodes is connected to the output
@@ -786,6 +793,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let NodeInput::Node { node_id, output_index, .. } = export {
 						let previous_export_id = *node_id;
 						let previous_output_index = *output_index;
+
 						// The export is clicked
 						if *node_id == toggle_id {
 							// If the current export is clicked and is being previewed end the preview and set either export back to root node or disconnect
@@ -808,6 +816,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// The export is not clicked
 						else {
 							*export = NodeInput::node(toggle_id, 0);
+
 							// There is currently a dashed line being drawn to the export node
 							if let Previewing::Yes { root_node_to_restore } = network.previewing {
 								// There is also a solid line being drawn
@@ -1063,6 +1072,7 @@ impl NodeGraphMessageHandler {
 				dashed: false,
 			});
 		}
+
 		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
 		for (i, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
@@ -1074,7 +1084,7 @@ impl NodeGraphMessageHandler {
 						wire_end: network.exports_metadata.0,
 						wire_end_input_index: i,
 						dashed,
-					})
+					});
 				}
 			}
 		}
@@ -1099,10 +1109,12 @@ impl NodeGraphMessageHandler {
 		for (&node_id, node) in &network.nodes {
 			let node_id_path = &[&self.network[..], &[node_id]].concat();
 			let node_definition = document_node_types::resolve_document_node_type(&node.name);
+
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
 				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
+
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
 				let frontend_data_type = if let Some(ref input_type) = input_type {
 					FrontendGraphDataType::with_type(input_type)
@@ -1113,6 +1125,7 @@ impl NodeGraphMessageHandler {
 				let definition_name = node_definition.and_then(|node_definition| {
 					let node_implementation = &node.implementation;
 					let definition_implementation = &node_definition.implementation;
+
 					// Only use definition input names if the node implementation is the same as the definition implementation
 					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
 						node_definition.inputs.get(index).map(|input| input.name.to_string())
@@ -1289,7 +1302,7 @@ impl NodeGraphMessageHandler {
 			}
 		}
 
-		// Add Export UI only node
+		// Add "Export" UI-only node
 		let mut export_node_inputs = Vec::new();
 		for (index, export) in network.exports.iter().enumerate() {
 			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
@@ -1324,7 +1337,8 @@ impl NodeGraphMessageHandler {
 			};
 
 			let definition_name = export_names[index].clone();
-			// Export_names is pre-initialized with None, so this is safe
+
+			// `export_names` is pre-initialized with None, so this is safe
 			let export_name = definition_name
 				.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
 				.unwrap_or(format!("Export {}", index + 1));
@@ -1361,7 +1375,7 @@ impl NodeGraphMessageHandler {
 			ui_only: true,
 		});
 
-		// Add Import UI only node
+		// Add "Import" UI-only node
 		if document_network != network {
 			let mut import_node_outputs = Vec::new();
 			for (index, definition_name) in import_names.into_iter().enumerate() {
@@ -1408,6 +1422,7 @@ impl NodeGraphMessageHandler {
 		}
 		nodes
 	}
+
 	fn collect_subgraph_names(subgraph_path: &mut Vec<NodeId>, network: &NodeNetwork) -> Option<Vec<String>> {
 		let mut current_network = network;
 		let mut subraph_names = Vec::new();
@@ -1430,6 +1445,7 @@ impl NodeGraphMessageHandler {
 		}
 		Some(subraph_names)
 	}
+
 	fn update_layer_panel(document_network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
 		for (&node_id, node) in &document_network.nodes {
 			if node.is_layer {
@@ -1465,7 +1481,7 @@ impl NodeGraphMessageHandler {
 					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
-					parent_id: layer.parent(metadata).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT{ Some(parent.to_node())} else {None}),
+					parent_id: layer.parent(metadata).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
 					name: node.name.clone(),
 					alias: Self::untitled_layer_label(node),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
@@ -1490,16 +1506,19 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
 		};
+
 		// View encapsulating network
-		// let mut network = &mut crate::messages::portfolio::document::node_graph::document_node_types::wrap_network_in_scope(document_network.clone(), generate_uuid());
-		// network.root_node = Some(RootNode { id: NodeId(3), output_index: 0 });
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
+
 		metadata.load_structure(document_network);
+
 		Self::update_layer_panel(document_network, metadata, collapsed, responses);
+
 		if graph_open {
 			let wires = Self::collect_wires(network);
 			let nodes = self.collect_nodes(document_network, network, &wires);
+
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path })
 		}
@@ -1517,9 +1536,12 @@ impl NodeGraphMessageHandler {
 				let mut current_export = export;
 				let mut current_network = internal_network;
 				let mut current_path = node_id_path.clone();
+
 				while let NodeInput::Node { node_id, output_index, .. } = current_export {
 					current_path.push(*node_id);
+
 					let next_node = current_network.nodes.get(node_id).expect("Export node id should always exist");
+
 					if let graph_craft::document::DocumentNodeImplementation::Network(next_network) = &next_node.implementation {
 						current_network = next_network;
 						current_export = next_network.exports.get(*output_index).expect("Export at output index should always exist");
@@ -1529,7 +1551,7 @@ impl NodeGraphMessageHandler {
 				}
 
 				let output_type: Option<Type> = if let NodeInput::Node { output_index, .. } = current_export {
-					//Current export is pointing to a proto node where type can be derived
+					// Current export is pointing to a proto node where type can be derived
 					assert_eq!(*output_index, 0, "Output index for a proto node should always be 0");
 					resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
 				} else if let NodeInput::Value { tagged_value, .. } = current_export {
@@ -1548,6 +1570,7 @@ impl NodeGraphMessageHandler {
 	/// Updates the frontend's selection state in line with the backend
 	fn update_selected(&mut self, document_network: &NodeNetwork, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
 		self.update_selection_action_buttons(document_network, selected_nodes, responses);
+
 		responses.add(FrontendMessage::UpdateNodeGraphSelection {
 			selected: selected_nodes.selected_nodes_ref().clone(),
 		});
@@ -1575,12 +1598,15 @@ impl NodeGraphMessageHandler {
 
 	pub fn get_default_inputs(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, node: &DocumentNode) -> Vec<NodeInput> {
 		let mut default_inputs = Vec::new();
+
 		for (input_index, input) in node.inputs.iter().enumerate() {
 			let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index));
 			let mut exposed = true;
+
 			if let NodeInput::Value { exposed: input_exposed, .. } = input {
 				exposed = *input_exposed;
 			}
+
 			let default_input = NodeInput::value(tagged_value, exposed);
 			default_inputs.push(default_input);
 		}
@@ -1598,13 +1624,7 @@ impl NodeGraphMessageHandler {
 		let node_input_count = node
 			.inputs
 			.iter()
-			.filter(|input| {
-				if matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Network { .. }) {
-					true
-				} else {
-					false
-				}
-			})
+			.filter(|input| matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Network { .. }))
 			.count();
 		let input_count = node_input_count + exposed_value_count;
 

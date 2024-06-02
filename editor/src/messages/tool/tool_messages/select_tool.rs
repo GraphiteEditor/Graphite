@@ -147,12 +147,21 @@ impl SelectTool {
 		})
 	}
 
-	fn boolean_widgets(&self) -> impl Iterator<Item = WidgetHolder> {
+	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> {
+		let enabled = move |operation| {
+			if operation == BooleanOperation::Union {
+				(1..=2).contains(&selected_count)
+			} else {
+				selected_count == 2
+			}
+		};
+
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
-		operations.into_iter().zip(icons.into_iter()).map(|(operation, icon)| {
+		operations.into_iter().zip(icons.into_iter()).map(move |(operation, icon)| {
 			IconButton::new(icon, 24)
 				.tooltip(operation.to_string())
+				.disabled(!enabled(operation))
 				.on_update(move |_| GraphOperationMessage::InsertBooleanOperation { operation }.into())
 				.widget_holder()
 		})
@@ -194,10 +203,8 @@ impl LayoutHolder for SelectTool {
 		widgets.extend(self.flip_widgets(disabled));
 
 		// Boolean
-		if self.tool_data.selected_layers_count == 2 {
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-			widgets.extend(self.boolean_widgets());
-		}
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -316,12 +323,14 @@ impl SelectToolData {
 		let mut new_dragging = Vec::new();
 		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
 			let Some(layer) = layer_ancestors.last().copied() else { continue };
-			// Layer cannot be ROOT_PARENT, since ROOT_PARENT cannot be part of layers_dragging
+
+			// `layer` cannot be `ROOT_PARENT`, since `ROOT_PARENT` cannot be part of `layers_dragging`
 			if layer == LayerNodeIdentifier::ROOT_PARENT {
 				log::error!("ROOT_PARENT cannot be in layers_dragging");
 				continue;
 			}
-			// Parent can be LayerNodeIdentifier::ROOT_PARENT
+
+			// `parent` can be `ROOT_PARENT`
 			let Some(parent) = layer.parent(&document.metadata) else { continue };
 
 			// Moves the layer back to its starting position.
@@ -534,8 +543,8 @@ impl Fsm for SelectToolFsmState {
 				if tool_data.pivot.is_over(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
-					//tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					//tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
+					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					SelectToolFsmState::DraggingPivot
 				}
@@ -548,7 +557,15 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_bound_transform = bounds.transform;
 
-						tool_data.layers_dragging.retain(|layer| if *layer != LayerNodeIdentifier::ROOT_PARENT {document.network.nodes.contains_key(&layer.to_node())} else {log::error!("ROOT_PARENT should not be part of layers_dragging"); false});
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network.nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
+
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -570,7 +587,14 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
-						tool_data.layers_dragging.retain(|layer| if *layer != LayerNodeIdentifier::ROOT_PARENT {document.network.nodes.contains_key(&layer.to_node())} else {log::error!("ROOT_PARENT should not be part of layers_dragging"); false});
+						tool_data.layers_dragging.retain(|layer| {
+							if *layer != LayerNodeIdentifier::ROOT_PARENT {
+								document.network.nodes.contains_key(&layer.to_node())
+							} else {
+								log::error!("ROOT_PARENT should not be part of layers_dragging");
+								false
+							}
+						});
 						let mut selected = Selected::new(
 							&mut bounds.original_transforms,
 							&mut bounds.center_of_transformation,
@@ -803,7 +827,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
+				let snapped_mouse_position = mouse_position;
 				tool_data.pivot.set_viewport_position(snapped_mouse_position, document, responses);
 
 				// AutoPanning
@@ -908,6 +932,7 @@ impl Fsm for SelectToolFsmState {
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
 					let intersection = document.intersect_quad(quad, &document.network);
+
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
 							.selected_nodes
@@ -1226,10 +1251,12 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 	}) else {
 		return;
 	};
+
 	if new_selected == LayerNodeIdentifier::ROOT_PARENT {
 		log::error!("new_selected cannot be ROOT_PARENT");
 		return;
 	}
+
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![new_selected.to_node()] });
 }
 

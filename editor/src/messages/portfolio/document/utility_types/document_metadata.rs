@@ -152,6 +152,7 @@ impl DocumentMetadata {
 		self.folders = HashSet::new();
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
+
 		// Should refer to output node
 
 		let mut awaiting_horizontal_flow = vec![(NodeId(70327487124), LayerNodeIdentifier::ROOT_PARENT)];
@@ -176,15 +177,18 @@ impl DocumentMetadata {
 
 						parent_layer_node.push_child(self, current_layer_node);
 						parent_layer_node = current_layer_node;
+
 						if is_artboard(current_layer_node, graph) {
 							self.artboards.insert(current_layer_node);
 						}
+
 						if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
 							self.folders.insert(current_layer_node);
 						}
 					}
 				}
 			}
+
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
@@ -218,6 +222,7 @@ impl DocumentMetadata {
 				}
 			}
 		}
+
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
@@ -261,7 +266,8 @@ impl DocumentMetadata {
 	pub fn downstream_transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
 			return self.transform_to_viewport(layer);
-		};
+		}
+
 		self.upstream_transforms
 			.get(&layer.to_node())
 			.copied()
@@ -368,7 +374,7 @@ impl Default for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	/// A conceptual node used to represent the UI only export node
+	/// A conceptual node used to represent the UI-only "Export" node
 	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
@@ -391,7 +397,7 @@ impl LayerNodeIdentifier {
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
 		let id = NodeId(u64::from(self.0) - 1);
-		debug_assert!(id != NodeId(0), "LayerNodeIdentifer::ROOT_PARENT cannot be converted to NodeId");
+		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
 		id
 	}
 

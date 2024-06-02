@@ -203,7 +203,6 @@ impl LayerSnapper {
 	}
 	pub fn snap_anchors(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, c: SnapConstraint, constrained_point: DVec2) {
 		self.collect_anchors(snap_data, point.source_index == 0);
-		//info!("Points to snap {:#?}", self.points_to_snap);
 		let mut best = None;
 		for candidate in &self.points_to_snap {
 			// Candidate is not on constraint

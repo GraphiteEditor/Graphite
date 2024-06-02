@@ -156,7 +156,7 @@ impl ArtboardToolData {
 			return;
 		};
 		if self.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
-			log::error!("selected artboard cannot be ROOT_PARENT");
+			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
 
@@ -238,7 +238,7 @@ impl Fsm for ArtboardToolFsmState {
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
 
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("selected artboard cannot be ROOT_PARENT");
+						log::error!("Selected artboard cannot be ROOT_PARENT");
 						return ArtboardToolFsmState::Ready;
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
@@ -265,7 +265,7 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position; //tool_data.snap_manager.snap_position(responses, document, mouse_position);
+				let snapped_mouse_position = mouse_position;
 
 				let root_transform = document.metadata().document_to_viewport.inverse();
 
@@ -289,7 +289,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				if let Some(artboard) = tool_data.selected_artboard {
 					if artboard == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("selected artboard cannot be ROOT_PARENT");
+						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
 							id: artboard.to_node(),
@@ -408,7 +408,7 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("selected artboard cannot be ROOT_PARENT");
+						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
 							id: tool_data.selected_artboard.unwrap().to_node(),

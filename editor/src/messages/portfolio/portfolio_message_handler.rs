@@ -384,6 +384,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 				}
+
 				// TODO: Eventually remove this (probably starting late 2024)
 				responses.add(GraphOperationMessage::DeleteLegacyOutputNode);
 			}

@@ -34,6 +34,7 @@ import KeyboardShift from "@graphite-frontend/assets/icon-12px-solid/keyboard-sh
 import KeyboardSpace from "@graphite-frontend/assets/icon-12px-solid/keyboard-space.svg";
 import KeyboardTab from "@graphite-frontend/assets/icon-12px-solid/keyboard-tab.svg";
 import License12px from "@graphite-frontend/assets/icon-12px-solid/license-12px.svg";
+import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
 import Snapping from "@graphite-frontend/assets/icon-12px-solid/snapping.svg";
@@ -44,7 +45,6 @@ import WindowButtonWinClose from "@graphite-frontend/assets/icon-12px-solid/wind
 import WindowButtonWinMaximize from "@graphite-frontend/assets/icon-12px-solid/window-button-win-maximize.svg";
 import WindowButtonWinMinimize from "@graphite-frontend/assets/icon-12px-solid/window-button-win-minimize.svg";
 import WindowButtonWinRestoreDown from "@graphite-frontend/assets/icon-12px-solid/window-button-win-restore-down.svg";
-import Wire from "@graphite-frontend/assets/icon-12px-solid/wire.svg";
 import WorkingColors from "@graphite-frontend/assets/icon-12px-solid/working-colors.svg";
 
 const SOLID_12PX = {
@@ -74,7 +74,7 @@ const SOLID_12PX = {
 	KeyboardSpace: { svg: KeyboardSpace, size: 12 },
 	KeyboardTab: { svg: KeyboardTab, size: 12 },
 	License12px: { svg: License12px, size: 12 },
-	Wire: { svg: Wire, size: 12 },
+	Link: { svg: Link, size: 12 },
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
 	Snapping: { svg: Snapping, size: 12 },

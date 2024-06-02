@@ -194,7 +194,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 			},
 			/*DocumentNode {
 				name: "Index".into(),
-				//inputs: vec![NodeInput::Network(concrete!(UVec3))],
+				// inputs: vec![NodeInput::Network(concrete!(UVec3))],
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1.x as usize".into(), concrete![u32]))],
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 				..Default::default()
@@ -236,7 +236,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 					NodeInput::node(NodeId(5), 0),
 					NodeInput::Inline(InlineRust::new(
 						"|x| o0[(_global_index.y * i1 + _global_index.x) as usize] = x".into(),
-						//"|x|()".into(),
+						// "|x|()".into(),
 						Type::Fn(Box::new(concrete!(PackedPixel)), Box::new(concrete!(()))),
 					)),
 				],
@@ -256,7 +256,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	log::debug!("compiling shader");
 	let shader = compilation_client::compile(
 		proto_networks,
-		vec![concrete!(u32), concrete!(Color)], //, concrete!(u32)],
+		vec![concrete!(u32), concrete!(Color)],
 		vec![concrete!(Color)],
 		ShaderIO {
 			#[cfg(feature = "quantization")]
@@ -264,7 +264,7 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 				ShaderInput::UniformBuffer((), concrete!(u32)),
 				ShaderInput::StorageBuffer((), concrete!(PackedPixel)),
 				ShaderInput::UniformBuffer((), concrete!(quantization::QuantizationChannels)),
-				//ShaderInput::Constant(gpu_executor::GPUConstant::GlobalInvocationId),
+				// ShaderInput::Constant(gpu_executor::GPUConstant::GlobalInvocationId),
 				ShaderInput::OutputBuffer((), concrete!(PackedPixel)),
 			],
 			#[cfg(not(feature = "quantization"))]
@@ -281,19 +281,19 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 	)
 	.await
 	.unwrap();
-	//return ImageFrame::empty();
+	// return ImageFrame::empty();
 	let len: usize = image.image.data.len();
 
 	/*
 	let canvas = editor_api.application_io.create_surface();
 
 	let surface = unsafe { executor.create_surface(canvas) }.unwrap();
-	//log::debug!("id: {surface:?}");
+	// log::debug!("id: {surface:?}");
 	let surface_id = surface.surface_id;
 
 	let texture = executor.create_texture_buffer(image.image.clone(), TextureBufferOptions::Texture).unwrap();
 
-	//executor.create_render_pass(texture, surface).unwrap();
+	// executor.create_render_pass(texture, surface).unwrap();
 
 	let frame = SurfaceFrame {
 		surface_id,

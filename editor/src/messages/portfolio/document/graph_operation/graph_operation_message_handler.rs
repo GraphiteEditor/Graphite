@@ -6,8 +6,7 @@ use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::Previewing;
-use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, Previewing};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
 use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
@@ -267,16 +266,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::InsertBooleanOperation { operation } => {
 				let mut selected_layers = selected_nodes.selected_layers(&document_metadata);
 
-				let first_selected_layer = selected_layers.next();
-				let second_selected_layer = selected_layers.next();
-				let other_selected_layer = selected_layers.next();
+				let upper_layer = selected_layers.next();
+				let lower_layer = selected_layers.next();
 
-				let (Some(upper_layer), Some(lower_layer), None) = (first_selected_layer, second_selected_layer, other_selected_layer) else {
-					return;
-				};
+				let Some(upper_layer) = upper_layer else { return };
 
 				let Some(upper_layer_node) = document_network.nodes.get(&upper_layer.to_node()) else { return };
-				let Some(lower_layer_node) = document_network.nodes.get(&lower_layer.to_node()) else { return };
+				let lower_layer_node = lower_layer.and_then(|lower_layer| document_network.nodes.get(&lower_layer.to_node()));
 
 				let Some(NodeInput::Node {
 					node_id: upper_node_id,
@@ -286,13 +282,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				else {
 					return;
 				};
-				let Some(NodeInput::Node {
-					node_id: lower_node_id,
-					output_index: lower_output_index,
-					..
-				}) = lower_layer_node.inputs.get(1).cloned()
-				else {
-					return;
+				let (lower_node_id, lower_output_index) = match lower_layer_node.and_then(|lower_layer_node| lower_layer_node.inputs.get(1).cloned()) {
+					Some(NodeInput::Node {
+						node_id: lower_node_id,
+						output_index: lower_output_index,
+						..
+					}) => (Some(lower_node_id), Some(lower_output_index)),
+					_ => (None, None),
 				};
 
 				let boolean_operation_node_id = NodeId::new();
@@ -318,14 +314,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 
 				// Connect the lower chain to the Boolean Operation node's lower input
-				responses.add(GraphOperationMessage::SetNodeInput {
-					node_id: boolean_operation_node_id,
-					input_index: 1,
-					input: NodeInput::node(lower_node_id, lower_output_index),
-				});
+				if let (Some(lower_layer), Some(lower_node_id), Some(lower_output_index)) = (lower_layer, lower_node_id, lower_output_index) {
+					responses.add(GraphOperationMessage::SetNodeInput {
+						node_id: boolean_operation_node_id,
+						input_index: 1,
+						input: NodeInput::node(lower_node_id, lower_output_index),
+					});
 
-				// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
-				responses.add(GraphOperationMessage::DeleteLayer { layer: lower_layer, reconnect: true });
+					// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
+					responses.add(GraphOperationMessage::DeleteLayer { layer: lower_layer, reconnect: true });
+				}
 
 				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
 				responses.add(GraphOperationMessage::SetNodePosition {
@@ -338,7 +336,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					node_id: boolean_operation_node_id,
 					shift: (-8, 0).into(),
 					shift_self: true,
-				})
+				});
+
+				// Re-render
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::InsertNodeBetween {
 				post_node_id,

@@ -317,7 +317,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
-					// Path will never include ROOT_PARENT, so this is safe
+					// `path` will never include `ROOT_PARENT`, so this is safe
 					responses.add_front(DocumentMessage::DeleteLayer { layer: *path.last().unwrap() });
 				}
 			}
@@ -423,17 +423,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 
-					// ROOT_PARENT cannot be selected, so this should never be true
+					// `ROOT_PARENT` cannot be selected, so this should never be true
 					if layer == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("ROOT_PARENT cannot be deleted");
 						continue;
-					};
+					}
 
-					// first_unselected_parent_folder must be a child of parent, so it cannot be the ROOT_PARENT
+					// `first_unselected_parent_folder` must be a child of `parent`, so it cannot be the `ROOT_PARENT`
 					if first_unselected_parent_folder == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("first_unselected_parent_folder cannot be ROOT_PARENT");
 						continue;
-					};
+					}
 
 					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: layer.to_node(),
@@ -539,7 +539,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
-				// Artboards can only have ROOT_PARENT as the parent.
+				// Artboards can only have `ROOT_PARENT` as the parent.
 				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
@@ -563,7 +563,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					{
 						insert_index -= 1;
 					}
-					// layer_to_move should never be ROOT_PARENT, since it is not included in all_layers()
+
+					// `layer_to_move` should never be `ROOT_PARENT`, since it is not included in `all_layers()`
 					if layer_to_move == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("Layer to move cannot be root parent");
 						continue;
@@ -677,7 +678,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 
-				// layer cannot be ROOT_PARENT since it is the newly created layer
+				// `layer` cannot be `ROOT_PARENT` since it is the newly created layer
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
@@ -795,6 +796,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						log::error!("ROOT_PARENT cannot be selected in SelectLayer");
 						return;
 					}
+
 					nodes.push(last_selected.to_node());
 					nodes.push(id);
 
@@ -827,6 +829,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// Set our last selection reference
 					self.layer_range_selection_reference = Some(layer);
 				}
+
 				// Don't create messages for empty operations
 				if !nodes.is_empty() {
 					// Add or set our selected layers
@@ -1220,6 +1223,8 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+
+		// TODO: Use this to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 		// 	Ok(mut document) => {

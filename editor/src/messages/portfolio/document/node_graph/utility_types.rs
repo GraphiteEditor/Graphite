@@ -83,7 +83,6 @@ pub struct FrontendNode {
 	pub ui_only: bool,
 }
 
-// (wire_start, wire_end, wire_end_input_index)
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeWire {
 	#[serde(rename = "wireStart")]
