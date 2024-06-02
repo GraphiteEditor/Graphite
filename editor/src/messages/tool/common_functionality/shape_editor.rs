@@ -66,53 +66,43 @@ pub struct ManipulatorPointInfo {
 pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<PointId, Option<f64>>>;
 
 struct ClosestSegmentInfo {
+	pub segment: SegmentId,
 	pub bezier: Bezier,
 	pub t: f64,
-	pub bezier_point_to_viewport: DVec2,
-	pub layer_scale: DVec2,
 }
 
 pub struct ClosestSegment {
 	layer: LayerNodeIdentifier,
-	start: PointId,
-	end: PointId,
+	segment: SegmentId,
 	bezier: Bezier,
+	points: [PointId; 2],
 	t: f64,
-	t_min: f64,
-	t_max: f64,
-	scale: f64,
-	stroke_width: f64,
 	bezier_point_to_viewport: DVec2,
-	has_start_handle: bool,
-	has_end_handle: bool,
+	stroke_width: f64,
 }
 
 impl ClosestSegment {
-	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroup<PointId>, end: ManipulatorGroup<PointId>) -> Self {
+	fn new(segment: SegmentId, mut bezier: Bezier, points: [PointId; 2], t: f64, bezier_point_to_viewport: DVec2, layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Self {
 		// 0.5 is half the line (center to side) but it's convenient to allow targetting slightly more than half the line width
 		const STROKE_WIDTH_PERCENT: f64 = 0.7;
 
-		let bezier = info.bezier;
-		let t = info.t;
-		let (t_min, t_max) = ClosestSegment::t_min_max(&bezier, info.layer_scale);
 		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
-		let bezier_point_to_viewport = info.bezier_point_to_viewport;
-		let has_start_handle = start.has_out_handle();
-		let has_end_handle = end.has_in_handle();
+
+		// Convert to linear if handes are on top of control points
+		if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
+			if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
+				bezier = Bezier::from_linear_dvec2(bezier.start, bezier.end);
+			}
+		}
 
 		Self {
 			layer,
-			start: start.id,
-			end: end.id,
+			segment,
 			bezier,
+			points,
 			t,
-			t_min,
-			t_max,
-			scale: 1.,
-			stroke_width,
 			bezier_point_to_viewport,
-			has_start_handle,
-			has_end_handle,
+			stroke_width,
 		}
 	}
 
@@ -124,31 +114,12 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport
 	}
 
-	fn t_min_max(bezier: &Bezier, layer_scale: DVec2) -> (f64, f64) {
-		let length = bezier.apply_transformation(|point| point * layer_scale).length(None);
-		let too_close_t = (INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE / length).min(0.5);
-
-		let t_min_euclidean = too_close_t;
-		let t_max_euclidean = 1. - too_close_t;
-
-		// We need parametric values because they are faster to calculate
-		let t_min = bezier.euclidean_to_parametric(t_min_euclidean, 0.001);
-		let t_max = bezier.euclidean_to_parametric(t_max_euclidean, 0.001);
-
-		(t_min, t_max)
-	}
-
 	/// Updates this [`ClosestSegment`] with the viewport-space location of the closest point on the segment to the given mouse position.
 	pub fn update_closest_point(&mut self, document_metadata: &DocumentMetadata, mouse_position: DVec2) {
 		let transform = document_metadata.transform_to_viewport(self.layer);
-		let layer_m_pos = transform.inverse().transform_point2(mouse_position);
+		let layer_mouse_pos = transform.inverse().transform_point2(mouse_position);
 
-		self.scale = document_metadata.document_to_viewport.decompose_scale().x.max(1.);
-
-		// Linear approximation of parametric t-value ranges:
-		let t_min = self.t_min / self.scale;
-		let t_max = 1. - ((1. - self.t_max) / self.scale);
-		let t = self.bezier.project(layer_m_pos).max(t_min).min(t_max);
+		let t = self.bezier.project(layer_mouse_pos).max(0.).min(1.);
 		self.t = t;
 
 		let bezier_point = self.bezier.evaluate(TValue::Parametric(t));
@@ -160,90 +131,54 @@ impl ClosestSegment {
 		self.bezier_point_to_viewport.distance_squared(mouse_position)
 	}
 
-	pub fn split(&self) -> [Bezier; 2] {
-		self.bezier.split(TValue::Parametric(self.t))
-	}
-
-	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64) -> bool {
+	pub fn too_far(&self, mouse_position: DVec2, tolerance: f64, document_metadata: &DocumentMetadata) -> bool {
 		let dist_sq = self.distance_squared(mouse_position);
-		let stroke_width = self.scale * self.stroke_width;
+		let stroke_width = document_metadata.document_to_viewport.decompose_scale().x.max(1.) * self.stroke_width;
 		let stroke_width_sq = stroke_width * stroke_width;
 		let tolerance_sq = tolerance * tolerance;
 		(stroke_width_sq + tolerance_sq) < dist_sq
 	}
 
-	pub fn adjust_start_handle(&self, responses: &mut VecDeque<Message>) {
-		// if !self.has_start_handle {
-		// 	return;
-		// }
-
-		// let [first, _] = self.split();
-		// let point = ManipulatorPointId::new(self.start, SelectedType::OutHandle);
-
-		// // `first.handle_start()` should always be expected
-		// let delta = first.handle_start().unwrap_or(first.start());
-
-		// let out_handle = GraphOperationMessage::Vector {
-		// 	layer: self.layer,
-		// 	modification_type: VectorModificationType::ApplyDelta { point, delta },
-		// };
-		// responses.add(out_handle);
-	}
-
-	pub fn adjust_end_handle(&self, responses: &mut VecDeque<Message>) {
-		// if !self.has_end_handle {
-		// 	return;
-		// }
-
-		// let [_, second] = self.split();
-		// let point = ManipulatorPointId::new(self.end, SelectedType::InHandle);
-
-		// // `second.handle_end()` should not be expected in the quadratic case
-		// let position = if second.handles.is_cubic() { second.handle_end() } else { second.handle_start() };
-		// let delta = position.unwrap_or(second.end());
-
-		// let in_handle = GraphOperationMessage::Vector {
-		// 	layer: self.layer,
-		// 	modification_type: VectorModificationType::ApplyDelta { point, delta },
-		// };
-		// responses.add(in_handle);
-	}
-
-	/// Inserts the point that this [`ClosestSegment`] currently has. Returns the [`PointId`] of the inserted point.
-	pub fn insert_point(&self, responses: &mut VecDeque<Message>) -> PointId {
-		let [first, second] = self.split();
-
-		let layer = self.layer;
-		let anchor = first.end();
-
-		// `first.handle_end()` should not be expected in the quadratic case
-		let in_handle = if first.handles.is_cubic() { first.handle_end() } else { first.handle_start() };
-		let out_handle = second.handle_start();
-		let (in_handle, out_handle) = match (self.has_start_handle, self.has_end_handle) {
-			(false, false) => (None, None),
-			(false, true) => (in_handle, if second.handles.is_cubic() { out_handle } else { None }),
-			(true, false) => (if first.handles.is_cubic() { in_handle } else { None }, out_handle),
-			(true, true) => (in_handle, out_handle),
-		};
-
-		// let manipulator_group = ManipulatorGroup::new(anchor, in_handle, out_handle);
-		// let modification = VectorModificationType::InsertPoint { id: (), pos: () } {
-		// 	manipulator_group,
-		// 	after_id: self.start,
-		// };
-		// let insert = GraphOperationMessage::Vector {
-		// 	layer,
-		// 	modification_type: modification,
-		// };
-		// responses.add(insert);
-
-		PointId::generate()
-	}
-
 	pub fn adjusted_insert(&self, responses: &mut VecDeque<Message>) -> PointId {
-		self.adjust_start_handle(responses);
-		self.adjust_end_handle(responses);
-		self.insert_point(responses)
+		let layer = self.layer;
+		let [first, second] = self.bezier.split(TValue::Parametric(self.t));
+
+		// Point
+		let midpoint = PointId::generate();
+		let modification_type = VectorModificationType::InsertPoint { id: midpoint, pos: first.end };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// First segment
+		let segment_ids = [SegmentId::generate(), SegmentId::generate()];
+		let modification_type = VectorModificationType::InsertSegment {
+			id: segment_ids[0],
+			start: self.points[0],
+			end: midpoint,
+			handles: first.handles,
+		};
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// Last segment
+		let modification_type = VectorModificationType::InsertSegment {
+			id: segment_ids[1],
+			start: midpoint,
+			end: self.points[1],
+			handles: second.handles,
+		};
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// G1 continous
+		if self.bezier.handle_end().is_some() {
+			let handles = [HandleId::end(segment_ids[0]), HandleId::primary(segment_ids[1])];
+			let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+
+		// Remove old segment
+		let modification_type = VectorModificationType::RemoveSegment { id: self.segment };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		midpoint
 	}
 
 	pub fn adjusted_insert_and_select(&self, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>, add_to_selection: bool) {
@@ -379,12 +314,12 @@ impl ShapeState {
 	}
 
 	pub fn select_anchor_point_by_id(&mut self, layer: LayerNodeIdentifier, id: PointId, add_to_selection: bool) {
-		// if !add_to_selection {
-		// 	self.deselect_all_points();
-		// }
-		// let point = ManipulatorPointId::new(id, SelectedType::Anchor);
-		// let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
-		// selected_state.select_point(point);
+		if !add_to_selection {
+			self.deselect_all_points();
+		}
+		let point = ManipulatorPointId::Anchor(id);
+		let Some(selected_state) = self.selected_shape_state.get_mut(&layer) else { return };
+		selected_state.select_point(point);
 	}
 
 	/// Selects all anchors, and deselects all handles, for the given layer.
@@ -1120,34 +1055,23 @@ impl ShapeState {
 		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
 
 		let mut closest = None;
-		// let mut closest_distance_squared: f64 = tolerance * tolerance;
+		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		// let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
+		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
 
-		// for subpath in vector_data.stroke_bezier_paths() {
-		// 	for (manipulator_index, bezier) in subpath.iter().enumerate() {
-		// 		let t = bezier.project(layer_pos);
-		// 		let layerspace = bezier.evaluate(TValue::Parametric(t));
+		for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
+			let t = bezier.project(layer_pos);
+			let layerspace = bezier.evaluate(TValue::Parametric(t));
 
-		// 		let screenspace = transform.transform_point2(layerspace);
-		// 		let distance_squared = screenspace.distance_squared(position);
+			let screenspace = transform.transform_point2(layerspace);
+			let distance_squared = screenspace.distance_squared(position);
 
-		// 		if distance_squared < closest_distance_squared {
-		// 			closest_distance_squared = distance_squared;
+			if distance_squared < closest_distance_squared {
+				closest_distance_squared = distance_squared;
 
-		// 			let info = ClosestSegmentInfo {
-		// 				bezier,
-		// 				t,
-		// 				// needs for correct length calc when there is non 1x1 layer scale
-		// 				layer_scale: transform.decompose_scale() / scale,
-		// 				bezier_point_to_viewport: screenspace,
-		// 			};
-		// 			let start = subpath.manipulator_groups()[manipulator_index];
-		// 			let end = subpath.manipulator_groups()[(manipulator_index + 1) % subpath.len()];
-		// 			closest = Some(ClosestSegment::new(info, layer, document_network, start, end))
-		// 		}
-		// 	}
-		// }
+				closest = Some(ClosestSegment::new(segment, bezier, [start, end], t, screenspace, layer, document_network))
+			}
+		}
 
 		closest
 	}
@@ -1159,13 +1083,6 @@ impl ShapeState {
 			0 => None,
 			1 => self.selected_layers().next().copied().and_then(closest_seg),
 			_ => self.sorted_selected_layers(document_metadata).find_map(closest_seg),
-		}
-	}
-
-	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the Path tool).
-	pub fn split(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
-		if let Some(segment) = self.upper_closest_segment(document_network, document_metadata, position, tolerance) {
-			segment.adjusted_insert(responses);
 		}
 	}
 
