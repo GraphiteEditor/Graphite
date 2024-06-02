@@ -205,7 +205,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 
 						buffer.push(CopyBufferEntry {
-							nodes: NodeGraphMessageHandler::copy_nodes(active_document.network(), &copy_ids).collect(),
+							nodes: NodeGraphMessageHandler::copy_nodes(
+								active_document.network(),
+								&active_document.node_graph_handler.network,
+								&active_document.node_graph_handler.resolved_types,
+								&copy_ids,
+							)
+							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
@@ -378,6 +384,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						}
 					}
 				}
+
+				// TODO: Eventually remove this (probably starting late 2024)
+				responses.add(GraphOperationMessage::DeleteLegacyOutputNode);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {

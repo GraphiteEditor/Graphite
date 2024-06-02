@@ -141,7 +141,7 @@ pub fn serialize_gpu(networks: &[ProtoNetwork], io: &ShaderIO) -> anyhow::Result
 	let mut output_nodes = Vec::new();
 	for network in networks {
 		dbg!(&network);
-		//assert_eq!(network.inputs.len(), io.inputs.iter().filter(|x| !x.is_output()).count());
+		// assert_eq!(network.inputs.len(), io.inputs.iter().filter(|x| !x.is_output()).count());
 		#[derive(serde::Serialize, Debug)]
 		struct Node {
 			id: String,
@@ -215,10 +215,10 @@ pub fn compile(dir: &Path) -> Result<spirv_builder::CompileResult, spirv_builder
 		.preserve_bindings(true)
 		.release(true)
 		.spirv_metadata(SpirvMetadata::Full)
-		//.scalar_block_layout(true)
+		// .scalar_block_layout(true)
 		.relax_logical_pointer(true)
-		//.capability(spirv_builder::Capability::Float64)
-		//.capability(spirv_builder::Capability::VariablePointersStorageBuffer)
+		// .capability(spirv_builder::Capability::Float64)
+		// .capability(spirv_builder::Capability::VariablePointersStorageBuffer)
 		.extra_arg("no-early-report-zombies")
 		.extra_arg("no-infer-storage-classes")
 		.extra_arg("spirt-passes=qptr")

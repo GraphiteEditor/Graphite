@@ -26,7 +26,7 @@ pub enum DialogMessage {
 		localized_commit_year: String,
 	},
 	RequestComingSoonDialog {
-		issue: Option<i32>,
+		issue: Option<u32>,
 	},
 	RequestDemoArtworkDialog,
 	RequestExportDialog,

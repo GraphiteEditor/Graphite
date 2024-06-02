@@ -160,7 +160,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			usage |= wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC;
 		}
 
-		log::debug!("Creating storage buffer with usage {:?} and len: {}", usage, bytes.len());
+		log::warn!("Creating storage buffer with usage {:?} and len: {}", usage, bytes.len());
 		let buffer = self.context.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: None,
 			contents: bytes.as_ref(),
@@ -207,7 +207,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	}
 
 	fn create_output_buffer(&self, len: usize, ty: Type, cpu_readable: bool) -> Result<WgpuShaderInput> {
-		log::debug!("Creating output buffer with len: {len}");
+		log::warn!("Creating output buffer with len: {len}");
 		let create_buffer = |usage| {
 			Ok::<_, anyhow::Error>(self.context.device.create_buffer(&BufferDescriptor {
 				label: None,
@@ -294,7 +294,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		println!("{surface_caps:?}");
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
-			//return Ok(());
+			// return Ok(());
 		}
 		let Some(config) = self.surface_config.take() else { return Ok(()) };
 		let new_config = config.clone();
@@ -423,7 +423,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	}
 
 	fn create_texture_view(&self, texture: ShaderInput<Self>) -> Result<ShaderInput<Self>> {
-		//Ok(ShaderInput::TextureView(texture.create_view(&wgpu::TextureViewDescriptor::default()), ) )
+		// Ok(ShaderInput::TextureView(texture.create_view(&wgpu::TextureViewDescriptor::default()), ) )
 		let ShaderInput::TextureBuffer(texture, ty) = &texture else {
 			bail!("Tried to create a texture view from a non texture");
 		};

@@ -6,17 +6,17 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeLink, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-
 	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -26,7 +26,7 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	type LinkPath = { pathString: string; dataType: string; thick: boolean };
+	type WirePath = { pathString: string; dataType: FrontendGraphDataType; thick: boolean; dashed: boolean };
 
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
@@ -41,13 +41,13 @@
 	let boxSelection: Box | undefined = undefined;
 	let previousSelection: bigint[] = [];
 	let selectIfNotDragged: undefined | bigint = undefined;
-	let linkInProgressFromConnector: SVGSVGElement | undefined = undefined;
-	let linkInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
+	let wireInProgressFromConnector: SVGSVGElement | undefined = undefined;
+	let wireInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
 	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
-	// let linkInProgressFromLayerTop: bigint | undefined = undefined;
-	// let linkInProgressFromLayerBottom: bigint | undefined = undefined;
-	let disconnecting: { nodeId: bigint; inputIndex: number; linkIndex: number } | undefined = undefined;
-	let nodeLinkPaths: LinkPath[] = [];
+	// let wireInProgressFromLayerTop: bigint | undefined = undefined;
+	// let wireInProgressFromLayerBottom: bigint | undefined = undefined;
+	let disconnecting: { nodeId: bigint; inputIndex: number; wireIndex: number } | undefined = undefined;
+	let nodeWirePaths: WirePath[] = [];
 	let searchTerm = "";
 	let contextMenuOpenCoordinates: { x: number; y: number } | undefined = undefined;
 	let toggleDisplayAsLayerNodeId: bigint | undefined = undefined;
@@ -77,8 +77,8 @@
 		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
 	})();
 
-	$: linkPathInProgress = createLinkPathInProgress(linkInProgressFromConnector, linkInProgressToConnector);
-	$: linkPaths = createLinkPaths(linkPathInProgress, nodeLinkPaths);
+	$: wirePathInProgress = createWirePathInProgress(wireInProgressFromConnector, wireInProgressToConnector);
+	$: wirePaths = createWirePaths(wirePathInProgress, nodeWirePaths);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -129,21 +129,21 @@
 		return Array.from(categories);
 	}
 
-	function createLinkPathInProgress(linkInProgressFromConnector?: SVGSVGElement, linkInProgressToConnector?: SVGSVGElement | DOMRect): LinkPath | undefined {
-		if (linkInProgressFromConnector && linkInProgressToConnector && nodesContainer) {
-			const from = connectorToNodeIndex(linkInProgressFromConnector);
-			const to = linkInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(linkInProgressToConnector) : undefined;
+	function createWirePathInProgress(wireInProgressFromConnector?: SVGSVGElement, wireInProgressToConnector?: SVGSVGElement | DOMRect): WirePath | undefined {
+		if (wireInProgressFromConnector && wireInProgressToConnector && nodesContainer) {
+			const from = connectorToNodeIndex(wireInProgressFromConnector);
+			const to = wireInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(wireInProgressToConnector) : undefined;
 
-			const linkStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
-			return createWirePath(linkInProgressFromConnector, linkInProgressToConnector, linkStart, linkEnd);
+			const wireStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
+			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
+			return createWirePath(wireInProgressFromConnector, wireInProgressToConnector, wireStart, wireEnd, false);
 		}
 		return undefined;
 	}
 
-	function createLinkPaths(linkPathInProgress: LinkPath | undefined, nodeLinkPaths: LinkPath[]): LinkPath[] {
-		const maybeLinkPathInProgress = linkPathInProgress ? [linkPathInProgress] : [];
-		return [...maybeLinkPathInProgress, ...nodeLinkPaths];
+	function createWirePaths(wirePathInProgress: WirePath | undefined, nodeWirePaths: WirePath[]): WirePath[] {
+		const maybeWirePathInProgress = wirePathInProgress ? [wirePathInProgress] : [];
+		return [...maybeWirePathInProgress, ...nodeWirePaths];
 	}
 
 	async function watchNodes(nodes: FrontendNode[]) {
@@ -152,38 +152,38 @@
 			if (!outputs[index]) outputs[index] = [];
 		});
 
-		await refreshLinks();
+		await refreshWires();
 	}
 
-	function resolveLink(link: FrontendNodeLink): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
-		const outputIndex = Number(link.linkStartOutputIndex);
-		const inputIndex = Number(link.linkEndInputIndex);
+	function resolveWire(wire: FrontendNodeWire): { nodeOutput: SVGSVGElement | undefined; nodeInput: SVGSVGElement | undefined } {
+		const outputIndex = Number(wire.wireStartOutputIndex);
+		const inputIndex = Number(wire.wireEndInputIndex);
 
-		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === link.linkStart)];
-		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === link.linkEnd)] || undefined;
+		const nodeOutputConnectors = outputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireStart)];
+		const nodeInputConnectors = inputs[$nodeGraph.nodes.findIndex((n) => n.id === wire.wireEnd)] || undefined;
 
 		const nodeOutput = nodeOutputConnectors?.[outputIndex] as SVGSVGElement | undefined;
 		const nodeInput = nodeInputConnectors?.[inputIndex] as SVGSVGElement | undefined;
 		return { nodeOutput, nodeInput };
 	}
 
-	async function refreshLinks() {
+	async function refreshWires() {
 		await tick();
 
-		const links = $nodeGraph.links;
-		nodeLinkPaths = links.flatMap((link, index) => {
-			const { nodeInput, nodeOutput } = resolveLink(link);
+		const wires = $nodeGraph.wires;
+		nodeWirePaths = wires.flatMap((wire, index) => {
+			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return [];
-			if (disconnecting?.linkIndex === index) return [];
+			if (disconnecting?.wireIndex === index) return [];
 
-			const linkStart = $nodeGraph.nodes.find((n) => n.id === link.linkStart)?.isLayer || false;
-			const linkEnd = ($nodeGraph.nodes.find((n) => n.id === link.linkEnd)?.isLayer && Number(link.linkEndInputIndex) == 0) || false;
+			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart)?.isLayer || false;
+			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd)?.isLayer && Number(wire.wireEndInputIndex) == 0) || false;
 
-			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), linkStart, linkEnd)];
+			return [createWirePath(nodeOutput, nodeInput.getBoundingClientRect(), wireStart, wireEnd, wire.dashed)];
 		});
 	}
 
-	onMount(refreshLinks);
+	onMount(refreshWires);
 
 	function nodeIcon(nodeName: string): IconName {
 		const iconMap: Record<string, IconName> = {
@@ -195,24 +195,24 @@
 	function buildWirePathLocations(outputBounds: DOMRect, inputBounds: DOMRect, verticalOut: boolean, verticalIn: boolean): { x: number; y: number }[] {
 		if (!nodesContainer) return [];
 
-		const VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP = 1;
+		const VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP = 1;
 
 		const containerBounds = nodesContainer.getBoundingClientRect();
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
-		const outY = verticalOut ? outputBounds.y + VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
+		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
 		const outConnectorX = (outX - containerBounds.x) / transform.scale;
 		const outConnectorY = (outY - containerBounds.y) / transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
-		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_LINK_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
+		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
 		const inConnectorX = (inX - containerBounds.x) / transform.scale;
 		const inConnectorY = (inY - containerBounds.y) / transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
 		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
-		// // Straight: stacking lines which are always straight, or a straight horizontal link between two aligned nodes
+		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
 		// if ((verticalOut && verticalIn) || (!verticalOut && !verticalIn && verticalGap === 0)) {
 		// 	return [
 		// 		{ x: outConnectorX, y: outConnectorY },
@@ -259,14 +259,14 @@
 			.join(" ");
 	}
 
-	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean): LinkPath {
+	function createWirePath(outputPort: SVGSVGElement, inputPort: SVGSVGElement | DOMRect, verticalOut: boolean, verticalIn: boolean, dashed: boolean): WirePath {
 		const inputPortRect = inputPort instanceof DOMRect ? inputPort : inputPort.getBoundingClientRect();
 		const outputPortRect = outputPort.getBoundingClientRect();
 
 		const pathString = buildWirePathString(outputPortRect, inputPortRect, verticalOut, verticalIn);
-		const dataType = outputPort.getAttribute("data-datatype") || "general";
+		const dataType = (outputPort.getAttribute("data-datatype") as FrontendGraphDataType) || "General";
 
-		return { pathString, dataType, thick: verticalIn && verticalOut };
+		return { pathString, dataType, thick: verticalIn && verticalOut, dashed };
 	}
 
 	function scroll(e: WheelEvent) {
@@ -321,9 +321,9 @@
 		if (e.key.toLowerCase() === "escape") {
 			contextMenuOpenCoordinates = undefined;
 			document.removeEventListener("keydown", keydown);
-			linkInProgressFromConnector = undefined;
-			// linkInProgressFromLayerTop = undefined;
-			// linkInProgressFromLayerBottom = undefined;
+			wireInProgressFromConnector = undefined;
+			// wireInProgressFromLayerTop = undefined;
+			// wireInProgressFromLayerBottom = undefined;
 		}
 	}
 
@@ -374,10 +374,10 @@
 		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 		if (lmb) {
 			contextMenuOpenCoordinates = undefined;
-			linkInProgressFromConnector = undefined;
+			wireInProgressFromConnector = undefined;
 			toggleDisplayAsLayerNodeId = undefined;
-			// linkInProgressFromLayerTop = undefined;
-			// linkInProgressFromLayerBottom = undefined;
+			// wireInProgressFromLayerTop = undefined;
+			// wireInProgressFromLayerBottom = undefined;
 		}
 
 		// Alt-click sets the clicked node as previewed
@@ -390,39 +390,36 @@
 			const isOutput = Boolean(port.getAttribute("data-port") === "output");
 			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
 
-			// Output: Begin dragging out a new link
+			// Output: Begin dragging out a new wire
 			if (isOutput) {
-				// Disallow creating additional vertical output links from an already-connected layer
-				if (frontendNode?.isLayer && frontendNode.primaryOutput?.connected !== undefined) return;
+				// Disallow creating additional vertical output wires from an already-connected layer
+				if (frontendNode?.isLayer && frontendNode.primaryOutput && frontendNode.primaryOutput.connected.length > 0) return;
 
-				linkInProgressFromConnector = port;
-				// // Since we are just beginning to drag out a link from the top, we know the in-progress link exists from this layer's top and has no connection to any other layer bottom yet
-				// linkInProgressFromLayerTop = nodeId !== undefined && frontendNode?.isLayer ? nodeId : undefined;
-				// linkInProgressFromLayerBottom = undefined;
+				wireInProgressFromConnector = port;
+				// // Since we are just beginning to drag out a wire from the top, we know the in-progress wire exists from this layer's top and has no connection to any other layer bottom yet
+				// wireInProgressFromLayerTop = nodeId !== undefined && frontendNode?.isLayer ? nodeId : undefined;
+				// wireInProgressFromLayerBottom = undefined;
 			}
-			// Input: Begin moving an existing link
+			// Input: Begin moving an existing wire
 			else {
 				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
 				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
-				// const isLayerBottomConnector = frontendNode?.isLayer && inputNodeConnectionIndexSearch === 1;
 				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
 				if (inputIndex === undefined || nodeId === undefined) return;
 
-				// Set the link to draw from the input that a previous link was on
+				// Set the wire to draw from the input that a previous wire was on
 
-				const linkIndex = $nodeGraph.links.findIndex((value) => value.linkEnd === nodeId && value.linkEndInputIndex === BigInt(inputIndex));
-				if (linkIndex === -1) return;
+				const wireIndex = $nodeGraph.wires.filter((wire) => !wire.dashed).findIndex((value) => value.wireEnd === nodeId && value.wireEndInputIndex === BigInt(inputIndex));
+				if (wireIndex === -1) return;
 
-				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkStart)}"] [data-port="output"]`) || undefined;
-				linkInProgressFromConnector = nodeOutputConnectors?.[Number($nodeGraph.links[linkIndex].linkStartOutputIndex)] as SVGSVGElement | undefined;
-				// linkInProgressFromLayerBottom = isLayerBottomConnector ? frontendNode.exposedInputs[0].connected : undefined;
+				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.wires[wireIndex].wireStart)}"] [data-port="output"]`) || undefined;
+				wireInProgressFromConnector = nodeOutputConnectors?.[Number($nodeGraph.wires[wireIndex].wireStartOutputIndex)] as SVGSVGElement | undefined;
 
-				const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.links[linkIndex].linkEnd)}"] [data-port="input"]`) || undefined;
-				linkInProgressToConnector = nodeInputConnectors?.[Number($nodeGraph.links[linkIndex].linkEndInputIndex)] as SVGSVGElement | undefined;
-				// linkInProgressFromLayerTop = undefined;
+				const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.wires[wireIndex].wireEnd)}"] [data-port="input"]`) || undefined;
+				wireInProgressToConnector = nodeInputConnectors?.[Number($nodeGraph.wires[wireIndex].wireEndInputIndex)] as SVGSVGElement | undefined;
 
-				disconnecting = { nodeId: nodeId, inputIndex, linkIndex };
-				refreshLinks();
+				disconnecting = { nodeId: nodeId, inputIndex, wireIndex };
+				refreshWires();
 			}
 
 			return;
@@ -480,26 +477,28 @@
 		panning = true;
 	}
 
-	function doubleClick(_e: MouseEvent) {
-		// const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		// const nodeId = node?.getAttribute("data-node") || undefined;
-		// if (nodeId !== undefined) {
-		// 	const id = BigInt(nodeId);
-		// 	editor.handle.enterNestedNetwork(id);
-		// }
+	function doubleClick(e: MouseEvent) {
+		if ((e.target as HTMLElement).closest("[data-visibility-button]")) return;
+
+		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
+		const nodeId = node?.getAttribute("data-node") || undefined;
+		if (nodeId !== undefined && !e.altKey) {
+			const id = BigInt(nodeId);
+			editor.handle.enterNestedNetwork(id);
+		}
 	}
 
 	function pointerMove(e: PointerEvent) {
 		if (panning) {
 			transform.x += e.movementX / transform.scale;
 			transform.y += e.movementY / transform.scale;
-		} else if (linkInProgressFromConnector && !contextMenuOpenCoordinates) {
+		} else if (wireInProgressFromConnector && !contextMenuOpenCoordinates) {
 			const target = e.target as Element | undefined;
 			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
 			if (dot) {
-				linkInProgressToConnector = dot;
+				wireInProgressToConnector = dot;
 			} else {
-				linkInProgressToConnector = new DOMRect(e.x, e.y);
+				wireInProgressToConnector = new DOMRect(e.x, e.y);
 			}
 		} else if (draggingNodes) {
 			const deltaX = Math.round((e.x - draggingNodes.startX) / transform.scale / GRID_SIZE);
@@ -510,7 +509,7 @@
 
 				let stop = false;
 				const refresh = () => {
-					if (!stop) refreshLinks();
+					if (!stop) refreshWires();
 					requestAnimationFrame(refresh);
 				};
 				refresh();
@@ -560,8 +559,8 @@
 		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
-	function toggleNodeVisibility(id: bigint) {
-		editor.handle.toggleNodeVisibility(id);
+	function toggleNodeVisibilityGraph(id: bigint) {
+		editor.handle.toggleNodeVisibilityGraph(id);
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean) {
@@ -602,7 +601,7 @@
 		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
 
 		// Check that neither the primary input or output of the selected node are already connected.
-		const notConnected = $nodeGraph.links.findIndex((link) => link.linkStart === selectedNodeId || (link.linkEnd === selectedNodeId && link.linkEndInputIndex === BigInt(0))) === -1;
+		const notConnected = $nodeGraph.wires.findIndex((wire) => wire.wireStart === selectedNodeId || (wire.wireEnd === selectedNodeId && wire.wireEndInputIndex === BigInt(0))) === -1;
 		const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
 		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
 
@@ -612,9 +611,9 @@
 		// Fixes typing for some reason?
 		const theNodesContainer = nodesContainer;
 
-		// Find the link that the node has been dragged on top of
-		const link = $nodeGraph.links.find((link) => {
-			const { nodeInput, nodeOutput } = resolveLink(link);
+		// Find the wire that the node has been dragged on top of
+		const wire = $nodeGraph.wires.find((wire) => {
+			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return false;
 
 			const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
@@ -623,7 +622,7 @@
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
 			return (
-				link.linkEnd != selectedNodeId &&
+				wire.wireEnd != selectedNodeId &&
 				editor.handle.rectangleIntersects(
 					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
 					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
@@ -635,11 +634,10 @@
 			);
 		});
 
-		// If the node has been dragged on top of the link then connect it into the middle.
-		if (link) {
+		// If the node has been dragged on top of the wire then connect it into the middle.
+		if (wire) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
-
-			editor.handle.insertNodeBetween(link.linkEnd, Number(link.linkEndInputIndex), 0, selectedNodeId, 0, Number(link.linkStartOutputIndex), link.linkStart);
+			editor.handle.insertNodeBetween(wire.wireEnd, Number(wire.wireEndInputIndex), 0, selectedNodeId, 0, Number(wire.wireStartOutputIndex), wire.wireStart);
 			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
 	}
@@ -653,16 +651,16 @@
 		}
 		disconnecting = undefined;
 
-		if (linkInProgressToConnector instanceof SVGSVGElement && linkInProgressFromConnector) {
-			const from = connectorToNodeIndex(linkInProgressFromConnector);
-			const to = connectorToNodeIndex(linkInProgressToConnector);
+		if (wireInProgressToConnector instanceof SVGSVGElement && wireInProgressFromConnector) {
+			const from = connectorToNodeIndex(wireInProgressFromConnector);
+			const to = connectorToNodeIndex(wireInProgressToConnector);
 
 			if (from !== undefined && to !== undefined) {
 				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
-				editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+				editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
-		} else if (linkInProgressFromConnector && !initialDisconnecting) {
+		} else if (wireInProgressFromConnector && !initialDisconnecting) {
 			// If the add node menu is already open, we don't want to open it again
 			if (contextMenuOpenCoordinates) return;
 
@@ -674,7 +672,7 @@
 			if (!contextMenuOpenCoordinates) return;
 			let contextMenuLocation2: { x: number; y: number } = contextMenuOpenCoordinates;
 
-			linkInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
+			wireInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
 
 			return;
 		} else if (draggingNodes) {
@@ -695,8 +693,8 @@
 			boxSelection = undefined;
 		}
 
-		linkInProgressFromConnector = undefined;
-		linkInProgressToConnector = undefined;
+		wireInProgressFromConnector = undefined;
+		wireInProgressToConnector = undefined;
 	}
 
 	function createNode(nodeType: string) {
@@ -708,15 +706,15 @@
 		const inputConnectedNodeID = editor.handle.createNode(nodeType, x, y);
 		contextMenuOpenCoordinates = undefined;
 
-		if (!linkInProgressFromConnector) return;
-		const from = connectorToNodeIndex(linkInProgressFromConnector);
+		if (!wireInProgressFromConnector) return;
+		const from = connectorToNodeIndex(wireInProgressFromConnector);
 
 		if (from !== undefined) {
 			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-			editor.handle.connectNodesByLink(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+			editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 		}
 
-		linkInProgressFromConnector = undefined;
+		wireInProgressFromConnector = undefined;
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
@@ -766,8 +764,15 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		const dataTypeCapitalized = `${value.dataType[0].toUpperCase()}${value.dataType.slice(1)}`;
-		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${dataTypeCapitalized}`;
+		return value.resolvedType ? `Resolved Data: ${value.resolvedType}` : `Unresolved Data: ${value.dataType}`;
+	}
+
+	function connectedToText(output: FrontendGraphOutput): string {
+		if (output.connected.length === 0) {
+			return "Connected to nothing";
+		} else {
+			return output.connected.map((nodeId, index) => `Connected to ${nodeId}, port index ${output.connectedIndex[index]}`).join("\n");
+		}
 	}
 </script>
 
@@ -784,6 +789,7 @@
 	style:--grid-offset-y={`${transform.y * transform.scale}px`}
 	style:--dot-radius={`${dotRadius}px`}
 >
+	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
 	{#if contextMenuOpenCoordinates}
 		<LayoutCol
@@ -844,11 +850,17 @@
 			{/if}
 		</LayoutCol>
 	{/if}
-	<!-- Node connection links -->
+	<!-- Node connection wires -->
 	<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
 		<svg>
-			{#each linkPaths as { pathString, dataType, thick }}
-				<path d={pathString} style:--data-line-width={`${thick ? 8 : 2}px`} style:--data-color={`var(--color-data-${dataType})`} style:--data-color-dim={`var(--color-data-${dataType}-dim)`} />
+			{#each wirePaths as { pathString, dataType, thick, dashed }}
+				<path
+					d={pathString}
+					style:--data-line-width={`${thick ? 8 : 2}px`}
+					style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+					style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+				/>
 			{/each}
 		</svg>
 	</div>
@@ -868,8 +880,8 @@
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
-				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
+				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--label-width={labelWidthGridCells}
 				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
 				data-node={node.id}
@@ -891,14 +903,14 @@
 							class="port top"
 							data-port="output"
 							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
-							{#if node.primaryOutput.connected}
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
+							{#if node.primaryOutput.connected.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => n.id === node.primaryOutput?.connected)?.isLayer}
+								{#if Number(node.primaryOutput?.connectedIndex) === 0 && $nodeGraph.nodes.find((n) => node.primaryOutput?.connected.includes(n.id))?.isLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -913,14 +925,14 @@
 						class="port bottom"
 						data-port="input"
 						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
-						style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 						bind:this={inputs[nodeIndex][0]}
 					>
 						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected || "nothing"}`}</title>
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput?.connected !== undefined ? node.primaryInput.connected : "nothing"}`}</title>
 						{/if}
-						{#if node.primaryInput?.connected}
+						{#if node.primaryInput?.connected !== undefined}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if $nodeGraph.nodes.find((n) => n.id === node.primaryInput?.connected)?.isLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
@@ -939,12 +951,12 @@
 							class="port"
 							data-port="input"
 							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType}-dim)`}
+							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][1]}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected || "nothing"}`}</title>
-							{#if stackDataInput.connected}
+							<title>{`${dataTypeTooltip(stackDataInput)}\nConnected to ${stackDataInput.connected !== undefined ? stackDataInput.connected : "nothing"}`}</title>
+							{#if stackDataInput.connected !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -960,7 +972,8 @@
 				</div>
 				<IconButton
 					class={"visibility"}
-					action={(e) => (toggleNodeVisibility(node.id), e?.stopPropagation())}
+					data-visibility-button
+					action={(e) => (toggleNodeVisibilityGraph(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
 					tooltip={node.visible ? "Visible" : "Hidden"}
@@ -991,8 +1004,8 @@
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
 				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
 				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${node.primaryOutput?.dataType || "general"})`}
-				style:--data-color-dim={`var(--color-data-${node.primaryOutput?.dataType || "general"}-dim)`}
+				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
 			>
@@ -1025,12 +1038,12 @@
 							class="port primary-port"
 							data-port="input"
 							data-datatype={node.primaryInput?.dataType}
-							style:--data-color={`var(--color-data-${node.primaryInput?.dataType})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput?.dataType}-dim)`}
+							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 							bind:this={inputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connected || "nothing"}`}</title>
-							{#if node.primaryInput.connected}
+							<title>{`${dataTypeTooltip(node.primaryInput)}\nConnected to ${node.primaryInput.connected !== undefined ? node.primaryInput.connected : "nothing"}`}</title>
+							{#if node.primaryInput.connected !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -1045,12 +1058,12 @@
 								class="port"
 								data-port="input"
 								data-datatype={parameter.dataType}
-								style:--data-color={`var(--color-data-${parameter.dataType})`}
-								style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+								style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
 								bind:this={inputs[nodeIndex][index + (node.primaryInput ? 1 : 0)]}
 							>
-								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected || "nothing"}`}</title>
-								{#if parameter.connected}
+								<title>{`${dataTypeTooltip(parameter)}\nConnected to ${parameter.connected !== undefined ? parameter.connected : "nothing"}`}</title>
+								{#if parameter.connected !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -1068,12 +1081,12 @@
 							class="port primary-port"
 							data-port="output"
 							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType}-dim)`}
+							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][0]}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\nConnected to ${`${node.primaryOutput.connected}, port index ${node.primaryOutput.connectedIndex}` || "nothing"}`}</title>
-							{#if node.primaryOutput.connected}
+							<title>{`${dataTypeTooltip(node.primaryOutput)}\n${connectedToText(node.primaryOutput)}`}</title>
+							{#if node.primaryOutput.connected !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -1087,12 +1100,12 @@
 							class="port"
 							data-port="output"
 							data-datatype={parameter.dataType}
-							style:--data-color={`var(--color-data-${parameter.dataType})`}
-							style:--data-color-dim={`var(--color-data-${parameter.dataType}-dim)`}
+							style:--data-color={`var(--color-data-${parameter.dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${parameter.dataType.toLowerCase()}-dim)`}
 							bind:this={outputs[nodeIndex][outputIndex + (node.primaryOutput ? 1 : 0)]}
 						>
-							<title>{`${dataTypeTooltip(parameter)}\nConnected to ${`${parameter.connected}, port index ${parameter.connectedIndex}` || "nothing"}`}</title>
-							{#if parameter.connected}
+							<title>{`${dataTypeTooltip(parameter)}\n${connectedToText(parameter)}`}</title>
+							{#if parameter.connected !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -1134,11 +1147,6 @@
 		flex-direction: row;
 		flex-grow: 1;
 
-		> img {
-			position: absolute;
-			bottom: 0;
-		}
-
 		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
 		&::before {
 			content: "";
@@ -1147,9 +1155,21 @@
 			height: 100%;
 			background-size: var(--grid-spacing) var(--grid-spacing);
 			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-f-white) var(--dot-radius), transparent 0),
+				radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			background-repeat: no-repeat, repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
+		}
+
+		> img {
+			position: absolute;
+			bottom: 0;
+		}
+
+		.breadcrumb-trail-buttons {
+			margin-top: 8px;
+			margin-left: 8px;
 		}
 
 		.context-menu {
@@ -1235,6 +1255,7 @@
 					fill: none;
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);
+					stroke-dasharray: var(--data-dasharray);
 				}
 			}
 		}

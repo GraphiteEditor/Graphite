@@ -1,48 +1,35 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
+use graphene_core::Type;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
 	#[default]
-	#[serde(rename = "general")]
 	General,
-	#[serde(rename = "raster")]
 	Raster,
-	#[serde(rename = "color")]
-	Color,
-	#[serde(rename = "general")]
-	Text,
-	#[serde(rename = "vector")]
-	Subpath,
-	#[serde(rename = "number")]
+	VectorData,
 	Number,
-	#[serde(rename = "general")]
-	Boolean,
-	/// Refers to the mathematical vector, with direction and magnitude.
-	#[serde(rename = "number")]
-	Vector,
-	#[serde(rename = "raster")]
-	GraphicGroup,
-	#[serde(rename = "artboard")]
+	Graphic,
 	Artboard,
-	#[serde(rename = "color")]
-	Palette,
 }
 
 impl FrontendGraphDataType {
-	pub const fn with_tagged_value(value: &TaggedValue) -> Self {
-		match value {
-			TaggedValue::String(_) => Self::Text,
-			TaggedValue::F64(_) | TaggedValue::U32(_) | TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Bool(_) => Self::Boolean,
-			TaggedValue::DVec2(_) | TaggedValue::IVec2(_) => Self::Vector,
-			TaggedValue::Image(_) => Self::Raster,
-			TaggedValue::ImageFrame(_) => Self::Raster,
-			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::RcSubpath(_) | TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::Subpath,
-			TaggedValue::GraphicGroup(_) => Self::GraphicGroup,
-			TaggedValue::Artboard(_) | TaggedValue::ArtboardGroup(_) => Self::Artboard,
-			TaggedValue::Palette(_) => Self::Palette,
+	pub fn with_type(input: &Type) -> Self {
+		match TaggedValue::from_type(input) {
+			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
+			TaggedValue::Subpaths(_) | TaggedValue::RcSubpath(_) | TaggedValue::VectorData(_) => Self::VectorData,
+			TaggedValue::U32(_)
+			| TaggedValue::U64(_)
+			| TaggedValue::F64(_)
+			| TaggedValue::UVec2(_)
+			| TaggedValue::IVec2(_)
+			| TaggedValue::DVec2(_)
+			| TaggedValue::OptionalDVec2(_)
+			| TaggedValue::F64Array4(_)
+			| TaggedValue::VecF64(_)
+			| TaggedValue::VecDVec2(_) => Self::Number,
+			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Graphic,
+			TaggedValue::ArtboardGroup(_) => Self::Artboard,
 			_ => Self::General,
 		}
 	}
@@ -65,9 +52,9 @@ pub struct FrontendGraphOutput {
 	pub name: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: Option<String>,
-	pub connected: Option<NodeId>,
+	pub connected: Vec<NodeId>,
 	#[serde(rename = "connectedIndex")]
-	pub connected_index: Option<usize>,
+	pub connected_index: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -92,19 +79,21 @@ pub struct FrontendNode {
 	pub locked: bool,
 	pub previewed: bool,
 	pub errors: Option<String>,
+	#[serde(rename = "uiOnly")]
+	pub ui_only: bool,
 }
 
-// (link_start, link_end, link_end_input_index)
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNodeLink {
-	#[serde(rename = "linkStart")]
-	pub link_start: NodeId,
-	#[serde(rename = "linkStartOutputIndex")]
-	pub link_start_output_index: usize,
-	#[serde(rename = "linkEnd")]
-	pub link_end: NodeId,
-	#[serde(rename = "linkEndInputIndex")]
-	pub link_end_input_index: usize,
+pub struct FrontendNodeWire {
+	#[serde(rename = "wireStart")]
+	pub wire_start: NodeId,
+	#[serde(rename = "wireStartOutputIndex")]
+	pub wire_start_output_index: usize,
+	#[serde(rename = "wireEnd")]
+	pub wire_end: NodeId,
+	#[serde(rename = "wireEndInputIndex")]
+	pub wire_end_input_index: usize,
+	pub dashed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -71,10 +71,6 @@ pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 
-// Fonts
-pub const DEFAULT_FONT_FAMILY: &str = "Cabin";
-pub const DEFAULT_FONT_STYLE: &str = "Normal (400)";
-
 // Document
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
 pub const FILE_SAVE_SUFFIX: &str = ".graphite";

@@ -4,10 +4,8 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
-use graph_craft::document::DocumentNode;
-use graph_craft::document::NodeId;
-use graphene_core::raster::BlendMode;
-use graphene_core::raster::ImageFrame;
+use graph_craft::document::{DocumentNode, NodeId, NodeInput};
+use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
@@ -30,17 +28,27 @@ pub enum GraphOperationMessage {
 		node_id: NodeId,
 		operation: BooleanOperation,
 	},
+	DeleteLayer {
+		layer: LayerNodeIdentifier,
+		reconnect: bool,
+	},
+	// TODO: Eventually remove this (probably starting late 2024)
+	DeleteLegacyOutputNode,
 	DisconnectInput {
 		node_id: NodeId,
 		input_index: usize,
+	},
+	DisconnectNodeFromStack {
+		node_id: NodeId,
+		reconnect_to_sibling: bool,
 	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
-	InsertLayerAtStackIndex {
-		layer_id: NodeId,
-		parent: NodeId,
+	InsertNodeAtStackIndex {
+		node_id: NodeId,
+		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
 	InsertBooleanOperation {
@@ -59,7 +67,7 @@ pub enum GraphOperationMessage {
 		pre_node_output_index: usize,
 	},
 	MoveSelectedSiblingsToChild {
-		new_parent: NodeId,
+		new_parent: LayerNodeIdentifier,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -145,5 +153,44 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
+	},
+	ShiftUpstream {
+		node_id: NodeId,
+		shift: IVec2,
+		shift_self: bool,
+	},
+	SetNodePosition {
+		node_id: NodeId,
+		position: IVec2,
+	},
+	SetName {
+		layer: LayerNodeIdentifier,
+		name: String,
+	},
+	SetNameImpl {
+		layer: LayerNodeIdentifier,
+		name: String,
+	},
+	SetNodeInput {
+		node_id: NodeId,
+		input_index: usize,
+		input: NodeInput,
+	},
+	ToggleSelectedVisibility,
+	ToggleVisibility {
+		node_id: NodeId,
+	},
+	SetVisibility {
+		node_id: NodeId,
+		visible: bool,
+	},
+	StartPreviewingWithoutRestore,
+	ToggleSelectedLocked,
+	ToggleLocked {
+		node_id: NodeId,
+	},
+	SetLocked {
+		node_id: NodeId,
+		locked: bool,
 	},
 }

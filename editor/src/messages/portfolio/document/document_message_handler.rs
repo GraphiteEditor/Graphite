@@ -21,14 +21,11 @@ use crate::node_graph_executor::NodeGraphExecutor;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::FlowType;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeId, NodeInput, NodeNetwork, NodeOutput};
+use graph_craft::document::{NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::ClickTarget;
-use graphene_core::transform::Footprint;
 use graphene_core::vector::style::ViewMode;
-use graphene_core::{concrete, generic, ProtoNodeIdentifier};
-use graphene_std::wasm_application_io::WasmEditorApi;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -51,7 +48,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	navigation_handler: NavigationMessageHandler,
 	#[serde(skip)]
-	node_graph_handler: NodeGraphMessageHandler,
+	pub node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
 	overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
@@ -290,13 +287,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let parent = self
 					.metadata()
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
-					.unwrap_or(LayerNodeIdentifier::ROOT);
+					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
 				let insert_index = parent
 					.children(self.metadata())
 					.enumerate()
 					.find_map(|(index, item)| self.selected_nodes.selected_layers(self.metadata()).any(|x| x == item).then_some(index as isize))
 					.unwrap_or(-1);
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -310,8 +308,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network);
 			}
-			DocumentMessage::DeleteLayer { id } => {
-				responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true });
+			DocumentMessage::DeleteLayer { layer } => {
+				responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true });
 				responses.add_front(BroadcastEvent::ToolAbort);
 			}
 			DocumentMessage::DeleteSelectedLayers => {
@@ -319,7 +317,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
-					responses.add_front(DocumentMessage::DeleteLayer { id: path.last().unwrap().to_node() });
+					// `path` will never include `ROOT_PARENT`, so this is safe
+					responses.add_front(DocumentMessage::DeleteLayer { layer: *path.last().unwrap() });
 				}
 			}
 			DocumentMessage::DeselectAllLayers => {
@@ -331,7 +330,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				self.metadata.load_structure(&self.network, &mut self.selected_nodes);
+				self.metadata.load_structure(&self.network);
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
@@ -395,16 +394,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let parent = self
-					.metadata()
-					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false)
-					.unwrap_or(LayerNodeIdentifier::ROOT);
-
-				// Cancel grouping layers across different artboards
-				// TODO: Group each set of layers for each artboard separately
-				if parent == LayerNodeIdentifier::ROOT {
+				let Some(parent) = self.metadata().deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+					// Cancel grouping layers across different artboards
+					// TODO: Group each set of layers for each artboard separately
 					return;
-				}
+				};
 
 				// Move layers in nested unselected folders above the first unselected parent folder
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
@@ -429,7 +423,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 
-					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+					// `ROOT_PARENT` cannot be selected, so this should never be true
+					if layer == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be deleted");
+						continue;
+					}
+
+					// `first_unselected_parent_folder` must be a child of `parent`, so it cannot be the `ROOT_PARENT`
+					if first_unselected_parent_folder == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("first_unselected_parent_folder cannot be ROOT_PARENT");
+						continue;
+					}
+
+					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: layer.to_node(),
 						reconnect_to_sibling: true,
 					});
@@ -442,17 +448,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.expect("Current folder should always exist")
 						.metadata
 						.position;
-					responses.add(NodeGraphMessage::SetNodePosition {
+
+					responses.add(GraphOperationMessage::SetNodePosition {
 						node_id: layer.to_node(),
 						position: folder_position,
 					});
 
 					// Insert node right above the folder
-					let Some((folder_downstream_node_id, folder_downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder)
-					else {
-						log::error!("Downstream node should always exist when inserting layer");
-						return;
-					};
+					// TODO: downstream node can be none if it is the root node
+					let (folder_downstream_node_id, folder_downstream_input_index) =
+						DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder).unwrap_or((self.network.exports_metadata.0, 0));
+
 					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: folder_downstream_node_id,
 						post_node_input_index: folder_downstream_input_index,
@@ -463,13 +469,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						pre_node_id: first_unselected_parent_folder.to_node(),
 					});
 
-					responses.add(NodeGraphMessage::ShiftUpstream {
+					responses.add(GraphOperationMessage::ShiftUpstream {
 						node_id: first_unselected_parent_folder.to_node(),
 						shift: IVec2::new(0, 3),
 						shift_self: true,
 					});
 				}
-
 				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
 
 				let folder_id = NodeId(generate_uuid());
@@ -481,7 +486,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					alias: String::new(),
 				});
 
-				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: folder_id });
+				let parent = LayerNodeIdentifier::new_unchecked(folder_id);
+				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: parent });
 
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -533,16 +539,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if selected_layers.iter().any(|&layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer)) {
 					return;
 				}
-				// Artboards can only have the Output node as the parent.
-				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT {
+				// Artboards can only have `ROOT_PARENT` as the parent.
+				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
 				// Disallow inserting layers between artboards. Since only artboards can output to Output node, the layer parent cannot be the output.
-				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT {
+				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
+				let mut insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
 
-				let insert_index = self.update_insert_index(&selected_layers, parent, insert_index);
+				let layer_above_insertion = if insert_index == 0 { Some(parent) } else { parent.children(&self.metadata).nth(insert_index - 1) };
 
 				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
@@ -550,15 +557,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
 				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
 				for layer_to_move in ordered_last_elements {
+					if layer_to_move
+						.upstream_siblings(&self.metadata)
+						.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
+					{
+						insert_index -= 1;
+					}
+
+					// `layer_to_move` should never be `ROOT_PARENT`, since it is not included in `all_layers()`
+					if layer_to_move == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("Layer to move cannot be root parent");
+						continue;
+					}
+
 					// Disconnect layer to move and reconnect downstream node to upstream sibling if it exists.
-					responses.add(NodeGraphMessage::DisconnectLayerFromStack {
+					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
 						node_id: layer_to_move.to_node(),
 						reconnect_to_sibling: true,
 					});
 					// Reconnect layer_to_move to new parent at insert index.
-					responses.add(GraphOperationMessage::InsertLayerAtStackIndex {
-						layer_id: layer_to_move.to_node(),
-						parent: parent.to_node(),
+					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
+						node_id: layer_to_move.to_node(),
+						parent: parent,
 						insert_index,
 					});
 				}
@@ -658,6 +678,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				use crate::messages::tool::common_functionality::graph_modification_utils;
 				let layer = graph_modification_utils::new_image_layer(image_frame, NodeId(generate_uuid()), self.new_layer_parent(true), responses);
 
+				// `layer` cannot be `ROOT_PARENT` since it is the newly created layer
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 
 				responses.add(GraphOperationMessage::TransformSet {
@@ -771,6 +792,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				// If we have shift pressed and a layer already selected then fill the range
 				if let Some(last_selected) = self.layer_range_selection_reference.filter(|_| shift) {
+					if last_selected == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be selected in SelectLayer");
+						return;
+					}
+
 					nodes.push(last_selected.to_node());
 					nodes.push(id);
 
@@ -780,7 +806,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						.skip_while(|&node| node != layer && node != last_selected)
 						.skip(1)
 						.take_while(|&node| node != layer && node != last_selected)
-						.for_each(|node| nodes.push(node.to_node()));
+						.for_each(|node| {
+							if node == LayerNodeIdentifier::ROOT_PARENT {
+								log::error!("ROOT_PARENT should not exist in all_layers")
+							} else {
+								nodes.push(node.to_node())
+							}
+						});
 				} else {
 					if ctrl {
 						// Toggle selection when holding ctrl
@@ -930,6 +962,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
 				for folder in folder_paths {
+					if folder == LayerNodeIdentifier::ROOT_PARENT {
+						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
+						continue;
+					}
 					// Cannot ungroup artboard
 					let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
 					if folder_node.is_artboard() {
@@ -937,29 +973,30 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Get first child layer node that feeds into the secondary input for the folder
-					let Some(child_layer_node_id) = folder.first_child(&self.metadata).map(|child_layer| child_layer.to_node()) else {
+					let Some(child_layer) = folder.first_child(&self.metadata) else {
 						log::error!("Folder should always have a child");
 						return;
 					};
 
 					// Move child_layer stack x position to folder stack
-					let child_layer_node = self.network.nodes.get(&child_layer_node_id).expect("Child node should always exist for layer");
+					let child_layer_node = self.network.nodes.get(&child_layer.to_node()).expect("Child node should always exist for layer");
 					let offset = folder_node.metadata.position - child_layer_node.metadata.position;
-					responses.add(NodeGraphMessage::ShiftUpstream {
-						node_id: child_layer_node_id,
+					responses.add(GraphOperationMessage::ShiftUpstream {
+						node_id: child_layer.to_node(),
 						shift: offset,
 						shift_self: true,
 					});
 
 					// Set the primary input for the node downstream of folder to the first layer node
+					// TODO: downstream node can be none if it is the root node. A layer group connected directly to the export cannot be ungrouped
 					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
 					};
 
 					// Output_index must be 0 since layers only have 1 output
-					let downstream_input = NodeInput::node(child_layer_node_id, 0);
-					responses.add(NodeGraphMessage::SetNodeInput {
+					let downstream_input = NodeInput::node(child_layer.to_node(), 0);
+					responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node_id,
 						input_index: downstream_input_index,
 						input: downstream_input,
@@ -967,10 +1004,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
 					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
-						let layer_upstream_sibling_id = *node_id;
+						let upstream_sibling_id = *node_id;
 
 						// Get the node at the bottom of the first layer node stack
-						let mut last_child_node_id = child_layer_node_id;
+						let mut last_child_node_id = child_layer.to_node();
 						loop {
 							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
 								break;
@@ -979,35 +1016,32 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						}
 
 						// Connect the primary input of the bottom layer of the node to the upstream sibling
-						let bottom_layer_node_input = NodeInput::node(layer_upstream_sibling_id, 0);
-						responses.add(NodeGraphMessage::SetNodeInput {
+						let bottom_layer_node_input = NodeInput::node(upstream_sibling_id, 0);
+						responses.add(GraphOperationMessage::SetNodeInput {
 							node_id: last_child_node_id,
 							input_index: 0,
 							input: bottom_layer_node_input,
 						});
 
 						// Shift upstream_sibling down by the height of the child layer stack
-						let top_of_stack = self.network.nodes.get(&child_layer_node_id).expect("Child layer should always exist for child layer id");
-						let bottom_of_stack = self.network.nodes.get(&last_child_node_id).expect("Last child layer should always exist for last child layer id");
+						let top_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Child layer should always exist for child layer id");
+						let bottom_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Last child layer should always exist for last child layer id");
 						let target_distance = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y;
 
 						let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
-						let upstream_sibling_node = self.network.nodes.get(&layer_upstream_sibling_id).expect("Upstream sibling node should always exist");
+						let upstream_sibling_node = self.network.nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
 						let current_distance = upstream_sibling_node.metadata.position.y - folder_node.metadata.position.y;
 
 						let y_offset = target_distance - current_distance + 3;
-						responses.add(NodeGraphMessage::ShiftUpstream {
-							node_id: layer_upstream_sibling_id,
+						responses.add(GraphOperationMessage::ShiftUpstream {
+							node_id: upstream_sibling_id,
 							shift: IVec2::new(0, y_offset),
 							shift_self: true,
 						});
 					}
 
 					// Delete folder and all horizontal inputs, also deletes node in metadata
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![folder.to_node()],
-						reconnect: true,
-					});
+					responses.add(GraphOperationMessage::DeleteLayer { layer: folder, reconnect: true });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1093,8 +1127,7 @@ impl DocumentMessageHandler {
 	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
 		self.metadata
-			.root()
-			.descendants(&self.metadata)
+			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter(|&layer| !is_artboard(layer, network))
@@ -1107,8 +1140,7 @@ impl DocumentMessageHandler {
 	pub fn click_xray(&self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
 		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.metadata
-			.root()
-			.descendants(&self.metadata)
+			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
@@ -1120,7 +1152,14 @@ impl DocumentMessageHandler {
 	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
 		node_list
 			.iter()
-			.find(|&&layer| !network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default())
+			.find(|&&layer| {
+				if layer != LayerNodeIdentifier::ROOT_PARENT {
+					!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+				} else {
+					log::error!("ROOT_PARENT should not exist in find_deepest");
+					false
+				}
+			})
 			.copied()
 	}
 
@@ -1135,7 +1174,14 @@ impl DocumentMessageHandler {
 		node_list.truncate(
 			node_list
 				.iter()
-				.position(|&layer| !network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default())
+				.position(|&layer| {
+					if layer != LayerNodeIdentifier::ROOT_PARENT {
+						!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+					} else {
+						log::error!("ROOT_PARENT should not exist in click_list_any");
+						false
+					}
+				})
 				.unwrap_or(0) + 1,
 		);
 		node_list
@@ -1177,6 +1223,21 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+
+		// TODO: Use this to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
+		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
+		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
+		// 	Ok(mut document) => {
+		// 		for (_, node) in &mut document.network.nodes {
+		// 			let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+		// 			let default_definition_node = node_definition.default_document_node();
+
+		// 			node.implementation = default_definition_node.implementation.clone();
+		// 		}
+		// 		Ok(document)
+		// 	}
+		// 	Err(e) => Err(e),
+		// }
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
@@ -1248,9 +1309,9 @@ impl DocumentMessageHandler {
 	/// [3427872634365736244,18115028555707261608,449479075714955186]
 	/// ```
 	pub fn serialize_root(&self) -> RawBuffer {
-		let mut structure_section = vec![LayerNodeIdentifier::ROOT.to_node().0];
+		let mut structure_section = vec![NodeId(0).0];
 		let mut data_section = Vec::new();
-		self.serialize_structure(self.metadata().root(), &mut structure_section, &mut data_section, &mut vec![]);
+		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT, &mut structure_section, &mut data_section, &mut vec![]);
 
 		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
 		structure_section[0] = structure_section.len() as u64 - 1;
@@ -1365,7 +1426,9 @@ impl DocumentMessageHandler {
 		if let Some(previous_sibling) = layer_to_move.previous_sibling(metadata) {
 			downstream_layer = Some((previous_sibling.to_node(), false))
 		} else if let Some(parent) = layer_to_move.parent(metadata) {
-			downstream_layer = Some((parent.to_node(), true))
+			if parent != LayerNodeIdentifier::ROOT_PARENT {
+				downstream_layer = Some((parent.to_node(), true))
+			}
 		};
 
 		// Downstream layer should always exist
@@ -1397,15 +1460,6 @@ impl DocumentMessageHandler {
 
 				(downstream_node_id, downstream_input_index)
 			})
-	}
-
-	/// When working with an insert index, deleting the layers may cause the insert index to point to a different location (if the layer being deleted was located before the insert index).
-	///
-	/// This function updates the insert index so that it points to the same place after the specified `layers` are deleted.
-	fn update_insert_index(&self, layers: &[LayerNodeIdentifier], parent: LayerNodeIdentifier, insert_index: isize) -> usize {
-		let take_amount = if insert_index < 0 { usize::MAX } else { insert_index as usize };
-		let layer_ids_above = parent.children(self.metadata()).take(take_amount);
-		layer_ids_above.filter(|layer_id| !layers.contains(layer_id)).count() as usize
 	}
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
@@ -1882,15 +1936,15 @@ impl DocumentMessageHandler {
 				IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 					.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 					.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+					.tooltip_shortcut(action_keys!(GraphOperationMessageDiscriminant::ToggleSelectedLocked))
+					.on_update(|_| GraphOperationMessage::ToggleSelectedLocked.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 				IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 					.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 					.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-					.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
-					.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+					.tooltip_shortcut(action_keys!(GraphOperationMessageDiscriminant::ToggleSelectedVisibility))
+					.on_update(|_| GraphOperationMessage::ToggleSelectedVisibility.into())
 					.disabled(!has_selection)
 					.widget_holder(),
 			],
@@ -1944,54 +1998,10 @@ impl DocumentMessageHandler {
 fn root_network() -> NodeNetwork {
 	{
 		let mut network = NodeNetwork::default();
-		let node = graph_craft::document::DocumentNode {
-			name: "Output".into(),
-			inputs: vec![NodeInput::value(TaggedValue::GraphicGroup(Default::default()), true), NodeInput::Network(concrete!(WasmEditorApi))],
-			implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(3), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(3), 0)],
-				nodes: [
-					DocumentNode {
-						name: "EditorApi".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
-						skip_deduplication: true,
-						..Default::default()
-					},
-					DocumentNode {
-						name: "Cache".to_string(),
-						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "RenderNode".to_string(),
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::Network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T)))),
-							NodeInput::node(NodeId(2), 0),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			metadata: DocumentNodeMetadata::position((8, 4)),
-			..Default::default()
-		};
-		network.push_node(node);
+		network.exports = vec![NodeInput::Value {
+			tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+			exposed: true,
+		}];
 		network
 	}
 }

@@ -643,7 +643,6 @@ impl NodeGraphExecutor {
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::Artboard(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::ImageFrame(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {

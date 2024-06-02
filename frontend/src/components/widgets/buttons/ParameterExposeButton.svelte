@@ -1,15 +1,24 @@
 <script lang="ts">
+	import type { FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	export let exposed: boolean;
-	export let dataType: string;
+	export let dataType: FrontendGraphDataType;
 	export let tooltip: string | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 </script>
 
 <LayoutRow class="parameter-expose-button">
-	<button class:exposed style:--data-type-color={`var(--color-data-${dataType})`} style:--data-type-color-dim={`var(--color-data-${dataType}-dim)`} on:click={action} title={tooltip} tabindex="-1">
+	<button
+		class:exposed
+		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
+		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+		on:click={action}
+		title={tooltip}
+		tabindex="-1"
+	>
 		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
 			<path class="interior" d="M0,7.882c0,1.832,1.325,2.63,2.945,1.772L8.785,6.56c1.62-.858,1.62-2.262,0-3.12L2.945.345C1.325-.512,0,.285,0,2.118Z" />
 			<path

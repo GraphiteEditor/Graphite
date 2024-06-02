@@ -9,7 +9,7 @@ use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
-pub use glam::{DAffine2, DVec2, UVec2};
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -25,6 +25,7 @@ pub enum TaggedValue {
 	F64(f64),
 	Bool(bool),
 	UVec2(UVec2),
+	IVec2(IVec2),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
@@ -69,10 +70,9 @@ pub enum TaggedValue {
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
-	Artboard(graphene_core::Artboard),
+	GraphicElement(graphene_core::GraphicElement),
 	ArtboardGroup(graphene_core::ArtboardGroup),
 	Curve(graphene_core::raster::curve::Curve),
-	IVec2(glam::IVec2),
 	SurfaceFrame(graphene_core::SurfaceFrame),
 	Footprint(graphene_core::transform::Footprint),
 	RenderOutput(RenderOutput),
@@ -93,6 +93,7 @@ impl Hash for TaggedValue {
 			Self::F64(x) => x.to_bits().hash(state),
 			Self::Bool(x) => x.hash(state),
 			Self::UVec2(x) => x.to_array().iter().for_each(|x| x.hash(state)),
+			Self::IVec2(x) => x.hash(state),
 			Self::DVec2(x) => x.to_array().iter().for_each(|x| x.to_bits().hash(state)),
 			Self::OptionalDVec2(None) => 0.hash(state),
 			Self::OptionalDVec2(Some(x)) => {
@@ -150,10 +151,9 @@ impl Hash for TaggedValue {
 			}
 			Self::DocumentNode(x) => x.hash(state),
 			Self::GraphicGroup(x) => x.hash(state),
-			Self::Artboard(x) => x.hash(state),
+			Self::GraphicElement(x) => x.hash(state),
 			Self::ArtboardGroup(x) => x.hash(state),
 			Self::Curve(x) => x.hash(state),
-			Self::IVec2(x) => x.hash(state),
 			Self::SurfaceFrame(x) => x.hash(state),
 			Self::Footprint(x) => x.hash(state),
 			Self::RenderOutput(x) => x.hash(state),
@@ -175,6 +175,7 @@ impl<'a> TaggedValue {
 			TaggedValue::F64(x) => Box::new(x),
 			TaggedValue::Bool(x) => Box::new(x),
 			TaggedValue::UVec2(x) => Box::new(x),
+			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
 			TaggedValue::DAffine2(x) => Box::new(x),
@@ -218,10 +219,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Segments(x) => Box::new(x),
 			TaggedValue::DocumentNode(x) => Box::new(x),
 			TaggedValue::GraphicGroup(x) => Box::new(x),
-			TaggedValue::Artboard(x) => Box::new(x),
+			TaggedValue::GraphicElement(x) => Box::new(x),
 			TaggedValue::ArtboardGroup(x) => Box::new(x),
 			TaggedValue::Curve(x) => Box::new(x),
-			TaggedValue::IVec2(x) => Box::new(x),
 			TaggedValue::SurfaceFrame(x) => Box::new(x),
 			TaggedValue::Footprint(x) => Box::new(x),
 			TaggedValue::RenderOutput(x) => Box::new(x),
@@ -254,6 +254,7 @@ impl<'a> TaggedValue {
 			TaggedValue::F64(_) => concrete!(f64),
 			TaggedValue::Bool(_) => concrete!(bool),
 			TaggedValue::UVec2(_) => concrete!(UVec2),
+			TaggedValue::IVec2(_) => concrete!(IVec2),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
@@ -297,10 +298,9 @@ impl<'a> TaggedValue {
 			TaggedValue::Segments(_) => concrete!(graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>),
 			TaggedValue::DocumentNode(_) => concrete!(crate::document::DocumentNode),
 			TaggedValue::GraphicGroup(_) => concrete!(graphene_core::GraphicGroup),
-			TaggedValue::Artboard(_) => concrete!(graphene_core::Artboard),
+			TaggedValue::GraphicElement(_) => concrete!(graphene_core::GraphicElement),
 			TaggedValue::ArtboardGroup(_) => concrete!(graphene_core::ArtboardGroup),
 			TaggedValue::Curve(_) => concrete!(graphene_core::raster::curve::Curve),
-			TaggedValue::IVec2(_) => concrete!(glam::IVec2),
 			TaggedValue::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
 			TaggedValue::Footprint(_) => concrete!(graphene_core::transform::Footprint),
 			TaggedValue::RenderOutput(_) => concrete!(RenderOutput),
@@ -322,6 +322,7 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<f64>() => Ok(TaggedValue::F64(*downcast(input).unwrap())),
 			x if x == TypeId::of::<bool>() => Ok(TaggedValue::Bool(*downcast(input).unwrap())),
 			x if x == TypeId::of::<UVec2>() => Ok(TaggedValue::UVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<DVec2>() => Ok(TaggedValue::DVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<DVec2>>() => Ok(TaggedValue::OptionalDVec2(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => Ok(TaggedValue::Image(*downcast(input).unwrap())),
@@ -364,8 +365,8 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => Ok(TaggedValue::Segments(*downcast(input).unwrap())),
 			x if x == TypeId::of::<crate::document::DocumentNode>() => Ok(TaggedValue::DocumentNode(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::GraphicGroup>() => Ok(TaggedValue::GraphicGroup(*downcast(input).unwrap())),
-			x if x == TypeId::of::<graphene_core::Artboard>() => Ok(TaggedValue::Artboard(*downcast(input).unwrap())),
-			x if x == TypeId::of::<glam::IVec2>() => Ok(TaggedValue::IVec2(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::GraphicElement>() => Ok(TaggedValue::GraphicElement(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::ArtboardGroup>() => Ok(TaggedValue::ArtboardGroup(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
 			x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
@@ -377,6 +378,93 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::vector::misc::CentroidType>() => Ok(TaggedValue::CentroidType(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::misc::BooleanOperation>() => Ok(TaggedValue::BooleanOperation(*downcast(input).unwrap())),
 			_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+		}
+	}
+	pub fn from_type(input: &Type) -> Self {
+		match input {
+			Type::Generic(_) => {
+				log::warn!("Generic type should be resolved");
+				TaggedValue::None
+			}
+			Type::Concrete(concrete_type) => {
+				let Some(internal_id) = concrete_type.id else {
+					return TaggedValue::None;
+				};
+				use std::any::TypeId;
+				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
+				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
+				match internal_id {
+					x if x == TypeId::of::<()>() => TaggedValue::None,
+					x if x == TypeId::of::<String>() => TaggedValue::String(Default::default()),
+					x if x == TypeId::of::<u32>() => TaggedValue::U32(Default::default()),
+					x if x == TypeId::of::<u64>() => TaggedValue::U64(Default::default()),
+					x if x == TypeId::of::<f64>() => TaggedValue::F64(Default::default()),
+					x if x == TypeId::of::<bool>() => TaggedValue::Bool(Default::default()),
+					x if x == TypeId::of::<UVec2>() => TaggedValue::UVec2(Default::default()),
+					x if x == TypeId::of::<IVec2>() => TaggedValue::IVec2(Default::default()),
+					x if x == TypeId::of::<DVec2>() => TaggedValue::DVec2(Default::default()),
+					x if x == TypeId::of::<Option<DVec2>>() => TaggedValue::OptionalDVec2(Default::default()),
+					x if x == TypeId::of::<graphene_core::raster::Image<Color>>() => TaggedValue::Image(Default::default()),
+					x if x == TypeId::of::<ImaginateCache>() => TaggedValue::ImaginateCache(Default::default()),
+					x if x == TypeId::of::<graphene_core::raster::ImageFrame<Color>>() => TaggedValue::ImageFrame(Default::default()),
+					x if x == TypeId::of::<graphene_core::raster::Color>() => TaggedValue::Color(Default::default()),
+					x if x == TypeId::of::<Vec<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => TaggedValue::Subpaths(vec![]),
+					x if x == TypeId::of::<Arc<bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>>() => TaggedValue::None,
+					x if x == TypeId::of::<BlendMode>() => TaggedValue::BlendMode(Default::default()),
+					x if x == TypeId::of::<ImaginateSamplingMethod>() => TaggedValue::ImaginateSamplingMethod(Default::default()),
+					x if x == TypeId::of::<ImaginateMaskStartingFill>() => TaggedValue::ImaginateMaskStartingFill(Default::default()),
+					x if x == TypeId::of::<ImaginateController>() => TaggedValue::ImaginateController(Default::default()),
+					x if x == TypeId::of::<DAffine2>() => TaggedValue::DAffine2(Default::default()),
+					x if x == TypeId::of::<LuminanceCalculation>() => TaggedValue::LuminanceCalculation(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::VectorData>() => TaggedValue::VectorData(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::style::Fill>() => TaggedValue::Fill(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::style::Stroke>() => TaggedValue::Stroke(Default::default()),
+					x if x == TypeId::of::<Vec<f64>>() => TaggedValue::VecF64(Default::default()),
+					x if x == TypeId::of::<Vec<DVec2>>() => TaggedValue::VecDVec2(Default::default()),
+					x if x == TypeId::of::<graphene_core::raster::RedGreenBlue>() => TaggedValue::RedGreenBlue(graphene_core::raster::RedGreenBlue::Red),
+					x if x == TypeId::of::<graphene_core::raster::RedGreenBlueAlpha>() => TaggedValue::RedGreenBlueAlpha(graphene_core::raster::RedGreenBlueAlpha::Red),
+					x if x == TypeId::of::<graphene_core::raster::NoiseType>() => TaggedValue::NoiseType(graphene_core::raster::NoiseType::Perlin),
+					x if x == TypeId::of::<graphene_core::raster::FractalType>() => TaggedValue::FractalType(graphene_core::raster::FractalType::None),
+					x if x == TypeId::of::<graphene_core::raster::CellularDistanceFunction>() => TaggedValue::CellularDistanceFunction(graphene_core::raster::CellularDistanceFunction::Euclidean),
+					x if x == TypeId::of::<graphene_core::raster::CellularReturnType>() => TaggedValue::CellularReturnType(graphene_core::raster::CellularReturnType::Nearest),
+					x if x == TypeId::of::<graphene_core::raster::DomainWarpType>() => TaggedValue::DomainWarpType(graphene_core::raster::DomainWarpType::None),
+					x if x == TypeId::of::<graphene_core::raster::RelativeAbsolute>() => TaggedValue::RelativeAbsolute(graphene_core::raster::RelativeAbsolute::Relative),
+					x if x == TypeId::of::<graphene_core::raster::SelectiveColorChoice>() => TaggedValue::SelectiveColorChoice(graphene_core::raster::SelectiveColorChoice::Reds),
+					x if x == TypeId::of::<graphene_core::vector::style::LineCap>() => TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt),
+					x if x == TypeId::of::<graphene_core::vector::style::LineJoin>() => TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter),
+					x if x == TypeId::of::<graphene_core::vector::style::FillType>() => TaggedValue::FillType(graphene_core::vector::style::FillType::Solid),
+					x if x == TypeId::of::<graphene_core::vector::style::GradientType>() => TaggedValue::GradientType(Default::default()),
+					x if x == TypeId::of::<Vec<(f64, graphene_core::Color)>>() => TaggedValue::GradientPositions(Default::default()),
+					x if x == TypeId::of::<graphene_core::quantization::QuantizationChannels>() => TaggedValue::Quantization(Default::default()),
+					x if x == TypeId::of::<Option<graphene_core::Color>>() => TaggedValue::OptionalColor(Default::default()),
+					x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => TaggedValue::ManipulatorGroupIds(Default::default()),
+					x if x == TypeId::of::<graphene_core::text::Font>() => TaggedValue::Font(graphene_core::text::Font::new(
+						graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
+						graphene_core::consts::DEFAULT_FONT_STYLE.into(),
+					)),
+					x if x == TypeId::of::<Vec<graphene_core::vector::brush_stroke::BrushStroke>>() => TaggedValue::BrushStrokes(Default::default()),
+					x if x == TypeId::of::<BrushCache>() => TaggedValue::BrushCache(Default::default()),
+					x if x == TypeId::of::<graphene_core::raster::IndexNode<Vec<graphene_core::raster::ImageFrame<Color>>>>() => TaggedValue::Segments(Default::default()),
+					x if x == TypeId::of::<crate::document::DocumentNode>() => TaggedValue::DocumentNode(Default::default()),
+					x if x == TypeId::of::<graphene_core::GraphicGroup>() => TaggedValue::GraphicGroup(Default::default()),
+					x if x == TypeId::of::<graphene_core::GraphicElement>() => TaggedValue::GraphicElement(Default::default()),
+					x if x == TypeId::of::<graphene_core::Artboard>() => TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+					x if x == TypeId::of::<graphene_core::ArtboardGroup>() => TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
+					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => TaggedValue::None,
+					x if x == TypeId::of::<RenderOutput>() => TaggedValue::None,
+					x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => TaggedValue::None,
+					x if x == TypeId::of::<graphene_core::transform::Footprint>() => TaggedValue::Footprint(Default::default()),
+					x if x == TypeId::of::<Vec<Color>>() => TaggedValue::Palette(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::misc::CentroidType>() => TaggedValue::CentroidType(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::misc::BooleanOperation>() => TaggedValue::BooleanOperation(Default::default()),
+					_ => TaggedValue::None,
+				}
+			}
+			Type::Fn(_, output) => TaggedValue::from_type(output),
+			Type::Future(_) => {
+				log::warn!("Future type not used");
+				TaggedValue::None
+			}
 		}
 	}
 }

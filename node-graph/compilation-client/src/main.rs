@@ -37,9 +37,7 @@ fn main() {
 
 fn add_network() -> NodeNetwork {
 	NodeNetwork {
-		imports: vec![],
-		exports: vec![NodeOutput::new(NodeId(0), 0)],
-		previous_outputs: None,
+		exports: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: [DocumentNode {
 			name: "Blend Image".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(
@@ -67,5 +65,6 @@ fn add_network() -> NodeNetwork {
 		.enumerate()
 		.map(|(id, node)| (NodeId(id as u64), node))
 		.collect(),
+		..Default::default()
 	}
 }

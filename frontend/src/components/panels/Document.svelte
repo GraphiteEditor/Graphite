@@ -614,7 +614,7 @@
 								}
 
 								.color-vector {
-									fill: var(--color-data-vector);
+									fill: var(--color-data-vectordata);
 								}
 
 								.color-raster {

@@ -45,7 +45,7 @@ pub enum DocumentMessage {
 	CreateEmptyFolder,
 	DebugPrintDocument,
 	DeleteLayer {
-		id: NodeId,
+		layer: LayerNodeIdentifier,
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,

@@ -41,7 +41,7 @@
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibility(widgetData.id);
+				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class={widgetData.visible ? "show-only-on-hover" : ""}

@@ -1,4 +1,3 @@
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::DialogMessageData;
 use crate::messages::prelude::*;
@@ -99,7 +98,7 @@ impl Dispatcher {
 					queue.add(MenuBarMessage::SendLayout);
 
 					// Load the default font
-					let font = Font::new(DEFAULT_FONT_FAMILY.into(), DEFAULT_FONT_STYLE.into());
+					let font = Font::new(graphene_core::consts::DEFAULT_FONT_FAMILY.into(), graphene_core::consts::DEFAULT_FONT_STYLE.into());
 					queue.add(FrontendMessage::TriggerFontLoad { font, is_default: true });
 				}
 				Message::Batched(messages) => {
@@ -307,7 +306,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
+			parent: LayerNodeIdentifier::ROOT_PARENT,
 			insert_index: -1,
 		});
 		let document_after_copy = editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap().clone();
@@ -341,7 +340,7 @@ mod test {
 		editor.handle_message(PortfolioMessage::Copy { clipboard: Clipboard::Internal });
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
+			parent: LayerNodeIdentifier::ROOT_PARENT,
 			insert_index: -1,
 		});
 
@@ -385,12 +384,12 @@ mod test {
 		editor.draw_rect(0., 800., 12., 200.);
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
+			parent: LayerNodeIdentifier::ROOT_PARENT,
 			insert_index: -1,
 		});
 		editor.handle_message(PortfolioMessage::PasteIntoFolder {
 			clipboard: Clipboard::Internal,
-			parent: LayerNodeIdentifier::ROOT,
+			parent: LayerNodeIdentifier::ROOT_PARENT,
 			insert_index: -1,
 		});
 

@@ -80,7 +80,7 @@ fn start_widgets(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::String(x),
@@ -99,7 +99,7 @@ fn text_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Text, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::String(x),
@@ -118,7 +118,7 @@ fn text_area_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 }
 
 fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Boolean, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::Bool(x),
@@ -137,7 +137,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, false);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, false);
 
 	assist(&mut widgets);
 
@@ -230,7 +230,7 @@ fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -259,7 +259,7 @@ fn vec_f64_input(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 }
 
 fn vec_dvec2_input(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, text_props: TextInput, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Vector, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Number, blank_assist);
 
 	let from_string = |string: &str| {
 		string
@@ -322,7 +322,7 @@ fn font_inputs(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn vector_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, blank_assist: bool) -> Vec<WidgetHolder> {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Subpath, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::VectorData, blank_assist);
 
 	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets.push(TextLabel::new("Vector data must be supplied through the graph").widget_holder());
@@ -869,7 +869,7 @@ fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode,
 }
 
 fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::Color, blank_assist);
+	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
 	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
 		if let &TaggedValue::Color(x) = tagged_value {
@@ -2022,9 +2022,22 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
-			context.network,
+			context.document_network,
 			&imaginate_node,
-			|network| network.imports.first().copied(),
+			|network| {
+				network
+					.nodes
+					.iter()
+					.find(|node| {
+						node.1
+							.inputs
+							.iter()
+							.find(|node_input| if let NodeInput::Network { import_index, .. } = node_input { *import_index == 0 } else { false })
+							.is_some()
+					})
+					.map(|(node_id, _)| node_id)
+					.copied()
+			},
 			|frame: &IORecord<(), ImageFrame<Color>>| (frame.output.image.width, frame.output.image.height),
 		)
 		.unwrap_or_default();
@@ -2032,7 +2045,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let resolution = {
 		use graphene_std::imaginate::pick_safe_imaginate_resolution;
 
-		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Vector, false);
+		let mut widgets = start_widgets(document_node, node_id, resolution_index, "Resolution", FrontendGraphDataType::Number, false);
 
 		let round = |x: DVec2| {
 			let (x, y) = pick_safe_imaginate_resolution(x.into());
