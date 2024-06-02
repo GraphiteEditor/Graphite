@@ -141,9 +141,12 @@ pub struct PathGenerator<ColinearManipulators> {
 }
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<[HandleId; 2]>) -> super::VectorData {
+fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
 	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
-	vector_data.colinear_manipulators = colinear_manipulators;
+	vector_data.colinear_manipulators = colinear_manipulators
+		.iter()
+		.filter_map(|&point| super::ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
+		.collect();
 	vector_data
 }
 

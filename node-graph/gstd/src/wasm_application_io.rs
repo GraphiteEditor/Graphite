@@ -383,7 +383,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
@@ -411,7 +411,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
@@ -423,9 +423,9 @@ impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
 	pub fn new(data: Data, surface_handle: Surface) -> Self {
 		Self {
 			data,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
+			#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 			surface_handle,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
+			#[cfg(not(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32")))]
 			surface_handle: PhantomData,
 			parameter: PhantomData,
 		}

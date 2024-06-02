@@ -336,6 +336,18 @@ impl SelectedType {
 	}
 }
 
+#[cfg(test)]
+fn assert_subpath_eq(generated: &Vec<bezier_rs::Subpath<PointId>>, expected: &bezier_rs::Subpath<PointId>) {
+	assert_eq!(generated.len(), 1);
+	assert_eq!(generated[0].manipulator_groups().len(), expected.manipulator_groups().len());
+	assert_eq!(generated[0].closed(), expected.closed());
+	for (generated, expected) in generated[0].manipulator_groups().iter().zip(expected.manipulator_groups()) {
+		assert_eq!(generated.in_handle, expected.in_handle);
+		assert_eq!(generated.out_handle, expected.out_handle);
+		assert_eq!(generated.anchor, expected.anchor);
+	}
+}
+
 #[test]
 fn construct_closed_subpath() {
 	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
@@ -346,7 +358,7 @@ fn construct_closed_subpath() {
 	assert!(bézier_paths.iter().all(|bézier| circle.iter().find(|original_bézier| original_bézier == bézier).is_some()));
 
 	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_eq!(generated, vec![circle]);
+	assert_subpath_eq(&generated, &circle);
 }
 
 #[test]
@@ -359,5 +371,5 @@ fn construct_open_subpath() {
 	assert_eq!(bézier_paths, vec![bézier]);
 
 	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_eq!(generated, vec![subpath]);
+	assert_subpath_eq(&generated, &subpath);
 }

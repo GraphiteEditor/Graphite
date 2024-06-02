@@ -430,6 +430,7 @@ mod test {
 
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
 			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+			let document_serialized_content = document_serialized_content.replace("\"ManipulatorGroupIds\"", "\"PointIds\"");
 
 			// assert_eq!(
 			// 	document_serialized_content.lines().count(),
@@ -467,6 +468,7 @@ mod test {
 
 		for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
 			let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+			let document_serialized_content = document_serialized_content.replace("\"ManipulatorGroupIds\"", "\"PointIds\"");
 
 			let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
 				document_name: document_name.into(),
@@ -482,7 +484,7 @@ mod test {
 
 			let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 			let mut updated_nodes = HashSet::new();
-			document.metadata.load_structure(&document.network, &mut document.selected_nodes);
+			document.metadata.load_structure(&document.network);
 			for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Merge").map(|(id, _)| *id).collect::<Vec<_>>() {
 				let layer = LayerNodeIdentifier::new(node, &document.network);
 				if document.metadata.is_folder(layer) {
