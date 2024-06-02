@@ -118,7 +118,7 @@ impl PartialEq for TypeDescriptor {
 			(Some(id), Some(other_id)) => id == other_id,
 			_ => {
 				// TODO: Add a flag to disable this warning
-				//warn!("TypeDescriptor::eq: comparing types without ids based on name");
+				// warn!("TypeDescriptor::eq: comparing types without ids based on name");
 				self.name == other.name
 			}
 		}
@@ -212,6 +212,15 @@ impl Type {
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
 			Self::Future(_) => None,
+		}
+	}
+
+	pub fn nested_type(self) -> Type {
+		match self {
+			Self::Generic(_) => self,
+			Self::Concrete(_) => self,
+			Self::Fn(_, output) => output.nested_type(),
+			Self::Future(_) => self,
 		}
 	}
 }

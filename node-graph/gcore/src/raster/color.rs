@@ -767,7 +767,7 @@ impl Color {
 	/// ```
 	/// use graphene_core::raster::color::Color;
 	/// let color = Color::from_rgbaf32(0.114, 0.103, 0.98, 0.97).unwrap();
-	/// //TODO: Add test
+	/// // TODO: Add test
 	/// ```
 	#[inline(always)]
 	pub fn to_rgba8_srgb(&self) -> [u8; 4] {

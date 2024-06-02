@@ -39,7 +39,7 @@ impl Default for DocumentMetadata {
 	fn default() -> Self {
 		Self {
 			upstream_transforms: HashMap::new(),
-			structure: HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]),
+			structure: HashMap::new(),
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
 			hidden: HashSet::new(),
@@ -56,13 +56,8 @@ impl Default for DocumentMetadata {
 // =================================
 
 impl DocumentMetadata {
-	/// Get the root layer from the document
-	pub const fn root(&self) -> LayerNodeIdentifier {
-		LayerNodeIdentifier::ROOT
-	}
-
 	pub fn all_layers(&self) -> DescendantsIter<'_> {
-		self.root().descendants(self)
+		LayerNodeIdentifier::ROOT_PARENT.descendants(self)
 	}
 
 	pub fn layer_exists(&self, layer: LayerNodeIdentifier) -> bool {
@@ -137,11 +132,15 @@ impl DocumentMetadata {
 	}
 
 	pub fn active_artboard(&self) -> LayerNodeIdentifier {
-		self.artboards.iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT)
+		self.artboards.iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
+	}
+
+	pub fn all_artboards(&self) -> &HashSet<LayerNodeIdentifier> {
+		&self.artboards
 	}
 
 	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
-		layer == LayerNodeIdentifier::ROOT || self.folders.contains(&layer)
+		self.folders.contains(&layer)
 	}
 
 	pub fn is_artboard(&self, layer: LayerNodeIdentifier) -> bool {
@@ -170,23 +169,22 @@ impl DocumentMetadata {
 
 impl DocumentMetadata {
 	/// Loads the structure of layer nodes from a node graph.
-	pub fn load_structure(&mut self, graph: &NodeNetwork, selected_nodes: &mut SelectedNodes) {
-		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT, NodeRelations::default())]);
+	pub fn load_structure(&mut self, graph: &NodeNetwork) {
+		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
 		self.artboards = HashSet::new();
 		self.folders = HashSet::new();
 		self.hidden = HashSet::new();
 		self.locked = HashSet::new();
 
-		// Refers to output node: NodeId(0)
-		let output_node_id = graph.exports[0].node_id;
+		// Should refer to output node
 
-		let mut awaiting_horizontal_flow = vec![(output_node_id, LayerNodeIdentifier::ROOT)];
+		let mut awaiting_horizontal_flow = vec![(NodeId(std::u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(1) {
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(std::u64::MAX) { 0 } else { 1 }) {
 				if !current_node.visible {
 					self.hidden.insert(current_node_id);
 				}
@@ -199,6 +197,7 @@ impl DocumentMetadata {
 					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
 					if !self.structure.contains_key(&current_layer_node) {
 						awaiting_primary_flow.push((current_node_id, parent_layer_node));
+
 						parent_layer_node.push_child(self, current_layer_node);
 						parent_layer_node = current_layer_node;
 
@@ -247,7 +246,6 @@ impl DocumentMetadata {
 			}
 		}
 
-		selected_nodes.0.retain(|node| graph.nodes.contains_key(node));
 		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
 		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 		self.vector_modify.retain(|node, _| graph.nodes.contains_key(node));
@@ -272,7 +270,13 @@ impl DocumentMetadata {
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
 		layer
 			.ancestors(self)
-			.filter_map(|ancestor_layer| self.upstream_transforms.get(&ancestor_layer.to_node()))
+			.filter_map(|ancestor_layer| {
+				if ancestor_layer != LayerNodeIdentifier::ROOT_PARENT {
+					self.upstream_transforms.get(&ancestor_layer.to_node())
+				} else {
+					None
+				}
+			})
 			.copied()
 			.map(|(footprint, transform)| footprint.transform * transform)
 			.next()
@@ -284,6 +288,10 @@ impl DocumentMetadata {
 	}
 
 	pub fn downstream_transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			return self.transform_to_viewport(layer);
+		}
+
 		self.upstream_transforms
 			.get(&layer.to_node())
 			.copied()
@@ -376,20 +384,23 @@ impl DocumentMetadata {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayerNodeIdentifier(NonZeroU64);
 
-impl Default for LayerNodeIdentifier {
-	fn default() -> Self {
-		Self::ROOT
+impl core::fmt::Debug for LayerNodeIdentifier {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let node_id = if *self != LayerNodeIdentifier::ROOT_PARENT { self.to_node() } else { NodeId(0) };
+
+		f.debug_tuple("LayerNodeIdentifier").field(&node_id).finish()
 	}
 }
 
-impl core::fmt::Debug for LayerNodeIdentifier {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_tuple("LayerNodeIdentifier").field(&self.to_node()).finish()
+impl Default for LayerNodeIdentifier {
+	fn default() -> Self {
+		Self::ROOT_PARENT
 	}
 }
 
 impl LayerNodeIdentifier {
-	pub const ROOT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
+	/// A conceptual node used to represent the UI-only "Export" node
+	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
 	pub const fn new_unchecked(node_id: NodeId) -> Self {
@@ -401,7 +412,7 @@ impl LayerNodeIdentifier {
 	#[track_caller]
 	pub fn new(node_id: NodeId, network: &NodeNetwork) -> Self {
 		debug_assert!(
-			node_id == LayerNodeIdentifier::ROOT.to_node() || network.nodes.get(&node_id).is_some_and(|node| node.is_layer),
+			network.nodes.get(&node_id).is_some_and(|node| node.is_layer),
 			"Layer identifier constructed from non-layer node {node_id}: {:#?}",
 			network.nodes.get(&node_id)
 		);
@@ -410,7 +421,9 @@ impl LayerNodeIdentifier {
 
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
-		NodeId(u64::from(self.0) - 1)
+		let id = NodeId(u64::from(self.0) - 1);
+		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
+		id
 	}
 
 	/// Access the parent layer if possible
@@ -447,6 +460,14 @@ impl LayerNodeIdentifier {
 	pub fn children(self, metadata: &DocumentMetadata) -> AxisIter {
 		AxisIter {
 			layer_node: self.first_child(metadata),
+			next_node: Self::next_sibling,
+			metadata,
+		}
+	}
+
+	pub fn upstream_siblings(self, metadata: &DocumentMetadata) -> AxisIter {
+		AxisIter {
+			layer_node: Some(self),
 			next_node: Self::next_sibling,
 			metadata,
 		}
@@ -575,13 +596,6 @@ impl LayerNodeIdentifier {
 	pub fn starts_with(&self, other: Self, metadata: &DocumentMetadata) -> bool {
 		self.ancestors(metadata).any(|parent| parent == other)
 	}
-
-	pub fn child_of_root(&self, metadata: &DocumentMetadata) -> Self {
-		self.ancestors(metadata)
-			.filter(|&layer| layer != LayerNodeIdentifier::ROOT)
-			.last()
-			.expect("There should be a layer before the root")
-	}
 }
 
 // ========
@@ -672,6 +686,9 @@ struct NodeRelations {
 // ================
 
 pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
+	if layer == LayerNodeIdentifier::ROOT_PARENT {
+		return false;
+	}
 	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
 	node.is_artboard()
 }
@@ -679,7 +696,7 @@ pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
 #[test]
 fn test_tree() {
 	let mut metadata = DocumentMetadata::default();
-	let root = metadata.root();
+	let root = LayerNodeIdentifier::ROOT_PARENT;
 	let metadata = &mut metadata;
 	root.push_child(metadata, LayerNodeIdentifier::new_unchecked(NodeId(3)));
 	assert_eq!(root.children(metadata).collect::<Vec<_>>(), vec![LayerNodeIdentifier::new_unchecked(NodeId(3))]);

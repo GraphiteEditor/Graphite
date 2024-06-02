@@ -348,10 +348,10 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
 	let len_points = points.len();
 
-	// matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html)
-	// because the 'a' coefficients are all 1 they need not be stored
-	// this algorithm does a variation of the above algorithm.
-	// Instead of using the traditional cubic: a + bt + ct^2 + dt^3, we use the bezier cubic.
+	// Matrix coefficients a, b and c (see https://mathworld.wolfram.com/CubicSpline.html).
+	// Because the 'a' coefficients are all 1, they need not be stored.
+	// This algorithm does a variation of the above algorithm.
+	// Instead of using the traditional cubic (a + bt + ct^2 + dt^3), we use the bezier cubic.
 
 	let mut b = vec![DVec2::new(4., 4.); len_points];
 	b[0] = DVec2::new(2., 2.);
@@ -369,26 +369,26 @@ pub fn solve_spline_first_handle(points: &[DVec2]) -> Vec<DVec2> {
 	}
 
 	// Solve with Thomas algorithm (see https://en.wikipedia.org/wiki/Tridiagonal_matrix_algorithm)
-	// do row operations to eliminate `a` coefficients
+	// Now we do row operations to eliminate `a` coefficients.
 	c[0] /= -b[0];
 	d[0] /= -b[0];
 	#[allow(clippy::assign_op_pattern)]
 	for i in 1..len_points {
 		b[i] += c[i - 1];
-		// for some reason the below line makes the borrow checker mad
-		//d[i] += d[i-1]
+		// For some reason this `+=` version makes the borrow checker mad:
+		// d[i] += d[i-1]
 		d[i] = d[i] + d[i - 1];
 		c[i] /= -b[i];
 		d[i] /= -b[i];
 	}
 
-	// at this point b[i] == -a[i + 1], a[i] == 0,
-	// do row operations to eliminate 'c' coefficients and solve
+	// At this point b[i] == -a[i + 1] and a[i] == 0.
+	// Now we do row operations to eliminate 'c' coefficients and solve.
 	d[len_points - 1] *= -1.;
 	#[allow(clippy::assign_op_pattern)]
 	for i in (0..len_points - 1).rev() {
 		d[i] = d[i] - (c[i] * d[i + 1]);
-		d[i] *= -1.; //d[i] /= b[i]
+		d[i] *= -1.; // d[i] /= b[i]
 	}
 
 	d

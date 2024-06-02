@@ -15,14 +15,13 @@ mod tests {
 
 		fn add_network() -> NodeNetwork {
 			NodeNetwork {
-				imports: vec![NodeId(0), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(1), 0)],
+				exports: vec![NodeInput::node(NodeId(1), 0)],
 				nodes: [
 					(
 						NodeId(0),
 						DocumentNode {
 							name: "Cons".into(),
-							inputs: vec![NodeInput::Network(concrete!(u32)), NodeInput::Network(concrete!(&u32))],
+							inputs: vec![NodeInput::network(concrete!(u32), 0), NodeInput::network(concrete!(&u32), 1)],
 							implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::structural::ConsNode<_, _>")),
 							..Default::default()
 						},
@@ -44,14 +43,13 @@ mod tests {
 		}
 
 		let network = NodeNetwork {
-			imports: vec![NodeId(0)],
-			exports: vec![NodeOutput::new(NodeId(0), 0)],
+			exports: vec![NodeInput::node(NodeId(0), 0)],
 			nodes: [(
 				NodeId(0),
 				DocumentNode {
 					name: "Inc".into(),
 					inputs: vec![
-						NodeInput::Network(concrete!(u32)),
+						NodeInput::network(concrete!(u32), 0),
 						NodeInput::Value {
 							tagged_value: graph_craft::document::value::TaggedValue::U32(1u32),
 							exposed: false,
@@ -84,15 +82,14 @@ mod tests {
 		use graph_craft::*;
 
 		let network = NodeNetwork {
-			imports: vec![NodeId(0)],
-			exports: vec![NodeOutput::new(NodeId(1), 0)],
+			exports: vec![NodeInput::node(NodeId(1), 0)],
 			nodes: [
 				// Simple identity node taking a number as input from outside the graph
 				(
 					NodeId(0),
 					DocumentNode {
 						name: "id".into(),
-						inputs: vec![NodeInput::Network(concrete!(u32))],
+						inputs: vec![NodeInput::network(concrete!(u32), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode")),
 						..Default::default()
 					},

@@ -285,19 +285,19 @@ mod test {
 	#[test]
 	#[should_panic]
 	pub fn dyn_input_invalid_eval_panic() {
-		//let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
-		//add.eval(Box::new(&("32", 32u32)));
+		// let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
+		// add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddPairNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox;
 		let _ref_type_erased = type_erased.as_ref();
-		//let type_erased = Box::pin(dyn_any) as TypeErasedBox<'_>;
+		// let type_erased = Box::pin(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new(&("32", 32u32)));
 	}
 
 	#[test]
 	pub fn dyn_input_compose() {
-		//let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
-		//add.eval(Box::new(&("32", 32u32)));
+		// let add = DynAnyNode::new(AddPairNode::new()).into_type_erased();
+		// add.eval(Box::new(&("32", 32u32)));
 		let dyn_any = DynAnyNode::<(u32, u32), u32, _>::new(FutureWrapperNode { node: AddPairNode::new() });
 		let type_erased = Box::new(dyn_any) as TypeErasedBox<'_>;
 		type_erased.eval(Box::new((4u32, 2u32)));
@@ -306,8 +306,8 @@ mod test {
 		let type_erased_id = Box::new(any_id) as TypeErasedBox;
 		let type_erased = ComposeTypeErased::new(NodeContainer::new(type_erased), NodeContainer::new(type_erased_id));
 		type_erased.eval(Box::new((4u32, 2u32)));
-		//let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());
-		//downcast.eval((4u32, 2u32));
+		// let downcast: DowncastBothNode<(u32, u32), u32> = DowncastBothNode::new(type_erased.as_ref());
+		// downcast.eval((4u32, 2u32));
 	}
 
 	// TODO: Fix this test

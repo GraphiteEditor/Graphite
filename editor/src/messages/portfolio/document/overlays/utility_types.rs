@@ -54,13 +54,13 @@ impl OverlayContext {
 			array.push(&JsValue::from(dash_width - 1.));
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
-				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
 		} else {
 			let array = js_sys::Array::new();
 			self.render_context
 				.set_line_dash(&JsValue::from(array))
-				.map_err(|error| log::debug!("Error drawing dashed line: {:?}", error))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
 		}
 		self.render_context.begin_path();

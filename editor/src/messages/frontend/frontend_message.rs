@@ -1,6 +1,6 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeLink, FrontendNodeType};
+use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeType, FrontendNodeWire};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -188,7 +188,7 @@ pub enum FrontendMessage {
 	},
 	UpdateNodeGraph {
 		nodes: Vec<FrontendNode>,
-		links: Vec<FrontendNodeLink>,
+		wires: Vec<FrontendNodeWire>,
 	},
 	UpdateNodeGraphBarLayout {
 		#[serde(rename = "layoutTarget")]
@@ -219,6 +219,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateSubgraphPath {
+		#[serde(rename = "subgraphPath")]
+		subgraph_path: Vec<String>,
 	},
 	UpdateToolOptionsLayout {
 		#[serde(rename = "layoutTarget")]

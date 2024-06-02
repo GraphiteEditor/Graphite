@@ -9,7 +9,7 @@ use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
-pub use glam::{DAffine2, DVec2, UVec2};
+pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use std::hash::Hash;
 pub use std::sync::Arc;
 
@@ -21,7 +21,9 @@ macro_rules! tagged_value {
 		#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 		pub enum TaggedValue {
 			None,
-			$( $(#[$meta] ) *$identifier( $ty )),*
+			$( $(#[$meta] ) *$identifier( $ty ), )*
+			RenderOutput(RenderOutput),
+			SurfaceFrame(graphene_core::SurfaceFrame),
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducably hash (see FakeHash bellow)
@@ -32,6 +34,8 @@ macro_rules! tagged_value {
 				match self {
 					Self::None => {}
 					$( Self::$identifier(x) => {x.hash(state)}),*
+					Self::RenderOutput(x) => x.hash(state),
+					Self::SurfaceFrame(x) => x.hash(state),
 				}
 			}
 		}
@@ -41,6 +45,8 @@ macro_rules! tagged_value {
 				match self {
 					Self::None => Box::new(()),
 					$( Self::$identifier(x) => Box::new(x), )*
+					Self::RenderOutput(x) => Box::new(x),
+					Self::SurfaceFrame(x) => Box::new(x),
 				}
 			}
 			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
@@ -48,6 +54,8 @@ macro_rules! tagged_value {
 				match self {
 					Self::None => concrete!(()),
 					$( Self::$identifier(_) => concrete!($ty), )*
+					Self::RenderOutput(_) => concrete!(RenderOutput),
+					Self::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
 				}
 			}
 			/// Attempts to downcast the dynamic type to a tagged value
@@ -58,6 +66,8 @@ macro_rules! tagged_value {
 				match DynAny::type_id(input.as_ref()) {
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
 					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
+					x if x == TypeId::of::<RenderOutput>() => Ok(TaggedValue::RenderOutput(*downcast(input).unwrap())),
+					x if x == TypeId::of::<graphene_core::SurfaceFrame>() => Ok(TaggedValue::SurfaceFrame(*downcast(input).unwrap())),
 
 					x if x == TypeId::of::<graphene_core::WasmSurfaceHandleFrame>() => {
 						let frame = *downcast::<graphene_core::WasmSurfaceHandleFrame>(input).unwrap();
@@ -65,6 +75,32 @@ macro_rules! tagged_value {
 					}
 
 					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+				}
+			}
+			pub fn from_type(input: &Type) -> Self {
+				match input {
+					Type::Generic(_) => {
+						log::warn!("Generic type should be resolved");
+						TaggedValue::None
+					}
+					Type::Concrete(concrete_type) => {
+						let Some(internal_id) = concrete_type.id else {
+							return TaggedValue::None;
+						};
+						use std::any::TypeId;
+						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
+						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
+						match internal_id {
+							x if x == TypeId::of::<()>() => TaggedValue::None,
+							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
+							_ => TaggedValue::None,
+						}
+					}
+					Type::Fn(_, output) => TaggedValue::from_type(output),
+					Type::Future(_) => {
+						log::warn!("Future type not used");
+						TaggedValue::None
+					}
 				}
 			}
 		}
@@ -79,6 +115,7 @@ tagged_value! {
 	F64(f64),
 	Bool(bool),
 	UVec2(UVec2),
+	IVec2(IVec2),
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
@@ -87,7 +124,6 @@ tagged_value! {
 	ImageFrame(graphene_core::raster::ImageFrame<Color>),
 	Color(graphene_core::raster::color::Color),
 	Subpaths(Vec<bezier_rs::Subpath<graphene_core::vector::PointId>>),
-	RcSubpath(Arc<bezier_rs::Subpath<graphene_core::vector::PointId>>),
 	BlendMode(BlendMode),
 	LuminanceCalculation(LuminanceCalculation),
 	ImaginateSamplingMethod(ImaginateSamplingMethod),
@@ -123,13 +159,10 @@ tagged_value! {
 	Segments(Vec<graphene_core::raster::ImageFrame<Color>>),
 	DocumentNode(DocumentNode),
 	GraphicGroup(graphene_core::GraphicGroup),
-	Artboard(graphene_core::Artboard),
+	GraphicElement(graphene_core::GraphicElement),
 	ArtboardGroup(graphene_core::ArtboardGroup),
 	Curve(graphene_core::raster::curve::Curve),
-	IVec2(glam::IVec2),
-	SurfaceFrame(graphene_core::SurfaceFrame),
 	Footprint(graphene_core::transform::Footprint),
-	RenderOutput(RenderOutput),
 	Palette(Vec<Color>),
 	VectorModification(graphene_core::vector::VectorModification),
 	CentroidType(graphene_core::vector::misc::CentroidType),

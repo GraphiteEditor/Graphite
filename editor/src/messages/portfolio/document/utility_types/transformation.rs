@@ -38,6 +38,9 @@ impl OriginalTransforms {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
 				for &layer in selected {
+					if layer == LayerNodeIdentifier::ROOT_PARENT {
+						continue;
+					}
 					layer_map.entry(layer).or_insert_with(|| document_metadata.upstream_transform(layer.to_node()));
 				}
 			}

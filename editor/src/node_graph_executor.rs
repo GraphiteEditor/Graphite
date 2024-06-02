@@ -352,6 +352,7 @@ impl NodeRuntime {
 				None.or_else(|| try_downcast::<VectorData>(introspected_data.as_ref()))
 					.or_else(|| try_downcast::<ImageFrame<Color>>(introspected_data.as_ref()))
 					.or_else(|| try_downcast::<GraphicElement>(introspected_data.as_ref()))
+					.or_else(|| try_downcast::<graphene_core::Artboard>(introspected_data.as_ref()))
 			} {
 				self.upstream_transforms.insert(parent_network_node_id, transform);
 			}
@@ -510,7 +511,7 @@ impl NodeGraphExecutor {
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform,
+				transform: transform * DAffine2::from_scale(DVec2::splat(export_config.scale_factor)),
 				resolution: (size * export_config.scale_factor).as_uvec2(),
 				..Default::default()
 			},
@@ -659,7 +660,6 @@ impl NodeGraphExecutor {
 			TaggedValue::OptionalColor(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::VectorData(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::GraphicGroup(render_object) => Self::debug_render(render_object, transform, responses),
-			TaggedValue::Artboard(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::ImageFrame(render_object) => Self::debug_render(render_object, transform, responses),
 			TaggedValue::Palette(render_object) => Self::debug_render(render_object, transform, responses),
 			_ => {

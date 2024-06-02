@@ -532,8 +532,8 @@ impl EditorHandle {
 	/// Set the name for the layer
 	#[wasm_bindgen(js_name = setLayerName)]
 	pub fn set_layer_name(&self, id: u64, name: String) {
-		let id = NodeId(id);
-		let message = NodeGraphMessage::SetName { node_id: id, name };
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
+		let message = GraphOperationMessage::SetName { layer, name };
 		self.dispatch(message);
 	}
 
@@ -552,11 +552,11 @@ impl EditorHandle {
 	}
 
 	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
-	#[wasm_bindgen(js_name = connectNodesByLink)]
-	pub fn connect_nodes_by_link(&self, output_node: u64, output_node_connector_index: usize, input_node: u64, input_node_connector_index: usize) {
+	#[wasm_bindgen(js_name = connectNodesByWire)]
+	pub fn connect_nodes_by_wire(&self, output_node: u64, output_node_connector_index: usize, input_node: u64, input_node_connector_index: usize) {
 		let output_node = NodeId(output_node);
 		let input_node = NodeId(input_node);
-		let message = NodeGraphMessage::ConnectNodesByLink {
+		let message = NodeGraphMessage::ConnectNodesByWire {
 			output_node,
 			output_node_connector_index,
 			input_node,
@@ -601,7 +601,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = disconnectNodes)]
 	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
 		let node_id = NodeId(node_id);
-		let message = NodeGraphMessage::DisconnectNodes { node_id, input_index };
+		let message = NodeGraphMessage::DisconnectInput { node_id, input_index };
 		self.dispatch(message);
 	}
 
@@ -649,6 +649,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Go back a certain number of nested levels
+	#[wasm_bindgen(js_name = exitNestedNetwork)]
+	pub fn exit_nested_network(&self, steps_back: usize) {
+		let message = NodeGraphMessage::ExitNestedNetwork { steps_back };
+		self.dispatch(message);
+	}
+
 	/// Notifies the backend that the selected nodes have been moved
 	#[wasm_bindgen(js_name = moveSelectedNodes)]
 	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
@@ -684,8 +691,16 @@ impl EditorHandle {
 	}
 
 	/// Toggle visibility of a layer or node given its node ID
-	#[wasm_bindgen(js_name = toggleNodeVisibility)]
-	pub fn toggle_node_visibility(&self, id: u64) {
+	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
+	pub fn toggle_node_visibility_layer(&self, id: u64) {
+		let node_id = NodeId(id);
+		let message = GraphOperationMessage::ToggleVisibility { node_id };
+		self.dispatch(message);
+	}
+
+	/// Toggle visibility of a layer or node given its node ID
+	#[wasm_bindgen(js_name = toggleNodeVisibilityGraph)]
+	pub fn toggle_node_visibility_graph(&self, id: u64) {
 		let node_id = NodeId(id);
 		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
@@ -698,15 +713,15 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		let id = NodeId(id);
-		let message = DocumentMessage::DeleteLayer { id };
+		let message = NodeGraphMessage::DeleteNodes { node_ids: vec![id], reconnect: true };
 		self.dispatch(message);
 	}
 
 	/// Toggle lock state of a layer from the layer list
 	#[wasm_bindgen(js_name = toggleLayerLock)]
 	pub fn toggle_layer_lock(&self, id: u64) {
-		let id = NodeId(id);
-		let message = NodeGraphMessage::ToggleLocked { node_id: id };
+		let node_id = NodeId(id);
+		let message = GraphOperationMessage::ToggleLocked { node_id };
 		self.dispatch(message);
 	}
 

@@ -318,11 +318,12 @@ impl Fsm for BrushToolFsmState {
 				let layer = loaded_layer.unwrap_or_else(|| new_brush_layer(document, responses));
 				tool_data.layer = Some(layer);
 
-				let parent = layer.parent(document.metadata()).unwrap_or_default();
+				let parent = layer.parent(document.metadata()).unwrap_or_else(|| document.new_layer_parent(true));
 				let parent_transform = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
 				let layer_position = tool_data.transform.inverse().transform_point2(parent_transform);
 
 				let layer_document_scale = document.metadata().transform_to_document(parent) * tool_data.transform;
+
 				// TODO: Also scale it based on the input image ('Background' parameter).
 				// TODO: Resizing the input image results in a different brush size from the chosen diameter.
 				let layer_scale = 0.0001_f64 // Safety against division by zero
@@ -355,7 +356,7 @@ impl Fsm for BrushToolFsmState {
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let parent = layer.parent(document.metadata()).unwrap_or_default();
+						let parent = layer.parent(document.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 						let parent_position = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
 						let layer_position = tool_data.transform.inverse().transform_point2(parent_position);
 

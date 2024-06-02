@@ -366,6 +366,12 @@ impl PathToolData {
 	fn start_dragging_point(&mut self, mut selected_points: SelectedPointsInfo, input: &InputPreprocessorMessageHandler, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		responses.add(DocumentMessage::StartTransaction);
 
+		// TODO: enable snapping
+
+		// self
+		// 	.snap_manager
+		// 	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, font_cache), true, true);
+
 		// Do not snap against handles when anchor is selected
 		// let mut additional_selected_points = Vec::new();
 		// for point in selected_points.points.iter() {

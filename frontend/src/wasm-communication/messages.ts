@@ -29,8 +29,8 @@ export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
 
-	@Type(() => FrontendNodeLink)
-	readonly links!: FrontendNodeLink[];
+	@Type(() => FrontendNodeWire)
+	readonly wires!: FrontendNodeWire[];
 }
 
 export class UpdateNodeTypes extends JsMessage {
@@ -52,6 +52,10 @@ export class UpdateNodeGraphSelection extends JsMessage {
 export class UpdateOpenDocumentsList extends JsMessage {
 	@Type(() => FrontendDocumentDetails)
 	readonly openDocuments!: FrontendDocumentDetails[];
+}
+
+export class UpdateSubgraphPath extends JsMessage {
+	readonly subgraphPath!: string[];
 }
 
 export class UpdateZoomWithScroll extends JsMessage {
@@ -80,7 +84,7 @@ export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
 
-export type FrontendGraphDataType = "general" | "number" | "raster" | "vector" | "color" | "artboard";
+export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -99,9 +103,9 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string | undefined;
 
-	readonly connected!: bigint | undefined;
+	readonly connected!: bigint[];
 
-	readonly connectedIndex!: bigint | undefined;
+	readonly connectedIndex!: bigint[];
 }
 
 export class FrontendNode {
@@ -133,16 +137,20 @@ export class FrontendNode {
 	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
+
+	readonly uiOnly!: boolean;
 }
 
-export class FrontendNodeLink {
-	readonly linkStart!: bigint;
+export class FrontendNodeWire {
+	readonly wireStart!: bigint;
 
-	readonly linkStartOutputIndex!: bigint;
+	readonly wireStartOutputIndex!: bigint;
 
-	readonly linkEnd!: bigint;
+	readonly wireEnd!: bigint;
 
-	readonly linkEndInputIndex!: bigint;
+	readonly wireEndInputIndex!: bigint;
+
+	readonly dashed!: boolean;
 }
 
 export class FrontendNodeType {
@@ -935,7 +943,7 @@ export class TextAreaInput extends WidgetProps {
 export class ParameterExposeButton extends WidgetProps {
 	exposed!: boolean;
 
-	dataType!: string;
+	dataType!: FrontendGraphDataType;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
@@ -1335,6 +1343,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePropertyPanelOptionsLayout,
 	UpdatePropertyPanelSectionsLayout,
+	UpdateSubgraphPath,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,

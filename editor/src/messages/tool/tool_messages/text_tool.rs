@@ -2,7 +2,6 @@
 
 use super::tool_prelude::*;
 use crate::application::generate_uuid;
-use crate::consts::{DEFAULT_FONT_FAMILY, DEFAULT_FONT_STYLE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -34,8 +33,8 @@ impl Default for TextOptions {
 	fn default() -> Self {
 		Self {
 			font_size: 24,
-			font_name: DEFAULT_FONT_FAMILY.into(),
-			font_style: DEFAULT_FONT_STYLE.into(),
+			font_name: graphene_core::consts::DEFAULT_FONT_FAMILY.into(),
+			font_style: graphene_core::consts::DEFAULT_FONT_STYLE.into(),
 			fill: ToolColorOptions::new_primary(),
 		}
 	}
@@ -214,8 +213,9 @@ struct TextToolData {
 impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		// TODO: Should always set visibility for document network, but `node_id` is not a layer so it crashes
 		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
-			responses.add(NodeGraphMessage::SetVisibility { node_id, visible: !editable });
+			responses.add(GraphOperationMessage::SetVisibility { node_id, visible: !editable });
 		}
 
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
@@ -248,6 +248,10 @@ impl TextToolData {
 	}
 
 	fn start_editing_layer(&mut self, layer: LayerNodeIdentifier, tool_state: TextToolFsmState, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Cannot edit ROOT_PARENT in TextTooLData")
+		}
+
 		if tool_state == TextToolFsmState::Editing {
 			self.set_editing(false, font_cache, document, responses);
 		}
@@ -427,7 +431,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					node_path: vec![graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap()],
+					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
 					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});

@@ -31,6 +31,12 @@ impl Resize {
 
 	pub fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
 		let layer = self.layer?;
+
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			log::error!("Resize layer cannot be ROOT_PARENT");
+			return None;
+		}
+
 		if !document.network().nodes.contains_key(&layer.to_node()) {
 			self.layer.take();
 			return None;
@@ -82,6 +88,7 @@ impl Resize {
 
 		Some(points_viewport)
 	}
+
 	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
 		let points_viewport = self.calculate_points(document, input, center, lock_ratio)?;
 		Some(

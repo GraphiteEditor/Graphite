@@ -265,16 +265,18 @@ impl Fill {
 
 /// Enum describing the type of [Fill]
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
 pub enum FillType {
+	#[default]
 	Solid,
 	Gradient,
 }
 
 /// The stroke (outline) style of an SVG element.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineCap {
+	#[default]
 	Butt,
 	Round,
 	Square,
@@ -291,8 +293,9 @@ impl Display for LineCap {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
 pub enum LineJoin {
+	#[default]
 	Miter,
 	Bevel,
 	Round,

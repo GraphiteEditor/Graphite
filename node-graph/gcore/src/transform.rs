@@ -127,7 +127,7 @@ impl TransformMut for VectorData {
 
 impl Transform for Artboard {
 	fn transform(&self) -> DAffine2 {
-		DAffine2::from_translation(self.location.as_dvec2())
+		DAffine2::from_translation(self.location.as_dvec2()) * self.graphic_group.transform
 	}
 	fn local_pivot(&self, pivot: DVec2) -> DVec2 {
 		self.location.as_dvec2() + self.dimensions.as_dvec2() * pivot

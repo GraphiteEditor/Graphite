@@ -62,6 +62,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
 		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedLocked),
 		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedAsLayersOrNodes),
+		entry!(KeyDown(KeyC); modifiers=[Shift], action_dispatch=NodeGraphMessage::PrintSelectedNodeCoordinates),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation),
