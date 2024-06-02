@@ -155,13 +155,13 @@ impl DocumentMetadata {
 
 		// Should refer to output node
 
-		let mut awaiting_horizontal_flow = vec![(NodeId(70327487124), LayerNodeIdentifier::ROOT_PARENT)];
+		let mut awaiting_horizontal_flow = vec![(NodeId(std::u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
 			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
 			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(70327487124) { 0 } else { 1 }) {
+			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(std::u64::MAX) { 0 } else { 1 }) {
 				if !current_node.visible {
 					self.hidden.insert(current_node_id);
 				}
