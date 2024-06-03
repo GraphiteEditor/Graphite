@@ -25,6 +25,7 @@ pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
 	documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
+	animation_handlers: HashMap<DocumentId, AnimationMessageHandler>,
 	active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
@@ -59,6 +60,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							executor: &mut self.executor,
 						};
 						document.process_message(message, responses, document_inputs)
+					}
+				}
+			}
+			PortfolioMessage::Animation(message) => {
+				log::debug!("241241");
+				if let Some(document_id) = self.active_document_id {
+					if let Some(document) = self.documents.get_mut(&document_id) {
+						if let Some(animation_handler) = self.animation_handlers.get_mut(&document_id) {
+							let data = AnimationMessageData {
+								persistent_data: &mut self.persistent_data,
+								executor: &mut self.executor,
+								document,
+								ipp,
+							};
+							animation_handler.process_message(message, responses, data);
+						}
 					}
 				}
 			}
@@ -242,6 +259,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
 				self.document_ids.remove(document_index);
+				self.animation_handlers.remove(&document_id);
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
@@ -261,6 +279,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// Empty the list of internal document data
 				self.documents.clear();
 				self.document_ids.clear();
+				self.animation_handlers.clear();
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
 			}
@@ -557,6 +576,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 		}
 
+		if let Some(animation_handler) = self.active_animation_handler() {
+			common.extend(animation_handler.actions());
+		}
+
 		common
 	}
 }
@@ -572,6 +595,10 @@ impl PortfolioMessageHandler {
 
 	pub fn document_mut(&mut self, document_id: DocumentId) -> Option<&mut DocumentMessageHandler> {
 		self.documents.get_mut(&document_id)
+	}
+
+	pub fn active_animation_handler(&self) -> Option<&AnimationMessageHandler> {
+		self.active_document_id.and_then(|id| self.animation_handlers.get(&id))
 	}
 
 	pub fn active_document(&self) -> Option<&DocumentMessageHandler> {
@@ -618,6 +645,7 @@ impl PortfolioMessageHandler {
 		new_document.update_layers_panel_options_bar_widgets(responses);
 
 		self.documents.insert(document_id, new_document);
+		self.animation_handlers.insert(document_id, AnimationMessageHandler::default());
 
 		if self.active_document().is_some() {
 			responses.add(BroadcastEvent::ToolAbort);
