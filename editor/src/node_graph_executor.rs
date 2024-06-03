@@ -10,7 +10,7 @@ use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, N
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::proto::GraphErrors;
-use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_core::application_io::{AnimationConfig, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
@@ -456,6 +456,10 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
+		self.submit_node_graph_evaluation_with_animation(document, viewport_resolution, Default::default())
+	}
+
+	pub fn submit_node_graph_evaluation_with_animation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, animation_config: AnimationConfig) -> Result<(), String> {
 		// Get the node graph layer
 		let network = document.network().clone();
 
@@ -469,7 +473,7 @@ impl NodeGraphExecutor {
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_core::application_io::ExportFormat::Svg,
-			animation_config: Default::default(),
+			animation_config,
 			view_mode: document.view_mode,
 			hide_artboards: false,
 			for_export: false,
