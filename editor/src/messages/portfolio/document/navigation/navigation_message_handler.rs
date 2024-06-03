@@ -19,6 +19,7 @@ pub struct NavigationMessageData<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub selection_bounds: Option<[DVec2; 2]>,
 	pub ptz: &'a mut PTZ,
+	pub graph_view_overlay_open: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -36,6 +37,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			ipp,
 			selection_bounds,
 			ptz,
+			graph_view_overlay_open,
 		} = data;
 		let old_zoom = ptz.zoom;
 
@@ -99,15 +101,23 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.mouse_position = ipp.mouse.position;
 			}
 			NavigationMessage::CanvasPan { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta);
+				let transformed_delta = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_vector2(delta)
+				} else {
+					metadata.node_graph_to_viewport.inverse().transform_vector2(delta)
+				};
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
+				log::debug!("transformed_delta: {:?} center: {:?}", transformed_delta, ipp.viewport_bounds.center());
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
-
+				let transformed_delta = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
+				} else {
+					metadata.node_graph_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
+				};
 				ptz.pan += transformed_delta;
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
@@ -201,14 +211,26 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				bounds: [pos1, pos2],
 				prevent_zoom_past_100,
 			} => {
-				let v1 = metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
+				let v1 = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO)
+				} else {
+					metadata.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
+				};
+				let v2 = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
+				} else {
+					metadata.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
+				};
 
 				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
 				let size = 1. / ((pos2 - pos1) / (v2 - v1));
 				let new_scale = size.min_element();
 
-				let viewport_change = metadata.document_to_viewport.transform_vector2(center);
+				let viewport_change = if !graph_view_overlay_open {
+					metadata.document_to_viewport.transform_vector2(center)
+				} else {
+					metadata.node_graph_to_viewport.transform_vector2(center)
+				};
 
 				// Only change the pan if the change will be visible in the viewport
 				if viewport_change.x.abs() > 0.5 || viewport_change.y.abs() > 0.5 {
@@ -228,7 +250,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
-					let transform = metadata.document_to_viewport.inverse();
+					let transform = if !graph_view_overlay_open {
+						metadata.document_to_viewport.inverse()
+					} else {
+						metadata.node_graph_to_viewport.inverse()
+					};
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
@@ -368,6 +394,8 @@ impl NavigationMessageHandler {
 
 	fn create_document_transform(&self, viewport_center: DVec2, ptz: &PTZ, responses: &mut VecDeque<Message>) {
 		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom);
+		// Why is transform set to the viewport_center the first time this is called, then works normally after that
+		log::debug!("transform: {transform:?}");
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 

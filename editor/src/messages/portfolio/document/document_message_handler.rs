@@ -73,6 +73,8 @@ pub struct DocumentMessageHandler {
 	commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub navigation: PTZ,
+	/// The current pan, and zoom state of the viewport's view of the node graph.
+	node_graph_transform: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
@@ -136,6 +138,7 @@ impl Default for DocumentMessageHandler {
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			navigation: PTZ::default(),
+			node_graph_transform: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			overlays_visible: true,
@@ -174,7 +177,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					document_bounds,
 					ipp,
 					selection_bounds: self.selected_visible_layers_bounding_box_viewport(),
-					ptz: &mut self.navigation,
+					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
+					graph_view_overlay_open: self.graph_view_overlay_open,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -206,7 +210,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						document_id,
 						document_name: self.name.as_str(),
 						collapsed: &mut self.collapsed,
-						input: ipp,
+						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 					},
 				);
@@ -713,7 +717,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
-				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
+				let ruler_origin = if !self.graph_view_overlay_open {
+					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
+				} else {
+					self.metadata().node_graph_to_viewport.transform_point2(DVec2::ZERO)
+				};
 				let log = document_transform_scale.log2();
 				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * document_transform_scale;
@@ -732,7 +740,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = if self.graph_view_overlay_open {
+					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
+				} else {
+					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+						log::error!("Nested network not found in RenderScrollbars");
+						return;
+					};
+					self.metadata().graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
+				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -1049,7 +1065,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
-				self.metadata.document_to_viewport = transform;
+				if !self.graph_view_overlay_open {
+					self.metadata.document_to_viewport = transform;
+				} else {
+					self.metadata.node_graph_to_viewport = transform;
+				}
 
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);

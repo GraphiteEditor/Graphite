@@ -2,10 +2,11 @@ use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
+use graphene_core::renderer::ClickTarget;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -412,6 +413,24 @@ impl DocumentNode {
 			}
 		}
 		self
+	}
+
+	/// Creates a rectangular click target for the node
+	pub fn click_target(&self) -> ClickTarget {
+		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
+					// TODO: calculate based on node properties
+		let width = 100.;
+		let height = 50.;
+		let corner1 = DVec2::new(self.metadata.position.x as f64 * grid_size as f64, self.metadata.position.y as f64 * grid_size as f64);
+		let corner2: DVec2 = corner1 + DVec2::new(width, height);
+		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1, corner2, [1.; 4]);
+		let stroke_width = 1.;
+		ClickTarget { subpath, stroke_width }
+	}
+
+	/// Gets the bounding box in viewport coordinates for each node in the node graph
+	pub fn bounding_box_viewport(&self, node_graph_to_viewport: DAffine2) -> Option<[DVec2; 2]> {
+		self.click_target().subpath.bounding_box_with_transform(node_graph_to_viewport)
 	}
 
 	pub fn is_artboard(&self) -> bool {

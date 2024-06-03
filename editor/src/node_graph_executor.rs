@@ -300,7 +300,6 @@ impl NodeRuntime {
 				let click_targets = self.click_targets.entry(parent_network_node_id).or_default();
 				click_targets.clear();
 				graphic_element.add_click_targets(click_targets);
-
 				// RENDER THUMBNAIL
 
 				let bounds = graphic_element.bounding_box(DAffine2::IDENTITY);

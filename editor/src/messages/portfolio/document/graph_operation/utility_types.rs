@@ -940,7 +940,7 @@ impl<'a> ModifyInputsContext<'a> {
 		true
 	}
 
-	/// Get the [`Type`] for any `node_i`d and `input_index`. The `network_path` is the path to the encapsulating node (including the encapsulating node). The `node_id` is the selected node.
+	/// Get the [`Type`] for any `node_id` and `input_index`. The `network_path` is the path to the encapsulating node (including the encapsulating node). The `node_id` is the selected node.
 	pub fn get_input_type(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
 		let Some(network) = document_network.nested_network(&network_path) else {
 			log::error!("Could not get network in get_tagged_value");

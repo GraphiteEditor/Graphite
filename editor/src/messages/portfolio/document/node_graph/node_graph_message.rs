@@ -11,6 +11,7 @@ pub enum NodeGraphMessage {
 	// Messages
 	Init,
 	SelectedNodesUpdated,
+	Click,
 	ConnectNodesByWire {
 		output_node: NodeId,
 		output_node_connector_index: usize,

@@ -34,7 +34,8 @@
 	// TODO: MEMORY LEAK: Items never get removed from this array, so find a way to deal with garbage collection
 	let layerNameLabelWidths: Record<string, number> = {};
 
-	let transform = { scale: 1, x: 1200, y: 0 };
+	//let transform = { scale: 1, x: 1200, y: 0 };
+	let transform = { scale: 1, x: 0, y: 0 };
 	let panning = false;
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	type Box = { startX: number; startY: number; endX: number; endY: number };

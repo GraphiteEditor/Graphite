@@ -18,6 +18,7 @@ use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::IVec2;
+use renderer::ClickTarget;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -27,7 +28,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub document_id: DocumentId,
 	pub document_name: &'a str,
 	pub collapsed: &'a mut CollapsedLayers,
-	pub input: &'a InputPreprocessorMessageHandler,
+	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 }
 
@@ -50,6 +51,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			document_id,
 			collapsed,
 			graph_view_overlay_open,
+			ipp,
 			..
 		} = data;
 
@@ -71,6 +73,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			NodeGraphMessage::Click => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+				log::debug!("Click: {:?}", ipp.mouse.position);
+				/// Find all of the nodes that were clicked on from a viewport space location
+				let viewport_location = ipp.mouse.position;
+				log::debug!("node_graph_to_viewport: {:?}", document_metadata.node_graph_to_viewport);
+				let point = document_metadata.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				log::debug!("point: {point:?}");
+				let clicked_nodes = network
+					.nodes
+					.iter()
+					.map(|(node_id, node)| (node_id, node.click_target()))
+					.filter(move |(node_id, target)| target.intersect_point(point, document_metadata.node_graph_to_viewport.inverse()))
+					.map(|(node_id, _)| node_id);
+				for node_id in clicked_nodes {
+					log::debug!("clicked_nodes: {node_id:?}");
+				}
 			}
 			NodeGraphMessage::ConnectNodesByWire {
 				output_node,
@@ -869,14 +891,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
+		let mut common = actions!(NodeGraphMessageDiscriminant; Click);
+
 		if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant;
+			common.extend(actions!(NodeGraphMessageDiscriminant;
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
-			)
-		} else {
-			actions!(NodeGraphMessageDiscriminant;)
+			));
 		}
+
+		common
 	}
 }
 

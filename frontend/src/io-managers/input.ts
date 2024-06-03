@@ -159,7 +159,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onPointerDown(e: PointerEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inTextInput = target === textToolInteractiveInputElement;
 
@@ -171,7 +170,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		if (!inTextInput) {
 			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
-			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
+			else viewportPointerInteractionOngoing = true;
 		}
 
 		if (viewportPointerInteractionOngoing) {
