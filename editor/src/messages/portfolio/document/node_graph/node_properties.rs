@@ -495,7 +495,6 @@ fn animation_widget(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, n
 		exposed: false,
 	} = &document_node.inputs[input_index]
 	{
-		log::debug!("Animation positions: {:?}", animation_positions);
 		for index in 0..animation_positions.keyframes.len() {
 			animation_row(&mut widgets, &animation_positions.keyframes, index, node_id, input_index);
 
@@ -987,7 +986,7 @@ pub fn blend_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 
 pub fn animatable_number_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	let mut rows = Vec::new();
-	animation_widget(&mut rows, document_node, node_id, 0);
+	animation_widget(&mut rows, document_node, node_id, 1);
 	rows
 }
 
