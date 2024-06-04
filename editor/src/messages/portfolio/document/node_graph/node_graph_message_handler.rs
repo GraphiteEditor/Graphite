@@ -18,7 +18,6 @@ use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2};
-use renderer::ClickTarget;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -39,6 +38,7 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
+	drag_start: DVec2,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -74,27 +74,46 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::Click => {
+			NodeGraphMessage::Click { shift_click, control_click } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
-				/// Find all of the nodes that were clicked on from a viewport space location
+
 				let viewport_location = ipp.mouse.position;
 				let point = document_metadata.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 				log::debug!("point: {point:?}");
-				let clicked_nodes = network
-					.nodes
-					.iter()
-					.map(|(node_id, node)| (node_id, node.click_target()))
-					.filter(move |(node_id, target)| target.intersect_point(point, /*document_metadata.node_graph_to_viewport.inverse()*/ DAffine2::IDENTITY))
-					.map(|(node_id, _)| node_id.clone());
 
-				responses.add(NodeGraphMessage::SelectedNodesSet {
-					nodes: clicked_nodes.collect::<Vec<NodeId>>(),
-				});
-			}
-			NodeGraphMessage::ClickShift => {
-				log::debug!("ClickShift");
+				if let Some(clicked_id) = NodeGraphMessageHandler::get_clicked_node(network, point) {
+					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
+					let mut modified_selected = false;
+
+					// Add to/remove from selection if holding Shift or Ctrl
+					if shift_click || control_click {
+						modified_selected = true;
+
+						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
+						// Remove from selection if already selected
+						if let Some(index) = index {
+							updated_selected.remove(index);
+						}
+						// Add to selection if not already selected
+						else {
+							updated_selected.push(clicked_id);
+						};
+					}
+					// Replace selection with a non-selected node
+					else if !updated_selected.contains(&clicked_id) {
+						modified_selected = true;
+						updated_selected = vec![clicked_id];
+					}
+
+					if modified_selected {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
+					}
+				} else {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
+				}
+				self.drag_start = point;
 			}
 			NodeGraphMessage::ConnectNodesByWire {
 				output_node,
@@ -923,6 +942,17 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
+	// Gets the node at a point in node graph pixel coordinates
+	fn get_clicked_node(network: &NodeNetwork, point: DVec2) -> Option<NodeId> {
+		network
+			.nodes
+			.iter()
+			.map(|(node_id, node)| (node_id, node.click_target()))
+			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
+			.map(|(node_id, _)| node_id.clone())
+			.next()
+	}
+
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
@@ -1718,6 +1748,7 @@ impl Default for NodeGraphMessageHandler {
 			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
+			drag_start: DVec2::ZERO,
 		}
 	}
 }

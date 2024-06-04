@@ -382,9 +382,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
-					let bounds = self.metadata.graph_bounds_viewport_space(&self.network).unwrap_or([ipp.viewport_bounds.center(); 2]);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					//responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -750,14 +748,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = if self.graph_view_overlay_open {
+				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
 					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
 						log::error!("Nested network not found in RenderScrollbars");
 						return;
 					};
-					self.metadata().graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
+					self.metadata().graph_bounds_viewport_space(network).unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;

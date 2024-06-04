@@ -53,29 +53,34 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: String::from("Snap 15°"),
-							plus: false,
-							slash: false,
-						}]),
-					]),
-				});
+				// If node graph is open, prevent tilt and instead start panning
+				if graph_view_overlay_open {
+					responses.add(NavigationMessage::BeginCanvasPan);
+				} else {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+					responses.add(FrontendMessage::UpdateInputHints {
+						hint_data: HintData(vec![
+							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+							HintGroup(vec![HintInfo {
+								key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+								key_groups_mac: None,
+								mouse: None,
+								label: String::from("Snap 15°"),
+								plus: false,
+								slash: false,
+							}]),
+						]),
+					});
 
-				self.navigation_operation = NavigationOperation::Tilt {
-					tilt_original_for_abort: ptz.tilt,
-					tilt_raw_not_snapped: ptz.tilt,
-					snap: false,
-				};
+					self.navigation_operation = NavigationOperation::Tilt {
+						tilt_original_for_abort: ptz.tilt,
+						tilt_raw_not_snapped: ptz.tilt,
+						snap: false,
+					};
 
-				self.mouse_position = ipp.mouse.position;
-				self.finish_operation_with_click = was_dispatched_from_menu;
+					self.mouse_position = ipp.mouse.position;
+					self.finish_operation_with_click = was_dispatched_from_menu;
+				}
 			}
 			NavigationMessage::BeginCanvasZoom => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
