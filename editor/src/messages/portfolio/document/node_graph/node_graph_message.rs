@@ -1,3 +1,4 @@
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -12,6 +13,7 @@ pub enum NodeGraphMessage {
 	Init,
 	SelectedNodesUpdated,
 	Click,
+	ClickShift,
 	ConnectNodesByWire {
 		output_node: NodeId,
 		output_node_connector_index: usize,

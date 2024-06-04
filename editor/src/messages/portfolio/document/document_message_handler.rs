@@ -1,3 +1,4 @@
+use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
@@ -171,7 +172,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
-				let document_bounds = self.metadata().document_bounds_viewport_space();
+				let document_bounds = if !self.graph_view_overlay_open {
+					self.metadata().document_bounds_viewport_space()
+				} else {
+					self.metadata().graph_bounds_viewport_space(&self.network)
+				};
 				let data = NavigationMessageData {
 					metadata: &self.metadata,
 					document_bounds,
@@ -372,10 +377,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
+				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
+				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
+
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
+					let bounds = self.metadata.graph_bounds_viewport_space(&self.network).unwrap_or([ipp.viewport_bounds.center(); 2]);
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
+					//responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
-				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
@@ -1069,6 +1079,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					self.metadata.document_to_viewport = transform;
 				} else {
 					self.metadata.node_graph_to_viewport = transform;
+					responses.add(FrontendMessage::UpdateNodeGraphTransform {
+						transform: Transform {
+							scale: transform.matrix2.x_axis.x,
+							x: transform.translation.x,
+							y: transform.translation.y,
+						},
+					})
 				}
 
 				responses.add(DocumentMessage::RenderRulers);
@@ -1133,9 +1150,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				GraphViewOverlay,
 			));
 			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
+			common.extend(self.node_graph_handler.actions());
 		}
 		// More additional actions
-		common.extend(self.node_graph_handler.actions());
 		common.extend(self.navigation_handler.actions());
 
 		common

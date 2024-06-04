@@ -34,8 +34,6 @@
 	// TODO: MEMORY LEAK: Items never get removed from this array, so find a way to deal with garbage collection
 	let layerNameLabelWidths: Record<string, number> = {};
 
-	//let transform = { scale: 1, x: 1200, y: 0 };
-	let transform = { scale: 1, x: 0, y: 0 };
 	let panning = false;
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	type Box = { startX: number; startY: number; endX: number; endY: number };
@@ -60,11 +58,11 @@
 
 	$: watchNodes($nodeGraph.nodes);
 
-	$: gridSpacing = calculateGridSpacing(transform.scale);
-	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
+	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
+	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-	$: contextMenuX = ((contextMenuOpenCoordinates?.x || 0) + transform.x) * transform.scale;
-	$: contextMenuY = ((contextMenuOpenCoordinates?.y || 0) + transform.y) * transform.scale;
+	$: contextMenuX = ((contextMenuOpenCoordinates?.x || 0) + $nodeGraph.transform.x) * $nodeGraph.transform.scale;
+	$: contextMenuY = ((contextMenuOpenCoordinates?.y || 0) + $nodeGraph.transform.y) * $nodeGraph.transform.scale;
 
 	let appearAboveMouse = false;
 	let appearRightOfMouse = false;
@@ -202,13 +200,13 @@
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
-		const outConnectorX = (outX - containerBounds.x) / transform.scale;
-		const outConnectorY = (outY - containerBounds.y) / transform.scale;
+		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
+		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
-		const inConnectorX = (inX - containerBounds.x) / transform.scale;
-		const inConnectorY = (inY - containerBounds.y) / transform.scale;
+		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
+		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
@@ -282,7 +280,7 @@
 		if (e.ctrlKey) e.preventDefault();
 
 		// Always pan horizontally in response to a horizontal scroll wheel movement
-		transform.x -= scrollX / transform.scale;
+		//$nodeGraph.transform.x -= scrollX / $nodeGraph.transform.scale;
 
 		// Zoom
 		if (zoom) {
@@ -293,7 +291,7 @@
 			if (!bounds) return;
 			const { x, y, width, height } = bounds;
 
-			transform.scale *= zoomFactor;
+			//$nodeGraph.transform.scale *= zoomFactor;
 
 			const newViewportX = width / zoomFactor;
 			const newViewportY = height / zoomFactor;
@@ -304,17 +302,17 @@
 			const deltaX = deltaSizeX * ((e.x - x) / width);
 			const deltaY = deltaSizeY * ((e.y - y) / height);
 
-			transform.x -= (deltaX / transform.scale) * zoomFactor;
-			transform.y -= (deltaY / transform.scale) * zoomFactor;
+			//$nodeGraph.transform.x -= (deltaX / $nodeGraph.transform.scale) * zoomFactor;
+			//$nodeGraph.transform.y -= (deltaY / $nodeGraph.transform.scale) * zoomFactor;
 
 			return;
 		}
 
 		// Pan
 		if (horizontalPan) {
-			transform.x -= scrollY / transform.scale;
+			//$nodeGraph.transform.x -= scrollY / $nodeGraph.transform.scale;
 		} else {
-			transform.y -= scrollY / transform.scale;
+			//$nodeGraph.transform.y -= scrollY / $nodeGraph.transform.scale;
 		}
 	}
 
@@ -330,8 +328,8 @@
 
 	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
 		contextMenuOpenCoordinates = {
-			x: (e.clientX - graphBounds.x) / transform.scale - transform.x,
-			y: (e.clientY - graphBounds.y) / transform.scale - transform.y,
+			x: (e.clientX - graphBounds.x) / $nodeGraph.transform.scale - $nodeGraph.transform.x,
+			y: (e.clientY - graphBounds.y) / $nodeGraph.transform.scale - $nodeGraph.transform.y,
 		};
 
 		// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
@@ -383,7 +381,7 @@
 
 		// Alt-click sets the clicked node as previewed
 		if (lmb && e.altKey && nodeId !== undefined) {
-			editor.handle.togglePreview(nodeId);
+			//editor.handle.togglePreview(nodeId);
 		}
 
 		// Clicked on a port dot
@@ -457,7 +455,7 @@
 			}
 
 			// Update the selection in the backend if it was modified
-			if (modifiedSelected) editor.handle.selectNodes(new BigUint64Array(updatedSelected));
+			//if (modifiedSelected) editor.handle.selectNodes(new BigUint64Array(updatedSelected));
 
 			return;
 		}
@@ -466,7 +464,7 @@
 		if (lmb) {
 			previousSelection = $nodeGraph.selected;
 			// Clear current selection
-			if (!e.shiftKey) editor.handle.selectNodes(new BigUint64Array(0));
+			//if (!e.shiftKey) editor.handle.selectNodes(new BigUint64Array(0));
 
 			const graphBounds = graph?.getBoundingClientRect();
 			boxSelection = { startX: e.x - (graphBounds?.x || 0), startY: e.y - (graphBounds?.y || 0), endX: e.x - (graphBounds?.x || 0), endY: e.y - (graphBounds?.y || 0) };
@@ -485,14 +483,14 @@
 		const nodeId = node?.getAttribute("data-node") || undefined;
 		if (nodeId !== undefined && !e.altKey) {
 			const id = BigInt(nodeId);
-			editor.handle.enterNestedNetwork(id);
+			//editor.handle.enterNestedNetwork(id);
 		}
 	}
 
 	function pointerMove(e: PointerEvent) {
 		if (panning) {
-			transform.x += e.movementX / transform.scale;
-			transform.y += e.movementY / transform.scale;
+			//$nodeGraph.transform.x += e.movementX / $nodeGraph.transform.scale;
+			//$nodeGraph.transform.y += e.movementY / $nodeGraph.transform.scale;
 		} else if (wireInProgressFromConnector && !contextMenuOpenCoordinates) {
 			const target = e.target as Element | undefined;
 			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
@@ -502,8 +500,8 @@
 				wireInProgressToConnector = new DOMRect(e.x, e.y);
 			}
 		} else if (draggingNodes) {
-			const deltaX = Math.round((e.x - draggingNodes.startX) / transform.scale / GRID_SIZE);
-			const deltaY = Math.round((e.y - draggingNodes.startY) / transform.scale / GRID_SIZE);
+			const deltaX = Math.round((e.x - draggingNodes.startX) / $nodeGraph.transform.scale / GRID_SIZE);
+			const deltaY = Math.round((e.y - draggingNodes.startY) / $nodeGraph.transform.scale / GRID_SIZE);
 			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
 				draggingNodes.roundX = deltaX;
 				draggingNodes.roundY = deltaY;
@@ -529,7 +527,7 @@
 				completeBoxSelection();
 				boxSelection = undefined;
 			} else if ((e.buttons & 2) !== 0) {
-				editor.handle.selectNodes(new BigUint64Array(previousSelection));
+				//	editor.handle.selectNodes(new BigUint64Array(previousSelection));
 				boxSelection = undefined;
 			} else {
 				const graphBounds = graph?.getBoundingClientRect();
@@ -553,22 +551,22 @@
 	}
 
 	function completeBoxSelection() {
-		editor.handle.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
+		//editor.handle.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
 	}
 
 	function showSelected(selected: bigint[], boxSelect: Box | undefined, node: bigint, nodeIndex: number): boolean {
-		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
+		return selected.includes(node); // || intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
 	function toggleNodeVisibilityGraph(id: bigint) {
-		editor.handle.toggleNodeVisibilityGraph(id);
+		//editor.handle.toggleNodeVisibilityGraph(id);
 	}
 
 	function toggleLayerDisplay(displayAsLayer: boolean) {
 		let node = $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId);
 		if (node !== undefined) {
 			contextMenuOpenCoordinates = undefined;
-			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
+			//editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
 			toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.isLayer || false);
 			toggleDisplayAsLayerNodeId = undefined;
 		}
@@ -622,24 +620,23 @@
 			const selectedNodeBounds = selectedNode.getBoundingClientRect();
 			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
 
-			return (
-				wire.wireEnd != selectedNodeId &&
-				editor.handle.rectangleIntersects(
-					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
-					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
-					selectedNodeBounds.top - containerBoundsBounds.y,
-					selectedNodeBounds.left - containerBoundsBounds.x,
-					selectedNodeBounds.bottom - containerBoundsBounds.y,
-					selectedNodeBounds.right - containerBoundsBounds.x,
-				)
-			);
+			return false;
+			// wire.wireEnd != selectedNodeId &&
+			// editor.handle.rectangleIntersects(
+			// 	new Float64Array(wireCurveLocations.map((loc) => loc.x)),
+			// 	new Float64Array(wireCurveLocations.map((loc) => loc.y)),
+			// 	selectedNodeBounds.top - containerBoundsBounds.y,
+			// 	selectedNodeBounds.left - containerBoundsBounds.x,
+			// 	selectedNodeBounds.bottom - containerBoundsBounds.y,
+			// 	selectedNodeBounds.right - containerBoundsBounds.x,
+			// )
 		});
 
 		// If the node has been dragged on top of the wire then connect it into the middle.
 		if (wire) {
 			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
-			editor.handle.insertNodeBetween(wire.wireEnd, Number(wire.wireEndInputIndex), 0, selectedNodeId, 0, Number(wire.wireStartOutputIndex), wire.wireStart);
-			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
+			//editor.handle.insertNodeBetween(wire.wireEnd, Number(wire.wireEndInputIndex), 0, selectedNodeId, 0, Number(wire.wireStartOutputIndex), wire.wireStart);
+			//if (!isLayer) editor.handle.shiftNode(selectedNodeId);
 		}
 	}
 
@@ -648,7 +645,7 @@
 
 		const initialDisconnecting = disconnecting;
 		if (disconnecting) {
-			editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
+			//editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
 		}
 		disconnecting = undefined;
 
@@ -659,7 +656,7 @@
 			if (from !== undefined && to !== undefined) {
 				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
 				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
-				editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+				//editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 			}
 		} else if (wireInProgressFromConnector && !initialDisconnecting) {
 			// If the add node menu is already open, we don't want to open it again
@@ -673,17 +670,20 @@
 			if (!contextMenuOpenCoordinates) return;
 			let contextMenuLocation2: { x: number; y: number } = contextMenuOpenCoordinates;
 
-			wireInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
+			wireInProgressToConnector = new DOMRect(
+				(contextMenuLocation2.x + $nodeGraph.transform.x) * $nodeGraph.transform.scale + graphBounds.x,
+				(contextMenuLocation2.y + $nodeGraph.transform.y) * $nodeGraph.transform.scale + graphBounds.y,
+			);
 
 			return;
 		} else if (draggingNodes) {
 			if (draggingNodes.startX === e.x && draggingNodes.startY === e.y) {
 				if (selectIfNotDragged !== undefined && ($nodeGraph.selected.length !== 1 || $nodeGraph.selected[0] !== selectIfNotDragged)) {
-					editor.handle.selectNodes(new BigUint64Array([selectIfNotDragged]));
+					//editor.handle.selectNodes(new BigUint64Array([selectIfNotDragged]));
 				}
 			}
 
-			if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.handle.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
+			//if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.handle.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
 
 			checkInsertBetween();
 
@@ -712,7 +712,7 @@
 
 		if (from !== undefined) {
 			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-			editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
+			//editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
 		}
 
 		wireInProgressFromConnector = undefined;
@@ -780,15 +780,11 @@
 <div
 	class="graph"
 	bind:this={graph}
-	on:wheel|nonpassive={scroll}
-	on:pointerdown={pointerDown}
-	on:pointermove={pointerMove}
-	on:pointerup={pointerUp}
-	on:dblclick={doubleClick}
 	style:--grid-spacing={`${gridSpacing}px`}
-	style:--grid-offset-x={`${transform.x * transform.scale}px`}
-	style:--grid-offset-y={`${transform.y * transform.scale}px`}
+	style:--grid-offset-x={`${$nodeGraph.transform.x /** $nodeGraph.transform.scale*/}px`}
+	style:--grid-offset-y={`${$nodeGraph.transform.y /** $nodeGraph.transform.scale*/}px`}
 	style:--dot-radius={`${dotRadius}px`}
+	data-node-graph
 >
 	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
@@ -852,7 +848,11 @@
 		</LayoutCol>
 	{/if}
 	<!-- Node connection wires -->
-	<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
+	<div
+		class="wires"
+		style:transform-origin={`0 0`}
+		style:transform={`scale(${$nodeGraph.transform.scale}) translate(${$nodeGraph.transform.x / $nodeGraph.transform.scale}px, ${$nodeGraph.transform.y / $nodeGraph.transform.scale}px)`}
+	>
 		<svg>
 			{#each wirePaths as { pathString, dataType, thick, dashed }}
 				<path
@@ -866,7 +866,12 @@
 		</svg>
 	</div>
 	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
+	<div
+		class="layers-and-nodes"
+		style:transform-origin={`0 0`}
+		style:transform={`scale(${$nodeGraph.transform.scale}) translate(${$nodeGraph.transform.x / $nodeGraph.transform.scale}px, ${$nodeGraph.transform.y / $nodeGraph.transform.scale}px)`}
+		bind:this={nodesContainer}
+	>
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}

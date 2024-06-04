@@ -17,7 +17,7 @@ use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2};
 use renderer::ClickTarget;
 
 #[derive(Debug)]
@@ -78,21 +78,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
-				log::debug!("Click: {:?}", ipp.mouse.position);
 				/// Find all of the nodes that were clicked on from a viewport space location
 				let viewport_location = ipp.mouse.position;
-				log::debug!("node_graph_to_viewport: {:?}", document_metadata.node_graph_to_viewport);
 				let point = document_metadata.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 				log::debug!("point: {point:?}");
 				let clicked_nodes = network
 					.nodes
 					.iter()
 					.map(|(node_id, node)| (node_id, node.click_target()))
-					.filter(move |(node_id, target)| target.intersect_point(point, document_metadata.node_graph_to_viewport.inverse()))
-					.map(|(node_id, _)| node_id);
-				for node_id in clicked_nodes {
-					log::debug!("clicked_nodes: {node_id:?}");
-				}
+					.filter(move |(node_id, target)| target.intersect_point(point, /*document_metadata.node_graph_to_viewport.inverse()*/ DAffine2::IDENTITY))
+					.map(|(node_id, _)| node_id.clone());
+
+				responses.add(NodeGraphMessage::SelectedNodesSet {
+					nodes: clicked_nodes.collect::<Vec<NodeId>>(),
+				});
+			}
+			NodeGraphMessage::ClickShift => {
+				log::debug!("ClickShift");
 			}
 			NodeGraphMessage::ConnectNodesByWire {
 				output_node,

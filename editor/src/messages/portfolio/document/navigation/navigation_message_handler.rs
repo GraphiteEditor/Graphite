@@ -109,7 +109,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
-				log::debug!("transformed_delta: {:?} center: {:?}", transformed_delta, ipp.viewport_bounds.center());
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
@@ -219,7 +218,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let v2 = if !graph_view_overlay_open {
 					metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
 				} else {
-					metadata.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
+					metadata.node_graph_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
 				};
 
 				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
@@ -394,8 +393,6 @@ impl NavigationMessageHandler {
 
 	fn create_document_transform(&self, viewport_center: DVec2, ptz: &PTZ, responses: &mut VecDeque<Message>) {
 		let transform = self.calculate_offset_transform(viewport_center, ptz.pan, ptz.tilt, ptz.zoom);
-		// Why is transform set to the viewport_center the first time this is called, then works normally after that
-		log::debug!("transform: {transform:?}");
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 	}
 
@@ -404,7 +401,6 @@ impl NavigationMessageHandler {
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
-
 		NavigationMessage::CanvasPan { delta }.into()
 	}
 

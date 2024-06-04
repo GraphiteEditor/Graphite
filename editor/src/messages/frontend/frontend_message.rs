@@ -1,6 +1,6 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeType, FrontendNodeWire};
+use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeType, FrontendNodeWire, Transform};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -197,6 +197,9 @@ pub enum FrontendMessage {
 	},
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
+	},
+	UpdateNodeGraphTransform {
+		transform: Transform,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,

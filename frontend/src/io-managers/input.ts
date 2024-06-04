@@ -159,6 +159,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onPointerDown(e: PointerEvent) {
 		const { target } = e;
+		const isTargetingCanvas = target instanceof Element && (target.closest("[data-viewport]") || target.closest("[data-node-graph]"));
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inTextInput = target === textToolInteractiveInputElement;
 
@@ -170,7 +171,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		if (!inTextInput) {
 			if (textToolInteractiveInputElement) editor.handle.onChangeText(textInputCleanup(textToolInteractiveInputElement.innerText));
-			else viewportPointerInteractionOngoing = true;
+			else viewportPointerInteractionOngoing = isTargetingCanvas instanceof Element;
 		}
 
 		if (viewportPointerInteractionOngoing) {
@@ -208,7 +209,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport]");
+		const isTargetingCanvas = target instanceof Element && (target.closest("[data-viewport]") || target.closest("[data-node-graph]"));
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation

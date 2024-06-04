@@ -7,6 +7,7 @@ import {
 	type FrontendNodeType,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
 	UpdateNodeTypes,
 	UpdateNodeThumbnail,
 	UpdateSubgraphPath,
@@ -23,6 +24,7 @@ export function createNodeGraphState(editor: Editor) {
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
 		subgraphPath: [] as string[],
+		transform: { scale: 1, x: 0, y: 0 },
 	});
 
 	// Set up message subscriptions on creation
@@ -36,6 +38,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
 		update((state) => {
 			state.selected = updateNodeGraphSelection.selected;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphTransform, (updateNodeGraphTransform) => {
+		update((state) => {
+			state.transform = updateNodeGraphTransform.transform;
 			return state;
 		});
 	});

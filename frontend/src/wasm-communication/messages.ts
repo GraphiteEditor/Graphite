@@ -62,6 +62,10 @@ export class UpdateZoomWithScroll extends JsMessage {
 	readonly zoomWithScroll!: boolean;
 }
 
+export class UpdateNodeGraphTransform extends JsMessage {
+	readonly transform!: NodeGraphTransform;
+}
+
 // Allows the auto save system to use a string for the id rather than a BigInt.
 // IndexedDb does not allow for BigInts as primary keys.
 // TypeScript does not allow subclasses to change the type of class variables in subclasses.
@@ -157,6 +161,12 @@ export class FrontendNodeType {
 	readonly name!: string;
 
 	readonly category!: string;
+}
+
+export class NodeGraphTransform {
+	readonly scale!: number;
+	readonly x!: number;
+	readonly y!: number;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1338,6 +1348,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraph,
 	UpdateNodeGraphBarLayout,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateNodeTypes,
 	UpdateOpenDocumentsList,

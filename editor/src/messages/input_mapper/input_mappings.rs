@@ -53,6 +53,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Lmb], action_dispatch=DocumentMessage::Noop),
 		// NodeGraphMessage
 		entry!(KeyDown(Lmb); action_dispatch=NodeGraphMessage::Click),
+		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=NodeGraphMessage::ClickShift),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
