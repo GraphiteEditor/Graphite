@@ -848,11 +848,7 @@
 		</LayoutCol>
 	{/if}
 	<!-- Node connection wires -->
-	<div
-		class="wires"
-		style:transform-origin={`0 0`}
-		style:transform={`scale(${$nodeGraph.transform.scale}) translate(${$nodeGraph.transform.x / $nodeGraph.transform.scale}px, ${$nodeGraph.transform.y / $nodeGraph.transform.scale}px)`}
-	>
+	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each wirePaths as { pathString, dataType, thick, dashed }}
 				<path
@@ -869,7 +865,7 @@
 	<div
 		class="layers-and-nodes"
 		style:transform-origin={`0 0`}
-		style:transform={`scale(${$nodeGraph.transform.scale}) translate(${$nodeGraph.transform.x / $nodeGraph.transform.scale}px, ${$nodeGraph.transform.y / $nodeGraph.transform.scale}px)`}
+		style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}
 		bind:this={nodesContainer}
 	>
 		<!-- Layers -->

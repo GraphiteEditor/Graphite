@@ -184,7 +184,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
-						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
+						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.get_alias().clone()).unwrap_or_default();
 
 						let mut copy_ids = HashMap::new();
 						copy_ids.insert(layer_node_id, NodeId(0 as u64));
@@ -216,7 +216,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
 							collapsed: false,
-							alias: previous_alias,
+							alias: previous_alias.to_string(),
 						});
 					}
 				};
@@ -613,10 +613,13 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		self.document_ids.push(document_id);
 
 		new_document.update_layers_panel_options_bar_widgets(responses);
+
+		//TODO: Store click target information in file format
+		new_document.network.update_all_click_targets();
 
 		self.documents.insert(document_id, new_document);
 

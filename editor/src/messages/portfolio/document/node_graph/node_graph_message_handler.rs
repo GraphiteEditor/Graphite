@@ -80,7 +80,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				let viewport_location = ipp.mouse.position;
-				let point = document_metadata.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 				log::debug!("point: {point:?}");
 
 				if let Some(clicked_id) = NodeGraphMessageHandler::get_clicked_node(network, point) {
@@ -389,7 +389,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
-				network.nodes.insert(node_id, document_node);
+				network.insert_node(node_id, document_node);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				post_node_id,
@@ -803,10 +803,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
-				if let Some(node) = network.nodes.get_mut(&node_id) {
-					node.alias = name;
-					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
-				}
+				network.set_alias(node_id, name);
+				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
@@ -945,9 +943,9 @@ impl NodeGraphMessageHandler {
 	// Gets the node at a point in node graph pixel coordinates
 	fn get_clicked_node(network: &NodeNetwork, point: DVec2) -> Option<NodeId> {
 		network
-			.nodes
+			.click_targets
 			.iter()
-			.map(|(node_id, node)| (node_id, node.click_target()))
+			.map(|(node_id, click_target)| (node_id, click_target))
 			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
 			.map(|(node_id, _)| node_id.clone())
 			.next()
@@ -1696,8 +1694,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn untitled_layer_label(node: &DocumentNode) -> String {
-		(node.alias != "")
-			.then_some(node.alias.clone())
+		(node.alias.get_alias() != "")
+			.then_some(node.alias.get_alias().to_string())
 			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() })
 	}
 

@@ -128,11 +128,11 @@ impl Fsm for ImaginateToolFsmState {
 				let mut network = new_image_network(16, imaginate_node_id);
 
 				// Insert the nodes into the default network
-				network.nodes.insert(
+				network.insert_node(
 					transform_node_id,
 					transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(NodeId(0), 0))], next_pos()),
 				);
-				network.nodes.insert(
+				network.insert_node(
 					imaginate_node_id,
 					imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
 				);

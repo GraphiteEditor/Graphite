@@ -112,7 +112,7 @@ impl<'a> ModifyInputsContext<'a> {
 		new_node.inputs[new_node_input_index] = new_node_input;
 		post_node.inputs[post_node_input_index] = post_node_input;
 
-		self.document_network.nodes.insert(id, new_node);
+		self.document_network.insert_node(id, new_node);
 
 		ModifyInputsContext::shift_upstream(self.document_network, id, shift_upstream, false);
 
@@ -125,7 +125,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let post_node = self.document_network.nodes.get_mut(&node_id)?;
 		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
 		document_node.metadata.position = post_node.metadata.position + offset;
-		self.document_network.nodes.insert(new_id, document_node);
+		self.document_network.insert_node(new_id, document_node);
 
 		Some(new_id)
 	}
@@ -149,7 +149,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		*export = NodeInput::node(id, 0);
 
-		document_network.nodes.insert(id, new_node);
+		document_network.insert_node(id, new_node);
 
 		ModifyInputsContext::shift_upstream(document_network, id, IVec2::new(-8, 3), false);
 
@@ -385,9 +385,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		for node_id in shift_nodes {
-			if let Some(node) = network.nodes.get_mut(&node_id) {
-				node.metadata.position += shift;
-			}
+			network.shift_position(node_id, shift);
 		}
 	}
 
@@ -424,7 +422,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let mut new_document_node = node_type.to_document_node_default_inputs([new_input], metadata);
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
-		self.document_network.nodes.insert(node_id, new_document_node);
+		self.document_network.insert_node(node_id, new_document_node);
 
 		let upstream_nodes = self
 			.document_network
@@ -432,8 +430,7 @@ impl<'a> ModifyInputsContext<'a> {
 			.map(|(_, id)| id)
 			.collect::<Vec<_>>();
 		for node_id in upstream_nodes {
-			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
-			node.metadata.position.x -= 8;
+			self.document_network.shift_position(node_id, (-8, 0).into());
 		}
 	}
 

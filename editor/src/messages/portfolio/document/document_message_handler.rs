@@ -172,18 +172,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
-				let document_bounds = if !self.graph_view_overlay_open {
-					self.metadata().document_bounds_viewport_space()
-				} else {
-					self.metadata().graph_bounds_viewport_space(&self.network)
-				};
 				let data = NavigationMessageData {
 					metadata: &self.metadata,
-					document_bounds,
 					ipp,
 					selection_bounds: self.selected_visible_layers_bounding_box_viewport(),
 					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
 					graph_view_overlay_open: self.graph_view_overlay_open,
+					document_network: &self.network,
+					node_graph_handler: &self.node_graph_handler,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -383,6 +379,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
+					// TODO: Ensure this refreshes the click targets for the network
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -728,10 +725,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let ruler_origin = if !self.graph_view_overlay_open {
 					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
 				} else {
-					self.metadata().node_graph_to_viewport.transform_point2(DVec2::ZERO)
+					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+						log::error!("Nested network not found in UpdateDocumentTransform");
+						return;
+					};
+					network.node_graph_to_viewport.transform_point2(DVec2::ZERO)
 				};
 				let log = document_transform_scale.log2();
-				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * document_transform_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
@@ -755,7 +756,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						log::error!("Nested network not found in RenderScrollbars");
 						return;
 					};
-					self.metadata().graph_bounds_viewport_space(network).unwrap_or([viewport_mid; 2])
+					network.graph_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -1073,10 +1074,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
+
 				if !self.graph_view_overlay_open {
 					self.metadata.document_to_viewport = transform;
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					self.metadata.node_graph_to_viewport = transform;
+					let Some(network) = self.network.nested_network_mut(&self.node_graph_handler.network) else {
+						log::error!("Nested network not found in UpdateDocumentTransform");
+						return;
+					};
+					network.node_graph_to_viewport = transform;
+
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
 							scale: transform.matrix2.x_axis.x,
@@ -1086,9 +1097,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					})
 				}
 
-				responses.add(DocumentMessage::RenderRulers);
-				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {

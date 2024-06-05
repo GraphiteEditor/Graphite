@@ -1,9 +1,11 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
+use bezier_rs::Subpath;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::renderer::ClickTarget;
+use graphene_core::renderer::{ClickTarget, Quad};
 pub use graphene_core::uuid::generate_uuid;
+use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
 use glam::{DAffine2, DVec2, IVec2};
@@ -126,8 +128,9 @@ where
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
+	/// Should only be modified through the setter in NodeNetwork.
 	#[serde(default)]
-	pub alias: String,
+	pub alias: Alias,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
 	#[serde(deserialize_with = "migrate_layer_to_merge")]
@@ -137,6 +140,7 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
 	///   In the root network, it is resolved when evaluating the borrow tree.
+	///   Should only be modified through the setter in NodeNetwork.
 	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
@@ -231,6 +235,7 @@ pub struct DocumentNode {
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
 	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer.
+	/// Should only be modified through the setter in NodeNetwork.
 	#[serde(default)]
 	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -239,7 +244,7 @@ pub struct DocumentNode {
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI.
+	/// Metadata about the node including its position in the graph UI. Should only be modified through the setter in NodeNetwork.
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
@@ -289,7 +294,7 @@ impl Default for DocumentNode {
 			is_layer: false,
 			visible: true,
 			locked: Default::default(),
-			metadata: Default::default(),
+			metadata: DocumentNodeMetadata::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
 			original_location: OriginalLocation::default(),
@@ -415,28 +420,27 @@ impl DocumentNode {
 		self
 	}
 
-	/// Creates a rectangular click target for the node
-	pub fn click_target(&self) -> ClickTarget {
-		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
-					// TODO: calculate based on node properties
-		let width = 216.;
-		let height = 48.;
-		let corner1 = DVec2::new(self.metadata.position.x as f64 * grid_size as f64, self.metadata.position.y as f64 * grid_size as f64);
-		let corner2: DVec2 = corner1 + DVec2::new(width, height);
-		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1, corner2, [10.; 4]);
-		let stroke_width = 1.;
-		ClickTarget { subpath, stroke_width }
-	}
-
-	/// Gets the bounding box in viewport coordinates for each node in the node graph
-	pub fn bounding_box_viewport(&self, node_graph_to_viewport: DAffine2) -> Option<[DVec2; 2]> {
-		self.click_target().subpath.bounding_box_with_transform(node_graph_to_viewport)
-	}
-
 	pub fn is_artboard(&self) -> bool {
 		// TODO: Use something more robust than checking against a string.
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
 		self.name == "Artboard"
+	}
+
+	// Setter fields should be implemented in NodeNetwork to prevent passing network as parameter
+	pub fn is_layer(&self) -> bool {
+		self.is_layer
+	}
+
+	pub fn metadata(&self) -> &DocumentNodeMetadata {
+		&self.metadata
+	}
+
+	pub fn inputs(&self) -> &Vec<NodeInput> {
+		&self.inputs
+	}
+
+	pub fn name(&self) -> &str {
+		&self.name
 	}
 
 	// TODO: Is this redundant with `LayerNodeIdentifier::has_children()`? Consider removing this in favor of that.
@@ -451,6 +455,20 @@ impl DocumentNode {
 				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
 			})
 		})
+	}
+}
+
+#[derive(Clone, Debug, Default, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Alias(String);
+
+impl Alias {
+	/// Do not use this for nodes within a network. Use the setter in [`NodeNetwork`] instead
+	pub fn set_alias(&mut self, alias: String) {
+		self.0 = alias;
+	}
+	pub fn get_alias(&self) -> &str {
+		&self.0
 	}
 }
 
@@ -664,7 +682,7 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(8, -4))
 }
 
-#[derive(Clone, Debug, PartialEq, DynAny)]
+#[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
@@ -682,6 +700,15 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
+	/// Cache for all node click targets in node graph space. This should only be modified through the setter methods for the private [`DocumentNode`] fields, which will call methods to update this cache.
+	#[serde(skip)]
+	pub click_targets: HashMap<NodeId, ClickTarget>,
+	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
+	#[serde(skip)]
+	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
+	/// Transform from node graph space to viewport space.
+	#[serde(default)]
+	pub node_graph_to_viewport: DAffine2,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -704,15 +731,125 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
+			click_targets: HashMap::new(),
+			bounding_box_subpath: None,
+			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
 	}
 }
+impl PartialEq for NodeNetwork {
+	fn eq(&self, other: &Self) -> bool {
+		self.exports == other.exports
+			&& self.previewing == other.previewing
+			&& self.imports_metadata == other.imports_metadata
+			&& self.exports_metadata == other.exports_metadata
+			&& self.bounding_box_subpath == other.bounding_box_subpath
+			&& self.node_graph_to_viewport == other.node_graph_to_viewport
+	}
+}
+
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		hasher.finish()
+	}
+
+	// Inserts a node into the network and updates the click target
+	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode) {
+		self.update_click_target(node_id);
+		self.nodes.insert(node_id, node);
+	}
+
+	pub fn set_alias(&mut self, node_id: NodeId, alias: String) {
+		if let Some(mut node) = self.nodes.remove(&node_id) {
+			node.alias.set_alias(alias);
+			self.insert_node(node_id, node);
+		}
+	}
+	// TODO: Combine into one function with a parameter?
+	pub fn set_position(&mut self, node_id: NodeId, position: IVec2) {
+		if let Some(mut node) = self.nodes.remove(&node_id) {
+			node.metadata.position = position;
+			self.insert_node(node_id, node);
+		}
+	}
+
+	// TODO: Combine into one function with a parameter?
+	pub fn shift_position(&mut self, node_id: NodeId, position: IVec2) {
+		if let Some(mut node) = self.nodes.remove(&node_id) {
+			node.metadata.position += position;
+			self.insert_node(node_id, node);
+		}
+	}
+
+	/// Update the click targets when a private field for a DocumentNode changes.
+	pub fn update_click_target(&mut self, node_id: NodeId) {
+		let Some(node) = self.nodes.get(&node_id) else {
+			log::error!("Could not get node_id {node_id} from node network in update_click_target");
+			return;
+		};
+		let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
+		let width = if node.is_layer() {
+			// TODO: Calculate based on text width
+			9 * grid_size
+		} else {
+			5 * grid_size
+		};
+		let height = if node.is_layer() {
+			2 * grid_size
+		} else {
+			let inputs_count = node.inputs().iter().filter(|input| input.is_exposed()).count();
+			let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+				network.exports.len()
+			} else {
+				1
+			};
+			std::cmp::max(inputs_count, outputs_count) as i32 * grid_size
+		};
+		let mut corner1 = IVec2::new(node.metadata().position.x * grid_size, node.metadata().position.y * grid_size);
+		if !node.is_layer() {
+			corner1 += IVec2::new(0, (grid_size / 2) as i32);
+		}
+		let corner2 = corner1 + IVec2::new(width, height);
+		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [10.; 4]);
+		let stroke_width = 1.;
+		let node_click_target = ClickTarget { subpath, stroke_width };
+
+		self.click_targets.insert(node_id, node_click_target);
+
+		// if node_click_target is outside the current bounding box, update the bounding box
+		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
+			bounding_box.bounding_box().is_some_and(|bounding_box| {
+				self.click_targets[&node_id].subpath.bounding_box().is_some_and(|click_target| {
+					// Combine bounds and check if new vec is larger than current bounding box
+					let new_bounds = Quad::combine_bounds(click_target, bounding_box);
+					bounding_box != new_bounds
+				})
+			})
+		}) {
+			let bounds = self
+				.click_targets
+				.iter()
+				.filter_map(|(_, click_target)| click_target.subpath.bounding_box())
+				.reduce(Quad::combine_bounds);
+			self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
+		}
+	}
+
+	//TODO: Store click target information in file format
+	pub fn update_all_click_targets(&mut self) {
+		let node_ids = self.nodes.clone();
+		for (node_id, _) in node_ids {
+			self.update_click_target(node_id);
+		}
+	}
+	/// Gets the bounding box in viewport coordinates for each node in the node graph
+	pub fn graph_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
+		self.bounding_box_subpath
+			.as_ref()
+			.and_then(|bounding_box| bounding_box.bounding_box_with_transform(self.node_graph_to_viewport))
 	}
 
 	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
@@ -810,7 +947,7 @@ impl NodeNetwork {
 				node.inputs[0] = input;
 			}
 		}
-		self.nodes.insert(id, node);
+		self.insert_node(id, node);
 		self.exports = vec![NodeInput::node(id, 0)];
 		id
 	}

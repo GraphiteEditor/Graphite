@@ -28,7 +28,6 @@ pub struct DocumentMetadata {
 	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
-	pub node_graph_to_viewport: DAffine2,
 }
 
 impl Default for DocumentMetadata {
@@ -42,7 +41,6 @@ impl Default for DocumentMetadata {
 			locked: HashSet::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
-			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
 	}
 }
@@ -327,15 +325,6 @@ impl DocumentMetadata {
 	/// Calculates the document bounds in viewport space
 	pub fn document_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
-	}
-
-	/// Calculates the node graph bounds in viewport space
-	pub fn graph_bounds_viewport_space(&self, network: &NodeNetwork) -> Option<[DVec2; 2]> {
-		network
-			.nodes
-			.iter()
-			.filter_map(|(_, node)| node.bounding_box_viewport(self.node_graph_to_viewport))
-			.reduce(Quad::combine_bounds)
 	}
 
 	/// Calculates the document bounds in document space
