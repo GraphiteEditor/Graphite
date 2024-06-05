@@ -366,57 +366,6 @@ fn number_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, na
 	widgets
 }
 
-fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, f64)>, index: usize, node_id: NodeId, input_index: usize) {
-	let label = TextLabel::new(format!("Keyframe {}", index + 1));
-	row.push(label.widget_holder());
-	let on_update = |is_value: bool| {
-		let positions = positions.clone();
-		move |x: &NumberInput| {
-			let mut new_positions = positions.clone();
-			if is_value {
-				new_positions[index].1 = x.value.unwrap();
-			} else {
-				new_positions[index].0 = x.value.unwrap();
-			}
-			TaggedValue::AnimatableF64(new_positions)
-		}
-	};
-	let timestamp = NumberInput::new(Some(positions[index].0))
-		.min(0.)
-		.on_update(update_value(on_update(false), node_id, input_index))
-		.on_commit(commit_value);
-	let value = NumberInput::new(Some(positions[index].1))
-		.on_update(update_value(on_update(true), node_id, input_index))
-		.on_commit(commit_value);
-	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	row.push(timestamp.widget_holder());
-	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	row.push(value.widget_holder());
-	let mut skip_separator = false;
-	// Remove button
-	if positions.len() != 1 {
-		let on_update = {
-			let old_positions = positions.clone();
-			move |_: &IconButton| {
-				let mut new_positions = old_positions.clone();
-				new_positions.remove(index);
-				TaggedValue::AnimatableF64(new_positions)
-			}
-		};
-
-		skip_separator = true;
-		row.push(Separator::new(SeparatorType::Related).widget_holder());
-		row.push(
-			IconButton::new("Remove", 16)
-				.tooltip("Remove this keyframe")
-				.on_update(update_value(on_update, node_id, input_index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		])
-	}
-	widgets
-}
-
 fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<KeyframeF64>, index: usize, node_id: NodeId, input_index: usize) {
 	let label = TextLabel::new(format!("Keyframe {}", index + 1));
 	row.push(label.widget_holder());

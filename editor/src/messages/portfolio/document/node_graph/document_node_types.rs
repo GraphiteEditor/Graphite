@@ -135,7 +135,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "Editor API",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(WasmEditorApi)),
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
 				},
 				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0.)])), false),
 			],
