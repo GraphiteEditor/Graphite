@@ -225,29 +225,11 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		resolution.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(footprint.resolution.x as f64))
-				.label("resx")
-				.unit("px")
+				.label("res multiplier")
+				.unit("px/px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let resolution = UVec2::new(x.value.unwrap_or_default() as u32, footprint.resolution.y);
-
-						let footprint = Footprint { resolution, ..footprint };
-						TaggedValue::Footprint(footprint)
-					},
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_holder(),
-		]);
-		resolution.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(footprint.resolution.y as f64))
-				.label("resy")
-				.unit("px")
-				.on_update(update_value(
-					move |x: &NumberInput| {
-						let resolution = UVec2::new(footprint.resolution.x, x.value.unwrap_or_default() as u32);
+						let resolution = (scale * x.value.unwrap_or(1.)).as_uvec2();
 
 						let footprint = Footprint { resolution, ..footprint };
 						TaggedValue::Footprint(footprint)
