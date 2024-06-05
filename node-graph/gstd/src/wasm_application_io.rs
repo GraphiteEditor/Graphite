@@ -4,7 +4,7 @@ use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportForma
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::Footprint;
+use graphene_core::transform::{Footprint, TransformMut};
 use graphene_core::Color;
 use graphene_core::Node;
 #[cfg(feature = "wgpu")]
@@ -372,10 +372,14 @@ pub struct RasterizeVectorNode<Footprint, Surface> {
 async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
+	if footprint.transform.matrix2.determinant() == 0. {
+		log::debug!("Invalid footprint received for rasterization");
+		return ImageFrame::default();
+	}
 	let resolution = footprint.resolution;
 	// TODO: reenable once we switch to full node graph
-	let min = footprint.transform.inverse().transform_point2((0., 0.).into());
-	let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
+	let min = footprint.transform.transform_point2((0., 0.).into());
+	let max = footprint.transform.transform_point2((1., 1.).into());
 	let render_params = RenderParams {
 		// TODO: Use correct bounds
 		culling_bounds: Some([min, max]),
@@ -408,7 +412,7 @@ async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footp
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x, resolution.y);
 	ImageFrame {
 		image,
-		transform: glam::DAffine2::from_scale(resolution.as_dvec2()),
+		transform: footprint.transform,
 		..Default::default()
 	}
 }

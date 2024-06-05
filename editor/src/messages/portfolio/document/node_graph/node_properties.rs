@@ -151,8 +151,8 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 	{
 		let offset = footprint.offset();
 		let scale = footprint.scale();
-		let top_left = footprint.transform.transform_point2((-1., 1.).into());
-		let bottom_right = footprint.transform.transform_point2((1., -1.).into());
+		let top_left = footprint.transform.transform_point2((0., 0.).into());
+		let offset = top_left;
 		let footprint = *footprint;
 
 		fn modify_values(widgets: &mut Vec<WidgetHolder>, txl: f64, pos: &str, diff_fn: impl Fn(f64) -> (DVec2, DVec2) + Sync + Send + 'static, footprint: Footprint, node_id: NodeId, index: usize) {
@@ -160,7 +160,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				Separator::new(SeparatorType::Unrelated).widget_holder(),
 				NumberInput::new(Some(txl))
 					.label(pos)
-					.unit("px")
+					.unit(" px")
 					.on_update(update_value(
 						move |x: &NumberInput| {
 							let (offset, scale) = diff_fn(x.value.unwrap_or_default());
@@ -183,10 +183,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		modify_values(
 			&mut top_row,
 			top_left.x,
-			"tlx",
+			"o x",
 			move |x: f64| -> (DVec2, DVec2) {
-				let diff = top_left.x - x;
-				(DVec2::new(offset.x + diff / 2., offset.x), DVec2::new(scale.x + diff / 2., offset.x))
+				let diff = DVec2::new(top_left.x - x, 0.);
+				(offset - diff, scale)
 			},
 			footprint,
 			node_id,
@@ -195,10 +195,10 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		modify_values(
 			&mut top_row,
 			top_left.y,
-			"tly",
+			"o y",
 			move |y: f64| -> (DVec2, DVec2) {
-				let diff = top_left.y - y;
-				(DVec2::new(offset.x, offset.y + diff / 2.), DVec2::new(scale.x, offset.y + diff / 2.))
+				let diff = DVec2::new(0., top_left.y - y);
+				(offset - diff, scale)
 			},
 			footprint,
 			node_id,
@@ -206,24 +206,18 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		);
 		modify_values(
 			&mut bottom_row,
-			bottom_right.x,
-			"brx",
-			move |x: f64| -> (DVec2, DVec2) {
-				let diff = bottom_right.x - x;
-				(DVec2::new(offset.x - diff / 2., offset.x), DVec2::new(scale.x - diff / 2., offset.y))
-			},
+			scale.x,
+			"s x",
+			move |x: f64| -> (DVec2, DVec2) { (offset, DVec2::new(x, scale.y)) },
 			footprint,
 			node_id,
 			index,
 		);
 		modify_values(
 			&mut bottom_row,
-			bottom_right.y,
-			"bry",
-			move |y: f64| -> (DVec2, DVec2) {
-				let diff = bottom_right.y - y;
-				(DVec2::new(offset.x, diff / 2. - offset.y), DVec2::new(scale.x, diff / 2. - offset.y))
-			},
+			scale.y,
+			"s y",
+			move |y: f64| -> (DVec2, DVec2) { (offset, DVec2::new(scale.x, y)) },
 			footprint,
 			node_id,
 			index,
