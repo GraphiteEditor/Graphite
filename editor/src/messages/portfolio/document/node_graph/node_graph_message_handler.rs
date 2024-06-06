@@ -460,6 +460,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					} else if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
+					network.update_click_target(node_id);
 				}
 
 				// Since document structure doesn't change, just update the nodes
@@ -638,6 +639,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.metadata.position.x += shift
 					}
+					network.update_click_target(node_id);
 				};
 				// Shift the actual node
 				let inputs = network
@@ -792,6 +794,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(node) = network.nodes.get_mut(&node_id) {
 					node.is_layer = is_layer;
 				}
+				network.update_click_target(node_id);
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
@@ -803,8 +807,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
-				network.set_alias(node_id, name);
-				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+				if let Some(node) = network.nodes.get_mut(&node_id) {
+					node.alias = name;
+					network.update_click_target(node_id);
+					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+				}
 			}
 			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
@@ -1694,8 +1701,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn untitled_layer_label(node: &DocumentNode) -> String {
-		(node.alias.get_alias() != "")
-			.then_some(node.alias.get_alias().to_string())
+		(node.alias != "")
+			.then_some(node.alias.to_string())
 			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() })
 	}
 

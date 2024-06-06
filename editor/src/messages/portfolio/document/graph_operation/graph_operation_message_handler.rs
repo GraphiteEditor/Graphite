@@ -587,7 +587,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
-					modify_inputs.document_network.set_alias(id, alias.clone());
+					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
+						node.alias = alias.clone();
+					}
+					modify_inputs.document_network.update_click_target(id);
 
 					let shift = nodes
 						.get(&NodeId(0))
@@ -682,15 +685,23 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::SetNodePosition { node_id, position } => {
-				document_network.set_position(node_id, position);
+				let Some(node) = document_network.nodes.get_mut(&node_id) else {
+					log::error!("Failed to find node {node_id} when setting position");
+					return;
+				};
+				node.metadata.position = position;
+				document_network.update_click_target(node_id);
 			}
 			GraphOperationMessage::SetName { layer, name } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::SetNameImpl { layer, name });
 			}
 			GraphOperationMessage::SetNameImpl { layer, name } => {
-				document_network.set_alias(layer.to_node(), name);
-				responses.add(NodeGraphMessage::SendGraph);
+				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
+					node.alias = name;
+					document_network.update_click_target(layer.to_node());
+					responses.add(NodeGraphMessage::SendGraph);
+				}
 			}
 			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {
 				if ModifyInputsContext::set_input(document_network, node_id, input_index, input, true) {

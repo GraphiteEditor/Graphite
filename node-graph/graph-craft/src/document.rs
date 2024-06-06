@@ -128,9 +128,9 @@ where
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
-	/// Should only be modified through the setter in NodeNetwork.
+	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
 	#[serde(default)]
-	pub alias: Alias,
+	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
 	#[serde(deserialize_with = "migrate_layer_to_merge")]
@@ -140,7 +140,7 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
 	///   In the root network, it is resolved when evaluating the borrow tree.
-	///   Should only be modified through the setter in NodeNetwork.
+	///  Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
 	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
@@ -234,8 +234,7 @@ pub struct DocumentNode {
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer.
-	/// Should only be modified through the setter in NodeNetwork.
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -244,7 +243,7 @@ pub struct DocumentNode {
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI. Should only be modified through the setter in NodeNetwork.
+	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
@@ -426,23 +425,6 @@ impl DocumentNode {
 		self.name == "Artboard"
 	}
 
-	// Setter fields should be implemented in NodeNetwork to prevent passing network as parameter
-	pub fn is_layer(&self) -> bool {
-		self.is_layer
-	}
-
-	pub fn metadata(&self) -> &DocumentNodeMetadata {
-		&self.metadata
-	}
-
-	pub fn inputs(&self) -> &Vec<NodeInput> {
-		&self.inputs
-	}
-
-	pub fn name(&self) -> &str {
-		&self.name
-	}
-
 	// TODO: Is this redundant with `LayerNodeIdentifier::has_children()`? Consider removing this in favor of that.
 	/// Determines if a document node acting as a layer has any nested children where its secondary input eventually leads to a layer along horizontal flow.
 	pub fn layer_has_child_layers(&self, network: &NodeNetwork) -> bool {
@@ -455,20 +437,6 @@ impl DocumentNode {
 				network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(node, _)| node.is_layer)
 			})
 		})
-	}
-}
-
-#[derive(Clone, Debug, Default, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Alias(String);
-
-impl Alias {
-	/// Do not use this for nodes within a network. Use the setter in [`NodeNetwork`] instead
-	pub fn set_alias(&mut self, alias: String) {
-		self.0 = alias;
-	}
-	pub fn get_alias(&self) -> &str {
-		&self.0
 	}
 }
 
@@ -758,49 +726,28 @@ impl NodeNetwork {
 
 	// Inserts a node into the network and updates the click target
 	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode) {
-		self.update_click_target(node_id);
 		self.nodes.insert(node_id, node);
-	}
-
-	pub fn set_alias(&mut self, node_id: NodeId, alias: String) {
-		if let Some(mut node) = self.nodes.remove(&node_id) {
-			node.alias.set_alias(alias);
-			self.insert_node(node_id, node);
-		}
-	}
-	// TODO: Combine into one function with a parameter?
-	pub fn set_position(&mut self, node_id: NodeId, position: IVec2) {
-		if let Some(mut node) = self.nodes.remove(&node_id) {
-			node.metadata.position = position;
-			self.insert_node(node_id, node);
-		}
-	}
-
-	// TODO: Combine into one function with a parameter?
-	pub fn shift_position(&mut self, node_id: NodeId, position: IVec2) {
-		if let Some(mut node) = self.nodes.remove(&node_id) {
-			node.metadata.position += position;
-			self.insert_node(node_id, node);
-		}
+		self.update_click_target(node_id);
 	}
 
 	/// Update the click targets when a private field for a DocumentNode changes.
+	/// TODO: Add support for export/import nodes
 	pub fn update_click_target(&mut self, node_id: NodeId) {
 		let Some(node) = self.nodes.get(&node_id) else {
 			log::error!("Could not get node_id {node_id} from node network in update_click_target");
 			return;
 		};
 		let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-		let width = if node.is_layer() {
+		let width = if node.is_layer {
 			// TODO: Calculate based on text width
 			9 * grid_size
 		} else {
 			5 * grid_size
 		};
-		let height = if node.is_layer() {
+		let height = if node.is_layer {
 			2 * grid_size
 		} else {
-			let inputs_count = node.inputs().iter().filter(|input| input.is_exposed()).count();
+			let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
 			let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
 				network.exports.len()
 			} else {
@@ -808,8 +755,8 @@ impl NodeNetwork {
 			};
 			std::cmp::max(inputs_count, outputs_count) as i32 * grid_size
 		};
-		let mut corner1 = IVec2::new(node.metadata().position.x * grid_size, node.metadata().position.y * grid_size);
-		if !node.is_layer() {
+		let mut corner1 = IVec2::new(node.metadata.position.x * grid_size, node.metadata.position.y * grid_size);
+		if !node.is_layer {
 			corner1 += IVec2::new(0, (grid_size / 2) as i32);
 		}
 		let corner2 = corner1 + IVec2::new(width, height);
@@ -972,7 +919,7 @@ impl NodeNetwork {
 		network
 	}
 
-	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path
+	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
@@ -981,7 +928,7 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path
+	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
 	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
 			Some(self)

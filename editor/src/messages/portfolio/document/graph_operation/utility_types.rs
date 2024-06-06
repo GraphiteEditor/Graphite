@@ -385,7 +385,10 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		for node_id in shift_nodes {
-			network.shift_position(node_id, shift);
+			if let Some(node) = network.nodes.get_mut(&node_id) {
+				node.metadata.position += shift;
+				network.update_click_target(node_id);
+			}
 		}
 	}
 
@@ -430,7 +433,9 @@ impl<'a> ModifyInputsContext<'a> {
 			.map(|(_, id)| id)
 			.collect::<Vec<_>>();
 		for node_id in upstream_nodes {
-			self.document_network.shift_position(node_id, (-8, 0).into());
+			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
+			node.metadata.position.x -= 8;
+			self.document_network.update_click_target(node_id);
 		}
 	}
 
@@ -507,7 +512,13 @@ impl<'a> ModifyInputsContext<'a> {
 				return false;
 			};
 			let structure_changed = node_input.as_node().is_some() || input.as_node().is_some();
+
+			let previously_exposed = node_input.is_exposed();
 			*node_input = input;
+			let currently_exposed = node_input.is_exposed();
+			if previously_exposed != currently_exposed {
+				network.update_click_target(node_id);
+			}
 
 			// Only load network structure for changes to document_network
 			structure_changed && is_document_network
@@ -516,7 +527,11 @@ impl<'a> ModifyInputsContext<'a> {
 				log::error!("Tried to set export {input_index} to {input:?}, but the index was invalid. Network:\n{network:#?}");
 				return false;
 			};
+
+			let previously_exposed = export.is_exposed();
 			*export = input;
+			let currently_exposed = export.is_exposed();
+
 			if let NodeInput::Node { node_id, output_index, .. } = *export {
 				network.update_root_node(node_id, output_index);
 			} else if let NodeInput::Value { .. } = *export {
@@ -525,6 +540,10 @@ impl<'a> ModifyInputsContext<'a> {
 				}
 			} else {
 				log::error!("Network export input not supported");
+			}
+
+			if previously_exposed != currently_exposed {
+				network.update_click_target(node_id);
 			}
 
 			// Only load network structure for changes to document_network

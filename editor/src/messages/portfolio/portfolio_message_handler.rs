@@ -184,7 +184,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
-						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.get_alias().clone()).unwrap_or_default();
+						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
 
 						let mut copy_ids = HashMap::new();
 						copy_ids.insert(layer_node_id, NodeId(0 as u64));
