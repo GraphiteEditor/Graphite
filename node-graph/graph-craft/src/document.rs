@@ -94,7 +94,7 @@ pub enum OldNodeInput {
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
-use serde::Deserialize;
+use serde::{de, Deserialize};
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -670,7 +670,16 @@ pub struct NodeNetwork {
 	pub exports_metadata: (NodeId, IVec2),
 	/// Cache for all node click targets in node graph space. This should only be modified through the setter methods for the private [`DocumentNode`] fields, which will call methods to update this cache.
 	#[serde(skip)]
-	pub click_targets: HashMap<NodeId, ClickTarget>,
+	pub node_click_targets: HashMap<NodeId, ClickTarget>,
+	/// Cache for all node inputs. Should be automatically updated when
+	#[serde(skip)]
+	pub input_click_targets: HashMap<(NodeId, usize), ClickTarget>,
+	/// Cache for all node outputs
+	#[serde(skip)]
+	pub output_click_targets: HashMap<(NodeId, usize), ClickTarget>,
+	/// Cache for all visibility buttons
+	#[serde(skip)]
+	pub visibility_click_targets: HashMap<NodeId, ClickTarget>,
 	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
 	#[serde(skip)]
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
@@ -693,13 +702,50 @@ impl std::hash::Hash for NodeNetwork {
 }
 impl Default for NodeNetwork {
 	fn default() -> Self {
+		let exports_metadata = default_export_metadata();
+		let mut node_click_targets = HashMap::new();
+		let mut input_click_targets = HashMap::new();
+		let output_click_targets = HashMap::new();
+		let visibility_click_targets = HashMap::new();
+
+		//Default node network has one export node
+		let grid_size = 24 as i32;
+		let width = 5 * grid_size;
+		let height = 2 * grid_size;
+
+		let corner1 = IVec2::new(exports_metadata.1.x * grid_size, exports_metadata.1.y * grid_size + grid_size / 2);
+		let corner2 = corner1 + IVec2::new(width, height);
+		let radius = 3.;
+		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+		let stroke_width = 1.;
+		let node_click_target = ClickTarget { subpath, stroke_width };
+		node_click_targets.insert(exports_metadata.0, node_click_target);
+
+		let node_top_left = exports_metadata.1 * grid_size;
+		let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
+		// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
+		node_top_left.y += 36.;
+
+		let input_top_left = DVec2::new(-5., 8.);
+		let input_bottom_left = DVec2::new(-5., 16.);
+		let input_right = DVec2::new(5., 12.);
+
+		let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
+		let stroke_width = 1.;
+		let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+		let top_left_input = ClickTarget { subpath, stroke_width };
+		input_click_targets.insert((exports_metadata.0, 0), top_left_input);
+
 		NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
-			exports_metadata: default_export_metadata(),
-			click_targets: HashMap::new(),
+			exports_metadata,
+			node_click_targets,
+			input_click_targets,
+			output_click_targets,
+			visibility_click_targets,
 			bounding_box_subpath: None,
 			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
@@ -731,45 +777,224 @@ impl NodeNetwork {
 	}
 
 	/// Update the click targets when a private field for a DocumentNode changes.
-	/// TODO: Add support for export/import nodes
 	pub fn update_click_target(&mut self, node_id: NodeId) {
-		let Some(node) = self.nodes.get(&node_id) else {
-			log::error!("Could not get node_id {node_id} from node network in update_click_target");
-			return;
-		};
-		let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-		let width = if node.is_layer {
-			// TODO: Calculate based on text width
-			9 * grid_size
-		} else {
-			5 * grid_size
-		};
-		let height = if node.is_layer {
-			2 * grid_size
-		} else {
-			let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
-			let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-				network.exports.len()
-			} else {
-				1
-			};
-			std::cmp::max(inputs_count, outputs_count) as i32 * grid_size
-		};
-		let mut corner1 = IVec2::new(node.metadata.position.x * grid_size, node.metadata.position.y * grid_size);
-		if !node.is_layer {
-			corner1 += IVec2::new(0, (grid_size / 2) as i32);
-		}
-		let corner2 = corner1 + IVec2::new(width, height);
-		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [10.; 4]);
-		let stroke_width = 1.;
-		let node_click_target = ClickTarget { subpath, stroke_width };
+		if let Some(node) = self.nodes.get(&node_id) {
+			let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
 
-		self.click_targets.insert(node_id, node_click_target);
+			// Update node click target
+			let width = if node.is_layer {
+				// TODO: Calculate based on text width
+				9 * grid_size
+			} else {
+				5 * grid_size
+			};
+			let height = if node.is_layer {
+				2 * grid_size
+			} else {
+				let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
+				let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+					network.exports.len()
+				} else {
+					1
+				};
+				std::cmp::max(inputs_count, outputs_count) as i32 * grid_size
+			};
+			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size) as f64, (node.metadata.position.y * grid_size) as f64);
+			let radius = if !node.is_layer {
+				corner1 += DVec2::new(0., (grid_size / 2) as f64);
+				3.
+			} else {
+				10.
+			};
+
+			let corner2 = corner1 + DVec2::new(width as f64, height as f64);
+			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1, corner2, [radius; 4]);
+			let stroke_width = 1.;
+			let node_click_target = ClickTarget { subpath, stroke_width };
+
+			self.node_click_targets.insert(node_id, node_click_target);
+
+			// Update input/output click targets
+			let mut node_top_left = corner1;
+			let mut node_top_right = corner2;
+
+			if !node.is_layer {
+				let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
+				let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+					network.exports.len()
+				} else {
+					1
+				};
+				let mut inputs_complete = false;
+				let mut outputs_complete = false;
+				let mut node_row_index = 0;
+
+				if !node.has_primary_output {
+					node_top_right.y += 24.;
+				}
+
+				let input_top_left = DVec2::new(-5., 8.);
+				let input_bottom_left = DVec2::new(-5., 16.);
+				let input_right = DVec2::new(5., 12.);
+
+				loop {
+					if node_row_index < number_of_inputs {
+						let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
+						let stroke_width = 1.;
+						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+						let input_click_target = ClickTarget { subpath, stroke_width };
+						self.input_click_targets.insert((node_id, node_row_index), input_click_target);
+						node_top_left.y += 24.;
+					}
+					// If the new number of inputs is smaller than the old one, remove the old ones
+					else if self.input_click_targets.remove(&(node_id, node_row_index)).is_none() {
+						inputs_complete = true;
+					}
+
+					if node_row_index < number_of_outputs {
+						let anchors = vec![input_top_left + node_top_right, input_bottom_left + node_top_right, input_right + node_top_right];
+						let stroke_width = 1.;
+						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+						let output_click_target = ClickTarget { subpath, stroke_width };
+						self.output_click_targets.insert((node_id, node_row_index), output_click_target);
+						node_top_right.y += 24.;
+					} else {
+						outputs_complete = true;
+					}
+
+					if inputs_complete && outputs_complete {
+						break;
+					}
+
+					node_row_index += 1;
+				}
+				// Nodes cannot have visibility buttons
+				self.visibility_click_targets.remove(&node_id);
+			} else {
+				// Layer nodes have 2 exposed inputs
+				let input_top_left = DVec2::new(-5., 8.);
+				let input_bottom_left = DVec2::new(-5., 16.);
+				let input_right = DVec2::new(5., 12.);
+				let input_offset = node_top_left + DVec2::new(24., 12.);
+				let anchors = vec![input_top_left + input_offset, input_bottom_left + input_offset, input_right + input_offset];
+				let stroke_width = 1.;
+				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let input_click_target = ClickTarget { subpath, stroke_width };
+				self.input_click_targets.insert((node_id, 0), input_click_target);
+
+				let layer_input_top_left = DVec2::new(-5., 0.);
+				let layer_input_bottom_left = DVec2::new(-5., 10.);
+				let layer_input_bottom_right = DVec2::new(5., 10.);
+				let layer_input_top_right = DVec2::new(5., 0.);
+				let layer_input_offset = node_top_left + DVec2::new(3. * 24., 2. * 24.);
+				let anchors = vec![
+					layer_input_top_left + layer_input_offset,
+					layer_input_bottom_left + layer_input_offset,
+					layer_input_bottom_right + layer_input_offset,
+					layer_input_top_right + layer_input_offset,
+				];
+				let stroke_width = 1.;
+				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let layer_input_click_target = ClickTarget { subpath, stroke_width };
+				self.input_click_targets.insert((node_id, 1), layer_input_click_target);
+
+				let layer_output_offset = node_top_left + DVec2::new(3. * 24., 0.);
+				let anchors = vec![
+					layer_input_top_left + layer_output_offset,
+					layer_input_bottom_left + layer_output_offset,
+					layer_input_bottom_right + layer_output_offset,
+					layer_input_top_right + layer_output_offset,
+				];
+				let stroke_width = 1.;
+				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let layer_output_click_target = ClickTarget { subpath, stroke_width };
+				self.output_click_targets.insert((node_id, 0), layer_output_click_target);
+
+				// Update visibility button click target
+				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.), DVec2::new(12., 12.), [3.; 4]);
+				let stroke_width = 1.;
+				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
+				self.visibility_click_targets.insert(node_id, layer_visibility_click_target);
+			}
+		}
+		// The number of imports is from the parent node, it can't be determined here. Since the inputs/outputs/is_layer/name cannot change, generate the import/export nodes when the network is created, and just shift the position here
+		else if node_id == self.exports_metadata.0 || node_id == self.imports_metadata.0 {
+			let Some(node_click_target) = self.node_click_targets.get_mut(&node_id) else {
+				log::error!("Could not get export or import node click target");
+				return;
+			};
+
+			let Some(bounding_box) = node_click_target.subpath.bounding_box() else {
+				log::error!("Could not get bounding box for export or import node");
+				return;
+			};
+			log::debug!("bounding box: {}", bounding_box[0]);
+			log::debug!("exports_metadata: {}", self.exports_metadata.1);
+
+			let shift = if node_id == self.exports_metadata.0 {
+				DVec2::new(
+					self.exports_metadata.1.x as f64 * 24. - bounding_box[0].x,
+					self.exports_metadata.1.y as f64 * 24. + 12. - bounding_box[0].y,
+				)
+			} else {
+				DVec2::new(
+					self.imports_metadata.1.x as f64 * 24. - bounding_box[0].x,
+					self.imports_metadata.1.y as f64 * 24. + 12. - bounding_box[0].y,
+				)
+			};
+
+			log::debug!("shift: {shift}");
+			for manipulator_group in node_click_target.subpath.manipulator_groups_mut() {
+				manipulator_group.anchor += shift;
+				manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
+				manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
+			}
+
+			// log::error!("Export or import node click target should already be created")
+			// let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
+			// let width = bounding_box[1].x - bounding_box[0].x;
+			// let height = bounding_box[1].y - bounding_box[0].y;
+			// let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size, self.exports_metadata.1.y * grid_size);
+			// let corner2 = corner1 + IVec2::new(width as i32, height as i32);
+			// let radius = 3.;
+			// let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+			// let stroke_width = 1.;
+			// let node_click_target = ClickTarget { subpath, stroke_width };
+			// self.node_click_targets.insert(node_id, node_click_target);
+
+			let mut input_index = 0;
+			loop {
+				let Some(input_click_target) = self.input_click_targets.get_mut(&(node_id, input_index)) else {
+					break;
+				};
+				for manipulator_group in input_click_target.subpath.manipulator_groups_mut() {
+					manipulator_group.anchor += shift;
+					manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
+					manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
+				}
+				input_index += 1;
+			}
+
+			let mut output_index = 0;
+			loop {
+				let Some(output_click_target) = self.output_click_targets.get_mut(&(node_id, output_index)) else {
+					break;
+				};
+				for manipulator_group in output_click_target.subpath.manipulator_groups_mut() {
+					manipulator_group.anchor += shift;
+					manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
+					manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
+				}
+				output_index += 1;
+			}
+		} else {
+			self.node_click_targets.remove(&node_id);
+		};
 
 		// if node_click_target is outside the current bounding box, update the bounding box
 		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
 			bounding_box.bounding_box().is_some_and(|bounding_box| {
-				self.click_targets[&node_id].subpath.bounding_box().is_some_and(|click_target| {
+				self.node_click_targets[&node_id].subpath.bounding_box().is_some_and(|click_target| {
 					// Combine bounds and check if new vec is larger than current bounding box
 					let new_bounds = Quad::combine_bounds(click_target, bounding_box);
 					bounding_box != new_bounds
@@ -777,7 +1002,7 @@ impl NodeNetwork {
 			})
 		}) {
 			let bounds = self
-				.click_targets
+				.node_click_targets
 				.iter()
 				.filter_map(|(_, click_target)| click_target.subpath.bounding_box())
 				.reduce(Quad::combine_bounds);
@@ -792,6 +1017,7 @@ impl NodeNetwork {
 			self.update_click_target(node_id);
 		}
 	}
+
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
 	pub fn graph_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
 		self.bounding_box_subpath

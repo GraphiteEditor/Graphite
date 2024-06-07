@@ -834,6 +834,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(network) = document_network.nested_network_mut(&network_path) else { return false };
 
 		network.nodes.remove(&node_id);
+		network.update_click_target(node_id);
 		selected_nodes.retain_selected_nodes(|&id| id != node_id || id == network.exports_metadata.0 || id == network.imports_metadata.0);
 
 		responses.add(BroadcastEvent::SelectionChanged);

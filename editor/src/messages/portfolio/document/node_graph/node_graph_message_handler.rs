@@ -18,6 +18,7 @@ use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2};
+use renderer::ClickTarget;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -38,7 +39,7 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
-	drag_start: DVec2,
+	drag_start: Option<DVec2>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -73,47 +74,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			NodeGraphMessage::Click { shift_click, control_click } => {
-				let Some(network) = document_network.nested_network(&self.network) else {
-					return;
-				};
-
-				let viewport_location = ipp.mouse.position;
-				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
-				log::debug!("point: {point:?}");
-
-				if let Some(clicked_id) = NodeGraphMessageHandler::get_clicked_node(network, point) {
-					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
-					let mut modified_selected = false;
-
-					// Add to/remove from selection if holding Shift or Ctrl
-					if shift_click || control_click {
-						modified_selected = true;
-
-						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
-						// Remove from selection if already selected
-						if let Some(index) = index {
-							updated_selected.remove(index);
-						}
-						// Add to selection if not already selected
-						else {
-							updated_selected.push(clicked_id);
-						};
-					}
-					// Replace selection with a non-selected node
-					else if !updated_selected.contains(&clicked_id) {
-						modified_selected = true;
-						updated_selected = vec![clicked_id];
-					}
-
-					if modified_selected {
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
-					}
-				} else {
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
-				}
-				self.drag_start = point;
 			}
 			NodeGraphMessage::ConnectNodesByWire {
 				output_node,
@@ -519,6 +479,89 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let nodes = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
+			NodeGraphMessage::PointerDown { shift_click, control_click, alt_click } => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				//log::debug!("point: {point:?}");
+
+				// Alt-click sets the clicked node as previewed
+				if alt_click {
+					if let Some(clicked_node) = NodeGraphMessageHandler::get_clicked_target(&network.node_click_targets, point) {
+						responses.add(NodeGraphMessage::TogglePreview { node_id: clicked_node });
+						return;
+					}
+				}
+
+				if let Some(clicked_input) = NodeGraphMessageHandler::get_clicked_target(&network.input_click_targets, point) {
+					log::debug!("Clicked input: {} index: {}", clicked_input.0, clicked_input.1);
+				}
+
+				if let Some(clicked_id) = NodeGraphMessageHandler::get_clicked_target(&network.node_click_targets, point) {
+					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
+					let mut modified_selected = false;
+
+					// Add to/remove from selection if holding Shift or Ctrl
+					if shift_click || control_click {
+						modified_selected = true;
+
+						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
+						// Remove from selection if already selected
+						if let Some(index) = index {
+							updated_selected.remove(index);
+						}
+						// Add to selection if not already selected
+						else {
+							updated_selected.push(clicked_id);
+						};
+					}
+					// Replace selection with a non-selected node
+					else if !updated_selected.contains(&clicked_id) {
+						modified_selected = true;
+						updated_selected = vec![clicked_id];
+					}
+
+					if modified_selected {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
+					}
+				} else {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
+				}
+
+				let grid_coordinates = DVec2::new((point.x / 24.).round(), (point.y / 24.).round());
+				let rounded_graph_coordinates = grid_coordinates * 24.;
+
+				self.drag_start = Some(rounded_graph_coordinates);
+			}
+			//TODO: Alt+drag should move all upstream nodes as well
+			NodeGraphMessage::PointerMove => {
+				if let Some(drag_start) = self.drag_start {
+					let Some(network) = document_network.nested_network(&self.network) else {
+						return;
+					};
+
+					let viewport_location = ipp.mouse.position;
+					let mut point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+					point = point / 24.;
+					let grid_coordinates = DVec2::new(point.x.round(), point.y.round());
+					let rounded_graph_coordinates = grid_coordinates * 24.;
+					if drag_start != rounded_graph_coordinates {
+						let displacement = (rounded_graph_coordinates - drag_start) / 24.;
+						responses.add(NodeGraphMessage::MoveSelectedNodes {
+							displacement_x: displacement.x as i32,
+							displacement_y: displacement.y as i32,
+						});
+						self.drag_start = Some(rounded_graph_coordinates);
+					}
+				}
+			}
+			NodeGraphMessage::PointerUp => {
+				self.drag_start = None;
+				//log::debug!("pointer up");
+			}
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");
@@ -917,7 +960,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(NodeGraphMessageDiscriminant; Click);
+		let mut common = actions!(NodeGraphMessageDiscriminant; PointerDown, PointerMove, PointerUp);
 
 		if self.has_selection {
 			common.extend(actions!(NodeGraphMessageDiscriminant;
@@ -947,14 +990,12 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	// Gets the node at a point in node graph pixel coordinates
-	fn get_clicked_node(network: &NodeNetwork, point: DVec2) -> Option<NodeId> {
-		network
-			.click_targets
+	/// Get the clicked target from a mouse click
+	fn get_clicked_target<T: Clone>(hashmap: &HashMap<T, ClickTarget>, point: DVec2) -> Option<T> {
+		hashmap
 			.iter()
-			.map(|(node_id, click_target)| (node_id, click_target))
 			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
-			.map(|(node_id, _)| node_id.clone())
+			.map(|(data, _)| data.clone())
 			.next()
 	}
 
@@ -1753,7 +1794,7 @@ impl Default for NodeGraphMessageHandler {
 			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
-			drag_start: DVec2::ZERO,
+			drag_start: None,
 		}
 	}
 }

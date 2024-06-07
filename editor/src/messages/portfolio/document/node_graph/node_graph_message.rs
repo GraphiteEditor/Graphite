@@ -11,10 +11,6 @@ pub enum NodeGraphMessage {
 	// Messages
 	Init,
 	SelectedNodesUpdated,
-	Click {
-		shift_click: bool,
-		control_click: bool,
-	},
 	ConnectNodesByWire {
 		output_node: NodeId,
 		output_node_connector_index: usize,
@@ -75,6 +71,13 @@ pub enum NodeGraphMessage {
 	PasteNodes {
 		serialized_nodes: String,
 	},
+	PointerDown {
+		shift_click: bool,
+		control_click: bool,
+		alt_click: bool,
+	},
+	PointerMove,
+	PointerUp,
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,
 	SelectedNodesAdd {
