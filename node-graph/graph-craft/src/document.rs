@@ -880,7 +880,7 @@ impl NodeNetwork {
 				let stroke_width = 1.;
 				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
 				let input_click_target = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((node_id, 0), input_click_target);
+				self.input_click_targets.insert((node_id, 1), input_click_target);
 
 				let layer_input_top_left = DVec2::new(-5., 0.);
 				let layer_input_bottom_left = DVec2::new(-5., 10.);
@@ -896,7 +896,7 @@ impl NodeNetwork {
 				let stroke_width = 1.;
 				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
 				let layer_input_click_target = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((node_id, 1), layer_input_click_target);
+				self.input_click_targets.insert((node_id, 0), layer_input_click_target);
 
 				let layer_output_offset = node_top_left + DVec2::new(3. * 24., 0.);
 				let anchors = vec![

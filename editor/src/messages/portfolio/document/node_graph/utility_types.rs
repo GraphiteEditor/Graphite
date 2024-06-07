@@ -117,3 +117,13 @@ pub struct Transform {
 	pub x: f64,
 	pub y: f64,
 }
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WirePath {
+	#[serde(rename = "pathString")]
+	pub path_string: String,
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	pub thick: bool,
+	pub dashed: bool,
+}

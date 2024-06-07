@@ -33,6 +33,10 @@ export class UpdateNodeGraph extends JsMessage {
 	readonly wires!: FrontendNodeWire[];
 }
 
+export class UpdateNodeGraphTransform extends JsMessage {
+	readonly transform!: NodeGraphTransform;
+}
+
 export class UpdateNodeTypes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodeTypes!: FrontendNodeType[];
@@ -58,12 +62,12 @@ export class UpdateSubgraphPath extends JsMessage {
 	readonly subgraphPath!: string[];
 }
 
-export class UpdateZoomWithScroll extends JsMessage {
-	readonly zoomWithScroll!: boolean;
+export class UpdateWirePathInProgress extends JsMessage {
+	readonly wirePath!: WirePath | undefined;
 }
 
-export class UpdateNodeGraphTransform extends JsMessage {
-	readonly transform!: NodeGraphTransform;
+export class UpdateZoomWithScroll extends JsMessage {
+	readonly zoomWithScroll!: boolean;
 }
 
 // Allows the auto save system to use a string for the id rather than a BigInt.
@@ -167,6 +171,13 @@ export class NodeGraphTransform {
 	readonly scale!: number;
 	readonly x!: number;
 	readonly y!: number;
+}
+
+export class WirePath {
+	readonly pathString!: string;
+	readonly dataType!: FrontendGraphDataType;
+	readonly thick!: boolean;
+	readonly dashed!: boolean;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1358,6 +1369,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
+	UpdateWirePathInProgress,
 	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

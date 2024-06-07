@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire};
+use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -40,6 +40,12 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	drag_start: Option<DVec2>,
+	box_selection_start: Option<DVec2>,
+	disconnecting: Option<(NodeId, usize)>,
+	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
+	wire_in_progress_from_connector: Option<(DVec2, bool)>,
+	// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
+	wire_in_progress_to_connector: Option<(DVec2, bool)>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -479,7 +485,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let nodes = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
-			NodeGraphMessage::PointerDown { shift_click, control_click, alt_click } => {
+			NodeGraphMessage::PointerDown {
+				shift_click,
+				control_click,
+				alt_click,
+			} => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
@@ -490,17 +500,78 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// Alt-click sets the clicked node as previewed
 				if alt_click {
-					if let Some(clicked_node) = NodeGraphMessageHandler::get_clicked_target(&network.node_click_targets, point) {
+					if let Some(clicked_node) = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point) {
 						responses.add(NodeGraphMessage::TogglePreview { node_id: clicked_node });
 						return;
 					}
 				}
 
-				if let Some(clicked_input) = NodeGraphMessageHandler::get_clicked_target(&network.input_click_targets, point) {
+				if let Some(clicked_input) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point) {
 					log::debug!("Clicked input: {} index: {}", clicked_input.0, clicked_input.1);
+					let Some(clicked_node) = network.nodes.get(&clicked_input.0) else {
+						log::error!("Could not find node {}", clicked_input.0);
+						return;
+					};
+
+					let input_index = NodeGraphMessageHandler::get_input_index(network, clicked_input.0, clicked_input.1);
+					log::debug!("input_index: {input_index}");
+					log::debug!("clicked_node: {clicked_node:?}");
+					if let Some(NodeInput::Node { node_id, output_index, .. }) = clicked_node.inputs.get(input_index) {
+						log::debug!("node_id: {node_id}, output_index: {output_index}");
+						let Some(output_node) = network.nodes.get(&node_id) else {
+							log::error!("Could not find node {}", node_id);
+							return;
+						};
+						self.wire_in_progress_from_connector = if output_node.is_layer {
+							Some((
+								DVec2::new(output_node.metadata.position.x as f64 * 24. + 3. * 24., output_node.metadata.position.y as f64 * 24. - 24. / 2.),
+								true,
+							))
+						} else {
+							Some((
+								DVec2::new(
+									output_node.metadata.position.x as f64 * 24. + 5. * 24.,
+									output_node.metadata.position.y as f64 * 24. + 12. + 24. * *output_index as f64,
+								),
+								false,
+							))
+						};
+					}
+
+					return;
 				}
 
-				if let Some(clicked_id) = NodeGraphMessageHandler::get_clicked_target(&network.node_click_targets, point) {
+				if let Some(clicked_output) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point) {
+					log::debug!("Clicked output: {} index: {}", clicked_output.0, clicked_output.1);
+
+					let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) else {
+						log::error!("Could not find node {}", clicked_output.0);
+						return;
+					};
+
+					self.wire_in_progress_from_connector = if clicked_output_node.is_layer {
+						Some((
+							DVec2::new(
+								clicked_output_node.metadata.position.x as f64 * 24. + 3. * 24.,
+								clicked_output_node.metadata.position.y as f64 * 24. - 24. / 2.,
+							),
+							true,
+						))
+					} else {
+						Some((
+							DVec2::new(
+								clicked_output_node.metadata.position.x as f64 * 24. + 5. * 24.,
+								clicked_output_node.metadata.position.y as f64 * 24. + 12. + 24. * clicked_output.1 as f64,
+							),
+							false,
+						))
+					};
+
+					//TODO: Layer output restriction
+					return;
+				}
+
+				if let Some(clicked_id) = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point) {
 					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
 					let mut modified_selected = false;
 
@@ -527,24 +598,71 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if modified_selected {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
-				} else {
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
+					let grid_coordinates = DVec2::new((point.x / 24.).round(), (point.y / 24.).round());
+					let rounded_graph_coordinates = grid_coordinates * 24.;
+
+					self.drag_start = Some(rounded_graph_coordinates);
+
+					return;
 				}
 
-				let grid_coordinates = DVec2::new((point.x / 24.).round(), (point.y / 24.).round());
-				let rounded_graph_coordinates = grid_coordinates * 24.;
-
-				self.drag_start = Some(rounded_graph_coordinates);
+				// Clicked on the graph background so we box select
+				if !shift_click {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
+				}
+				self.box_selection_start = Some(point);
 			}
 			//TODO: Alt+drag should move all upstream nodes as well
 			NodeGraphMessage::PointerMove => {
-				if let Some(drag_start) = self.drag_start {
-					let Some(network) = document_network.nested_network(&self.network) else {
-						return;
-					};
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+				let viewport_location = ipp.mouse.position;
+				let mut point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
-					let viewport_location = ipp.mouse.position;
-					let mut point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				log::debug!("self.wire_in_progress_from_connector: {:?}", self.wire_in_progress_from_connector);
+				if self.wire_in_progress_from_connector.is_some() {
+					if let Some((to_connector_graph_position, is_layer)) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point)
+						.and_then(|(node_id, input_index)| network.nodes.get(&node_id).map(|node| (node.metadata.position + IVec2::new(0, input_index as i32), node.is_layer)))
+					{
+						let to_connector_position = DVec2::new(to_connector_graph_position.x as f64 * 24., to_connector_graph_position.y as f64 * 24.);
+						self.wire_in_progress_to_connector = Some((to_connector_position, is_layer));
+					}
+					// Not hovering over a node input, update the mouse position. The bool should already be set
+					else {
+						self.wire_in_progress_to_connector.as_mut().map(|(position, _)| *position = point);
+						// Disconnect if the wire was previously connected to an input
+						if let Some(disconnecting) = self.disconnecting {
+							responses.add(NodeGraphMessage::DisconnectInput {
+								node_id: disconnecting.0,
+								input_index: disconnecting.1,
+							});
+							// Update the front end that the node is disconnected
+							responses.add(NodeGraphMessage::SendGraph);
+							self.disconnecting = None;
+						}
+					}
+
+					log::debug!(
+						"wire_in_progress_from_connector: {:?}, wire_in_progress_to_connector: {:?}",
+						self.wire_in_progress_from_connector,
+						self.wire_in_progress_to_connector
+					);
+					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
+						let wire_path = WirePath {
+							path_string: Self::build_wire_path_string(
+								wire_in_progress_from_connector.0,
+								wire_in_progress_to_connector.0,
+								wire_in_progress_from_connector.1,
+								wire_in_progress_to_connector.1,
+							),
+							data_type: FrontendGraphDataType::General,
+							thick: false,
+							dashed: false,
+						};
+						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
+					}
+				} else if let Some(drag_start) = self.drag_start {
 					point = point / 24.;
 					let grid_coordinates = DVec2::new(point.x.round(), point.y.round());
 					let rounded_graph_coordinates = grid_coordinates * 24.;
@@ -556,6 +674,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						});
 						self.drag_start = Some(rounded_graph_coordinates);
 					}
+				} else if let Some(box_selection_start) = self.box_selection_start {
+					// TODO: Box selection
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -991,7 +1111,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Get the clicked target from a mouse click
-	fn get_clicked_target<T: Clone>(hashmap: &HashMap<T, ClickTarget>, point: DVec2) -> Option<T> {
+	fn get_key_from_point<T: Clone>(hashmap: &HashMap<T, ClickTarget>, point: DVec2) -> Option<T> {
 		hashmap
 			.iter()
 			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
@@ -1771,6 +1891,70 @@ impl NodeGraphMessageHandler {
 			visible_index
 		}
 	}
+
+	fn build_wire_path_string(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {
+		let locations = Self::build_wire_path_locations(output_position, input_position, vertical_out, vertical_in);
+		let smoothing = 0.5;
+		let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
+		let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
+		format!(
+			"M{},{} L{},{} C{},{} {},{} {},{} L{},{}",
+			locations[0].x,
+			locations[0].y,
+			locations[1].x,
+			locations[1].y,
+			locations[1].x + delta01.x,
+			locations[1].y + delta01.y,
+			locations[2].x - delta23.x,
+			locations[2].y - delta23.y,
+			locations[2].x,
+			locations[2].y,
+			locations[3].x,
+			locations[3].y
+		)
+	}
+
+	fn build_wire_path_locations(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<DVec2> {
+		let horizontal_gap = (output_position.x - input_position.x).abs();
+		let vertical_gap = (output_position.y - input_position.y).abs();
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
+		// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
+		// 	return [
+		// 		{ x: output_position.x, y: output_position.y },
+		// 		{ x: input_position.x, y: input_position.y },
+		// 	];
+		// }
+
+		// // L-shape bend
+		// if (verticalOut !== vertical_in) {
+		// }
+
+		let curve_length = 24.;
+		let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.0;
+
+		let horizontal_curve_amount = -(2.0f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
+		let vertical_curve_amount = -(2.0f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
+		let horizontal_curve = horizontal_curve_amount * curve_length;
+		let vertical_curve = vertical_curve_amount * curve_length;
+
+		return vec![
+			output_position,
+			DVec2::new(
+				if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
+				if vertical_out { output_position.y + vertical_curve } else { output_position.y },
+			),
+			DVec2::new(
+				if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
+				if vertical_out { output_position.y - vertical_curve } else { output_position.y },
+			),
+			DVec2::new(
+				if vertical_in { input_position.x } else { input_position.x - horizontal_curve },
+				if vertical_in { input_position.y + vertical_curve } else { input_position.y },
+			),
+			DVec2::new(input_position.x, input_position.y),
+		];
+	}
 }
 
 impl Default for NodeGraphMessageHandler {
@@ -1795,6 +1979,10 @@ impl Default for NodeGraphMessageHandler {
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 			drag_start: None,
+			box_selection_start: None,
+			disconnecting: None,
+			wire_in_progress_from_connector: None,
+			wire_in_progress_to_connector: None,
 		}
 	}
 }

@@ -6,7 +6,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -25,8 +25,6 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-
-	type WirePath = { pathString: string; dataType: FrontendGraphDataType; thick: boolean; dashed: boolean };
 
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
@@ -76,8 +74,7 @@
 		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
 	})();
 
-	$: wirePathInProgress = createWirePathInProgress(wireInProgressFromConnector, wireInProgressToConnector);
-	$: wirePaths = createWirePaths(wirePathInProgress, nodeWirePaths);
+	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;

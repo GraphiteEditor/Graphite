@@ -5,12 +5,14 @@ import {
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
+	type WirePath,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeTypes,
 	UpdateNodeThumbnail,
 	UpdateSubgraphPath,
+	UpdateWirePathInProgress,
 	UpdateZoomWithScroll,
 } from "@graphite/wasm-communication/messages";
 
@@ -19,6 +21,7 @@ export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
+		wirePathInProgress: undefined as WirePath | undefined,
 		nodeTypes: [] as FrontendNodeType[],
 		zoomWithScroll: false as boolean,
 		thumbnails: new Map<bigint, string>(),
@@ -62,6 +65,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateSubgraphPath, (UpdateSubgraphPath) => {
 		update((state) => {
 			state.subgraphPath = UpdateSubgraphPath.subgraphPath;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
+		update((state) => {
+			state.wirePathInProgress = updateWirePathInProgress.wirePath;
 			return state;
 		});
 	});
