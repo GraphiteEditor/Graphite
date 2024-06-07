@@ -8,7 +8,7 @@ use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use std::io::{Read, Seek};
 use thiserror::Error;
 
-use tags::Tag;
+use tags::{Tag, TagOld, TagValue};
 use types::TagType;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
@@ -26,6 +26,7 @@ pub enum TagId {
 	SubIfd = 0x14a,
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
+	ApplicationNotes = 0x2bc,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
 
@@ -91,7 +92,7 @@ impl Ifd {
 		}
 
 		let next_ifd_offset = file.read_u32()?;
-		let next_ifd_offset = if next_ifd_offset == 0 { Some(next_ifd_offset) } else { None };
+		let next_ifd_offset = if next_ifd_offset == 0 { None } else { Some(next_ifd_offset) };
 
 		Ok(Ifd {
 			current_ifd_offset: offset,
@@ -112,12 +113,18 @@ impl Ifd {
 		self.ifd_entries.iter()
 	}
 
-	pub fn get<T: TagType, R: Read + Seek>(&self, tag: Tag<T>, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
+	pub fn get<T: TagType, R: Read + Seek>(&self, tag: TagOld<T>, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
 		let tag_id = tag.id();
-		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(TiffError::InvalidTag)?.try_into()?;
+		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(TiffError::MissingTag)?.try_into()?;
 
 		file.seek_from_start(self.current_ifd_offset + 2 + 12 * index + 2)?;
 		T::read(file)
+	}
+
+	pub fn get_value<T: Tag, R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<TagValue<T>, TiffError> {
+		let value = T::get(self, file)?;
+
+		Ok(TagValue::<T> { value })
 	}
 }
 
@@ -129,8 +136,8 @@ pub enum TiffError {
 	InvalidType,
 	#[error("The count was invalid")]
 	InvalidCount,
-	#[error("The tag was invalid")]
-	InvalidTag,
+	#[error("The tag was missing")]
+	MissingTag,
 	#[error("An error occurred when converting integer from one type to another")]
 	ConversionError(#[from] std::num::TryFromIntError),
 	#[error("An IO Error ocurred")]
