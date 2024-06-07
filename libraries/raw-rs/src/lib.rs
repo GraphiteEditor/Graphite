@@ -4,7 +4,7 @@ pub mod tiff;
 use std::io::{Read, Seek};
 use thiserror::Error;
 use tiff::file::TiffRead;
-use tiff::tags::{COMPRESSION, SUBIFD};
+use tiff::tags::{APPLICATION_NOTES, COMPRESSION, SUBIFD};
 use tiff::{Ifd, TiffError};
 
 pub struct RawImage {
@@ -25,9 +25,17 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
 	// TODO: This is only for the tests to pass for now. Replace this with the correct implementation when the decoder is complete.
-	let subifd = ifd.get(SUBIFD, &mut file)?;
-
-	Ok(decoder::uncompressed::decode(subifd, &mut file))
+	if ifd.get(APPLICATION_NOTES, &mut file).is_err() {
+		Ok(decoder::arw1::decode_a100(ifd, &mut file))
+	} else {
+		let subifd = ifd.get(SUBIFD, &mut file)?;
+		let compression = subifd.get(COMPRESSION, &mut file)?;
+		if compression == 1 {
+			Ok(decoder::uncompressed::decode(subifd, &mut file))
+		} else {
+			panic!()
+		}
+	}
 }
 
 pub fn process_8bit(image: RawImage) -> Image<u8> {
