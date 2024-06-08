@@ -27,6 +27,7 @@ pub enum TagId {
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
 	ApplicationNotes = 0x2bc,
+	SonyToneCurve = 0x7010,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
 

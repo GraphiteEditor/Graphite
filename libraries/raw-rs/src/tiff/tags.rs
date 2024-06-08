@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeShort};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeShort, TypeSonyToneCurve};
 use super::{Ifd, TagId, TiffError, TiffRead};
 
 use std::io::{Read, Seek};
@@ -43,6 +43,7 @@ pub const APPLICATION_NOTES: TagOld<Array<TypeByte>> = TagOld::new(TagId::Applic
 pub const CFA_PATTERN_DIM: TagOld<ConstArray<TypeShort, 2>> = TagOld::new(TagId::CfaPatternDim, "CFA Pattern Dimension");
 pub const CFA_PATTERN: TagOld<Array<TypeByte>> = TagOld::new(TagId::CfaPattern, "CFA Pattern");
 pub const SONY_DATA_OFFSET: TagOld<TypeLong> = TagOld::new(TagId::SubIfd, "Sony Data Offset");
+pub const SONY_TONE_CURVE: TagOld<TypeSonyToneCurve> = TagOld::new(TagId::SonyToneCurve, "Sony Tone Curve");
 
 pub trait SimpleTag {
 	const ID: TagId;
@@ -64,6 +65,8 @@ pub struct JpegOffset;
 pub struct JpegLength;
 pub struct CfaPatternDim;
 pub struct CfaPattern;
+pub struct SonyDataOffset;
+pub struct SonyToneCurve;
 
 impl SimpleTag for ImageWidth {
 	const ID: TagId = TagId::ImageWidth;
@@ -147,6 +150,18 @@ impl SimpleTag for CfaPattern {
 	const ID: TagId = TagId::CfaPattern;
 	type Type = Array<TypeByte>;
 	const NAME: &'static str = "CFA Pattern";
+}
+
+impl SimpleTag for SonyDataOffset {
+	const ID: TagId = TagId::SubIfd;
+	type Type = TypeLong;
+	const NAME: &'static str = "Sony Data Offset";
+}
+
+impl SimpleTag for SonyToneCurve {
+	const ID: TagId = TagId::SonyToneCurve;
+	type Type = TypeSonyToneCurve;
+	const NAME: &'static str = "Sony Tone Curve";
 }
 
 pub trait Tag {

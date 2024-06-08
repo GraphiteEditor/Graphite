@@ -1,7 +1,7 @@
 use std::io::{Read, Seek};
 
 use super::file::TiffRead;
-use super::values::Rational;
+use super::values::{CurveLookupTable, Rational};
 use super::{Ifd, IfdTagType, TiffError};
 
 pub struct TypeAscii;
@@ -355,5 +355,16 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 			ans.push(T::read_primitive(type_, file)?);
 		}
 		ans.try_into().map_err(|_| TiffError::InvalidCount)
+	}
+}
+
+pub struct TypeSonyToneCurve;
+
+impl TagType for TypeSonyToneCurve {
+	type Output = CurveLookupTable;
+
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let values = ConstArray::<TypeShort, 4>::read(file)?;
+		Ok(CurveLookupTable::from_sony_tone_table(values))
 	}
 }

@@ -2,7 +2,7 @@ use crate::tiff::file::TiffRead;
 use crate::tiff::tags::{BITS_PER_SAMPLE, CFA_PATTERN, CFA_PATTERN_DIM, COMPRESSION, IMAGE_LENGTH, IMAGE_WIDTH, ROWS_PER_STRIP, SAMPLES_PER_PIXEL, SONY_DATA_OFFSET, STRIP_BYTE_COUNTS, STRIP_OFFSETS};
 use crate::tiff::Ifd;
 use crate::RawImage;
-use bitstream_io::{BitRead, BitReader, Endianness, BE, LE};
+use bitstream_io::{BitRead, BitReader, Endianness, BE};
 use std::io::{Read, Seek};
 
 pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
@@ -80,7 +80,7 @@ fn ljpeg_diff<R: Read + Seek, E: Endianness>(huff: &[u16], file: &mut BitReader<
 	diff as i32
 }
 
-fn sony_arw_load_raw<R: Read + Seek, E: Endianness>(width: usize, height: usize, file: &mut BitReader<R, E>) -> Option<Vec<u16>> {
+fn sony_arw_load_raw<R: Read + Seek>(width: usize, height: usize, file: &mut BitReader<R, BE>) -> Option<Vec<u16>> {
 	let mut huff = [0u16; 32770];
 	const TAB: [u16; 18] = [
 		0xf11, 0xf10, 0xe0f, 0xd0e, 0xc0d, 0xb0c, 0xa0b, 0x90a, 0x809, 0x708, 0x607, 0x506, 0x405, 0x304, 0x303, 0x300, 0x202, 0x201,
