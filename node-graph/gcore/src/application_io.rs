@@ -150,6 +150,8 @@ pub enum ExportFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AnimationConfig {
+	/// Is the animation playing?
+	pub is_playing: bool,
 	/// Frames per second of the animation
 	pub frame_rate: f64,
 	/// Time at which the render is done (with respect to animation channels)
@@ -158,7 +160,11 @@ pub struct AnimationConfig {
 
 impl Default for AnimationConfig {
 	fn default() -> Self {
-		Self { frame_rate: 30.0, time: 0.0 }
+		Self {
+			is_playing: false,
+			frame_rate: 30.0,
+			time: 0.0,
+		}
 	}
 }
 

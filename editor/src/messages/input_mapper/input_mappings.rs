@@ -55,6 +55,8 @@ pub fn input_mappings() -> Mapping {
 		// AnimationMessage
 		entry!(KeyDown(F6); action_dispatch=AnimationMessage::NextFrame),
 		entry!(KeyDown(F4); action_dispatch=AnimationMessage::Restart),
+		entry!(KeyDown(F7); action_dispatch=AnimationMessage::Play),
+		entry!(KeyDown(F9); action_dispatch=AnimationMessage::Pause),
 		//
 		// NodeGraphMessage
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),

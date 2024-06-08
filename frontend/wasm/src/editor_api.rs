@@ -177,6 +177,21 @@ impl EditorHandle {
 
 			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs(editor::consts::AUTO_SAVE_TIMEOUT_SECONDS));
 		}
+
+		// Add animation messages
+		{
+			let f = std::rc::Rc::new(RefCell::new(None));
+			let g = f.clone();
+
+			*g.borrow_mut() = Some(Closure::new(move || {
+				add_animation_frame_message();
+
+				// Schedule ourself for another setTimeout callback
+				set_timeout(f.borrow().as_ref().unwrap(), Duration::from_secs_f64(1. / 30.));
+			}));
+
+			set_timeout(g.borrow().as_ref().unwrap(), Duration::from_secs_f64(1. / 30.));
+		}
 	}
 
 	// #[wasm_bindgen(js_name = tauriResponse)]
@@ -893,6 +908,19 @@ fn auto_save_all_documents() {
 
 	editor_and_handle(|editor, handle| {
 		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
+			handle.send_frontend_message_to_js(message);
+		}
+	});
+}
+
+fn add_animation_frame_message() {
+	// Process no further messages after a crash to avoid spamming the console
+	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
+		return;
+	}
+
+	editor_and_handle(|editor, handle| {
+		for message in editor.handle_message(AnimationMessage::NextFrame) {
 			handle.send_frontend_message_to_js(message);
 		}
 	});
