@@ -199,8 +199,9 @@ impl SegmentDomain {
 	pub fn end_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {
 		self.ids.iter().copied().zip(self.end_point.iter_mut())
 	}
-	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles)> {
-		self.ids.iter().copied().zip(self.handles.iter_mut())
+	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles, PointId, PointId)> {
+		let nested = self.ids.iter().zip(&mut self.handles).zip(&self.start_point).zip(&self.end_point);
+		nested.map(|(((&a, b), &c), &d)| (a, b, c, d))
 	}
 	pub fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
 		self.ids.iter().copied().zip(self.stroke.iter_mut())
@@ -211,6 +212,12 @@ impl SegmentDomain {
 	}
 	pub fn segment_end_from_id(&self, segment: SegmentId) -> Option<PointId> {
 		self.resolve_id(segment).and_then(|index| self.end_point.get(index)).copied()
+	}
+	pub fn points_from_id(&self, segment: SegmentId) -> Option<[PointId; 2]> {
+		self.segment_start_from_id(segment).and_then(|start| self.segment_end_from_id(segment).map(|end| [start, end]))
+	}
+	pub fn other_point(&self, segment: SegmentId, current: PointId) -> Option<PointId> {
+		self.points_from_id(segment).and_then(|points| points.into_iter().find(|&point| point != current))
 	}
 
 	fn resolve_id(&self, id: SegmentId) -> Option<usize> {

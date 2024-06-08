@@ -661,14 +661,14 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_colinear_handles_state_on_selected(true, &document.metadata, &document.network, responses);
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(PathToolMessage::SelectionChanged);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_colinear_handles_state_on_selected(false, &document.metadata, &document.network, responses);
+				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}

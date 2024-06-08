@@ -75,25 +75,19 @@ impl SegmentModification {
 			}
 			*point = new;
 		}
-		for (id, handles) in segment_domain.handles_mut() {
-			let start = self.handle_primary.get(&id).copied();
-			let end = self.handle_end.get(&id).copied();
+		for (id, handles, start, end) in segment_domain.handles_mut() {
+			let Some(start) = point_domain.pos_from_id(start) else { continue };
+			let Some(end) = point_domain.pos_from_id(end) else { continue };
+			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
+			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
+
 			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
 				warn!("invalid handles");
 				continue;
 			}
 			match (start, end) {
-				(Some(Some(start)), Some(Some(end))) => {
-					*handles = BezierHandles::Cubic {
-						handle_start: handles.start().unwrap_or_default() + start,
-						handle_end: handles.end().unwrap_or_default() + end,
-					}
-				}
-				(Some(Some(delta)), Some(None)) | (Some(None), Some(Some(delta))) => {
-					*handles = BezierHandles::Quadratic {
-						handle: handles.start().unwrap_or_default() + delta,
-					}
-				}
+				(Some(Some(handle_start)), Some(Some(handle_end))) => *handles = BezierHandles::Cubic { handle_start, handle_end },
+				(Some(Some(handle)), Some(None)) | (Some(None), Some(Some(handle))) => *handles = BezierHandles::Quadratic { handle },
 				(Some(None), Some(None)) => *handles = BezierHandles::Linear,
 
 				(None, Some(None)) => {
@@ -101,37 +95,17 @@ impl SegmentModification {
 						*handles = BezierHandles::Quadratic { handle: handle_start }
 					}
 				}
-				(None, Some(Some(delta))) => match *handles {
-					BezierHandles::Linear => {
-						*handles = BezierHandles::Cubic {
-							handle_start: delta,
-							handle_end: delta,
-						}
-					}
-					BezierHandles::Quadratic { handle: start } => {
-						*handles = BezierHandles::Cubic {
-							handle_start: start,
-							handle_end: delta,
-						}
-					}
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						*handles = BezierHandles::Cubic {
-							handle_start,
-							handle_end: handle_end + delta,
-						}
-					}
+				(None, Some(Some(handle_end))) => match *handles {
+					BezierHandles::Linear => *handles = BezierHandles::Quadratic { handle: handle_end },
+					BezierHandles::Quadratic { handle: handle_start } => *handles = BezierHandles::Cubic { handle_start, handle_end },
+					BezierHandles::Cubic { handle_start, .. } => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				},
 
 				(Some(None), None) => *handles = BezierHandles::Linear,
-				(Some(Some(delta)), None) => match *handles {
-					BezierHandles::Linear => *handles = BezierHandles::Quadratic { handle: delta },
-					BezierHandles::Quadratic { handle } => *handles = BezierHandles::Quadratic { handle: handle + delta },
-					BezierHandles::Cubic { handle_start, handle_end } => {
-						*handles = BezierHandles::Cubic {
-							handle_start: handle_start + delta,
-							handle_end,
-						}
-					}
+				(Some(Some(handle_start)), None) => match *handles {
+					BezierHandles::Linear => *handles = BezierHandles::Quadratic { handle: handle_start },
+					BezierHandles::Quadratic { .. } => *handles = BezierHandles::Quadratic { handle: handle_start },
+					BezierHandles::Cubic { handle_end, .. } => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				},
 
 				(None, None) => {}
@@ -235,6 +209,8 @@ pub enum VectorModificationType {
 
 	SetG1Continous { handles: [HandleId; 2], enabled: bool },
 	SetHandles { segment: SegmentId, handles: BezierHandles },
+	SetPrimaryHandle { segment: SegmentId, pos: DVec2 },
+	SetEndHandle { segment: SegmentId, pos: DVec2 },
 	SetStartPoint { segment: SegmentId, id: PointId },
 	SetEndPoint { segment: SegmentId, id: PointId },
 
@@ -283,6 +259,12 @@ impl VectorModification {
 			VectorModificationType::SetHandles { segment, handles } => {
 				self.segments.handle_primary.insert(*segment, handles.start());
 				self.segments.handle_end.insert(*segment, handles.end());
+			}
+			VectorModificationType::SetPrimaryHandle { segment, pos } => {
+				self.segments.handle_primary.insert(*segment, Some(*pos));
+			}
+			VectorModificationType::SetEndHandle { segment, pos } => {
+				self.segments.handle_end.insert(*segment, Some(*pos));
 			}
 			VectorModificationType::SetStartPoint { segment, id } => {
 				self.segments.start_point.insert(*segment, *id);
