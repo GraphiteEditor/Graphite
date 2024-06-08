@@ -816,7 +816,8 @@ impl NodeNetwork {
 
 			// Update input/output click targets
 			let mut node_top_left = corner1;
-			let mut node_top_right = corner2;
+			// Only for non layer nodes
+			let mut node_top_right = corner1 + DVec2::new(5. * 24., 0.);
 
 			if !node.is_layer {
 				let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
@@ -833,8 +834,8 @@ impl NodeNetwork {
 					node_top_right.y += 24.;
 				}
 
-				let input_top_left = DVec2::new(-5., 8.);
-				let input_bottom_left = DVec2::new(-5., 16.);
+				let input_top_left = DVec2::new(-5., 6.);
+				let input_bottom_left = DVec2::new(-5., 18.);
 				let input_right = DVec2::new(5., 12.);
 
 				loop {
@@ -852,6 +853,7 @@ impl NodeNetwork {
 					}
 
 					if node_row_index < number_of_outputs {
+						log::debug!("node_top_right: {:?}", node_top_right);
 						let anchors = vec![input_top_left + node_top_right, input_bottom_left + node_top_right, input_right + node_top_right];
 						let stroke_width = 1.;
 						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
@@ -883,8 +885,8 @@ impl NodeNetwork {
 				self.input_click_targets.insert((node_id, 1), input_click_target);
 
 				let layer_input_top_left = DVec2::new(-5., 0.);
-				let layer_input_bottom_left = DVec2::new(-5., 10.);
-				let layer_input_bottom_right = DVec2::new(5., 10.);
+				let layer_input_bottom_left = DVec2::new(-5., 12.);
+				let layer_input_bottom_right = DVec2::new(5., 12.);
 				let layer_input_top_right = DVec2::new(5., 0.);
 				let layer_input_offset = node_top_left + DVec2::new(3. * 24., 2. * 24.);
 				let anchors = vec![
@@ -898,7 +900,8 @@ impl NodeNetwork {
 				let layer_input_click_target = ClickTarget { subpath, stroke_width };
 				self.input_click_targets.insert((node_id, 0), layer_input_click_target);
 
-				let layer_output_offset = node_top_left + DVec2::new(3. * 24., 0.);
+				// Output
+				let layer_output_offset = node_top_left + DVec2::new(3. * 24., -10.);
 				let anchors = vec![
 					layer_input_top_left + layer_output_offset,
 					layer_input_bottom_left + layer_output_offset,
@@ -994,10 +997,12 @@ impl NodeNetwork {
 		// if node_click_target is outside the current bounding box, update the bounding box
 		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
 			bounding_box.bounding_box().is_some_and(|bounding_box| {
-				self.node_click_targets[&node_id].subpath.bounding_box().is_some_and(|click_target| {
-					// Combine bounds and check if new vec is larger than current bounding box
-					let new_bounds = Quad::combine_bounds(click_target, bounding_box);
-					bounding_box != new_bounds
+				self.node_click_targets.get(&node_id).map_or(true, |click_target| {
+					click_target.subpath.bounding_box().is_some_and(|click_target| {
+						// Combine bounds and check if new vec is larger than current bounding box
+						let new_bounds = Quad::combine_bounds(click_target, bounding_box);
+						bounding_box != new_bounds
+					})
 				})
 			})
 		}) {
