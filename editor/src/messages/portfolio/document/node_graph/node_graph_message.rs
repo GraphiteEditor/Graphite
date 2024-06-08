@@ -1,3 +1,4 @@
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -76,7 +77,9 @@ pub enum NodeGraphMessage {
 		control_click: bool,
 		alt_click: bool,
 	},
-	PointerMove,
+	PointerMove {
+		shift: Key,
+	},
 	PointerUp,
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,

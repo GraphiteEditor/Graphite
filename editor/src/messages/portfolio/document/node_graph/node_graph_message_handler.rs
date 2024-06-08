@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -17,8 +17,8 @@ use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
-use glam::{DAffine2, DVec2, IVec2};
-use renderer::ClickTarget;
+use glam::{DAffine2, DVec2, IVec2, UVec2};
+use renderer::{ClickTarget, Quad};
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -40,7 +40,8 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	drag_start: Option<DVec2>,
-	box_selection_start: Option<DVec2>,
+	// Stored in pixel coordinates
+	box_selection_start: Option<UVec2>,
 	disconnecting: Option<(NodeId, usize)>,
 	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
 	wire_in_progress_from_connector: Option<(DVec2, bool)>,
@@ -507,13 +508,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if let Some(clicked_input) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point) {
 					log::debug!("Clicked input: {} index: {}", clicked_input.0, clicked_input.1);
-					let Some(clicked_node) = network.nodes.get(&clicked_input.0) else {
-						log::error!("Could not find node {}", clicked_input.0);
-						return;
-					};
-
 					let input_index = NodeGraphMessageHandler::get_input_index(network, clicked_input.0, clicked_input.1);
-					if let Some(NodeInput::Node { node_id, output_index, .. }) = clicked_node.inputs.get(input_index) {
+					if let Some(NodeInput::Node { node_id, output_index, .. }) = network
+						.nodes
+						.get(&clicked_input.0)
+						.and_then(|clicked_node| clicked_node.inputs.get(input_index))
+						.or(network.exports.get(input_index))
+					{
 						self.disconnecting = Some((clicked_input.0, clicked_input.1));
 						log::debug!("node_id: {node_id}, output_index: {output_index}");
 						let Some(output_node) = network.nodes.get(&node_id) else {
@@ -526,7 +527,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								true,
 							))
 						} else {
-							// The 4.95 is to ensure wire generated from Rust aligns with the frontend wire when the mouse is moved within a node connector, but the wire is not disconnected yet. Eventually all wires should be generated in Rust so that all positions will be aligned.
+							// The 4.95 is to ensure wire generated here aligns with the frontend wire when the mouse is moved within a node connector, but the wire is not disconnected yet. Eventually all wires should be generated in Rust so that all positions will be aligned.
 							Some((
 								DVec2::new(
 									output_node.metadata.position.x as f64 * 24. + 5. * 24. + 4.95,
@@ -552,7 +553,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						Some((
 							DVec2::new(
 								clicked_output_node.metadata.position.x as f64 * 24. + 3. * 24.,
-								clicked_output_node.metadata.position.y as f64 * 24. - 10.,
+								clicked_output_node.metadata.position.y as f64 * 24. - 12.,
 							),
 							true,
 						))
@@ -609,10 +610,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if !shift_click {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
-				self.box_selection_start = Some(point);
+				self.box_selection_start = Some(UVec2::new(viewport_location.x.round().abs() as u32, viewport_location.y.round().abs() as u32));
 			}
 			//TODO: Alt+drag should move all upstream nodes as well
-			NodeGraphMessage::PointerMove => {
+			NodeGraphMessage::PointerMove { shift } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
@@ -700,7 +701,34 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						self.drag_start = Some(rounded_graph_coordinates);
 					}
 				} else if let Some(box_selection_start) = self.box_selection_start {
-					// TODO: Box selection
+					let box_selection = Some(BoxSelection {
+						start_x: box_selection_start.x,
+						start_y: box_selection_start.y,
+						end_x: viewport_location.x.round().abs() as u32,
+						end_y: viewport_location.y.round().abs() as u32,
+					});
+
+					let graph_start = network.node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
+
+					// TODO: Only loop through visible nodes
+					let shift = ipp.keyboard.get(shift as usize);
+					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
+					for node_id in network
+						.nodes
+						.iter()
+						.map(|(node_id, _)| node_id)
+						.chain(vec![network.exports_metadata.0, network.imports_metadata.0].iter())
+					{
+						if network
+							.node_click_targets
+							.get(&node_id)
+							.is_some_and(|click_target| click_target.intersect_rectangle(Quad::from_box([graph_start, point]), DAffine2::IDENTITY))
+						{
+							nodes.push(*node_id);
+						}
+					}
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -738,7 +766,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				responses.add(FrontendMessage::UpdateBox { box_selection: None })
 			}
+
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");

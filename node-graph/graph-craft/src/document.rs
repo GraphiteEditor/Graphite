@@ -668,20 +668,15 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
-	/// Cache for all node click targets in node graph space. This should only be modified through the setter methods for the private [`DocumentNode`] fields, which will call methods to update this cache.
-	#[serde(skip)]
+	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
 	pub node_click_targets: HashMap<NodeId, ClickTarget>,
-	/// Cache for all node inputs. Should be automatically updated when
-	#[serde(skip)]
+	/// Cache for all node inputs. Should be automatically updated when update_click_target is called
 	pub input_click_targets: HashMap<(NodeId, usize), ClickTarget>,
-	/// Cache for all node outputs
-	#[serde(skip)]
+	/// Cache for all node outputs. Should be automatically updated when update_click_target is called
 	pub output_click_targets: HashMap<(NodeId, usize), ClickTarget>,
-	/// Cache for all visibility buttons
-	#[serde(skip)]
+	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
 	pub visibility_click_targets: HashMap<NodeId, ClickTarget>,
 	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
-	#[serde(skip)]
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
 	/// Transform from node graph space to viewport space.
 	#[serde(default)]
@@ -901,7 +896,7 @@ impl NodeNetwork {
 				self.input_click_targets.insert((node_id, 0), layer_input_click_target);
 
 				// Output
-				let layer_output_offset = node_top_left + DVec2::new(3. * 24., -10.);
+				let layer_output_offset = node_top_left + DVec2::new(3. * 24., -12.);
 				let anchors = vec![
 					layer_input_top_left + layer_output_offset,
 					layer_input_bottom_left + layer_output_offset,
@@ -1017,10 +1012,10 @@ impl NodeNetwork {
 
 	//TODO: Store click target information in file format
 	pub fn update_all_click_targets(&mut self) {
-		let node_ids = self.nodes.clone();
-		for (node_id, _) in node_ids {
-			self.update_click_target(node_id);
-		}
+		// let node_ids = self.nodes.clone();
+		// for (node_id, _) in node_ids {
+		// 	self.update_click_target(node_id);
+		// }
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph

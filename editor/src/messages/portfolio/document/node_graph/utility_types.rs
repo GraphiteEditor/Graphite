@@ -127,3 +127,15 @@ pub struct WirePath {
 	pub thick: bool,
 	pub dashed: bool,
 }
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct BoxSelection {
+	#[serde(rename = "startX")]
+	pub start_x: u32,
+	#[serde(rename = "startY")]
+	pub start_y: u32,
+	#[serde(rename = "endX")]
+	pub end_x: u32,
+	#[serde(rename = "endY")]
+	pub end_y: u32,
+}

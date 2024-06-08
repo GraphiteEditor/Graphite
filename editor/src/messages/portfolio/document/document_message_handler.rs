@@ -1259,9 +1259,11 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn serialize_document(&self) -> String {
+		log::debug!("serialize_document: {self:#?}");
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
-		val.unwrap()
+		//val.unwrap()
+		"{}".to_string()
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {

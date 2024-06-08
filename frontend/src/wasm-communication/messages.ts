@@ -25,6 +25,10 @@ export type XY = { x: number; y: number };
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
+export class UpdateBox extends JsMessage {
+	readonly box!: Box | undefined;
+}
+
 export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
@@ -90,6 +94,13 @@ export abstract class DocumentDetails {
 
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
+}
+
+export class Box {
+	readonly startX!: number;
+	readonly startY!: number;
+	readonly endX!: number;
+	readonly endY!: number;
 }
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
@@ -1341,6 +1352,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
+	UpdateBox,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,

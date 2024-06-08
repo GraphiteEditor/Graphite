@@ -2,10 +2,12 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
+	type Box,
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
+	UpdateBox,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
@@ -19,6 +21,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
+		box: undefined as Box | undefined,
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -31,6 +34,12 @@ export function createNodeGraphState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
+	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
+		update((state) => {
+			state.box = updateBox.box;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;

@@ -6,7 +6,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath, Box } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -34,7 +34,6 @@
 
 	let panning = false;
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
-	type Box = { startX: number; startY: number; endX: number; endY: number };
 	let boxSelection: Box | undefined = undefined;
 	let previousSelection: bigint[] = [];
 	let selectIfNotDragged: undefined | bigint = undefined;
@@ -552,7 +551,7 @@
 	}
 
 	function showSelected(selected: bigint[], boxSelect: Box | undefined, node: bigint, nodeIndex: number): boolean {
-		return selected.includes(node); // || intersetNodeAABB(boxSelect, nodeIndex);
+		return selected.includes(node); //|| intersetNodeAABB(boxSelect, nodeIndex);
 	}
 
 	function toggleNodeVisibilityGraph(id: bigint) {
@@ -873,7 +872,7 @@
 			{@const labelWidthGridCells = Math.ceil(((layerNameLabelWidths?.[String(node.id)] || 0) - extraWidthToReachGridMultiple) / 24)}
 			<div
 				class="layer"
-				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
+				class:selected={showSelected($nodeGraph.selected, $nodeGraph.box, node.id, nodeIndex)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
@@ -997,7 +996,7 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
-				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
+				class:selected={showSelected($nodeGraph.selected, $nodeGraph.box, node.id, nodeIndex)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
@@ -1128,13 +1127,13 @@
 </div>
 
 <!-- Box select widget -->
-{#if boxSelection}
+{#if $nodeGraph.box}
 	<div
 		class="box-selection"
-		style:left={`${Math.min(boxSelection.startX, boxSelection.endX)}px`}
-		style:top={`${Math.min(boxSelection.startY, boxSelection.endY)}px`}
-		style:width={`${Math.abs(boxSelection.startX - boxSelection.endX)}px`}
-		style:height={`${Math.abs(boxSelection.startY - boxSelection.endY)}px`}
+		style:left={`${Math.min($nodeGraph.box.startX, $nodeGraph.box.endX)}px`}
+		style:top={`${Math.min($nodeGraph.box.startY, $nodeGraph.box.endY)}px`}
+		style:width={`${Math.abs($nodeGraph.box.startX - $nodeGraph.box.endX)}px`}
+		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
 	></div>
 {/if}
 
