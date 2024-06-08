@@ -64,7 +64,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				}
 			}
 			PortfolioMessage::Animation(message) => {
-				log::debug!("241241");
 				if let Some(document_id) = self.active_document_id {
 					if let Some(document) = self.documents.get_mut(&document_id) {
 						if let Some(animation_handler) = self.animation_handlers.get_mut(&document_id) {

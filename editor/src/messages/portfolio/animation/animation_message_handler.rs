@@ -21,16 +21,31 @@ impl MessageHandler<AnimationMessage, AnimationMessageData<'_>> for AnimationMes
 			ipp,
 		} = data;
 		match message {
-			AnimationMessage::Play => {
-				log::debug!("Playing animation...");
-				log::debug!("Animation time: {}", persistent_data.animation.time);
-				persistent_data.animation.time = 1.0;
-				executor.submit_node_graph_evaluation_with_animation(document, ipp.viewport_bounds.size().as_uvec2(), persistent_data.animation);
+			AnimationMessage::Restart => {
+				persistent_data.animation.time = 0.;
+				let result = executor.submit_node_graph_evaluation_with_animation(document, ipp.viewport_bounds.size().as_uvec2(), persistent_data.animation);
+				if let Err(description) = result {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Unable to update node graph".to_string(),
+						description,
+					});
+				}
 			}
-			AnimationMessage::Pause => {
+			AnimationMessage::NextFrame => {
+				persistent_data.animation.time += 1. / persistent_data.animation.frame_rate as f64;
+				log::debug!("Animation time: {}", persistent_data.animation.time);
+				let result = executor.submit_node_graph_evaluation_with_animation(document, ipp.viewport_bounds.size().as_uvec2(), persistent_data.animation);
+				if let Err(description) = result {
+					responses.add(DialogMessage::DisplayDialogError {
+						title: "Unable to update node graph".to_string(),
+						description,
+					});
+				}
+			}
+			AnimationMessage::Play => {
 				todo!()
 			}
-			AnimationMessage::Restart => {
+			AnimationMessage::Pause => {
 				todo!()
 			}
 		}
@@ -38,6 +53,7 @@ impl MessageHandler<AnimationMessage, AnimationMessageData<'_>> for AnimationMes
 
 	fn actions(&self) -> ActionList {
 		let common = actions!(AnimationMessageDiscriminant;
+			NextFrame,
 			Play,
 			Pause,
 			Restart,
