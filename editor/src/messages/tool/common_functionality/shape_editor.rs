@@ -382,6 +382,10 @@ impl ShapeState {
 		self.selected_shape_state.values().flat_map(|state| &state.selected_points)
 	}
 
+	pub fn selected_points_in_layer(&self, layer: LayerNodeIdentifier) -> Option<&HashSet<ManipulatorPointId>> {
+		self.selected_shape_state.get(&layer).map(|state| &state.selected_points)
+	}
+
 	pub fn move_primary(&self, segment: SegmentId, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		responses.add(GraphOperationMessage::Vector {
 			layer,

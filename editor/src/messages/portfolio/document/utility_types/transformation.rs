@@ -12,13 +12,33 @@ use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::PointId;
+use graphene_std::vector::{HandleId, PointId};
 use std::collections::{HashMap, VecDeque};
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct AnchorPoint {
+	initial: DVec2,
+	current: DVec2,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct HandlePoint {
+	initial: DVec2,
+	relative: DVec2,
+	anchor: PointId,
+	mirror: Option<(HandleId, DVec2)>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct InitialPoints {
+	anchors: HashMap<PointId, AnchorPoint>,
+	handles: HashMap<HandleId, HandlePoint>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum OriginalTransforms {
 	Layer(HashMap<LayerNodeIdentifier, DAffine2>),
-	Path(HashMap<LayerNodeIdentifier, Vec<(PointId, DVec2)>>),
+	Path(HashMap<LayerNodeIdentifier, InitialPoints>),
 }
 impl Default for OriginalTransforms {
 	fn default() -> Self {
@@ -45,36 +65,43 @@ impl OriginalTransforms {
 				}
 			}
 			OriginalTransforms::Path(path_map) => {
+				let Some(shape_editor) = shape_editor else {
+					warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
+					return;
+				};
 				for &layer in selected {
-					// let Some(shape_editor) = shape_editor else {
-					// 	warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
-					// 	continue;
-					// };
-					// // Anchors also move their handles
-					// let expand_anchors = |&point: &ManipulatorPointId| {
-					// 	if point.manipulator_type.is_handle() {
-					// 		[Some(point), None, None]
-					// 	} else {
-					// 		[
-					// 			Some(point),
-					// 			Some(ManipulatorPointId::new(point.group, SelectedType::InHandle)),
-					// 			Some(ManipulatorPointId::new(point.group, SelectedType::OutHandle)),
-					// 		]
-					// 	}
-					// };
-					// let points = shape_editor.selected_points().flat_map(expand_anchors).flatten();
-					// if path_map.contains_key(&layer) {
-					// 	continue;
-					// }
-					// let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document_network) else {
-					// 	continue;
-					// };
-					// let get_manipulator_point_position = |point_id: ManipulatorPointId| {
-					// 	graph_modification_utils::get_manipulator_from_id(vector_data, point_id.group)
-					// 		.and_then(|manipulator_group| point_id.manipulator_type.get_position(manipulator_group))
-					// 		.map(|position| (point_id, position))
-					// };
-					// path_map.insert(layer, points.filter_map(get_manipulator_point_position).collect());
+					if path_map.contains_key(&layer) {
+						continue;
+					}
+					let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+						continue;
+					};
+					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else { continue };
+					// Anchors also move their handles
+					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
+					let anchors = anchor_ids.filter_map(|id| vector_data.point_domain.pos_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
+					let anchors = anchors.collect();
+
+					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
+					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
+					let connected_handles = anchor_ids.flat_map(|point| vector_data.segment_domain.all_connected(point));
+					let all_handles = selected_handles.chain(connected_handles);
+
+					let handles = all_handles
+						.filter_map(|id| {
+							let anchor = id.to_point().get_anchor(&vector_data)?;
+							let initial = id.to_point().get_position(&vector_data)?;
+							let relative = vector_data.point_domain.pos_from_id(anchor)?;
+							let other_handle = id.to_point().get_handle_pair(&vector_data).map(|[_, other]| other);
+							let other_handle = other_handle.filter(|other| !selected_points.contains(&other.to_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
+							let mirror = other_handle.and_then(|id| Some((id, id.to_point().get_position(&vector_data)?)));
+
+							Some((id, HandlePoint { initial, relative, anchor, mirror }))
+						})
+						.collect();
+
+					let get_manipulator_point_position = |point_id: ManipulatorPointId| point_id.get_position(&vector_data).map(|position| (point_id, position));
+					path_map.insert(layer, InitialPoints { anchors, handles });
 				}
 			}
 		}
@@ -384,24 +411,28 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: Option<&Vec<(PointId, DVec2)>>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
+	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: &mut InitialPoints, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
-		let Some(initial_points) = initial_points else {
-			return;
-		};
-
-		for &(point, position) in initial_points {
-			let viewport_point = viewspace.transform_point2(position);
-			let new_pos_viewport = layerspace_rotation.transform_point2(viewport_point);
-			let delta = new_pos_viewport;
-			let modification = VectorModificationType::ApplyPointDelta { point, delta };
-
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: modification,
-			});
+		for (&point, anchor) in initial_points.anchors.iter_mut() {
+			let new_pos_viewport = layerspace_rotation.transform_point2(viewspace.transform_point2(anchor.initial));
+			let delta = new_pos_viewport - anchor.current;
+			anchor.current += delta;
+			let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+		for (&id, handle) in initial_points.handles.iter() {
+			let new_pos_viewport = layerspace_rotation.transform_point2(viewspace.transform_point2(handle.initial));
+			let relative = initial_points.anchors.get(&handle.anchor).map_or(handle.relative, |anchor| anchor.current);
+			let modification_type = id.set_pos(new_pos_viewport - relative);
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			if let Some((id, initial)) = handle.mirror {
+				let direction = (new_pos_viewport - relative).try_normalize();
+				let new_relative = direction.map_or(initial - relative, |direction| -direction * (initial - relative).length());
+				let modification_type = id.set_pos(new_relative);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
 		}
 	}
 
@@ -411,9 +442,13 @@ impl<'a> Selected<'a> {
 			for layer_ancestors in self.document_metadata.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
 
-				match &self.original_transforms {
+				match &mut self.original_transforms {
 					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
-					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Path(path_transforms) => {
+						if let Some(initial_points) = path_transforms.get_mut(&layer) {
+							Self::transform_path(self.document_metadata, layer, initial_points, transformation, self.responses)
+						}
+					}
 				}
 			}
 		}
@@ -440,11 +475,18 @@ impl<'a> Selected<'a> {
 				}
 				OriginalTransforms::Path(path) => {
 					for (&layer, points) in path {
-						for &(point, delta) in points {
-							self.responses.add(GraphOperationMessage::Vector {
-								layer,
-								modification_type: VectorModificationType::ApplyPointDelta { point, delta },
-							});
+						for (&point, &anchor) in &points.anchors {
+							let delta = anchor.initial - anchor.current;
+							let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
+							self.responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+						for (&point, &handle) in &points.handles {
+							let modification_type = point.set_pos(handle.initial - handle.relative);
+							self.responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							if let Some((id, initial)) = handle.mirror {
+								let modification_type = id.set_pos(initial - handle.relative);
+								self.responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
 						}
 					}
 				}

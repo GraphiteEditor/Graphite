@@ -239,6 +239,12 @@ impl ManipulatorPointId {
 			ManipulatorPointId::Anchor(_) => None,
 		}
 	}
+	pub fn as_anchor(self) -> Option<PointId> {
+		match self {
+			ManipulatorPointId::Anchor(point) => Some(point),
+			_ => None,
+		}
+	}
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -274,6 +280,14 @@ impl HandleId {
 		match ty {
 			HandleType::Primary => VectorModificationType::ApplyPrimaryDelta { segment, delta },
 			HandleType::End => VectorModificationType::ApplyEndDelta { segment, delta },
+		}
+	}
+	#[must_use]
+	pub fn set_pos(self, pos: DVec2) -> VectorModificationType {
+		let Self { ty, segment } = self;
+		match ty {
+			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, pos },
+			HandleType::End => VectorModificationType::SetEndHandle { segment, pos },
 		}
 	}
 	#[must_use]
