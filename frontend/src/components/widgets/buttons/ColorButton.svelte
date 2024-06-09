@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { FillColorChoice } from "@graphite/wasm-communication/messages";
+	import type { FillChoice } from "@graphite/wasm-communication/messages";
 	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ value: FillColorChoice; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
 	let open = false;
 
-	export let value: FillColorChoice;
+	export let value: FillChoice;
 	export let disabled = false;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement

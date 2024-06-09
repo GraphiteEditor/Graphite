@@ -3,7 +3,7 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB, type FillColorChoice } from "@graphite/wasm-communication/messages";
+	import { type HSV, type RGB, type FillChoice } from "@graphite/wasm-communication/messages";
 	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -32,9 +32,9 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillColorChoice; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
 
-	export let colorOrGradient: FillColorChoice;
+	export let colorOrGradient: FillChoice;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";

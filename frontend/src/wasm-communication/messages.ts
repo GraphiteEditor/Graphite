@@ -759,7 +759,7 @@ export class ColorButton extends WidgetProps {
 
 		return new Color("none");
 	})
-	value!: FillColorChoice;
+	value!: FillChoice;
 
 	disabled!: boolean;
 
@@ -771,7 +771,7 @@ export class ColorButton extends WidgetProps {
 	tooltip!: string | undefined;
 }
 
-export type FillColorChoice = Color | Gradient;
+export type FillChoice = Color | Gradient;
 
 type MenuEntryCommon = {
 	label: string;

@@ -319,14 +319,14 @@ impl From<Gradient> for Fill {
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type)]
-pub enum FillColorChoice {
+pub enum FillChoice {
 	#[default]
 	None,
 	Solid(Color),
 	Gradient(GradientStops),
 }
 
-impl FillColorChoice {
+impl FillChoice {
 	pub fn from_optional_color(color: Option<Color>) -> Self {
 		match color {
 			Some(color) => Self::Solid(color),
@@ -344,8 +344,8 @@ impl FillColorChoice {
 		Some(gradient)
 	}
 
-	/// Convert this [`FillColorChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
-	/// If a gradient isn't provided, default gradient positional information is used in cases where the [`FillColorChoice`] is a [`Gradient`].
+	/// Convert this [`FillChoice`] to a [`Fill`] using the provided [`Gradient`] as a base for the positional information of the gradient.
+	/// If a gradient isn't provided, default gradient positional information is used in cases where the [`FillChoice`] is a [`Gradient`].
 	pub fn to_fill(&self, existing_gradient: Option<&Gradient>) -> Fill {
 		match self {
 			Self::None => Fill::None,
@@ -359,12 +359,12 @@ impl FillColorChoice {
 	}
 }
 
-impl From<Fill> for FillColorChoice {
+impl From<Fill> for FillChoice {
 	fn from(fill: Fill) -> Self {
 		match fill {
-			Fill::None => FillColorChoice::None,
-			Fill::Solid(color) => FillColorChoice::Solid(color),
-			Fill::Gradient(gradient) => FillColorChoice::Gradient(gradient.stops),
+			Fill::None => FillChoice::None,
+			Fill::Solid(color) => FillChoice::Solid(color),
+			Fill::Gradient(gradient) => FillChoice::Gradient(gradient.stops),
 		}
 	}
 }

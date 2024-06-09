@@ -16,7 +16,7 @@ use graphene_core::raster::{
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
-use graphene_std::vector::style::{Fill, FillColorChoice};
+use graphene_std::vector::style::{Fill, FillChoice};
 
 use glam::{DVec2, IVec2, UVec2};
 use graphene_std::vector::misc::BooleanOperation;
@@ -706,7 +706,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 	match tagged_value {
 		TaggedValue::Color(color) => widgets.push(
 			color_props
-				.value(FillColorChoice::Solid(*color))
+				.value(FillChoice::Solid(*color))
 				.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.as_solid().unwrap_or_default()), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
@@ -714,8 +714,8 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 		TaggedValue::OptionalColor(color) => widgets.push(
 			color_props
 				.value(match color {
-					Some(color) => FillColorChoice::Solid(*color),
-					None => FillColorChoice::None,
+					Some(color) => FillChoice::Solid(*color),
+					None => FillChoice::None,
 				})
 				.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value.as_solid()), node_id, index))
 				.on_commit(commit_value)
@@ -723,7 +723,7 @@ fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, nam
 		),
 		TaggedValue::GradientStops(ref x) => widgets.push(
 			color_props
-				.value(FillColorChoice::Gradient(x.clone()))
+				.value(FillChoice::Gradient(x.clone()))
 				.on_update(update_value(
 					|x: &ColorButton| TaggedValue::GradientStops(x.value.as_gradient().cloned().unwrap_or_default()),
 					node_id,

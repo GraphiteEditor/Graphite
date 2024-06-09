@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 
 use graphene_core::raster::color::Color;
 use graphene_core::text::Font;
-use graphene_std::vector::style::{FillColorChoice, GradientStops};
+use graphene_std::vector::style::{FillChoice, GradientStops};
 
 use serde_json::Value;
 
@@ -104,13 +104,13 @@ impl LayoutMessageHandler {
 							// None
 							let is_none = update_value.get("none").and_then(|x| x.as_bool());
 							if is_none == Some(true) {
-								color_button.value = FillColorChoice::None;
+								color_button.value = FillChoice::None;
 								return (color_button.on_update.callback)(color_button);
 							}
 
 							// Solid
 							if let Some(color) = decode_color(update_value) {
-								color_button.value = FillColorChoice::Solid(color);
+								color_button.value = FillChoice::Solid(color);
 								return (color_button.on_update.callback)(color_button);
 							}
 
@@ -135,7 +135,7 @@ impl LayoutMessageHandler {
 									})
 									.collect::<Vec<_>>();
 
-								color_button.value = FillColorChoice::Gradient(GradientStops(gradient_stops));
+								color_button.value = FillChoice::Gradient(GradientStops(gradient_stops));
 								return (color_button.on_update.callback)(color_button);
 							}
 
