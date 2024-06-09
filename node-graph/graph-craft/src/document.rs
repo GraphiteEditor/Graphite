@@ -94,7 +94,7 @@ pub enum OldNodeInput {
 }
 
 // TODO: Eventually remove this (probably starting late 2024)
-use serde::{de, Deserialize};
+use serde::Deserialize;
 fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
 	D: serde::Deserializer<'de>,

@@ -110,6 +110,13 @@ impl FrontendNodeType {
 		}
 	}
 }
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DragStart {
+	pub start_x: f64,
+	pub start_y: f64,
+	pub round_x: i32,
+	pub round_y: i32,
+}
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Transform {

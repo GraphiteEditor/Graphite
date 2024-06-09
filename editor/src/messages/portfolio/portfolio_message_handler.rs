@@ -40,14 +40,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::MenuBar(message) => {
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
+				let mut node_graph_open = false;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
+					node_graph_open = document.is_graph_overlay_open();
 				}
-
-				self.menu_bar_message_handler
-					.process_message(message, responses, MenuBarMessageData { has_active_document, rulers_visible });
+				log::debug!("node_graph_open: {node_graph_open}");
+				self.menu_bar_message_handler.process_message(
+					message,
+					responses,
+					MenuBarMessageData {
+						has_active_document,
+						rulers_visible,
+						node_graph_open,
+					},
+				);
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {

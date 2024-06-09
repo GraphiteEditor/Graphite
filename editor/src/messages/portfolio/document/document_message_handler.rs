@@ -175,7 +175,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let data = NavigationMessageData {
 					metadata: &self.metadata,
 					ipp,
-					selection_bounds: self.selected_visible_layers_bounding_box_viewport(),
+					selection_bounds: if self.graph_view_overlay_open {
+						self.selected_nodes_bounding_box_viewport()
+					} else {
+						self.selected_visible_layers_bounding_box_viewport()
+					},
 					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					document_network: &self.network,
@@ -375,7 +379,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
-
+				// Update the tilt menu bar buttons to be disabled when the graph is open
+				responses.add(MenuBarMessage::SendLayout);
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
@@ -1106,7 +1111,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 2. });
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
+				let bounds = if self.graph_view_overlay_open {
+					self.network.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box())
+				} else {
+					self.metadata().document_bounds_document_space(true)
+				};
+				if let Some(bounds) = bounds {
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
@@ -1240,6 +1250,25 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_visible_layers(self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.reduce(graphene_core::renderer::Quad::combine_bounds)
+	}
+
+	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in viewport space
+	pub fn selected_nodes_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+			log::error!("Could not get nested network in selected_nodes_bounding_box_viewport");
+			return None;
+		};
+
+		self.selected_nodes
+			.selected_nodes(network)
+			.filter_map(|node| {
+				let Some(click_target) = self.network.node_click_targets.get(node) else {
+					log::debug!("Could not get click target for node {node}");
+					return None;
+				};
+				click_target.subpath.bounding_box_with_transform(network.node_graph_to_viewport)
+			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 

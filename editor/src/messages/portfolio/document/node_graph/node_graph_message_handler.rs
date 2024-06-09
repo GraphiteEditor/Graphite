@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -39,10 +39,12 @@ pub struct NodeGraphMessageHandler {
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
-	drag_start: Option<DVec2>,
+	drag_start: Option<DragStart>,
 	// Stored in pixel coordinates
 	box_selection_start: Option<UVec2>,
 	disconnecting: Option<(NodeId, usize)>,
+	// Node to select on pointer up if multiple nodes are selected and they were not dragged
+	select_if_not_dragged: Option<NodeId>,
 	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
 	wire_in_progress_from_connector: Option<(DVec2, bool)>,
 	// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
@@ -584,7 +586,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						if let Some(index) = index {
 							updated_selected.remove(index);
 						}
-						// Add to selection if not already selected
+						// Add to selection if not already selected. Necessary in order to drag multiple nodes
 						else {
 							updated_selected.push(clicked_id);
 						};
@@ -594,14 +596,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						modified_selected = true;
 						updated_selected = vec![clicked_id];
 					}
-
+					// Replace selection (of multiple nodes including this one) with just this one, but only upon pointer up if the user didn't drag the selected nodes
+					else {
+						self.select_if_not_dragged = Some(clicked_id);
+					}
 					if modified_selected {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
-					let grid_coordinates = DVec2::new((point.x / 24.).round(), (point.y / 24.).round());
-					let rounded_graph_coordinates = grid_coordinates * 24.;
+					let drag_start = DragStart {
+						start_x: point.x,
+						start_y: point.y,
+						round_x: 0,
+						round_y: 0,
+					};
 
-					self.drag_start = Some(rounded_graph_coordinates);
+					self.drag_start = Some(drag_start);
 
 					return;
 				}
@@ -618,7 +627,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				let viewport_location = ipp.mouse.position;
-				let mut point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() {
 					if let Some((to_connector_node_position, is_layer, input_index)) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point)
@@ -688,17 +697,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
-				} else if let Some(drag_start) = self.drag_start {
-					point = point / 24.;
-					let grid_coordinates = DVec2::new(point.x.round(), point.y.round());
-					let rounded_graph_coordinates = grid_coordinates * 24.;
-					if drag_start != rounded_graph_coordinates {
-						let displacement = (rounded_graph_coordinates - drag_start) / 24.;
+				} else if let Some(drag_start) = &mut self.drag_start {
+					let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					if drag_start.round_x != graph_delta.x || drag_start.round_y != graph_delta.y {
 						responses.add(NodeGraphMessage::MoveSelectedNodes {
-							displacement_x: displacement.x as i32,
-							displacement_y: displacement.y as i32,
+							displacement_x: graph_delta.x - drag_start.round_x,
+							displacement_y: graph_delta.y - drag_start.round_y,
 						});
-						self.drag_start = Some(rounded_graph_coordinates);
+						drag_start.round_x = graph_delta.x;
+						drag_start.round_y = graph_delta.y;
 					}
 				} else if let Some(box_selection_start) = self.box_selection_start {
 					let box_selection = Some(BoxSelection {
@@ -727,6 +734,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							nodes.push(*node_id);
 						}
 					}
+					log::debug!("updating box");
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
@@ -761,8 +769,29 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					else {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
+				} else if let Some(drag_start) = &self.drag_start {
+					// Only select clicked node if multiple are selected and they were not dragged
+					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
+						let viewport_location = ipp.mouse.position;
+						let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+						if drag_start.start_x == point.x
+							&& drag_start.start_y == point.y
+							&& (selected_nodes.selected_nodes_ref().len() != 1
+								|| selected_nodes
+									.selected_nodes_ref()
+									.get(0)
+									.is_some_and(|first_selected_node| *first_selected_node != select_if_not_dragged))
+						{
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![select_if_not_dragged] })
+						}
+					}
+
+					//check_insert_between
+
+					self.select_if_not_dragged = None
 				}
 				self.drag_start = None;
+				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
@@ -2064,6 +2093,7 @@ impl Default for NodeGraphMessageHandler {
 			drag_start: None,
 			box_selection_start: None,
 			disconnecting: None,
+			select_if_not_dragged: None,
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 		}
