@@ -12,7 +12,7 @@ use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
-use graphene_core::vector::style::{Fill, FillType, Stroke};
+use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Type;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::ManipulatorPointId;
@@ -538,23 +538,24 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn fill_set(&mut self, fill: Fill) {
+		let fill_index = 1;
+		let backup_color_index = 2;
+		let backup_gradient_index = 3;
+
 		self.modify_inputs("Fill", false, |inputs, _node_id, _metadata| {
-			let fill_type = match fill {
-				Fill::None | Fill::Solid(_) => FillType::Solid,
-				Fill::Gradient(_) => FillType::Gradient,
-			};
-			inputs[1] = NodeInput::value(TaggedValue::FillType(fill_type), false);
-			if Fill::None == fill {
-				inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
-			} else if let Fill::Solid(color) = fill {
-				inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
-			} else if let Fill::Gradient(gradient) = fill {
-				inputs[3] = NodeInput::value(TaggedValue::GradientType(gradient.gradient_type), false);
-				inputs[4] = NodeInput::value(TaggedValue::DVec2(gradient.start), false);
-				inputs[5] = NodeInput::value(TaggedValue::DVec2(gradient.end), false);
-				inputs[6] = NodeInput::value(TaggedValue::DAffine2(gradient.transform), false);
-				inputs[7] = NodeInput::value(TaggedValue::GradientPositions(gradient.positions), false);
+			match &fill {
+				Fill::None => {
+					inputs[backup_color_index] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+				}
+				Fill::Solid(color) => {
+					inputs[backup_color_index] = NodeInput::value(TaggedValue::OptionalColor(Some(*color)), false);
+				}
+				Fill::Gradient(gradient) => {
+					inputs[backup_gradient_index] = NodeInput::value(TaggedValue::Gradient(gradient.clone()), false);
+				}
 			}
+
+			inputs[fill_index] = NodeInput::value(TaggedValue::Fill(fill), false);
 		});
 	}
 

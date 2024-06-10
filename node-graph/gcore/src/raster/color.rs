@@ -265,6 +265,9 @@ impl Color {
 	pub const RED: Color = Color::from_rgbf32_unchecked(1., 0., 0.);
 	pub const GREEN: Color = Color::from_rgbf32_unchecked(0., 1., 0.);
 	pub const BLUE: Color = Color::from_rgbf32_unchecked(0., 0., 1.);
+	pub const YELLOW: Color = Color::from_rgbf32_unchecked(1., 1., 0.);
+	pub const CYAN: Color = Color::from_rgbf32_unchecked(0., 1., 1.);
+	pub const MAGENTA: Color = Color::from_rgbf32_unchecked(1., 0., 1.);
 	pub const TRANSPARENT: Color = Self {
 		red: 0.,
 		green: 0.,

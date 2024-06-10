@@ -141,7 +141,7 @@ impl DocumentToolData {
 			},
 			LayoutGroup::Row {
 				widgets: vec![
-					IconButton::new("Swap", 16)
+					IconButton::new("SwapVertical", 16)
 						.tooltip("Swap")
 						.tooltip_shortcut(action_keys!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())

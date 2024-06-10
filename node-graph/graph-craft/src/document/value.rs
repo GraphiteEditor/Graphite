@@ -59,8 +59,11 @@ pub enum TaggedValue {
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
+	FillChoice(graphene_core::vector::style::FillChoice),
+	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	GradientPositions(Vec<(f64, graphene_core::Color)>),
+	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias (probably starting late 2024)
+	GradientStops(graphene_core::vector::style::GradientStops),
 	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	ManipulatorGroupIds(Vec<graphene_core::uuid::ManipulatorGroupId>),
@@ -130,10 +133,12 @@ impl Hash for TaggedValue {
 			Self::LineCap(x) => x.hash(state),
 			Self::LineJoin(x) => x.hash(state),
 			Self::FillType(x) => x.hash(state),
+			Self::FillChoice(x) => x.hash(state),
+			Self::Gradient(x) => x.hash(state),
 			Self::GradientType(x) => x.hash(state),
-			Self::GradientPositions(x) => {
-				x.len().hash(state);
-				for (position, color) in x {
+			Self::GradientStops(x) => {
+				x.0.len().hash(state);
+				for (position, color) in &x.0 {
 					position.to_bits().hash(state);
 					color.hash(state);
 				}
@@ -208,8 +213,10 @@ impl<'a> TaggedValue {
 			TaggedValue::LineCap(x) => Box::new(x),
 			TaggedValue::LineJoin(x) => Box::new(x),
 			TaggedValue::FillType(x) => Box::new(x),
+			TaggedValue::FillChoice(x) => Box::new(x),
+			TaggedValue::Gradient(x) => Box::new(x),
 			TaggedValue::GradientType(x) => Box::new(x),
-			TaggedValue::GradientPositions(x) => Box::new(x),
+			TaggedValue::GradientStops(x) => Box::new(x),
 			TaggedValue::Quantization(x) => Box::new(x),
 			TaggedValue::OptionalColor(x) => Box::new(x),
 			TaggedValue::ManipulatorGroupIds(x) => Box::new(x),
@@ -287,8 +294,10 @@ impl<'a> TaggedValue {
 			TaggedValue::LineCap(_) => concrete!(graphene_core::vector::style::LineCap),
 			TaggedValue::LineJoin(_) => concrete!(graphene_core::vector::style::LineJoin),
 			TaggedValue::FillType(_) => concrete!(graphene_core::vector::style::FillType),
+			TaggedValue::FillChoice(_) => concrete!(graphene_core::vector::style::FillChoice),
+			TaggedValue::Gradient(_) => concrete!(graphene_core::vector::style::Gradient),
 			TaggedValue::GradientType(_) => concrete!(graphene_core::vector::style::GradientType),
-			TaggedValue::GradientPositions(_) => concrete!(Vec<(f64, graphene_core::Color)>),
+			TaggedValue::GradientStops(_) => concrete!(graphene_core::vector::style::GradientStops),
 			TaggedValue::Quantization(_) => concrete!(graphene_core::quantization::QuantizationChannels),
 			TaggedValue::OptionalColor(_) => concrete!(Option<graphene_core::Color>),
 			TaggedValue::ManipulatorGroupIds(_) => concrete!(Vec<graphene_core::uuid::ManipulatorGroupId>),
@@ -354,8 +363,10 @@ impl<'a> TaggedValue {
 			x if x == TypeId::of::<graphene_core::vector::style::LineCap>() => Ok(TaggedValue::LineCap(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::style::LineJoin>() => Ok(TaggedValue::LineJoin(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::style::FillType>() => Ok(TaggedValue::FillType(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::FillChoice>() => Ok(TaggedValue::FillChoice(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::Gradient>() => Ok(TaggedValue::Gradient(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::vector::style::GradientType>() => Ok(TaggedValue::GradientType(*downcast(input).unwrap())),
-			x if x == TypeId::of::<Vec<(f64, graphene_core::Color)>>() => Ok(TaggedValue::GradientPositions(*downcast(input).unwrap())),
+			x if x == TypeId::of::<graphene_core::vector::style::GradientStops>() => Ok(TaggedValue::GradientStops(*downcast(input).unwrap())),
 			x if x == TypeId::of::<graphene_core::quantization::QuantizationChannels>() => Ok(TaggedValue::Quantization(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Option<graphene_core::Color>>() => Ok(TaggedValue::OptionalColor(*downcast(input).unwrap())),
 			x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => Ok(TaggedValue::ManipulatorGroupIds(*downcast(input).unwrap())),
@@ -434,7 +445,7 @@ impl<'a> TaggedValue {
 					x if x == TypeId::of::<graphene_core::vector::style::LineJoin>() => TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter),
 					x if x == TypeId::of::<graphene_core::vector::style::FillType>() => TaggedValue::FillType(graphene_core::vector::style::FillType::Solid),
 					x if x == TypeId::of::<graphene_core::vector::style::GradientType>() => TaggedValue::GradientType(Default::default()),
-					x if x == TypeId::of::<Vec<(f64, graphene_core::Color)>>() => TaggedValue::GradientPositions(Default::default()),
+					x if x == TypeId::of::<graphene_core::vector::style::GradientStops>() => TaggedValue::GradientStops(Default::default()),
 					x if x == TypeId::of::<graphene_core::quantization::QuantizationChannels>() => TaggedValue::Quantization(Default::default()),
 					x if x == TypeId::of::<Option<graphene_core::Color>>() => TaggedValue::OptionalColor(Default::default()),
 					x if x == TypeId::of::<Vec<graphene_core::uuid::ManipulatorGroupId>>() => TaggedValue::ManipulatorGroupIds(Default::default()),
