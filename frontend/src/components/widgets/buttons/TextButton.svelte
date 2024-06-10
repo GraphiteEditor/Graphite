@@ -5,7 +5,6 @@
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	let self: MenuList;

@@ -1228,7 +1228,7 @@ impl DocumentMessageHandler {
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
 				for (_, node) in &mut document.network.nodes {
-					// Upgrade Fill nodes
+					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
 					if node.name == "Fill" && node.inputs.len() == 8 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
