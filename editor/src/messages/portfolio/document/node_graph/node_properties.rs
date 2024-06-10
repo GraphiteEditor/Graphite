@@ -2338,11 +2338,7 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 	widgets_first_row.push(
 		ColorButton::default()
-			.value({
-				let result = fill.clone().into();
-				log::debug!("FillProperties: ColorButton value: {:?}", result);
-				result
-			})
+			.value(fill.clone().into())
 			.on_update(move |x: &ColorButton| {
 				Message::Batched(Box::new([
 					match &fill2 {
