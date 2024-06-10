@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Endian {
+pub enum Endian {
 	Little,
 	Big,
 }
@@ -35,6 +35,10 @@ impl<R: Read + Seek> TiffRead<R> {
 		}
 
 		Ok(Self { reader, endian })
+	}
+
+	pub fn endian(&self) -> Endian {
+		self.endian
 	}
 }
 

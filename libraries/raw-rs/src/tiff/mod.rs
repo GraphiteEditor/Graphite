@@ -114,6 +114,10 @@ impl Ifd {
 		self.ifd_entries.iter()
 	}
 
+	pub fn find(&self, tag: u16) -> Option<usize> {
+		self.iter().position(|x| Into::<u16>::into(x.tag) == tag)
+	}
+
 	pub fn get<T: TagType, R: Read + Seek>(&self, tag: TagOld<T>, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
 		let tag_id = tag.id();
 		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(TiffError::MissingTag)?.try_into()?;

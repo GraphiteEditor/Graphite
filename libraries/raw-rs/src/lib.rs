@@ -25,7 +25,10 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
 	// TODO: This is only for the tests to pass for now. Replace this with the correct implementation when the decoder is complete.
-	if ifd.get(APPLICATION_NOTES, &mut file).is_err() {
+	if ifd.find(0x8298).is_none() && ifd.get(APPLICATION_NOTES, &mut file).is_err() {
+		let subifd = ifd.get(SUBIFD, &mut file)?;
+		Ok(decoder::arw2::decode(subifd, &mut file))
+	} else if ifd.get(APPLICATION_NOTES, &mut file).is_err() {
 		Ok(decoder::arw1::decode_a100(ifd, &mut file))
 	} else {
 		let subifd = ifd.get(SUBIFD, &mut file)?;
