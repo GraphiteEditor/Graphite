@@ -9,7 +9,7 @@ use raw_rs::RawImage;
 use downloader::{Download, Downloader};
 use libraw::Processor;
 
-const TEST_FILES: [&str; 2] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw"];
+const TEST_FILES: [&str; 3] = ["ILCE-7M3-ARW2.3.5-blossoms.arw", "ILCE-7RM4-ARW2.3.5-kestrel.arw", "ILCE-6000-ARW2.3.1-windsock.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
 const BASE_PATH: &str = "./tests/images";
 
