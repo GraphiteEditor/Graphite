@@ -358,13 +358,18 @@
 			{/if}
 		</LayoutCol>
 		<LayoutCol class="details">
-			<LayoutRow class="choice-preview" tooltip="Comparison views of the present color choice (left) and the color before any change (right)">
+			<LayoutRow
+				class="choice-preview"
+				tooltip={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)" : "The present color choice"}
+			>
 				{#if !newColor.equals(oldColor)}
 					<div class="swap-button-background"></div>
 					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltip="Swap" />
 				{/if}
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
-					<TextLabel>New</TextLabel>
+					{#if !newColor.equals(oldColor)}
+						<TextLabel>New</TextLabel>
+					{/if}
 				</LayoutCol>
 				{#if !newColor.equals(oldColor)}
 					<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
@@ -471,7 +476,7 @@
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
-				{#if allowNone}
+				{#if allowNone && !gradient}
 					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0" />
 					<Separator type="Related" />
 				{/if}
@@ -641,6 +646,10 @@
 				box-sizing: border-box;
 				overflow: hidden;
 				position: relative;
+				background-image: var(--color-transparent-checkered-background);
+				background-size: var(--color-transparent-checkered-background-size);
+				background-position: var(--color-transparent-checkered-background-position);
+				background-repeat: var(--color-transparent-checkered-background-repeat);
 
 				.swap-button-background {
 					overflow: hidden;
@@ -681,7 +690,7 @@
 				}
 
 				.new-color {
-					background-image: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
+					background: var(--new-color);
 
 					.text-label {
 						text-align: left;
@@ -691,7 +700,7 @@
 				}
 
 				.old-color {
-					background: linear-gradient(var(--old-color), var(--old-color)), var(--color-transparent-checkered-background);
+					background: var(--old-color);
 
 					.text-label {
 						text-align: right;
@@ -704,13 +713,6 @@
 				.old-color {
 					width: 50%;
 					height: 100%;
-					background-size:
-						100% 100%,
-						var(--color-transparent-checkered-background-size);
-					background-position:
-						0 0,
-						var(--color-transparent-checkered-background-position);
-					background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 
 					&.none {
 						background: var(--color-none);

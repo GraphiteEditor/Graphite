@@ -16,12 +16,19 @@
 	let markerTrack: LayoutRow | undefined;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
-		activeMarkerIndex = index;
-		dispatch("activeMarkerIndexChange", index);
+		// Left-click to select and begin potentially dragging
+		if (e.button === 0) {
+			activeMarkerIndex = index;
+			dispatch("activeMarkerIndexChange", index);
+			addEvents();
+			return;
+		}
 
-		addEvents();
-
-		moveMarker(e, index);
+		// Right-click to delete
+		if (e.button === 2) {
+			deleteStopByIndex(index);
+			return;
+		}
 	}
 
 	function markerPosition(e: MouseEvent): number | undefined {
@@ -63,14 +70,19 @@
 	function deleteStop(e: KeyboardEvent) {
 		if (e.key.toLowerCase() !== "delete" && e.key.toLowerCase() !== "backspace") return;
 		if (activeMarkerIndex === undefined) return;
+		deleteStopByIndex(activeMarkerIndex);
+	}
+
+	function deleteStopByIndex(index: number) {
 		if (gradient.stops.length <= 2) return;
 
-		gradient.stops.splice(activeMarkerIndex, 1);
+		gradient.stops.splice(index, 1);
 		if (gradient.stops.length === 0) {
 			activeMarkerIndex = undefined;
 		} else {
-			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, activeMarkerIndex));
+			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, index));
 		}
+
 		dispatch("activeMarkerIndexChange", activeMarkerIndex);
 		dispatch("gradient", gradient);
 	}
@@ -84,7 +96,7 @@
 		setPosition(index, position);
 	}
 
-	function setPosition(index: number, position: number) {
+	export function setPosition(index: number, position: number) {
 		const active = gradient.stops[index];
 		active.position = position;
 		gradient.stops.sort((a, b) => a.position - b.position);
@@ -141,12 +153,12 @@
 <LayoutCol
 	class="spectrum-input"
 	styles={{
-		"--gradient-start": gradient.firstColor()?.toRgbCSS() || "black",
-		"--gradient-end": gradient.lastColor()?.toRgbCSS() || "black",
-		"--gradient-stops": gradient.toLinearGradientCSSNoAlpha(),
+		"--gradient-start": gradient.firstColor()?.toHexOptionalAlpha() || "black",
+		"--gradient-end": gradient.lastColor()?.toHexOptionalAlpha() || "black",
+		"--gradient-stops": gradient.toLinearGradientCSS(),
 	}}
 >
-	<LayoutRow class="gradient-strip" on:dblclick={insertStop}></LayoutRow>
+	<LayoutRow class="gradient-strip" on:click={insertStop}></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each gradient.stops as marker, index}
 			<svg
@@ -182,17 +194,20 @@
 				var(--gradient-stops),
 				// Solid start/end colors on either side so the gradient begins at the center of a marker
 				linear-gradient(var(--gradient-start), var(--gradient-start)),
-				linear-gradient(var(--gradient-end), var(--gradient-end));
+				linear-gradient(var(--gradient-end), var(--gradient-end)),
+				var(--color-transparent-checkered-background);
 			background-size:
 				calc(100% - 2 * var(--marker-half-width)) 100%,
-				// 2px fudge factor to avoid rendering artifacts
-				calc(var(--marker-half-width) + 2px) 100%,
-				calc(var(--marker-half-width) + 2px) 100%;
+				// TODO: Find a solution that avoids visual artifacts where these end colors meet the gradient that appear when viewing with a non-integer zoom or display scaling factor
+				var(--marker-half-width) 100%,
+				var(--marker-half-width) 100%,
+				var(--color-transparent-checkered-background-size);
 			background-position:
 				var(--marker-half-width) 0,
 				left 0,
-				right 0;
-			background-repeat: no-repeat;
+				right 0,
+				var(--color-transparent-checkered-background-position);
+			background-repeat: no-repeat, no-repeat, no-repeat, var(--color-transparent-checkered-background-repeat);
 			border-radius: 2px;
 		}
 
