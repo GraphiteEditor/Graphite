@@ -47,7 +47,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					rulers_visible = document.rulers_visible;
 					node_graph_open = document.is_graph_overlay_open();
 				}
-				log::debug!("node_graph_open: {node_graph_open}");
 				self.menu_bar_message_handler.process_message(
 					message,
 					responses,
@@ -624,11 +623,9 @@ impl PortfolioMessageHandler {
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
 	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		self.document_ids.push(document_id);
-
 		new_document.update_layers_panel_options_bar_widgets(responses);
 
-		//TODO: Store click target information in file format
-		new_document.network.update_all_click_targets();
+		new_document.network.update_all_click_targets(None);
 
 		self.documents.insert(document_id, new_document);
 

@@ -2930,12 +2930,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 
 pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
 	let mut network = NodeNetwork { ..Default::default() };
-	network.push_node(
+	network.push_node_to_document_network(
 		resolve_document_node_type("Input Frame")
 			.expect("Input Frame node does not exist")
 			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
 	);
-	network.push_node(
+	network.push_node_to_document_network(
 		resolve_document_node_type("Output")
 			.expect("Output node does not exist")
 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
@@ -2951,7 +2951,7 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
 	let mut network = NodeNetwork { ..Default::default() };
-	network.push_node(text_generator.to_document_node(
+	network.push_node_to_document_network(text_generator.to_document_node(
 		[
 			NodeInput::network(concrete!(WasmEditorApi), 0),
 			NodeInput::value(TaggedValue::String(text), false),
@@ -2960,9 +2960,9 @@ pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
 		],
 		DocumentNodeMetadata::position((0, 4)),
 	));
-	network.push_node(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(fill.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(stroke.to_document_node_default_inputs([None], Default::default()));
-	network.push_node(output.to_document_node_default_inputs([None], Default::default()));
+	network.push_node_to_document_network(transform.to_document_node_default_inputs([None], Default::default()));
+	network.push_node_to_document_network(fill.to_document_node_default_inputs([None], Default::default()));
+	network.push_node_to_document_network(stroke.to_document_node_default_inputs([None], Default::default()));
+	network.push_node_to_document_network(output.to_document_node_default_inputs([None], Default::default()));
 	network
 }

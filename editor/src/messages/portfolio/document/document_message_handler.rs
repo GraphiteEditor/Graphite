@@ -1112,7 +1112,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box())
+					self.network
+						.nested_network(&self.node_graph_handler.network)
+						.and_then(|nested_network| nested_network.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
 				} else {
 					self.metadata().document_bounds_document_space(true)
 				};
@@ -1288,11 +1290,9 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn serialize_document(&self) -> String {
-		log::debug!("serialize_document: {self:#?}");
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
-		//val.unwrap()
-		"{}".to_string()
+		val.unwrap()
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {

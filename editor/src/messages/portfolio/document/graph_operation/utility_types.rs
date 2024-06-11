@@ -114,7 +114,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		self.document_network.insert_node(id, new_node);
 
-		ModifyInputsContext::shift_upstream(self.document_network, id, shift_upstream, false);
+		ModifyInputsContext::shift_upstream(self.document_network, id, shift_upstream, false, 1);
 
 		Some(id)
 	}
@@ -140,7 +140,7 @@ impl<'a> ModifyInputsContext<'a> {
 			// Insert whatever non artboard node previously fed into export as a child of the new node
 			let node_input_index = if new_node.is_artboard() && !previous_root_node.is_artboard() { 1 } else { 0 };
 			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
-			ModifyInputsContext::shift_upstream(document_network, root_node.id, IVec2::new(8, 0), true);
+			ModifyInputsContext::shift_upstream(document_network, root_node.id, IVec2::new(8, 0), true, 1);
 		}
 
 		let Some(export) = document_network.exports.get_mut(0) else {
@@ -151,7 +151,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		document_network.insert_node(id, new_node);
 
-		ModifyInputsContext::shift_upstream(document_network, id, IVec2::new(-8, 3), false);
+		ModifyInputsContext::shift_upstream(document_network, id, IVec2::new(-8, 3), false, 1);
 
 		Some(id)
 	}
@@ -367,7 +367,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(network: &mut NodeNetwork, node_id: NodeId, shift: IVec2, shift_self: bool) {
+	pub fn shift_upstream(network: &mut NodeNetwork, node_id: NodeId, shift: IVec2, shift_self: bool, import_count: usize) {
 		let mut shift_nodes = HashSet::new();
 		if shift_self {
 			shift_nodes.insert(node_id);
@@ -387,7 +387,7 @@ impl<'a> ModifyInputsContext<'a> {
 		for node_id in shift_nodes {
 			if let Some(node) = network.nodes.get_mut(&node_id) {
 				node.metadata.position += shift;
-				network.update_click_target(node_id);
+				network.update_click_target(node_id, Some(import_count));
 			}
 		}
 	}
@@ -435,7 +435,7 @@ impl<'a> ModifyInputsContext<'a> {
 		for node_id in upstream_nodes {
 			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
 			node.metadata.position.x -= 8;
-			self.document_network.update_click_target(node_id);
+			self.document_network.update_click_target(node_id, None);
 		}
 	}
 
@@ -517,7 +517,7 @@ impl<'a> ModifyInputsContext<'a> {
 			*node_input = input;
 			let currently_exposed = node_input.is_exposed();
 			if previously_exposed != currently_exposed {
-				network.update_click_target(node_id);
+				network.update_click_target(node_id, None);
 			}
 
 			// Only load network structure for changes to document_network
@@ -543,7 +543,7 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 
 			if previously_exposed != currently_exposed {
-				network.update_click_target(node_id);
+				network.update_click_target(node_id, None);
 			}
 
 			// Only load network structure for changes to document_network
@@ -834,7 +834,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(network) = document_network.nested_network_mut(&network_path) else { return false };
 
 		network.nodes.remove(&node_id);
-		network.update_click_target(node_id);
+		network.update_click_target(node_id, None);
 		selected_nodes.retain_selected_nodes(|&id| id != node_id || id == network.exports_metadata.0 || id == network.imports_metadata.0);
 
 		responses.add(BroadcastEvent::SelectionChanged);

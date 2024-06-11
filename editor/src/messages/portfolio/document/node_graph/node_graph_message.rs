@@ -37,9 +37,7 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		input_index: usize,
 	},
-	EnterNestedNetwork {
-		node: NodeId,
-	},
+	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	EnforceLayerHasNoMultiParams {
 		node_id: NodeId,

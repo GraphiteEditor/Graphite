@@ -669,14 +669,19 @@ pub struct NodeNetwork {
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
+	#[serde(skip)]
 	pub node_click_targets: HashMap<NodeId, ClickTarget>,
 	/// Cache for all node inputs. Should be automatically updated when update_click_target is called
+	#[serde(skip)]
 	pub input_click_targets: HashMap<(NodeId, usize), ClickTarget>,
 	/// Cache for all node outputs. Should be automatically updated when update_click_target is called
+	#[serde(skip)]
 	pub output_click_targets: HashMap<(NodeId, usize), ClickTarget>,
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
+	#[serde(skip)]
 	pub visibility_click_targets: HashMap<NodeId, ClickTarget>,
 	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
+	#[serde(skip)]
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
 	/// Transform from node graph space to viewport space.
 	#[serde(default)]
@@ -697,50 +702,16 @@ impl std::hash::Hash for NodeNetwork {
 }
 impl Default for NodeNetwork {
 	fn default() -> Self {
-		let exports_metadata = default_export_metadata();
-		let mut node_click_targets = HashMap::new();
-		let mut input_click_targets = HashMap::new();
-		let output_click_targets = HashMap::new();
-		let visibility_click_targets = HashMap::new();
-
-		//Default node network has one export node
-		let grid_size = 24 as i32;
-		let width = 5 * grid_size;
-		let height = 2 * grid_size;
-
-		let corner1 = IVec2::new(exports_metadata.1.x * grid_size, exports_metadata.1.y * grid_size + grid_size / 2);
-		let corner2 = corner1 + IVec2::new(width, height);
-		let radius = 3.;
-		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-		let stroke_width = 1.;
-		let node_click_target = ClickTarget { subpath, stroke_width };
-		node_click_targets.insert(exports_metadata.0, node_click_target);
-
-		let node_top_left = exports_metadata.1 * grid_size;
-		let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
-		// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
-		node_top_left.y += 36.;
-
-		let input_top_left = DVec2::new(-5., 8.);
-		let input_bottom_left = DVec2::new(-5., 16.);
-		let input_right = DVec2::new(5., 12.);
-
-		let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
-		let stroke_width = 1.;
-		let subpath = Subpath::from_anchors(anchors.into_iter(), true);
-		let top_left_input = ClickTarget { subpath, stroke_width };
-		input_click_targets.insert((exports_metadata.0, 0), top_left_input);
-
 		NodeNetwork {
 			exports: Default::default(),
 			nodes: Default::default(),
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
-			exports_metadata,
-			node_click_targets,
-			input_click_targets,
-			output_click_targets,
-			visibility_click_targets,
+			exports_metadata: default_export_metadata(),
+			node_click_targets: HashMap::new(),
+			input_click_targets: HashMap::new(),
+			output_click_targets: HashMap::new(),
+			visibility_click_targets: HashMap::new(),
 			bounding_box_subpath: None,
 			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
@@ -768,14 +739,17 @@ impl NodeNetwork {
 	// Inserts a node into the network and updates the click target
 	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode) {
 		self.nodes.insert(node_id, node);
-		self.update_click_target(node_id);
+		assert!(
+			node_id != self.imports_metadata.0 && node_id != self.exports_metadata.0,
+			"Cannot insert import/export node into self.nodes"
+		);
+		self.update_click_target(node_id, None);
 	}
 
-	/// Update the click targets when a private field for a DocumentNode changes.
-	pub fn update_click_target(&mut self, node_id: NodeId) {
+	/// Update the click targets when a private field for a DocumentNode changes. Import count only needs to be correct when node_id is the import node.
+	pub fn update_click_target(&mut self, node_id: NodeId, import_count: Option<usize>) {
+		let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
 		if let Some(node) = self.nodes.get(&node_id) {
-			let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-
 			// Update node click target
 			let width = if node.is_layer {
 				// TODO: Calculate based on text width
@@ -848,7 +822,6 @@ impl NodeNetwork {
 					}
 
 					if node_row_index < number_of_outputs {
-						log::debug!("node_top_right: {:?}", node_top_right);
 						let anchors = vec![input_top_left + node_top_right, input_bottom_left + node_top_right, input_right + node_top_right];
 						let stroke_width = 1.;
 						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
@@ -915,75 +888,66 @@ impl NodeNetwork {
 				self.visibility_click_targets.insert(node_id, layer_visibility_click_target);
 			}
 		}
-		// The number of imports is from the parent node, it can't be determined here. Since the inputs/outputs/is_layer/name cannot change, generate the import/export nodes when the network is created, and just shift the position here
-		else if node_id == self.exports_metadata.0 || node_id == self.imports_metadata.0 {
-			let Some(node_click_target) = self.node_click_targets.get_mut(&node_id) else {
-				log::error!("Could not get export or import node click target");
-				return;
-			};
+		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
+		else if node_id == self.exports_metadata.0 {
+			let width = 5 * grid_size;
+			// 1 is added since the first row is reserved for the "Exports" name
+			let height = (self.exports.len() + 1) as i32 * grid_size;
 
-			let Some(bounding_box) = node_click_target.subpath.bounding_box() else {
-				log::error!("Could not get bounding box for export or import node");
-				return;
-			};
-			log::debug!("bounding box: {}", bounding_box[0]);
-			log::debug!("exports_metadata: {}", self.exports_metadata.1);
+			let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size, self.exports_metadata.1.y * grid_size + grid_size / 2);
+			let corner2 = corner1 + IVec2::new(width, height);
+			let radius = 3.;
+			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+			let stroke_width = 1.;
+			let node_click_target = ClickTarget { subpath, stroke_width };
+			self.node_click_targets.insert(self.exports_metadata.0, node_click_target);
 
-			let shift = if node_id == self.exports_metadata.0 {
-				DVec2::new(
-					self.exports_metadata.1.x as f64 * 24. - bounding_box[0].x,
-					self.exports_metadata.1.y as f64 * 24. + 12. - bounding_box[0].y,
-				)
-			} else {
-				DVec2::new(
-					self.imports_metadata.1.x as f64 * 24. - bounding_box[0].x,
-					self.imports_metadata.1.y as f64 * 24. + 12. - bounding_box[0].y,
-				)
-			};
+			let node_top_left = self.exports_metadata.1 * grid_size;
+			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
+			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
+			node_top_left.y += 36.;
+			let input_top_left = DVec2::new(-5., 8.);
+			let input_bottom_left = DVec2::new(-5., 16.);
+			let input_right = DVec2::new(5., 12.);
+			for i in 0..self.exports.len() {
+				let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
+				let stroke_width = 1.;
+				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let top_left_input = ClickTarget { subpath, stroke_width };
+				self.input_click_targets.insert((self.exports_metadata.0, i), top_left_input);
 
-			log::debug!("shift: {shift}");
-			for manipulator_group in node_click_target.subpath.manipulator_groups_mut() {
-				manipulator_group.anchor += shift;
-				manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
-				manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
+				node_top_left += 24.;
 			}
+		} else if node_id == self.imports_metadata.0 {
+			// Import count should always be Some when updating the Imports node
+			let import_count = import_count.expect("Import count should exist when updating imports node");
+			let width = 5 * grid_size;
+			// 1 is added since the first row is reserved for the "Exports" name
+			let height = (import_count + 1) as i32 * grid_size;
 
-			// log::error!("Export or import node click target should already be created")
-			// let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-			// let width = bounding_box[1].x - bounding_box[0].x;
-			// let height = bounding_box[1].y - bounding_box[0].y;
-			// let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size, self.exports_metadata.1.y * grid_size);
-			// let corner2 = corner1 + IVec2::new(width as i32, height as i32);
-			// let radius = 3.;
-			// let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-			// let stroke_width = 1.;
-			// let node_click_target = ClickTarget { subpath, stroke_width };
-			// self.node_click_targets.insert(node_id, node_click_target);
+			let corner1 = IVec2::new(self.imports_metadata.1.x * grid_size, self.imports_metadata.1.y * grid_size + grid_size / 2);
+			let corner2 = corner1 + IVec2::new(width, height);
+			let radius = 3.;
+			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+			let stroke_width = 1.;
+			let node_click_target = ClickTarget { subpath, stroke_width };
+			self.node_click_targets.insert(self.imports_metadata.0, node_click_target);
 
-			let mut input_index = 0;
-			loop {
-				let Some(input_click_target) = self.input_click_targets.get_mut(&(node_id, input_index)) else {
-					break;
-				};
-				for manipulator_group in input_click_target.subpath.manipulator_groups_mut() {
-					manipulator_group.anchor += shift;
-					manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
-					manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
-				}
-				input_index += 1;
-			}
+			let node_top_right = self.imports_metadata.1 * grid_size;
+			let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
+			// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
+			node_top_right.y += 36.;
+			let output_top_left = DVec2::new(-5., 8.);
+			let output_bottom_left = DVec2::new(-5., 16.);
+			let output_right = DVec2::new(5., 12.);
+			for i in 0..import_count {
+				let anchors = vec![output_top_left + node_top_right, output_bottom_left + node_top_right, output_right + node_top_right];
+				let stroke_width = 1.;
+				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let top_left_input = ClickTarget { subpath, stroke_width };
+				self.input_click_targets.insert((self.imports_metadata.0, i), top_left_input);
 
-			let mut output_index = 0;
-			loop {
-				let Some(output_click_target) = self.output_click_targets.get_mut(&(node_id, output_index)) else {
-					break;
-				};
-				for manipulator_group in output_click_target.subpath.manipulator_groups_mut() {
-					manipulator_group.anchor += shift;
-					manipulator_group.in_handle.as_mut().map(|handle| *handle += shift);
-					manipulator_group.out_handle.as_mut().map(|handle| *handle += shift);
-				}
-				output_index += 1;
+				node_top_right += 24.;
 			}
 		} else {
 			self.node_click_targets.remove(&node_id);
@@ -1010,12 +974,16 @@ impl NodeNetwork {
 		}
 	}
 
-	//TODO: Store click target information in file format
-	pub fn update_all_click_targets(&mut self) {
-		// let node_ids = self.nodes.clone();
-		// for (node_id, _) in node_ids {
-		// 	self.update_click_target(node_id);
-		// }
+	pub fn update_all_click_targets(&mut self, number_of_imports: Option<usize>) {
+		let node_ids = self.nodes.clone();
+		for (node_id, _) in node_ids {
+			self.update_click_target(node_id, None);
+		}
+		self.update_click_target(self.exports_metadata.0, None);
+		// Only add Import node click target in nested networks, since the document network import node is hidden
+		if number_of_imports.is_some() {
+			self.update_click_target(self.imports_metadata.0, number_of_imports)
+		}
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
@@ -1104,7 +1072,7 @@ impl NodeNetwork {
 	}
 
 	/// Appends a new node to the network after the output node and sets it as the new output
-	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
+	pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
 		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
 		// Set the correct position for the new node
 		if node.metadata.position == IVec2::default() {

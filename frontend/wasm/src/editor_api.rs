@@ -644,9 +644,9 @@ impl EditorHandle {
 	/// Notifies the backend that the user double clicked a node
 	#[wasm_bindgen(js_name = enterNestedNetwork)]
 	pub fn enter_nested_network(&self, node: u64) {
-		let node = NodeId(node);
-		let message = NodeGraphMessage::EnterNestedNetwork { node };
-		self.dispatch(message);
+		//let node_id = NodeId(node);
+		//let message = NodeGraphMessage::EnterNestedNetwork { node_id  };
+		//self.dispatch(message);
 	}
 
 	/// Go back a certain number of nested levels

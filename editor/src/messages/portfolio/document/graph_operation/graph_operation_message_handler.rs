@@ -590,7 +590,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
 						node.alias = alias.clone();
 					}
-					modify_inputs.document_network.update_click_target(id);
+					modify_inputs.document_network.update_click_target(id, None);
 
 					let shift = nodes
 						.get(&NodeId(0))
@@ -690,7 +690,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				};
 				node.metadata.position = position;
-				document_network.update_click_target(node_id);
+				document_network.update_click_target(node_id, Some(1));
 			}
 			GraphOperationMessage::SetName { layer, name } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -699,7 +699,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
 					node.alias = name;
-					document_network.update_click_target(layer.to_node());
+					document_network.update_click_target(layer.to_node(), None);
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
@@ -709,7 +709,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				ModifyInputsContext::shift_upstream(document_network, node_id, shift, shift_self);
+				ModifyInputsContext::shift_upstream(document_network, node_id, shift, shift_self, 1);
 			}
 			GraphOperationMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);
