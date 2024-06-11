@@ -859,12 +859,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if selected_nodes.selected_nodes_ref().len() == 1 {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						// Check that neither the primary input or output of the selected node are already connected.
-						let Some(node) = network.nodes.get(&selected_node_id) else {
+						let Some(selected_node) = network.nodes.get(&selected_node_id) else {
 							log::error!("Could not get selected node from network");
 							return;
 						};
 						// Check if primary input is disconnected
-						if node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some()) {
+						if selected_node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some()) {
 							let has_primary_output_connection = network.nodes.iter().flat_map(|(_, node)| node.inputs.iter()).any(|input| {
 								if let NodeInput::Node { node_id, output_index, .. } = input {
 									if *node_id == selected_node_id && *output_index == 0 {
@@ -879,15 +879,56 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							// Check if primary output is disconnected
 							if !has_primary_output_connection {
 								// TODO: Cache all wire locations. This will be difficult since there are many ways for an input to changes, and each change will have to update the cache
-								for frontend_wire in Self::collect_wires(network) {
+								let Some(bounding_box) = network.node_click_targets.get(&selected_node_id).and_then(|click_target| click_target.subpath.bounding_box()) else {
+									log::error!("Could not get bounding box for node: {selected_node_id}");
+									return;
+								};
+								let overlapping_wire = Self::collect_wires(network).into_iter().find(|frontend_wire| {
 									// Get positions in order to build wire positions and then use rectangleIntersects
-									let Some(node_position) = network
-										.nodes
-										.get(&frontend_wire.wire_end)
-										.map(|node| DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.))
-									else {
-										continue;
+									let (end_node_position, end_node_is_layer) = network.nodes.get(&frontend_wire.wire_end).map_or(
+										(DVec2::new(network.exports_metadata.1.x as f64 * 24., network.exports_metadata.1.y as f64 * 24. + 24.), false),
+										|node| (DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.), node.is_layer),
+									);
+									let (start_node_position, start_node_is_layer) = network.nodes.get(&frontend_wire.wire_start).map_or(
+										(DVec2::new(network.imports_metadata.1.x as f64 * 24., network.imports_metadata.1.y as f64 * 24. + 24.), false),
+										|node| (DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.), node.is_layer),
+									);
+
+									let input_position = if end_node_is_layer {
+										DVec2::new(end_node_position.x + 3. * 24., end_node_position.y + 2. * 24. + 12.)
+									} else {
+										DVec2::new(end_node_position.x, end_node_position.y + 24. + 24. * frontend_wire.wire_end_input_index as f64)
 									};
+
+									let output_position = if start_node_is_layer {
+										DVec2::new(start_node_position.x + 3. * 24., start_node_position.y - 12.)
+									} else {
+										DVec2::new(start_node_position.x + 5. * 24., start_node_position.y + 24. + 24. * frontend_wire.wire_start_output_index as f64)
+									};
+
+									let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
+									let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+										(locations[0].x, locations[0].y).into(),
+										(locations[1].x, locations[1].y).into(),
+										(locations[2].x, locations[2].y).into(),
+										(locations[3].x, locations[3].y).into(),
+									);
+
+									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
+								});
+								if let Some(overlapping_wire) = overlapping_wire {
+									responses.add(NodeGraphMessage::InsertNodeBetween {
+										post_node_id: overlapping_wire.wire_end,
+										post_node_input_index: overlapping_wire.wire_end_input_index,
+										insert_node_output_index: 0,
+										insert_node_id: selected_node_id,
+										insert_node_input_index: 0,
+										pre_node_output_index: overlapping_wire.wire_start_output_index,
+										pre_node_id: overlapping_wire.wire_start,
+									});
+									if !selected_node.is_layer {
+										responses.add(NodeGraphMessage::ShiftNode { node_id: selected_node_id });
+									}
 								}
 							}
 						}
