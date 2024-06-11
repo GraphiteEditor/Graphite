@@ -573,6 +573,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 								false,
 							))
 						};
+					} else if let Some(NodeInput::Network { import_index, .. }) = network.nodes.get(&clicked_input.0).and_then(|clicked_node| clicked_node.inputs.get(input_index)) {
+						self.disconnecting = Some((clicked_input.0, clicked_input.1));
+
+						self.wire_in_progress_from_connector =
+							// The 4.95 is to ensure wire generated here aligns with the frontend wire when the mouse is moved within a node connector, but the wire is not disconnected yet. Eventually all wires should be generated in Rust so that all positions will be aligned.
+							Some((
+								DVec2::new(
+									network.imports_metadata.1.x as f64 * 24. + 5. * 24. + 4.95,
+									network.imports_metadata.1.y as f64 * 24. + 48. + 24. * *import_index as f64,
+								),
+								false,
+							))
 					}
 
 					return;
@@ -581,30 +593,48 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(clicked_output) = NodeGraphMessageHandler::get_key_from_point(&network.output_click_targets, point) {
 					log::debug!("Clicked output: {} index: {}", clicked_output.0, clicked_output.1);
 
-					let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) else {
-						log::error!("Could not find node {}", clicked_output.0);
-						return;
-					};
-
-					self.wire_in_progress_from_connector = if clicked_output_node.is_layer {
-						Some((
-							DVec2::new(
-								clicked_output_node.metadata.position.x as f64 * 24. + 3. * 24.,
-								clicked_output_node.metadata.position.y as f64 * 24. - 12.,
-							),
-							true,
-						))
+					if let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) {
+						// Disallow creating additional vertical output wires from an already-connected layer
+						if clicked_output_node.is_layer && clicked_output_node.has_primary_output {
+							for (_, node) in &network.nodes {
+								if node
+									.inputs
+									.iter()
+									.chain(network.exports.iter())
+									.any(|node_input| node_input.as_node().is_some_and(|node_id| node_id == clicked_output.0))
+								{
+									return;
+								}
+							}
+						}
+						self.wire_in_progress_from_connector = if clicked_output_node.is_layer {
+							Some((
+								DVec2::new(
+									clicked_output_node.metadata.position.x as f64 * 24. + 3. * 24.,
+									clicked_output_node.metadata.position.y as f64 * 24. - 12.,
+								),
+								true,
+							))
+						} else {
+							Some((
+								DVec2::new(
+									clicked_output_node.metadata.position.x as f64 * 24. + 5. * 24.,
+									clicked_output_node.metadata.position.y as f64 * 24. + 24. + 24. * clicked_output.1 as f64,
+								),
+								false,
+							))
+						};
 					} else {
-						Some((
+						// Imports node is clicked
+						self.wire_in_progress_from_connector = Some((
 							DVec2::new(
-								clicked_output_node.metadata.position.x as f64 * 24. + 5. * 24.,
-								clicked_output_node.metadata.position.y as f64 * 24. + 24. + 24. * clicked_output.1 as f64,
+								network.imports_metadata.1.x as f64 * 24. + 5. * 24.,
+								network.imports_metadata.1.y as f64 * 24. + 48. + 24. * clicked_output.1 as f64,
 							),
 							false,
-						))
+						));
 					};
 
-					//TODO: Layer output restriction
 					return;
 				}
 
@@ -698,9 +728,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						self.wire_in_progress_to_connector = Some((to_connector_position, is_layer));
 					}
-					// Not hovering over a node input or node output, update the mouse position.
+					// Not hovering over a node input or node output, update with the mouse position.
 					else {
-						self.wire_in_progress_to_connector = Some((point, false));
+						if let Some(wire_in_progress_to_connector) = self.wire_in_progress_to_connector.as_mut() {
+							wire_in_progress_to_connector.0 = point;
+						} else {
+							self.wire_in_progress_from_connector = Some((point, false));
+						};
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = self.disconnecting {
 							responses.add(NodeGraphMessage::DisconnectInput {
@@ -821,8 +855,43 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 
-					//check_insert_between
-
+					// Check if a single node was dragged onto a wire
+					if selected_nodes.selected_nodes_ref().len() == 1 {
+						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
+						// Check that neither the primary input or output of the selected node are already connected.
+						let Some(node) = network.nodes.get(&selected_node_id) else {
+							log::error!("Could not get selected node from network");
+							return;
+						};
+						// Check if primary input is disconnected
+						if node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some()) {
+							let has_primary_output_connection = network.nodes.iter().flat_map(|(_, node)| node.inputs.iter()).any(|input| {
+								if let NodeInput::Node { node_id, output_index, .. } = input {
+									if *node_id == selected_node_id && *output_index == 0 {
+										true
+									} else {
+										false
+									}
+								} else {
+									false
+								}
+							});
+							// Check if primary output is disconnected
+							if !has_primary_output_connection {
+								// TODO: Cache all wire locations. This will be difficult since there are many ways for an input to changes, and each change will have to update the cache
+								for frontend_wire in Self::collect_wires(network) {
+									// Get positions in order to build wire positions and then use rectangleIntersects
+									let Some(node_position) = network
+										.nodes
+										.get(&frontend_wire.wire_end)
+										.map(|node| DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.))
+									else {
+										continue;
+									};
+								}
+							}
+						}
+					}
 					self.select_if_not_dragged = None
 				}
 				self.drag_start = None;

@@ -945,9 +945,9 @@ impl NodeNetwork {
 				let stroke_width = 1.;
 				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
 				let top_left_input = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((self.imports_metadata.0, i), top_left_input);
+				self.output_click_targets.insert((self.imports_metadata.0, i), top_left_input);
 
-				node_top_right += 24.;
+				node_top_right.y += 24.;
 			}
 		} else {
 			self.node_click_targets.remove(&node_id);
