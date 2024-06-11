@@ -13,8 +13,8 @@ const TEST_FILES: [&str; 1] = ["ILCE-7M3-ARW2.3.5-blossoms.arw"];
 const BASE_URL: &str = "https://static.graphite.rs/test-data/libraries/raw-rs/";
 const BASE_PATH: &str = "./tests/images";
 
-#[test]
-fn test_images_matches_with_libraw() {
+#[cfg_attr(feature = "raw-rs-tests", test)]
+fn test_images_match_with_libraw() {
 	download_images();
 
 	let mut failed_tests = 0;
