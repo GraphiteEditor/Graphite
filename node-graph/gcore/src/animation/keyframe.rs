@@ -29,7 +29,7 @@ impl Default for KeyframeF64 {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Default, DynAny)]
+#[derive(Debug, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KeyframesF64 {
 	pub keyframes: Vec<KeyframeF64>,
@@ -62,5 +62,13 @@ impl KeyframesF64 {
 		let k2 = &self.keyframes[ind];
 
 		Easing::interpolate(k1, k2, time)
+	}
+}
+
+impl Default for KeyframesF64 {
+	fn default() -> Self {
+		Self {
+			keyframes: vec![KeyframeF64::default()],
+		}
 	}
 }
