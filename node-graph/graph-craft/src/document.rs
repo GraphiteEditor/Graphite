@@ -683,6 +683,9 @@ pub struct NodeNetwork {
 	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
 	#[serde(skip)]
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
+	/// Mapping of all layer nodes to the width of their displayed text
+	#[serde(skip)]
+	pub layer_widths: HashMap<NodeId, u32>,
 	/// Transform from node graph space to viewport space.
 	#[serde(default)]
 	pub node_graph_to_viewport: DAffine2,
@@ -713,6 +716,7 @@ impl Default for NodeNetwork {
 			output_click_targets: HashMap::new(),
 			visibility_click_targets: HashMap::new(),
 			bounding_box_subpath: None,
+			layer_widths: HashMap::new(),
 			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
 	}
@@ -746,14 +750,88 @@ impl NodeNetwork {
 		self.update_click_target(node_id, None);
 	}
 
+	fn get_text_width(node: &DocumentNode) -> Option<f64> {
+		use web_sys::window;
+		let document = window().unwrap().document().unwrap();
+		let div = match document.create_element("div") {
+			Ok(div) => div,
+			Err(err) => {
+				log::error!("Error creating div: {:?}", err);
+				return None;
+			}
+		};
+
+		// Set the div's style to make it offscreen and single line
+		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
+			Err(err) => {
+				log::error!("Error setting attribute: {:?}", err);
+				return None;
+			}
+			_ => {}
+		};
+
+		// From NodeGraphMessageHandler::untitled_layer_label(node)
+		let name = (node.alias != "")
+			.then_some(node.alias.to_string())
+			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() });
+
+		div.set_text_content(Some(&name));
+
+		// Append the div to the document body
+		match document.body().unwrap().append_child(&div) {
+			Err(err) => {
+				log::error!("Error setting adding child to document {:?}", err);
+				return None;
+			}
+			_ => {}
+		};
+
+		// Measure the width
+		let text_width = div.get_bounding_client_rect().width();
+
+		// Remove the div from the document
+		match document.body().unwrap().remove_child(&div) {
+			Err(_) => log::error!("Could not remove child when rendering text"),
+			_ => {}
+		};
+
+		Some(text_width)
+	}
 	/// Update the click targets when a private field for a DocumentNode changes. Import count only needs to be correct when node_id is the import node.
 	pub fn update_click_target(&mut self, node_id: NodeId, import_count: Option<usize>) {
-		let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
+		// Clear all click targets for the node
+		self.node_click_targets.remove(&node_id);
+		let mut current_input_index = 0;
+		while self.input_click_targets.remove(&(node_id, current_input_index)).is_some() {
+			current_input_index += 1;
+		}
+		let mut current_output_index = 0;
+		while self.output_click_targets.remove(&(node_id, current_output_index)).is_some() {
+			current_output_index += 1;
+		}
+		self.visibility_click_targets.remove(&node_id);
+		self.layer_widths.remove(&node_id);
+
+		let grid_size = 24_u32; // Number of pixels per grid unit at 100% zoom
+
 		if let Some(node) = self.nodes.get(&node_id) {
 			// Update node click target
+			// TODO: Fix width/positions for layers with and without left inputs
 			let width = if node.is_layer {
-				// TODO: Calculate based on text width
-				9 * grid_size
+				let half_grid_cell_offset = 24. / 2.;
+				let thumbnail_width = 3. * 24.;
+				let gap_width = 8.;
+				let text_width = Self::get_text_width(node).unwrap_or_default();
+				let icon_width = 24.;
+				let icon_overhang_width = icon_width / 2.;
+
+				let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
+				let layer_width = text_right + gap_width + icon_width - icon_overhang_width;
+				let layer_width_cells = (((layer_width) / 24.).ceil() as u32).max(8);
+
+				self.layer_widths.insert(node_id, layer_width_cells);
+
+				layer_width_cells * grid_size
 			} else {
 				5 * grid_size
 			};
@@ -766,9 +844,9 @@ impl NodeNetwork {
 				} else {
 					1
 				};
-				std::cmp::max(inputs_count, outputs_count) as i32 * grid_size
+				std::cmp::max(inputs_count, outputs_count) as u32 * grid_size
 			};
-			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size) as f64, (node.metadata.position.y * grid_size) as f64);
+			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size as i32) as f64, (node.metadata.position.y * grid_size as i32) as f64);
 			let radius = if !node.is_layer {
 				corner1 += DVec2::new(0., (grid_size / 2) as f64);
 				3.
@@ -882,27 +960,26 @@ impl NodeNetwork {
 				self.output_click_targets.insert((node_id, 0), layer_output_click_target);
 
 				// Update visibility button click target
-				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.), DVec2::new(12., 12.), [3.; 4]);
+				let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
+				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 				let stroke_width = 1.;
 				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
 				self.visibility_click_targets.insert(node_id, layer_visibility_click_target);
 			}
-		}
-		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
-		else if node_id == self.exports_metadata.0 {
+		} else if node_id == self.exports_metadata.0 {
 			let width = 5 * grid_size;
 			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (self.exports.len() + 1) as i32 * grid_size;
+			let height = (self.exports.len() as u32 + 1) * grid_size;
 
-			let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size, self.exports_metadata.1.y * grid_size + grid_size / 2);
-			let corner2 = corner1 + IVec2::new(width, height);
+			let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size as i32, self.exports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
+			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
 			let radius = 3.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
 			let stroke_width = 1.;
 			let node_click_target = ClickTarget { subpath, stroke_width };
 			self.node_click_targets.insert(self.exports_metadata.0, node_click_target);
 
-			let node_top_left = self.exports_metadata.1 * grid_size;
+			let node_top_left = self.exports_metadata.1 * grid_size as i32;
 			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
 			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
 			node_top_left.y += 36.;
@@ -918,22 +995,24 @@ impl NodeNetwork {
 
 				node_top_left += 24.;
 			}
-		} else if node_id == self.imports_metadata.0 {
+		}
+		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
+		else if node_id == self.imports_metadata.0 {
 			// Import count should always be Some when updating the Imports node
 			let import_count = import_count.expect("Import count should exist when updating imports node");
 			let width = 5 * grid_size;
 			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (import_count + 1) as i32 * grid_size;
+			let height = (import_count + 1) as u32 * grid_size;
 
-			let corner1 = IVec2::new(self.imports_metadata.1.x * grid_size, self.imports_metadata.1.y * grid_size + grid_size / 2);
-			let corner2 = corner1 + IVec2::new(width, height);
+			let corner1 = IVec2::new(self.imports_metadata.1.x * grid_size as i32, self.imports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
+			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
 			let radius = 3.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
 			let stroke_width = 1.;
 			let node_click_target = ClickTarget { subpath, stroke_width };
 			self.node_click_targets.insert(self.imports_metadata.0, node_click_target);
 
-			let node_top_right = self.imports_metadata.1 * grid_size;
+			let node_top_right = self.imports_metadata.1 * grid_size as i32;
 			let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
 			// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
 			node_top_right.y += 36.;
@@ -950,7 +1029,8 @@ impl NodeNetwork {
 				node_top_right.y += 24.;
 			}
 		} else {
-			self.node_click_targets.remove(&node_id);
+			// self.node_click_targets.remove(&node_id);
+			//TODO: Remove input click targets - fixed by clearing click targets every time it is updated, but there may be a more efficient way
 		};
 
 		// if node_click_target is outside the current bounding box, update the bounding box

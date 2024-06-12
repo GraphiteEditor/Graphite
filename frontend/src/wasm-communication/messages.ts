@@ -29,8 +29,22 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+const ContextTupleToVec2 = Transform((data) => {
+	if (data.obj.contextMenuInformation.contextMenuCoordinates !== undefined) {
+		data.obj.contextMenuInformation.contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
+	}
+	return data.obj.contextMenuInformation;
+});
+
 export class UpdateContextMenuInformation extends JsMessage {
+	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation;
+}
+const LayerWidths = Transform(({ obj }) => obj.layerWidths);
+
+export class UpdateLayerWidths extends JsMessage {
+	@LayerWidths
+	readonly layerWidths!: Map<bigint, number>;
 }
 
 export class UpdateNodeGraph extends JsMessage {
@@ -111,7 +125,6 @@ export class Box {
 }
 
 export class ContextMenuInformation {
-	@TupleToVec2
 	readonly contextMenuCoordinates!: XY | undefined;
 
 	readonly toggleDisplayAsLayerNodeId!: bigint | undefined;
@@ -1370,6 +1383,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateActiveDocument,
 	UpdateBox,
 	UpdateContextMenuInformation,
+	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,

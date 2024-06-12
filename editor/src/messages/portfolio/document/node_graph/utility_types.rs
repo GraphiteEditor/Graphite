@@ -151,7 +151,7 @@ pub struct BoxSelection {
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: Option<(f64, f64)>,
+	pub context_menu_coordinates: Option<(i32, i32)>,
 	#[serde(rename = "toggleDisplayAsLayerNodeId")]
 	pub toggle_display_as_layer_node_id: Option<NodeId>,
 	#[serde(rename = "toggleDisplayAsLayerCurrentlyIsNode")]

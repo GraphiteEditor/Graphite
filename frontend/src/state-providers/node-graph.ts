@@ -10,6 +10,7 @@ import {
 	type WirePath,
 	UpdateBox,
 	UpdateContextMenuInformation,
+	UpdateLayerWidths,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
@@ -22,9 +23,11 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
+	const contextMenuInformation: ContextMenuInformation = { contextMenuCoordinates: undefined, toggleDisplayAsLayerNodeId: undefined, toggleDisplayAsLayerCurrentlyIsNode: false };
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
-		contextMenuInformation: { contextMenuCoordinates: undefined, toggleDisplayAsLayerNodeId: undefined, toggleDisplayAsLayerCurrentlyIsNode: false } as ContextMenuInformation,
+		contextMenuInformation,
+		layerWidths: new Map<bigint, number>(),
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -49,6 +52,13 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
+		update((state) => {
+			state.layerWidths = updateLayerWidths.layerWidths;
+			return state;
+		});
+	});
+	// TODO: Add a way to only update the nodes that have changed
 	editor.subscriptions.subscribeJsMessage(UpdateNodeGraph, (updateNodeGraph) => {
 		update((state) => {
 			state.nodes = updateNodeGraph.nodes;

@@ -27,3 +27,4 @@ bezier-rs = { workspace = true }
 specta = { workspace = true }
 bytemuck = { workspace = true }
 rustc-hash = { workspace = true }
+web-sys = "=0.3.67"

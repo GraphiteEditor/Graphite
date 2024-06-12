@@ -117,6 +117,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "contextMenuInformation")]
 		context_menu_information: ContextMenuInformation,
 	},
+	UpdateLayerWidths {
+		#[serde(rename = "layerWidths")]
+		layer_widths: HashMap<NodeId, u32>,
+	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

@@ -300,6 +300,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(node_id) = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point) else {
 					return;
 				};
+				if NodeGraphMessageHandler::get_key_from_point(&network.visibility_click_targets, point).is_some() {
+					return;
+				};
 				if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
 					return;
 				}
@@ -494,6 +497,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					network.update_click_target(node_id, Some(import_count));
 				}
 
+				// TODO: Cache all nodes and wires in the network, only update the moved node/connected wires, and send all nodes to the front end.
 				// Since document structure doesn't change, just update the nodes
 				if graph_view_overlay_open {
 					let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
@@ -564,6 +568,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 				log::debug!("point: {point:?}");
 
+				if let Some(clicked_visibility) = NodeGraphMessageHandler::get_key_from_point(&network.visibility_click_targets, point) {
+					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					return;
+				}
 				let clicked_id = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point);
 				let clicked_input = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point);
 				let clicked_output = NodeGraphMessageHandler::get_key_from_point(&network.output_click_targets, point);
@@ -586,7 +594,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
 					};
 
-					self.context_menu.context_menu_coordinates = Some((point.x + node_graph_shift.x, point.y + node_graph_shift.y));
+					self.context_menu.context_menu_coordinates = Some(((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32));
 
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
@@ -961,7 +969,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
 							DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
 						};
-						self.context_menu.context_menu_coordinates = Some((point.x + node_graph_shift.x, point.y + node_graph_shift.y));
+						self.context_menu.context_menu_coordinates = Some(((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32));
 
 						responses.add(FrontendMessage::UpdateContextMenuInformation {
 							context_menu_information: self.context_menu.clone(),
@@ -2157,7 +2165,10 @@ impl NodeGraphMessageHandler {
 			let nodes = self.collect_nodes(document_network, network, &wires);
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path })
+			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path });
+			responses.add(FrontendMessage::UpdateLayerWidths {
+				layer_widths: network.layer_widths.clone(),
+			});
 		}
 	}
 

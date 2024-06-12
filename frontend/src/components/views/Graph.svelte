@@ -32,8 +32,7 @@
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
 	// TODO: MEMORY LEAK: Items never get removed from this array, so find a way to deal with garbage collection
-	let layerNameLabelWidths: Record<string, number> = {};
-
+	// let layerNameLabelWidths: Record<string, number> = {};
 	let panning = false;
 	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
 	let boxSelection: Box | undefined = undefined;
@@ -316,11 +315,11 @@
 	// 		//$nodeGraph.transform.y -= scrollY / $nodeGraph.transform.scale;
 	// 	}
 	// }
-
+	document.addEventListener("keydown", keydown);
 	function keydown(e: KeyboardEvent) {
+		console.log("layerWidths", $nodeGraph.layerWidths);
 		if (e.key.toLowerCase() === "escape") {
 			contextMenuOpenCoordinates = undefined;
-			document.removeEventListener("keydown", keydown);
 			wireInProgressFromConnector = undefined;
 			// wireInProgressFromLayerTop = undefined;
 			// wireInProgressFromLayerBottom = undefined;
@@ -699,7 +698,7 @@
 	function createNode(nodeType: string) {
 		if (!$nodeGraph.contextMenuInformation.contextMenuCoordinates) return;
 
-		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates[0], $nodeGraph.contextMenuInformation.contextMenuCoordinates[1]);
+		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 
 		// const inputNodeConnectionIndex = 0;
 		// const x = Math.round(contextMenuOpenCoordinates.x / GRID_SIZE);
@@ -793,8 +792,8 @@
 			class="context-menu"
 			data-context-menu
 			styles={{
-				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[0] * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
-				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[1] * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
+				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
+				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 				...($nodeGraph.contextMenuInformation.toggleDisplayAsLayerNodeId === undefined
 					? {
 							transform: `translate(0%, 0%)`,
@@ -873,18 +872,18 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
 			{@const extraWidthToReachGridMultiple = 8}
-			{@const labelWidthGridCells = Math.ceil(((layerNameLabelWidths?.[String(node.id)] || 0) - extraWidthToReachGridMultiple) / 24)}
+			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={node.position?.x || 0}
+				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				style:--label-width={labelWidthGridCells}
+				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
@@ -968,7 +967,7 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
+					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>
 						{node.alias}
 					</span>
 				</div>
@@ -978,10 +977,7 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path
-								clip-rule="evenodd"
-								d={layerBorderMask(72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple, node.exposedInputs.length === 0 ? 0 : 36)}
-							/>
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, node.exposedInputs.length === 0 ? 0 : 36)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -1398,7 +1394,7 @@
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
 			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
-			width: calc(72px + 8px + 24px * Max(3, var(--label-width)) + 8px + 12px + var(--extra-width-to-reach-grid-multiple));
+			width: calc(24px * var(--layer-area-width) - 12px);
 			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
 			margin-left: calc((1.5 - var(--node-chain-area-left-extension)) * 24px);
 
