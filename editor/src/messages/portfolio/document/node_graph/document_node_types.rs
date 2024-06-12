@@ -6,8 +6,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
-use animation::easing::Easing;
-use animation::keyframe::{KeyframeF64, KeyframesF64};
+use animation::keyframe::KeyframesF64;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
@@ -137,7 +136,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::network(concrete!(WasmEditorApi), 0),
 				},
-				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0., Easing::Linear)])), false),
+				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
 			properties: node_properties::animatable_number_properties,

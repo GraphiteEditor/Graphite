@@ -8,7 +8,6 @@ use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
-use graphene_core::animation::easing::Easing;
 use graphene_core::animation::keyframe::{KeyframeF64, KeyframesF64};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{
@@ -377,6 +376,7 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<KeyframeF64>, inde
 				new_positions[index].value = x.value.unwrap();
 			} else {
 				new_positions[index].time = x.value.unwrap();
+				new_positions.sort_unstable_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
 			}
 			TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 		}
@@ -419,8 +419,7 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<KeyframeF64>, inde
 		let old_positions = positions.clone();
 		move |_: &IconButton| {
 			let mut new_positions = old_positions.clone();
-			new_positions.push(KeyframeF64::new(0., 0., Easing::Linear));
-			new_positions.sort_unstable_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+			new_positions.insert(index + 1, new_positions[index]);
 			TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 		}
 	};

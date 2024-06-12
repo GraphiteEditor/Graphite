@@ -19,7 +19,17 @@ impl KeyframeF64 {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, DynAny)]
+impl Default for KeyframeF64 {
+	fn default() -> Self {
+		Self {
+			time: 0.,
+			value: 0.,
+			easing: Easing::Linear,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Default, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KeyframesF64 {
 	pub keyframes: Vec<KeyframeF64>,
