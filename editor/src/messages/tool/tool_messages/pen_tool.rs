@@ -263,7 +263,7 @@ impl PenToolData {
 		};
 		let next_point = self.next_point;
 		self.place_anchor(snap_data, transform, mouse, ModifierState::default(), responses);
-		let handles = BezierHandles::Cubic { handle_start, handle_end };
+		let handles = [handle_start - self.latest_point()?.pos, handle_end - next_point].map(Some);
 
 		// Get close path
 		let mut end = None;
@@ -290,8 +290,9 @@ impl PenToolData {
 			end
 		});
 
+		let points = [start, end];
 		let id = SegmentId::generate();
-		let modification_type = VectorModificationType::InsertSegment { id, start, end, handles };
+		let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		info!("Finish place handle");
 

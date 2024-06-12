@@ -130,7 +130,9 @@ impl SegmentModification {
 				warn!("invalid end id");
 				continue;
 			}
-			let handles = match (handle_start, handle_end) {
+			let Some(start_position) = point_domain.pos_from_id(start) else { continue };
+			let Some(end_position) = point_domain.pos_from_id(end) else { continue };
+			let handles = match (handle_start.map(|handle| handle + start_position), handle_end.map(|handle| handle + end_position)) {
 				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
 				(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
 				(None, None) => BezierHandles::Linear,
@@ -142,12 +144,12 @@ impl SegmentModification {
 			segment_domain.push(add_id, start, end, handles, stroke);
 		}
 	}
-	fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
+	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2], stroke: StrokeId) {
 		self.add.push(id);
-		self.start_point.insert(id, start);
-		self.end_point.insert(id, end);
-		self.handle_primary.insert(id, handles.start());
-		self.handle_end.insert(id, handles.end());
+		self.start_point.insert(id, points[0]);
+		self.end_point.insert(id, points[1]);
+		self.handle_primary.insert(id, handles[0]);
+		self.handle_end.insert(id, handles[1]);
 		self.stroke.insert(id, stroke);
 	}
 	fn remove(&mut self, id: SegmentId) {
@@ -201,14 +203,14 @@ pub struct VectorModification {
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorModificationType {
-	InsertSegment { id: SegmentId, start: PointId, end: PointId, handles: BezierHandles },
+	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
 	InsertPoint { id: PointId, pos: DVec2 },
 
 	RemoveSegment { id: SegmentId },
 	RemovePoint { id: PointId },
 
 	SetG1Continous { handles: [HandleId; 2], enabled: bool },
-	SetHandles { segment: SegmentId, handles: BezierHandles },
+	SetHandles { segment: SegmentId, handles: [Option<DVec2>; 2] },
 	SetPrimaryHandle { segment: SegmentId, pos: DVec2 },
 	SetEndHandle { segment: SegmentId, pos: DVec2 },
 	SetStartPoint { segment: SegmentId, id: PointId },
@@ -235,7 +237,7 @@ impl VectorModification {
 	}
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
 		match vector_data_modification {
-			VectorModificationType::InsertSegment { id, start, end, handles } => self.segments.push(*id, *start, *end, *handles, StrokeId::ZERO),
+			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles, StrokeId::ZERO),
 			VectorModificationType::InsertPoint { id, pos } => self.points.push(*id, *pos),
 
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
@@ -257,8 +259,8 @@ impl VectorModification {
 				}
 			}
 			VectorModificationType::SetHandles { segment, handles } => {
-				self.segments.handle_primary.insert(*segment, handles.start());
-				self.segments.handle_end.insert(*segment, handles.end());
+				self.segments.handle_primary.insert(*segment, handles[0]);
+				self.segments.handle_end.insert(*segment, handles[1]);
 			}
 			VectorModificationType::SetPrimaryHandle { segment, pos } => {
 				self.segments.handle_primary.insert(*segment, Some(*pos));

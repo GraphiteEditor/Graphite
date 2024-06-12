@@ -55,6 +55,7 @@ pub struct ShapeState {
 pub struct SelectedPointsInfo {
 	pub points: Vec<ManipulatorPointInfo>,
 	pub offset: DVec2,
+	pub vector_data: VectorData,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -76,36 +77,13 @@ pub struct ClosestSegment {
 	segment: SegmentId,
 	bezier: Bezier,
 	points: [PointId; 2],
+	colinear: [Option<HandleId>; 2],
 	t: f64,
 	bezier_point_to_viewport: DVec2,
 	stroke_width: f64,
 }
 
 impl ClosestSegment {
-	fn new(segment: SegmentId, mut bezier: Bezier, points: [PointId; 2], t: f64, bezier_point_to_viewport: DVec2, layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Self {
-		// 0.5 is half the line (center to side) but it's convenient to allow targetting slightly more than half the line width
-		const STROKE_WIDTH_PERCENT: f64 = 0.7;
-
-		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
-
-		// Convert to linear if handes are on top of control points
-		if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
-			if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
-				bezier = Bezier::from_linear_dvec2(bezier.start, bezier.end);
-			}
-		}
-
-		Self {
-			layer,
-			segment,
-			bezier,
-			points,
-			t,
-			bezier_point_to_viewport,
-			stroke_width,
-		}
-	}
-
 	pub fn layer(&self) -> LayerNodeIdentifier {
 		self.layer
 	}
@@ -152,22 +130,20 @@ impl ClosestSegment {
 		let segment_ids = [SegmentId::generate(), SegmentId::generate()];
 		let modification_type = VectorModificationType::InsertSegment {
 			id: segment_ids[0],
-			start: self.points[0],
-			end: midpoint,
-			handles: first.handles,
+			points: [self.points[0], midpoint],
+			handles: [first.handle_start().map(|handle| handle - first.start), first.handle_end().map(|handle| handle - first.end)],
 		};
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// Last segment
 		let modification_type = VectorModificationType::InsertSegment {
 			id: segment_ids[1],
-			start: midpoint,
-			end: self.points[1],
-			handles: second.handles,
+			points: [midpoint, self.points[1]],
+			handles: [second.handle_start().map(|handle| handle - second.start), second.handle_end().map(|handle| handle - second.end)],
 		};
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-		// G1 continous
+		// G1 continous on new handles
 		if self.bezier.handle_end().is_some() {
 			let handles = [HandleId::end(segment_ids[0]), HandleId::primary(segment_ids[1])];
 			let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
@@ -177,6 +153,14 @@ impl ClosestSegment {
 		// Remove old segment
 		let modification_type = VectorModificationType::RemoveSegment { id: self.segment };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// Restore mirroring on end handles
+		for (handle, other) in self.colinear.into_iter().zip([HandleId::primary(segment_ids[0]), HandleId::end(segment_ids[1])]) {
+			let Some(handle) = handle else { continue };
+			let handles = [handle, other];
+			let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 
 		midpoint
 	}
@@ -302,7 +286,7 @@ impl ShapeState {
 					.flat_map(|(layer, state)| state.selected_points.iter().map(|&point_id| ManipulatorPointInfo { layer: *layer, point_id }))
 					.collect();
 
-				return Some(Some(SelectedPointsInfo { points, offset }));
+				return Some(Some(SelectedPointsInfo { points, offset, vector_data }));
 			} else {
 				let selected_shape_state = self.selected_shape_state.get_mut(&layer)?;
 				selected_shape_state.deselect_point(manipulator_point_id);
@@ -605,69 +589,51 @@ impl ShapeState {
 
 	/// Move the selected points by dragging the mouse.
 	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
-		// 		continue;
-		// 	};
-		// 	let colinear_manipulators = get_colinear_manipulators(layer, document_network);
+		for (&layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+				continue;
+			};
 
-		// 	let transform = document_metadata.transform_to_viewport(layer);
-		// 	let delta = transform.inverse().transform_vector2(delta);
+			let transform = document_metadata.transform_to_viewport(layer);
+			let delta = transform.inverse().transform_vector2(delta);
 
-		// 	for &point in state.selected_points.iter() {
-		// 		if point.manipulator_type.is_handle() && state.is_selected(ManipulatorPointId::new(point.group, SelectedType::Anchor)) {
-		// 			continue;
-		// 		}
+			for &point in state.selected_points.iter() {
+				let handle = match point {
+					ManipulatorPointId::Anchor(point) => {
+						self.move_anchor(point, &vector_data, delta, layer, responses);
+						continue;
+					}
+					ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
+					ManipulatorPointId::EndHandle(segment) => HandleId::end(segment),
+				};
+				let Some(anchor_id) = point.get_anchor(&vector_data) else { continue };
+				let Some(anchor_position) = vector_data.point_domain.pos_from_id(anchor_id) else { continue };
+				let Some(handle_position) = point.get_position(&vector_data) else { continue };
+				if state.is_selected(ManipulatorPointId::Anchor(anchor_id)) {
+					continue;
+				}
+				let handle_position = handle_position + delta;
+				let modification_type = handle.set_pos(handle_position - anchor_position);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-		// 		let Some(group) = vector_data.manipulator_group_id(point.group) else { continue };
+				let pair = vector_data.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle));
+				let other = pair.and_then(|pair| pair.iter().copied().find(|&val| val != handle));
+				let Some(other) = other else { continue };
+				if state.is_selected(other.to_point()) {
+					continue;
+				}
 
-		// 		let mut move_point = |point: ManipulatorPointId| {
-		// 			// let Some(previous_position) = point.manipulator_type.get_position(&group) else { return };
-		// 			// let position = previous_position + delta;
-		// 			// responses.add(GraphOperationMessage::Vector {
-		// 			// 	layer,
-		// 			// 	modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-		// 			// });
-		// 		};
-
-		// 		move_point(point);
-
-		// 		// if point.manipulator_type == SelectedType::Anchor {
-		// 		// 	move_point(ManipulatorPointId::new(point.group, SelectedType::InHandle));
-		// 		// 	move_point(ManipulatorPointId::new(point.group, SelectedType::OutHandle));
-		// 		// }
-
-		// 		if equidistant && point.manipulator_type != SelectedType::Anchor {
-		// 			let mut colinear = colinear_manipulators.contains(&point.group);
-
-		// 			// If there is no opposing handle, we consider it colinear
-		// 			// if !colinear && point.manipulator_type.opposite().get_position(&group).is_none() {
-		// 			// 	responses.add(GraphOperationMessage::Vector {
-		// 			// 		layer,
-		// 			// 		modification_type: VectorModificationType::SetManipulatorColinearHandlesState { id: group.id, colinear: true },
-		// 			// 	});
-		// 			// 	colinear = true;
-		// 			// }
-
-		// 			// if colinear {
-		// 			// 	let Some(mut original_handle_position) = point.manipulator_type.get_position(&group) else {
-		// 			// 		continue;
-		// 			// 	};
-		// 			// 	original_handle_position += delta;
-
-		// 			// 	let point = ManipulatorPointId::new(point.group, point.manipulator_type.opposite());
-		// 			// 	if state.is_selected(point) {
-		// 			// 		continue;
-		// 			// 	}
-		// 			// 	let position = group.anchor - (original_handle_position - group.anchor);
-		// 			// 	responses.add(GraphOperationMessage::Vector {
-		// 			// 		layer,
-		// 			// 		modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-		// 			// 	});
-		// 			// }
-		// 		}
-		// 	}
-		// }
+				let new_relative = if equidistant {
+					-(handle_position - anchor_position)
+				} else {
+					let Some(other_position) = other.to_point().get_position(&vector_data) else { continue };
+					let direction = (handle_position - anchor_position).try_normalize();
+					direction.map_or(other_position - anchor_position, |direction| -direction * (other_position - anchor_position).length())
+				};
+				let modification_type = other.set_pos(new_relative);
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
+		}
 	}
 
 	/// Delete selected and colinear handles with zero length when the drag stops.
@@ -846,18 +812,16 @@ impl ShapeState {
 				return;
 			};
 			let [Some(handle_start), Some(handle_end)] = opposites.map(|handle| {
-				handle
-					.to_point()
-					.get_position(vector_data)
-					.or_else(|| handle.to_point().get_anchor(vector_data).and_then(|anchor| vector_data.point_domain.pos_from_id(anchor)))
+				let handle_position = handle.to_point().get_position(vector_data);
+				let relative_position = handle.to_point().get_anchor(vector_data).and_then(|anchor| vector_data.point_domain.pos_from_id(anchor));
+				Some(handle_position? - relative_position?)
 			}) else {
 				return;
 			};
 			let modification_type = VectorModificationType::InsertSegment {
 				id: opposites[0].segment,
-				start,
-				end,
-				handles: bezier_rs::BezierHandles::Cubic { handle_start, handle_end },
+				points: [start, end],
+				handles: [Some(handle_start), Some(handle_end)],
 			};
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
@@ -1073,20 +1037,47 @@ impl ShapeState {
 
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
+		info!("closest {closest_distance_squared}");
 
 		let vector_data = document_metadata.compute_modified_vector(layer, document_network)?;
 
-		for (segment, bezier, start, end) in vector_data.segment_bezier_iter() {
+		for (segment, mut bezier, start, end) in vector_data.segment_bezier_iter() {
 			let t = bezier.project(layer_pos);
 			let layerspace = bezier.evaluate(TValue::Parametric(t));
 
 			let screenspace = transform.transform_point2(layerspace);
 			let distance_squared = screenspace.distance_squared(position);
 
+			info!("Checking {distance_squared} actual {layerspace} pos {layer_pos} {bezier:?}");
 			if distance_squared < closest_distance_squared {
 				closest_distance_squared = distance_squared;
 
-				closest = Some(ClosestSegment::new(segment, bezier, [start, end], t, screenspace, layer, document_network))
+				// 0.5 is half the line (center to side) but it's convenient to allow targetting slightly more than half the line width
+				const STROKE_WIDTH_PERCENT: f64 = 0.7;
+
+				let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
+
+				// Convert to linear if handes are on top of control points
+				if let bezier_rs::BezierHandles::Cubic { handle_start, handle_end } = bezier.handles {
+					if handle_start.abs_diff_eq(bezier.start(), f64::EPSILON * 100.) && handle_end.abs_diff_eq(bezier.end(), f64::EPSILON * 100.) {
+						bezier = Bezier::from_linear_dvec2(bezier.start, bezier.end);
+					}
+				}
+				let primary_handle = vector_data.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::primary(segment)));
+				let end_handle = vector_data.colinear_manipulators.iter().find(|handles| handles.contains(&HandleId::end(segment)));
+				let primary_handle = primary_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment));
+				let end_handle = end_handle.and_then(|&handles| handles.into_iter().find(|handle| handle.segment != segment));
+				closest = Some(ClosestSegment {
+					segment,
+					bezier,
+					points: [start, end],
+					colinear: [primary_handle, end_handle],
+					t,
+					bezier_point_to_viewport: screenspace,
+					layer,
+					stroke_width,
+				});
+				info!("Found closest");
 			}
 		}
 
@@ -1144,10 +1135,7 @@ impl ShapeState {
 						BezierHandles::Quadratic { handle: handle_position } => {
 							let segment = handle.segment;
 							// Convert to linear
-							let modification_type = VectorModificationType::SetHandles {
-								segment,
-								handles: BezierHandles::Linear,
-							};
+							let modification_type = VectorModificationType::SetHandles { segment, handles: [None; 2] };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 							// Set the manipulator to have non-colinear handles

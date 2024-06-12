@@ -196,8 +196,7 @@ impl FreehandToolData {
 
 		let Some(layer) = self.layer else { return };
 
-		let determinant = document.metadata.document_to_viewport.matrix2.determinant().abs();
-		let tolerance_sq = 0.02 * determinant * TOLLERANCE * TOLLERANCE * (0.2 * TOLLERANCE - 2.).exp();
+		let tolerance_sq = 0.02 * TOLLERANCE * TOLLERANCE * (0.2 * TOLLERANCE - 2.).exp();
 
 		let fit = if self.positions.len() < MAX_POSITIONS {
 			bezier_rs::Subpath::<PointId>::fit_cubic(&self.positions, 1, self.required_tangent, tolerance_sq)
@@ -241,8 +240,9 @@ impl FreehandToolData {
 
 		let start = set_point(&mut self.start, bezier.start, layer, responses);
 		let end = set_point(&mut self.end, bezier.end, layer, responses);
+		let points = [start, end];
 
-		let handles = bezier.handles;
+		let handles = [bezier.handle_start().map(|handle| handle - bezier.start), bezier.handle_end().map(|handle| handle - bezier.end)];
 		let segment = if let Some(segment) = self.segment {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
@@ -254,7 +254,7 @@ impl FreehandToolData {
 			self.segment = Some(id);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification_type: VectorModificationType::InsertSegment { id, start, end, handles },
+				modification_type: VectorModificationType::InsertSegment { id, points, handles },
 			});
 			id
 		};

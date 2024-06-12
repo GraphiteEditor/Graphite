@@ -52,6 +52,17 @@ impl std::ops::Index<usize> for Bezier {
 	}
 }
 
+// Note that the built in signum cannot be used as it does not handle 0 the same way as in the C code.
+fn sign(x: f64) -> i8 {
+	if x > 0. {
+		1
+	} else if x < 0. {
+		-1
+	} else {
+		0
+	}
+}
+
 // https://gitlab.com/inkscape/lib2geom/-/blob/master/include/2geom/sbasis.h#L70
 #[derive(Debug, Clone)]
 pub(crate) struct SymmetricalBasis(pub Vec<DVec2>);
@@ -158,7 +169,7 @@ impl SymmetricalBasis {
 				}
 				// Linear
 				if bz.len() - 1 == 1 {
-					if bz[0].signum() != bz[1].signum() {
+					if sign(bz[0]) != sign(bz[1]) {
 						let d = bz[0] - bz[1];
 						if d != 0. {
 							let r = bz[0] / d;
@@ -440,18 +451,18 @@ impl Bezier1d {
 		let bz = self;
 		let mut n_crossings = 0;
 
-		let mut old_sign = bz[0].signum();
+		let mut old_sign = sign(bz[0]);
 		for i in 1..bz.len() {
-			let sign = bz[i].signum();
-			if sign != 0. {
-				if sign != old_sign && old_sign != 0. {
+			let sign = sign(bz[i]);
+			if sign != 0 {
+				if sign != old_sign && old_sign != 0 {
 					n_crossings += 1;
 				}
 				old_sign = sign;
 			}
 		}
 		// if last control point is zero, that counts as crossing too
-		if bz[bz.len() - 1].signum() == 0. {
+		if sign(bz[bz.len() - 1]) == 0 {
 			n_crossings += 1;
 		}
 		// no solutions

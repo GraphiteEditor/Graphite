@@ -373,47 +373,45 @@ impl PathToolData {
 		// 	.start_snap(document, input, document.bounding_boxes(Some(&selected_layers), None, font_cache), true, true);
 
 		// Do not snap against handles when anchor is selected
-		// let mut additional_selected_points = Vec::new();
-		// for point in selected_points.points.iter() {
-		// 	if point.point_id.manipulator_type == SelectedType::Anchor {
-		// 		additional_selected_points.push(ManipulatorPointInfo {
-		// 			layer: point.layer,
-		// 			point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::InHandle),
-		// 		});
-		// 		additional_selected_points.push(ManipulatorPointInfo {
-		// 			layer: point.layer,
-		// 			point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::OutHandle),
-		// 		});
-		// 	}
-		// }
-		// selected_points.points.extend(additional_selected_points);
+		let mut additional_selected_points = Vec::new();
+		for point in selected_points.points.iter() {
+			let Some(anchor) = point.point_id.as_anchor() else { continue };
 
-		// let viewport_to_document = document.metadata.document_to_viewport.inverse();
-		// self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
+			let connected = selected_points.vector_data.segment_domain.all_connected(anchor).map(|handle| handle.to_point());
+			let filtered = connected.filter(|point| point.get_position(&selected_points.vector_data).is_some());
+			let point_info = filtered.map(|point_id| ManipulatorPointInfo { layer: point.layer, point_id });
+			additional_selected_points.extend(point_info);
+		}
+		selected_points.points.extend(additional_selected_points);
+
+		let viewport_to_document = document.metadata.document_to_viewport.inverse();
+		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
 	}
 
-	fn drag(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn update_colinear(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// Check if the alt key has just been pressed
-		// if alt && !self.alt_debounce {
-		// 	self.opposing_handle_lengths = None;
-		// 	shape_editor.toggle_colinear_handles_state_on_selected(responses);
-		// }
-		// self.alt_debounce = alt;
+		if alt && !self.alt_debounce {
+			self.opposing_handle_lengths = None;
+			shape_editor.toggle_colinear_handles_state_on_selected(responses);
+		}
+		self.alt_debounce = alt;
 
-		// if shift {
-		// 	if self.opposing_handle_lengths.is_none() {
-		// 		self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
-		// 	}
-		// } else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
-		// 	shape_editor.reset_opposing_handle_lengths(document, opposing_handle_lengths, responses);
-		// 	self.opposing_handle_lengths = None;
-		// }
+		if shift {
+			if self.opposing_handle_lengths.is_none() {
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
+			}
+		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
+			shape_editor.reset_opposing_handle_lengths(document, opposing_handle_lengths, responses);
+			self.opposing_handle_lengths = None;
+		}
+	}
 
-		// // Move the selected points with the mouse
-		// let previous_mouse = document.metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
-		// let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
-		// shape_editor.move_selected_points(&document.network, &document.metadata, snapped_delta, shift, responses);
-		// self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
+	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+		// Move the selected points with the mouse
+		let previous_mouse = document.metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
+		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
+		shape_editor.move_selected_points(&document.network, &document.metadata, snapped_delta, equidistant, responses);
+		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
@@ -507,7 +505,8 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
 				let alt_state = input.keyboard.get(alt as usize);
 				let shift_state = input.keyboard.get(shift as usize);
-				tool_data.drag(shift_state, alt_state, shape_editor, document, input, responses);
+				tool_data.update_colinear(shift_state, alt_state, shape_editor, document, responses);
+				tool_data.drag(shift_state, shape_editor, document, input, responses);
 
 				// Auto-panning
 				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
@@ -527,7 +526,7 @@ impl Fsm for PathToolFsmState {
 				// Auto-panning
 				if let Some(delta) = tool_data.auto_panning.shift_viewport(input, responses) {
 					let shift_state = input.keyboard.get(shift as usize);
-					shape_editor.move_selected_points(&document.network, &document.metadata, -delta, shift_state, responses);
+					tool_data.drag(shift_state, shape_editor, document, input, responses);
 				}
 
 				PathToolFsmState::Dragging
