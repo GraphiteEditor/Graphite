@@ -1,6 +1,6 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath};
+use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -112,6 +112,10 @@ pub enum FrontendMessage {
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
+	},
+	UpdateContextMenuInformation {
+		#[serde(rename = "contextMenuInformation")]
+		context_menu_information: ContextMenuInformation,
 	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]

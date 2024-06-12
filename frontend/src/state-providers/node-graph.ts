@@ -3,11 +3,13 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/wasm-communication/editor";
 import {
 	type Box,
+	type ContextMenuInformation,
 	type FrontendNode,
 	type FrontendNodeWire as FrontendNodeWire,
 	type FrontendNodeType,
 	type WirePath,
 	UpdateBox,
+	UpdateContextMenuInformation,
 	UpdateNodeGraph,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
@@ -22,6 +24,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		contextMenuInformation: { contextMenuCoordinates: undefined, toggleDisplayAsLayerNodeId: undefined, toggleDisplayAsLayerCurrentlyIsNode: false } as ContextMenuInformation,
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],
 		wirePathInProgress: undefined as WirePath | undefined,
@@ -37,6 +40,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
 		update((state) => {
 			state.box = updateBox.box;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
+		update((state) => {
+			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
 			return state;
 		});
 	});

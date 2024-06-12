@@ -619,11 +619,10 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> u64 {
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
 		let id = NodeId(generate_uuid());
 		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
 		self.dispatch(message);
-		id.0
 	}
 
 	/// Notifies the backend that the user selected a node in the node graph
@@ -642,12 +641,12 @@ impl EditorHandle {
 	}
 
 	/// Notifies the backend that the user double clicked a node
-	#[wasm_bindgen(js_name = enterNestedNetwork)]
-	pub fn enter_nested_network(&self, node: u64) {
-		//let node_id = NodeId(node);
-		//let message = NodeGraphMessage::EnterNestedNetwork { node_id  };
-		//self.dispatch(message);
-	}
+	// #[wasm_bindgen(js_name = enterNestedNetwork)]
+	// pub fn enter_nested_network(&self, node: u64) {
+	// 	//let node_id = NodeId(node);
+	// 	//let message = NodeGraphMessage::EnterNestedNetwork { node_id  };
+	// 	//self.dispatch(message);
+	// }
 
 	/// Go back a certain number of nested levels
 	#[wasm_bindgen(js_name = exitNestedNetwork)]

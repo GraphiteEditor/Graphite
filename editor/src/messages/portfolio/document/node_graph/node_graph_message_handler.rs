@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -43,12 +43,15 @@ pub struct NodeGraphMessageHandler {
 	// Stored in pixel coordinates
 	box_selection_start: Option<UVec2>,
 	disconnecting: Option<(NodeId, usize)>,
+	initial_disconnecting: bool,
 	// Node to select on pointer up if multiple nodes are selected and they were not dragged
 	select_if_not_dragged: Option<NodeId>,
 	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
 	wire_in_progress_from_connector: Option<(DVec2, bool)>,
 	// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
 	wire_in_progress_to_connector: Option<(DVec2, bool)>,
+	// State for the context menu popups
+	context_menu: ContextMenuInformation,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -178,6 +181,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -188,13 +195,34 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				responses.add(DocumentMessage::StartTransaction);
-
 				let document_node = document_node_type.to_document_node(
 					document_node_type.inputs.iter().map(|input| input.default.clone()),
-					graph_craft::document::DocumentNodeMetadata::position((x, y)),
+					graph_craft::document::DocumentNodeMetadata::position((x / 24, y / 24)),
 				);
+				self.context_menu.context_menu_coordinates = None;
+
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
+
+				if let Some(wire_in_progress) = self.wire_in_progress_from_connector {
+					let Some((from_node, output_index)) = Self::get_key_from_point(&network.output_click_targets, wire_in_progress.0) else {
+						log::error!("Could not get output form connector start");
+						return;
+					};
+					responses.add(NodeGraphMessage::ConnectNodesByWire {
+						output_node: from_node,
+						output_node_connector_index: output_index,
+						input_node: node_id,
+						input_node_connector_index: 0,
+					});
+					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_to_connector = None;
+				}
+
+				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Cut => {
@@ -526,6 +554,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				shift_click,
 				control_click,
 				alt_click,
+				right_click,
 			} => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
@@ -535,6 +564,72 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 				log::debug!("point: {point:?}");
 
+				let clicked_id = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point);
+				let clicked_input = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point);
+				let clicked_output = NodeGraphMessageHandler::get_key_from_point(&network.output_click_targets, point);
+
+				// Create the add node popup on right click, then exit
+				if right_click {
+					self.context_menu.toggle_display_as_layer_node_id = clicked_id;
+					if let Some(node) = clicked_id.and_then(|node_id| network.nodes.get(&node_id)) {
+						self.context_menu.toggle_display_as_layer_currently_is_node = !node.is_layer;
+					}
+
+					//TODO: Create function
+					let node_graph_shift = if self.context_menu.toggle_display_as_layer_node_id.is_none() {
+						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
+						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+					} else {
+						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
+						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+					};
+
+					self.context_menu.context_menu_coordinates = Some((point.x + node_graph_shift.x, point.y + node_graph_shift.y));
+
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+					return;
+				}
+
+				// If the user is clicking on the add nodes list or context menu, exit here
+				if !right_click {
+					if let Some(context_menu) = self.context_menu.context_menu_coordinates {
+						let context_menu_viewport = network.node_graph_to_viewport.transform_point2(DVec2::new(context_menu.0 as f64, context_menu.1 as f64));
+						let (width, height) = if self.context_menu.toggle_display_as_layer_node_id.is_some() {
+							// Height and width for toggle layer menu
+							(173., 34.)
+						} else {
+							// Height and width for add node menu
+							(180., 200.)
+						};
+						let context_menu_subpath = bezier_rs::Subpath::new_rounded_rect(
+							DVec2::new(context_menu_viewport.x, context_menu_viewport.y),
+							DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
+							[5.; 4],
+						);
+						let context_menu_click_target = ClickTarget {
+							subpath: context_menu_subpath,
+							stroke_width: 1.,
+						};
+						if context_menu_click_target.intersect_point(viewport_location, DAffine2::IDENTITY) {
+							return;
+						}
+					}
+				}
+
+				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
+				if !right_click {
+					self.context_menu.context_menu_coordinates = None;
+					self.wire_in_progress_from_connector = None;
+					self.context_menu.toggle_display_as_layer_node_id = None;
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+				}
+
 				// Alt-click sets the clicked node as previewed
 				if alt_click {
 					if let Some(clicked_node) = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point) {
@@ -543,7 +638,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				}
 
-				if let Some(clicked_input) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point) {
+				// Input: Begin moving an existing wire
+				if let Some(clicked_input) = clicked_input {
+					self.initial_disconnecting = true;
 					log::debug!("Clicked input: {} index: {}", clicked_input.0, clicked_input.1);
 					let input_index = NodeGraphMessageHandler::get_input_index(network, clicked_input.0, clicked_input.1);
 					if let Some(NodeInput::Node { node_id, output_index, .. }) = network
@@ -590,8 +687,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				if let Some(clicked_output) = NodeGraphMessageHandler::get_key_from_point(&network.output_click_targets, point) {
+				if let Some(clicked_output) = clicked_output {
 					log::debug!("Clicked output: {} index: {}", clicked_output.0, clicked_output.1);
+					self.initial_disconnecting = false;
 
 					if let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) {
 						// Disallow creating additional vertical output wires from an already-connected layer
@@ -638,7 +736,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				if let Some(clicked_id) = NodeGraphMessageHandler::get_key_from_point(&network.node_click_targets, point) {
+				if let Some(clicked_id) = clicked_id {
 					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
 					let mut modified_selected = false;
 
@@ -665,17 +763,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					else {
 						self.select_if_not_dragged = Some(clicked_id);
 					}
+
+					// If this node is selected (whether from before or just now), prepare it for dragging
+					if updated_selected.contains(&clicked_id) {
+						let drag_start = DragStart {
+							start_x: point.x,
+							start_y: point.y,
+							round_x: 0,
+							round_y: 0,
+						};
+
+						self.drag_start = Some(drag_start);
+					}
+
+					// Update the selection if it was modified
 					if modified_selected {
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
 					}
-					let drag_start = DragStart {
-						start_x: point.x,
-						start_y: point.y,
-						round_x: 0,
-						round_y: 0,
-					};
-
-					self.drag_start = Some(drag_start);
 
 					return;
 				}
@@ -694,7 +798,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let viewport_location = ipp.mouse.position;
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
-				if self.wire_in_progress_from_connector.is_some() {
+				if self.wire_in_progress_from_connector.is_some() && self.context_menu.context_menu_coordinates.is_none() {
 					if let Some((to_connector_node_position, is_layer, input_index)) = NodeGraphMessageHandler::get_key_from_point(&network.input_click_targets, point)
 						.and_then(|(node_id, input_index)| network.nodes.get(&node_id).map(|node| (node.metadata.position, node.is_layer, input_index)))
 					{
@@ -730,11 +834,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 					// Not hovering over a node input or node output, update with the mouse position.
 					else {
-						if let Some(wire_in_progress_to_connector) = self.wire_in_progress_to_connector.as_mut() {
-							wire_in_progress_to_connector.0 = point;
-						} else {
-							self.wire_in_progress_from_connector = Some((point, false));
-						};
+						self.wire_in_progress_to_connector = Some((point, false));
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = self.disconnecting {
 							responses.add(NodeGraphMessage::DisconnectInput {
@@ -777,6 +877,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						drag_start.round_y = graph_delta.y;
 					}
 				} else if let Some(box_selection_start) = self.box_selection_start {
+					//TODO: Is this still an issue? The mouse button was released but we missed the pointer up event
+					// if ((e.buttons & 1) === 0) {
+					// 	completeBoxSelection();
+					// 	boxSelection = undefined;
+					// } else if ((e.buttons & 2) !== 0) {
+					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
+					// 	boxSelection = undefined;
+					// }
+
 					let box_selection = Some(BoxSelection {
 						start_x: box_selection_start.x,
 						start_y: box_selection_start.y,
@@ -813,6 +922,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
+				// Disconnect if the wire was previously connected to an input
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// log::debug!(
 					// 	"Self::get_key_from_point(&network.output_click_targets, wire_in_progress_from_connector.0): {:?}",
@@ -823,26 +936,41 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// 	Self::get_key_from_point(&network.input_click_targets, wire_in_progress_to_connector.0)
 					// );
 					// Check if dragged connector is reconnected to another input
-					if let (Some(node_from), Some(node_to)) = (
-						Self::get_key_from_point(&network.output_click_targets, wire_in_progress_from_connector.0),
-						Self::get_key_from_point(&network.input_click_targets, wire_in_progress_to_connector.0),
-					) {
+					let node_from = Self::get_key_from_point(&network.output_click_targets, wire_in_progress_from_connector.0);
+					let node_to = Self::get_key_from_point(&network.input_click_targets, wire_in_progress_to_connector.0);
+
+					if let (Some(node_from), Some(node_to)) = (node_from, node_to) {
 						responses.add(NodeGraphMessage::ConnectNodesByWire {
 							output_node: node_from.0,
 							output_node_connector_index: node_from.1,
 							input_node: node_to.0,
 							input_node_connector_index: node_to.1,
 						})
-					}
-					// Dragged connector is disconnected, update the node graph
-					else {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+					} else if node_from.is_some() && node_to.is_none() && !self.initial_disconnecting {
+						// If the add node menu is already open, we don't want to open it again
+						if self.context_menu.context_menu_coordinates.is_some() {
+							return;
+						}
+						//TODO: Create function
+						let node_graph_shift = if self.context_menu.toggle_display_as_layer_node_id.is_none() {
+							let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
+							let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
+							DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+						} else {
+							let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
+							let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+							DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+						};
+						self.context_menu.context_menu_coordinates = Some((point.x + node_graph_shift.x, point.y + node_graph_shift.y));
+
+						responses.add(FrontendMessage::UpdateContextMenuInformation {
+							context_menu_information: self.context_menu.clone(),
+						});
+						return;
 					}
 				} else if let Some(drag_start) = &self.drag_start {
 					// Only select clicked node if multiple are selected and they were not dragged
 					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
-						let viewport_location = ipp.mouse.position;
-						let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 						if drag_start.start_x == point.x
 							&& drag_start.start_y == point.y
 							&& (selected_nodes.selected_nodes_ref().len() != 1
@@ -859,12 +987,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					if selected_nodes.selected_nodes_ref().len() == 1 {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						// Check that neither the primary input or output of the selected node are already connected.
-						let Some(selected_node) = network.nodes.get(&selected_node_id) else {
-							log::error!("Could not get selected node from network");
-							return;
-						};
+						let (selected_node_input, selected_node_is_layer) = network
+							.nodes
+							.get(&selected_node_id)
+							.map(|selected_node| (selected_node.inputs.get(0), selected_node.is_layer))
+							.unwrap_or((network.exports.get(0), false));
+
 						// Check if primary input is disconnected
-						if selected_node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some()) {
+						if selected_node_input.is_some_and(|first_input| first_input.as_value().is_some()) {
 							let has_primary_output_connection = network.nodes.iter().flat_map(|(_, node)| node.inputs.iter()).any(|input| {
 								if let NodeInput::Node { node_id, output_index, .. } = input {
 									if *node_id == selected_node_id && *output_index == 0 {
@@ -917,17 +1047,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
 								});
 								if let Some(overlapping_wire) = overlapping_wire {
-									responses.add(NodeGraphMessage::InsertNodeBetween {
-										post_node_id: overlapping_wire.wire_end,
-										post_node_input_index: overlapping_wire.wire_end_input_index,
-										insert_node_output_index: 0,
-										insert_node_id: selected_node_id,
-										insert_node_input_index: 0,
-										pre_node_output_index: overlapping_wire.wire_start_output_index,
-										pre_node_id: overlapping_wire.wire_start,
-									});
-									if !selected_node.is_layer {
-										responses.add(NodeGraphMessage::ShiftNode { node_id: selected_node_id });
+									// Prevent inserting on a link that is connected to the selected node
+									if overlapping_wire.wire_end != selected_node_id && overlapping_wire.wire_start != selected_node_id {
+										responses.add(NodeGraphMessage::InsertNodeBetween {
+											post_node_id: overlapping_wire.wire_end,
+											post_node_input_index: overlapping_wire.wire_end_input_index,
+											insert_node_output_index: 0,
+											insert_node_id: selected_node_id,
+											insert_node_input_index: 0,
+											pre_node_output_index: overlapping_wire.wire_start_output_index,
+											pre_node_id: overlapping_wire.wire_start,
+										});
+										if !selected_node_is_layer {
+											responses.add(NodeGraphMessage::ShiftNode { node_id: selected_node_id });
+										}
 									}
 								}
 							}
@@ -1236,6 +1369,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				network.update_click_target(node_id, None);
 
+				self.context_menu.context_menu_coordinates = None;
+				self.context_menu.toggle_display_as_layer_node_id = None;
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
@@ -2254,9 +2392,11 @@ impl Default for NodeGraphMessageHandler {
 			drag_start: None,
 			box_selection_start: None,
 			disconnecting: None,
+			initial_disconnecting: false,
 			select_if_not_dragged: None,
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
+			context_menu: ContextMenuInformation::default(),
 		}
 	}
 }

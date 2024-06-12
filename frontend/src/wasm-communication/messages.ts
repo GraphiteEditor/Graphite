@@ -29,6 +29,10 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+export class UpdateContextMenuInformation extends JsMessage {
+	readonly contextMenuInformation!: ContextMenuInformation;
+}
+
 export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
@@ -98,9 +102,21 @@ export class FrontendDocumentDetails extends DocumentDetails {
 
 export class Box {
 	readonly startX!: number;
+
 	readonly startY!: number;
+
 	readonly endX!: number;
+
 	readonly endY!: number;
+}
+
+export class ContextMenuInformation {
+	@TupleToVec2
+	readonly contextMenuCoordinates!: XY | undefined;
+
+	readonly toggleDisplayAsLayerNodeId!: bigint | undefined;
+
+	readonly toggleDisplayAsLayerCurrentlyIsNode!: boolean;
 }
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
@@ -1353,6 +1369,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
+	UpdateContextMenuInformation,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,

@@ -74,6 +74,7 @@ pub enum NodeGraphMessage {
 		shift_click: bool,
 		control_click: bool,
 		alt_click: bool,
+		right_click: bool,
 	},
 	PointerMove {
 		shift: Key,
