@@ -3,7 +3,7 @@ use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 
-use graphene_core::animation::KeyframesF64;
+use graphene_core::animation::keyframe::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};

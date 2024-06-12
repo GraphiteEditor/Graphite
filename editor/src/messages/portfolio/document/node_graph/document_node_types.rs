@@ -6,13 +6,13 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use animation::easing::Easing;
+use animation::keyframe::{KeyframeF64, KeyframesF64};
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
-use graphene_core::animation::KeyframeF64;
-use graphene_core::animation::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, Image, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -137,7 +137,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					data_type: FrontendGraphDataType::General,
 					default: NodeInput::network(concrete!(WasmEditorApi), 0),
 				},
-				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0.)])), false),
+				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::new(vec![KeyframeF64::new(0., 0., Easing::Linear)])), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
 			properties: node_properties::animatable_number_properties,

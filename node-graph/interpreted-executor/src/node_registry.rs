@@ -3,7 +3,7 @@ use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_core::ops::IdentityNode;
 use graphene_core::quantization::{PackedPixel, QuantizationChannels};
 
-use graphene_core::animation::KeyframesF64;
+use graphene_core::animation::keyframe::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::color::Color;
 use graphene_core::structural::Then;

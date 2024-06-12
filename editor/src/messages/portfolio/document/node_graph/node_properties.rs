@@ -8,8 +8,8 @@ use crate::messages::prelude::*;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graph_craft::imaginate_input::{ImaginateSamplingMethod, ImaginateServerStatus, ImaginateStatus};
-use graphene_core::animation::KeyframeF64;
-use graphene_core::animation::KeyframesF64;
+use graphene_core::animation::easing::Easing;
+use graphene_core::animation::keyframe::{KeyframeF64, KeyframesF64};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::{
 	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, ImageFrame, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
@@ -419,7 +419,7 @@ fn animation_row(row: &mut Vec<WidgetHolder>, positions: &Vec<KeyframeF64>, inde
 		let old_positions = positions.clone();
 		move |_: &IconButton| {
 			let mut new_positions = old_positions.clone();
-			new_positions.push(KeyframeF64::new(0., 0.));
+			new_positions.push(KeyframeF64::new(0., 0., Easing::Linear));
 			new_positions.sort_unstable_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
 			TaggedValue::AnimationF64(KeyframesF64::new(new_positions))
 		}

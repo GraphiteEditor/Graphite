@@ -2,21 +2,20 @@ use core::fmt::Debug;
 
 use dyn_any::{DynAny, StaticType};
 
-use crate::application_io::EditorApi;
-use crate::Node;
+use super::easing::Easing;
 
 #[derive(Debug, Copy, Clone, PartialEq, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KeyframeF64 {
 	pub time: f64,
 	pub value: f64,
-	// TODO: support different types of easing
-	// pub easing: Easing,
+	/// Easing from this keyframe to the next one
+	pub easing: Easing,
 }
 
 impl KeyframeF64 {
-	pub fn new(time: f64, value: f64) -> Self {
-		Self { time, value }
+	pub fn new(time: f64, value: f64, easing: Easing) -> Self {
+		Self { time, value, easing }
 	}
 }
 
@@ -31,7 +30,7 @@ impl KeyframesF64 {
 		Self { keyframes }
 	}
 
-	pub fn get_value(&self, time: f64) -> f64 {
+	pub fn get_value_at_time(&self, time: f64) -> f64 {
 		if self.keyframes.is_empty() {
 			return 0.;
 		}
@@ -51,22 +50,7 @@ impl KeyframesF64 {
 		assert!(ind > 0);
 		let k1 = &self.keyframes[ind - 1];
 		let k2 = &self.keyframes[ind];
-		Self::interpolate(k1, k2, time)
+
+		Easing::interpolate(k1, k2, time)
 	}
-
-	fn interpolate(k1: &KeyframeF64, k2: &KeyframeF64, time: f64) -> f64 {
-		assert!(k1.time < time && time < k2.time);
-		let t = (time - k1.time) / (k2.time - k1.time);
-		k1.value + (k2.value - k1.value) * t
-	}
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct AnimationF64Node<Keyframes> {
-	keyframes: Keyframes,
-}
-
-#[node_macro::node_fn(AnimationF64Node)]
-fn animation_f64_node<'a: 'input, T>(editor: EditorApi<'a, T>, keyframes: KeyframesF64) -> f64 {
-	keyframes.get_value(editor.render_config.animation_config.time)
 }
