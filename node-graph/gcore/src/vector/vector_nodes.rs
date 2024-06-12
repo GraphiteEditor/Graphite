@@ -1,5 +1,5 @@
 use super::misc::CentroidType;
-use super::style::{Fill, FillType, Gradient, GradientType, Stroke};
+use super::style::{Fill, Stroke};
 use super::{PointId, SegmentId, StrokeId, VectorData};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::{Footprint, Transform, TransformMut};
@@ -11,37 +11,14 @@ use glam::{DAffine2, DVec2};
 use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Clone, Copy)]
-pub struct SetFillNode<FillType, SolidColor, GradientType, Start, End, Transform, Positions> {
-	fill_type: FillType,
-	solid_color: SolidColor,
-	gradient_type: GradientType,
-	start: Start,
-	end: End,
-	transform: Transform,
-	positions: Positions,
+pub struct SetFillNode<Fill> {
+	fill: Fill,
 }
 
 #[node_macro::node_fn(SetFillNode)]
-fn set_vector_data_fill(
-	mut vector_data: VectorData,
-	fill_type: FillType,
-	solid_color: Option<Color>,
-	gradient_type: GradientType,
-	start: DVec2,
-	end: DVec2,
-	transform: DAffine2,
-	positions: Vec<(f64, Color)>,
-) -> VectorData {
-	vector_data.style.set_fill(match fill_type {
-		FillType::Solid => solid_color.map_or(Fill::None, Fill::Solid),
-		FillType::Gradient => Fill::Gradient(Gradient {
-			start,
-			end,
-			transform,
-			positions,
-			gradient_type,
-		}),
-	});
+fn set_vector_data_fill<T: Into<Fill>>(mut vector_data: VectorData, fill: T) -> VectorData {
+	vector_data.style.set_fill(fill.into());
+
 	vector_data
 }
 

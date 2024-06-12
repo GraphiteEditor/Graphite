@@ -38,7 +38,8 @@ import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
 import Snapping from "@graphite-frontend/assets/icon-12px-solid/snapping.svg";
-import Swap from "@graphite-frontend/assets/icon-12px-solid/swap.svg";
+import SwapHorizontal from "@graphite-frontend/assets/icon-12px-solid/swap-horizontal.svg";
+import SwapVertical from "@graphite-frontend/assets/icon-12px-solid/swap-vertical.svg";
 import VerticalEllipsis from "@graphite-frontend/assets/icon-12px-solid/vertical-ellipsis.svg";
 import Warning from "@graphite-frontend/assets/icon-12px-solid/warning.svg";
 import WindowButtonWinClose from "@graphite-frontend/assets/icon-12px-solid/window-button-win-close.svg";
@@ -78,7 +79,8 @@ const SOLID_12PX = {
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
 	Snapping: { svg: Snapping, size: 12 },
-	Swap: { svg: Swap, size: 12 },
+	SwapHorizontal: { svg: SwapHorizontal, size: 12 },
+	SwapVertical: { svg: SwapVertical, size: 12 },
 	VerticalEllipsis: { svg: VerticalEllipsis, size: 12 },
 	Warning: { svg: Warning, size: 12 },
 	WindowButtonWinClose: { svg: WindowButtonWinClose, size: 12 },

@@ -99,7 +99,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value)).into(),
+			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -109,7 +109,7 @@ impl LayoutHolder for FreehandTool {
 			true,
 			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value)).into(),
+			|color: &ColorButton| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -195,11 +195,8 @@ impl FreehandToolData {
 		const MAX_POSITIONS: usize = 16;
 
 		let Some(layer) = self.layer else { return };
-
-		let tolerance_sq = 0.02 * TOLLERANCE * TOLLERANCE * (0.2 * TOLLERANCE - 2.).exp();
-
 		let fit = if self.positions.len() < MAX_POSITIONS {
-			bezier_rs::Subpath::<PointId>::fit_cubic(&self.positions, 1, self.required_tangent, tolerance_sq)
+			bezier_rs::Subpath::<PointId>::fit_cubic(&self.positions, 1, self.required_tangent, 0.)
 		} else {
 			None
 		};

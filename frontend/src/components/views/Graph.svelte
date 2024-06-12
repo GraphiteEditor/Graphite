@@ -1428,9 +1428,10 @@
 
 				&::before {
 					content: "";
-					background: var(--color-transparent-checkered-background);
+					background-image: var(--color-transparent-checkered-background);
 					background-size: var(--color-transparent-checkered-background-size);
 					background-position: var(--color-transparent-checkered-background-position);
+					background-repeat: var(--color-transparent-checkered-background-repeat);
 				}
 
 				&::before,

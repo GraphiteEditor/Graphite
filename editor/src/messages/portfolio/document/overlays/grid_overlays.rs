@@ -7,6 +7,7 @@ use graphene_core::raster::color::Color;
 use graphene_core::renderer::Quad;
 
 use glam::DVec2;
+use graphene_std::vector::style::FillChoice;
 
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
@@ -223,7 +224,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	};
 	let update_color = |grid, update: fn(&mut GridSnapping) -> Option<&mut Color>| {
 		update_val::<ColorButton>(grid, move |grid, color| {
-			if let Some(color) = color.value {
+			if let FillChoice::Solid(color) = color.value {
 				if let Some(update_color) = update(grid) {
 					*update_color = color;
 				}
@@ -273,7 +274,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		Separator::new(SeparatorType::Related).widget_holder(),
 	]);
 	color_widgets.push(
-		ColorButton::new(Some(grid.grid_color))
+		ColorButton::new(FillChoice::Solid(grid.grid_color))
 			.tooltip("Grid display color")
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
 			.widget_holder(),

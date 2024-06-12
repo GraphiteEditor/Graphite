@@ -3,6 +3,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::*;
 
 use graphene_core::Color;
+use graphene_std::vector::style::FillChoice;
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ToolColorType {
@@ -110,7 +111,9 @@ impl ToolColorOptions {
 		widgets.push(radio);
 		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
 
-		let color_button = ColorButton::new(self.active_color()).allow_none(color_allow_none).on_update(color_callback);
+		let color_button = ColorButton::new(FillChoice::from_optional_color(self.active_color()))
+			.allow_none(color_allow_none)
+			.on_update(color_callback);
 		widgets.push(color_button.widget_holder());
 
 		widgets

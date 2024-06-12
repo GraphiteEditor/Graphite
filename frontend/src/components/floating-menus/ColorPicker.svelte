@@ -3,14 +3,15 @@
 
 	import { clamp } from "@graphite/utility-functions/math";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import { type HSV, type RGB } from "@graphite/wasm-communication/messages";
-	import { Color } from "@graphite/wasm-communication/messages";
+	import { type HSV, type RGB, type FillChoice } from "@graphite/wasm-communication/messages";
+	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import FloatingMenu, { type MenuDirection } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
+	import SpectrumInput from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -31,40 +32,47 @@
 
 	const editor = getContext<Editor>("editor");
 
-	const dispatch = createEventDispatcher<{ color: Color; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
 
-	export let color: Color;
+	export let colorOrGradient: FillChoice;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let direction: MenuDirection = "Bottom";
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
-	const hsvaOrNone = color.toHSVA();
+	const hsvaOrNone = colorOrGradient instanceof Color ? colorOrGradient.toHSVA() : colorOrGradient.firstColor()?.toHSVA();
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
+	// Gradient color stops
+	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
+	let activeIndex = 0 as number | undefined;
+	$: selectedGradientColour = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
+	// Currently viewed color
+	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColour;
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
 	let value = hsva.v;
 	let alpha = hsva.a;
 	let isNone = hsvaOrNone === undefined;
-	// Initial color components
-	let initialHue = hsva.h;
-	let initialSaturation = hsva.s;
-	let initialValue = hsva.v;
-	let initialAlpha = hsva.a;
-	let initialIsNone = hsvaOrNone === undefined;
+	// Old color components
+	let oldHue = hsva.h;
+	let oldSaturation = hsva.s;
+	let oldValue = hsva.v;
+	let oldAlpha = hsva.a;
+	let oldIsNone = hsvaOrNone === undefined;
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
 
 	let hexCodeInputWidget: TextInput | undefined;
+	let gradientSpectrumInputWidget: SpectrumInput | undefined;
 
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	$: initialColor = generateColor(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone);
+	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
 	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
 	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
@@ -79,7 +87,7 @@
 		if (open) {
 			setTimeout(() => hexCodeInputWidget?.focus(), 0);
 		} else {
-			setInitialHSVA(hue, saturation, value, alpha, isNone);
+			setOldHSVA(hue, saturation, value, alpha, isNone);
 		}
 	}
 
@@ -163,11 +171,18 @@
 
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
-		dispatch("color", colorToEmit);
+
+		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
+		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
+			stop.color = colorToEmit;
+			gradient = gradient;
+		}
+
+		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
 
-	function swapNewWithInitial() {
-		const initial = initialColor;
+	function swapNewWithOld() {
+		const old = oldColor;
 
 		const tempHue = hue;
 		const tempSaturation = saturation;
@@ -175,10 +190,10 @@
 		const tempAlpha = alpha;
 		const tempIsNone = isNone;
 
-		setNewHSVA(initialHue, initialSaturation, initialValue, initialAlpha, initialIsNone);
-		setInitialHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
+		setNewHSVA(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
+		setOldHSVA(tempHue, tempSaturation, tempValue, tempAlpha, tempIsNone);
 
-		setColor(initial);
+		setColor(old);
 	}
 
 	function setColorCode(colorCode: string) {
@@ -241,12 +256,12 @@
 		isNone = none;
 	}
 
-	function setInitialHSVA(h: number, s: number, v: number, a: number, none: boolean) {
-		initialHue = h;
-		initialSaturation = s;
-		initialValue = v;
-		initialAlpha = a;
-		initialIsNone = none;
+	function setOldHSVA(h: number, s: number, v: number, a: number, none: boolean) {
+		oldHue = h;
+		oldSaturation = s;
+		oldValue = v;
+		oldAlpha = a;
+		oldIsNone = none;
 	}
 
 	async function activateEyedropperSample() {
@@ -267,6 +282,18 @@
 		}
 	}
 
+	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number | undefined>) {
+		activeIndex = index;
+		const color = index === undefined ? undefined : gradient?.colorAtIndex(index);
+		const hsva = color?.toHSVA();
+		if (!color || !hsva) return;
+
+		setColor(color);
+
+		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+		setOldHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+	}
+
 	onDestroy(() => {
 		removeEvents();
 	});
@@ -277,42 +304,83 @@
 		styles={{
 			"--new-color": newColor.toHexOptionalAlpha(),
 			"--new-color-contrasting": newColor.contrastingColor(),
-			"--initial-color": initialColor.toHexOptionalAlpha(),
-			"--initial-color-contrasting": initialColor.contrastingColor(),
+			"--old-color": oldColor.toHexOptionalAlpha(),
+			"--old-color-contrasting": oldColor.contrastingColor(),
 			"--hue-color": opaqueHueColor.toRgbCSS(),
 			"--hue-color-contrasting": opaqueHueColor.contrastingColor(),
 			"--opaque-color": (newColor.opaque() || new Color(0, 0, 0, 1)).toHexNoAlpha(),
 			"--opaque-color-contrasting": (newColor.opaque() || new Color(0, 0, 0, 1)).contrastingColor(),
 		}}
 	>
-		<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
-			{#if !isNone}
-				<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
-			{/if}
-		</LayoutCol>
-		<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
-			{#if !isNone}
-				<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
-			{/if}
-		</LayoutCol>
-		<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
-			{#if !isNone}
-				<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+		<LayoutCol class="pickers-and-gradient">
+			<LayoutRow class="pickers">
+				<LayoutCol class="saturation-value-picker" on:pointerdown={onPointerDown} data-saturation-value-picker>
+					{#if !isNone}
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+					{/if}
+				</LayoutCol>
+				<LayoutCol class="hue-picker" on:pointerdown={onPointerDown} data-hue-picker>
+					{#if !isNone}
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+					{/if}
+				</LayoutCol>
+				<LayoutCol class="alpha-picker" on:pointerdown={onPointerDown} data-alpha-picker>
+					{#if !isNone}
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+					{/if}
+				</LayoutCol>
+			</LayoutRow>
+			{#if gradient}
+				<LayoutRow class="gradient">
+					<SpectrumInput
+						{gradient}
+						on:gradient={() => {
+							gradient = gradient;
+							if (gradient) dispatch("colorOrGradient", gradient);
+						}}
+						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
+						activeMarkerIndex={activeIndex}
+						bind:this={gradientSpectrumInputWidget}
+					/>
+					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
+						<NumberInput
+							value={(gradient.positionAtIndex(activeIndex) || 0) * 100}
+							on:value={({ detail }) => {
+								if (gradientSpectrumInputWidget && activeIndex !== undefined && detail !== undefined) gradientSpectrumInputWidget.setPosition(activeIndex, detail / 100);
+							}}
+							displayDecimalPlaces={0}
+							min={0}
+							max={100}
+							unit="%"
+						/>
+					{/if}
+				</LayoutRow>
 			{/if}
 		</LayoutCol>
 		<LayoutCol class="details">
-			<LayoutRow class="choice-preview" on:click={swapNewWithInitial} tooltip="Comparison views of the present color choice (left) and the color before any change (right). Click to swap sides.">
+			<LayoutRow
+				class="choice-preview"
+				tooltip={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)" : "The present color choice"}
+			>
+				{#if !newColor.equals(oldColor)}
+					<div class="swap-button-background"></div>
+					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltip="Swap" />
+				{/if}
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
-					<TextLabel>New</TextLabel>
+					{#if !newColor.equals(oldColor)}
+						<TextLabel>New</TextLabel>
+					{/if}
 				</LayoutCol>
-				<LayoutCol class="initial-color" classes={{ none: initialIsNone }}>
-					<TextLabel>Initial</TextLabel>
-				</LayoutCol>
+				{#if !newColor.equals(oldColor)}
+					<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
+						<TextLabel>Old</TextLabel>
+					</LayoutCol>
+				{/if}
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltip="Color model, color space, and HDR (coming soon)" /> -->
 			<LayoutRow>
 				<TextLabel tooltip={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
@@ -328,7 +396,7 @@
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel tooltip="Red/Green/Blue channels of the color, integers 0–255">RGB</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
@@ -345,7 +413,7 @@
 							}}
 							min={0}
 							max={255}
-							minWidth={56}
+							minWidth={1}
 							tooltip={`${{ r: "Red", g: "Green", b: "Blue" }[channel]} channel, integers 0–255`}
 						/>
 					{/each}
@@ -355,7 +423,7 @@
 				<TextLabel tooltip={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}>
 					HSV
 				</TextLabel>
-				<Separator />
+				<Separator type="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
@@ -373,7 +441,8 @@
 							min={0}
 							max={channel === "h" ? 360 : 100}
 							unit={channel === "h" ? "°" : "%"}
-							minWidth={56}
+							minWidth={1}
+							displayDecimalPlaces={1}
 							tooltip={{
 								h: `Hue component, the shade along the spectrum of the rainbow`,
 								s: `Saturation component, the vividness from grayscale to full color`,
@@ -383,42 +452,45 @@
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
-			<NumberInput
-				label="Alpha"
-				value={!isNone ? alpha * 100 : undefined}
-				on:value={({ detail }) => {
-					if (detail !== undefined) alpha = detail / 100;
-					setColorAlphaPercent(detail);
-				}}
-				on:startHistoryTransaction={() => {
-					dispatch("startHistoryTransaction");
-				}}
-				min={0}
-				max={100}
-				rangeMin={0}
-				rangeMax={100}
-				unit="%"
-				mode="Range"
-				displayDecimalPlaces={1}
-				tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
-			/>
+			<LayoutRow>
+				<TextLabel tooltip="Scale from transparent (0%) to opaque (100%) for the color's alpha channel">Alpha</TextLabel>
+				<Separator type="Related" />
+				<NumberInput
+					value={!isNone ? alpha * 100 : undefined}
+					on:value={({ detail }) => {
+						if (detail !== undefined) alpha = detail / 100;
+						setColorAlphaPercent(detail);
+					}}
+					on:startHistoryTransaction={() => {
+						dispatch("startHistoryTransaction");
+					}}
+					min={0}
+					max={100}
+					rangeMin={0}
+					rangeMax={100}
+					unit="%"
+					mode="Range"
+					displayDecimalPlaces={1}
+					tooltip={`Scale from transparent (0%) to opaque (100%) for the color's alpha channel`}
+				/>
+			</LayoutRow>
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
-				{#if allowNone}
-					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set No Color" tabindex="0" />
+				{#if allowNone && !gradient}
+					<button class="preset-color none" on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0" />
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set Black" tabindex="0" />
+				<button class="preset-color black" on:click={() => setColorPreset("black")} title="Set to black" tabindex="0" />
 				<Separator type="Related" />
-				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set White" tabindex="0" />
+				<button class="preset-color white" on:click={() => setColorPreset("white")} title="Set to white" tabindex="0" />
 				<Separator type="Related" />
 				<button class="preset-color pure" on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set Red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set Yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set Green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set Cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set Blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set Magenta" />
+					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
+					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
+					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
+					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
+					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
+					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
 				</button>
 				<Separator type="Related" />
 				<IconButton icon="Eyedropper" size={24} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />
@@ -429,109 +501,125 @@
 
 <style lang="scss" global>
 	.color-picker {
-		.saturation-value-picker {
-			width: 256px;
-			background-blend-mode: multiply;
-			background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
-			position: relative;
-		}
+		.pickers-and-gradient {
+			.pickers {
+				.saturation-value-picker {
+					width: 256px;
+					background-blend-mode: multiply;
+					background: linear-gradient(to bottom, #ffffff, #000000), linear-gradient(to right, #ffffff, var(--hue-color));
+					position: relative;
+				}
 
-		.saturation-value-picker,
-		.hue-picker,
-		.alpha-picker {
-			height: 256px;
-			position: relative;
-			overflow: hidden;
-		}
+				.saturation-value-picker,
+				.hue-picker,
+				.alpha-picker {
+					height: 256px;
+					border-radius: 2px;
+					position: relative;
+					overflow: hidden;
+				}
 
-		.hue-picker,
-		.alpha-picker {
-			width: 24px;
-			margin-left: 8px;
-			position: relative;
-		}
+				.hue-picker,
+				.alpha-picker {
+					width: 24px;
+					margin-left: 8px;
+					position: relative;
+				}
 
-		.hue-picker {
-			background-blend-mode: screen;
-			background:
-				// Reds
-				linear-gradient(to top, #ff0000ff 16.666%, #ff000000 33.333%, #ff000000 66.666%, #ff0000ff 83.333%),
-				// Greens
-				linear-gradient(to top, #00ff0000 0%, #00ff00ff 16.666%, #00ff00ff 50%, #00ff0000 66.666%),
-				// Blues
-				linear-gradient(to top, #0000ff00 33.333%, #0000ffff 50%, #0000ffff 83.333%, #0000ff00 100%);
-			--selection-needle-color: var(--hue-color-contrasting);
-		}
+				.hue-picker {
+					--selection-needle-color: var(--hue-color-contrasting);
+					background-blend-mode: screen;
+					background:
+						// Reds
+						linear-gradient(to top, #ff0000ff calc(100% / 6), #ff000000 calc(200% / 6), #ff000000 calc(400% / 6), #ff0000ff calc(500% / 6)),
+						// Greens
+						linear-gradient(to top, #00ff0000 0%, #00ff00ff calc(100% / 6), #00ff00ff 50%, #00ff0000 calc(400% / 6)),
+						// Blues
+						linear-gradient(to top, #0000ff00 calc(200% / 6), #0000ffff 50%, #0000ffff calc(500% / 6), #0000ff00 100%);
+				}
 
-		.alpha-picker {
-			background: linear-gradient(to bottom, var(--opaque-color), transparent);
-			--selection-needle-color: var(--new-color-contrasting);
+				.alpha-picker {
+					--selection-needle-color: var(--new-color-contrasting);
+					background-image: linear-gradient(to bottom, var(--opaque-color), transparent), var(--color-transparent-checkered-background);
+					background-size:
+						100% 100%,
+						var(--color-transparent-checkered-background-size);
+					background-position:
+						0 0,
+						var(--color-transparent-checkered-background-position);
+					background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
+				}
 
-			&::before {
-				content: "";
-				width: 100%;
-				height: 100%;
-				z-index: -1;
-				position: relative;
-				background: var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
+				.selection-circle {
+					position: absolute;
+					left: 0%;
+					top: 0%;
+					width: 0;
+					height: 0;
+					pointer-events: none;
+
+					&::after {
+						content: "";
+						display: block;
+						position: relative;
+						left: -6px;
+						top: -6px;
+						width: 12px;
+						height: 12px;
+						border-radius: 50%;
+						border: 2px solid var(--opaque-color-contrasting);
+						box-sizing: border-box;
+					}
+				}
+
+				.selection-needle {
+					position: absolute;
+					top: 0%;
+					width: 100%;
+					height: 0;
+					pointer-events: none;
+
+					&::before {
+						content: "";
+						position: absolute;
+						top: -4px;
+						left: 0;
+						border-style: solid;
+						border-width: 4px 0 4px 4px;
+						border-color: transparent transparent transparent var(--selection-needle-color);
+					}
+
+					&::after {
+						content: "";
+						position: absolute;
+						top: -4px;
+						right: 0;
+						border-style: solid;
+						border-width: 4px 4px 4px 0;
+						border-color: transparent var(--selection-needle-color) transparent transparent;
+					}
+				}
 			}
-		}
 
-		.selection-circle {
-			position: absolute;
-			left: 0%;
-			top: 0%;
-			width: 0;
-			height: 0;
-			pointer-events: none;
+			.gradient {
+				margin-top: 16px;
 
-			&::after {
-				content: "";
-				display: block;
-				position: relative;
-				left: -6px;
-				top: -6px;
-				width: 12px;
-				height: 12px;
-				border-radius: 50%;
-				border: 2px solid var(--opaque-color-contrasting);
-				box-sizing: border-box;
-			}
-		}
+				.spectrum-input {
+					flex: 1 1 100%;
+				}
 
-		.selection-needle {
-			position: absolute;
-			top: 0%;
-			width: 100%;
-			height: 0;
-			pointer-events: none;
-
-			&::before {
-				content: "";
-				position: absolute;
-				top: -4px;
-				left: 0;
-				border-style: solid;
-				border-width: 4px 0 4px 4px;
-				border-color: transparent transparent transparent var(--selection-needle-color);
-			}
-
-			&::after {
-				content: "";
-				position: absolute;
-				top: -4px;
-				right: 0;
-				border-style: solid;
-				border-width: 4px 4px 4px 0;
-				border-color: transparent var(--selection-needle-color) transparent transparent;
+				.number-input {
+					margin-left: 8px;
+					min-width: 0;
+					width: calc(24px + 8px + 24px);
+					flex: 0 0 auto;
+				}
 			}
 		}
 
 		.details {
 			margin-left: 16px;
-			width: 208px;
+			width: 200px;
 			gap: 8px;
 
 			> .layout-row {
@@ -539,8 +627,9 @@
 				flex: 0 0 auto;
 
 				> .text-label {
-					width: 24px;
-					flex: 0 0 auto;
+					// TODO: Use a table or grid layout for this width to match the widest label. Hard-coding it won't work when we add translation/localization.
+					flex: 0 0 34px;
+					line-height: 24px;
 				}
 
 				&.leftover-space {
@@ -550,15 +639,58 @@
 
 			.choice-preview {
 				flex: 0 0 auto;
-				width: 208px;
+				width: 100%;
 				height: 32px;
 				border-radius: 2px;
 				border: 1px solid var(--color-1-nearblack);
 				box-sizing: border-box;
 				overflow: hidden;
+				position: relative;
+				background-image: var(--color-transparent-checkered-background);
+				background-size: var(--color-transparent-checkered-background-size);
+				background-position: var(--color-transparent-checkered-background-position);
+				background-repeat: var(--color-transparent-checkered-background-repeat);
+
+				.swap-button-background {
+					overflow: hidden;
+					position: absolute;
+					mix-blend-mode: multiply;
+					opacity: 0.25;
+					border-radius: 2px;
+					width: 16px;
+					height: 16px;
+					top: 50%;
+					left: 50%;
+					transform: translate(-50%, -50%);
+
+					&::before,
+					&::after {
+						content: "";
+						position: absolute;
+						width: 50%;
+						height: 100%;
+					}
+
+					&::before {
+						left: 0;
+						background: var(--new-color-contrasting);
+					}
+
+					&::after {
+						right: 0;
+						background: var(--old-color-contrasting);
+					}
+				}
+
+				.swap-button {
+					position: absolute;
+					transform: translate(-50%, -50%);
+					top: 50%;
+					left: 50%;
+				}
 
 				.new-color {
-					background: linear-gradient(var(--new-color), var(--new-color)), var(--color-transparent-checkered-background);
+					background: var(--new-color);
 
 					.text-label {
 						text-align: left;
@@ -567,22 +699,20 @@
 					}
 				}
 
-				.initial-color {
-					background: linear-gradient(var(--initial-color), var(--initial-color)), var(--color-transparent-checkered-background);
+				.old-color {
+					background: var(--old-color);
 
 					.text-label {
 						text-align: right;
 						margin: 2px 8px;
-						color: var(--initial-color-contrasting);
+						color: var(--old-color-contrasting);
 					}
 				}
 
 				.new-color,
-				.initial-color {
+				.old-color {
 					width: 50%;
 					height: 100%;
-					background-size: var(--color-transparent-checkered-background-size);
-					background-position: var(--color-transparent-checkered-background-position);
 
 					&.none {
 						background: var(--color-none);
@@ -614,8 +744,8 @@
 				margin: 0;
 				padding: 0;
 				border-radius: 2px;
-				width: calc(48px + (48px + 4px) / 2);
 				height: 24px;
+				flex: 1 1 100%;
 
 				&.none {
 					background: var(--color-none);
@@ -643,6 +773,7 @@
 					width: 24px;
 					font-size: 0;
 					overflow: hidden;
+					flex: 0 0 auto;
 
 					div {
 						display: inline-block;
@@ -654,8 +785,7 @@
 						transition: background-color 0.2s ease;
 					}
 
-					&:hover div,
-					&:focus div {
+					&:hover div {
 						background: var(--pure-color);
 					}
 				}

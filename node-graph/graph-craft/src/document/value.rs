@@ -148,8 +148,11 @@ tagged_value! {
 	LineCap(graphene_core::vector::style::LineCap),
 	LineJoin(graphene_core::vector::style::LineJoin),
 	FillType(graphene_core::vector::style::FillType),
+	FillChoice(graphene_core::vector::style::FillChoice),
+	Gradient(graphene_core::vector::style::Gradient),
 	GradientType(graphene_core::vector::style::GradientType),
-	GradientPositions(Vec<(f64, graphene_core::Color)>),
+	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias (probably starting late 2024)
+	GradientStops(graphene_core::vector::style::GradientStops),
 	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
 	PointIds(Vec<graphene_core::vector::PointId>),

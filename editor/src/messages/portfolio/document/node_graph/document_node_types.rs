@@ -2419,16 +2419,26 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		DocumentNodeDefinition {
 			name: "Fill",
 			category: "Vector",
-			implementation: DocumentNodeImplementation::proto("graphene_core::vector::SetFillNode<_, _, _, _, _, _, _>"),
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(0), 0)],
+				nodes: vec![DocumentNode {
+					name: "Set Fill".to_string(),
+					inputs: vec![NodeInput::network(concrete!(VectorData), 0), NodeInput::network(concrete!(vector::style::Fill), 1)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SetFillNode<_>")),
+					..Default::default()
+				}]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
 			inputs: vec![
 				DocumentInputType::value("Vector Data", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
-				DocumentInputType::value("Fill Type", TaggedValue::FillType(vector::style::FillType::Solid), false),
-				DocumentInputType::value("Solid Color", TaggedValue::OptionalColor(None), false),
-				DocumentInputType::value("Gradient Type", TaggedValue::GradientType(vector::style::GradientType::Linear), false),
-				DocumentInputType::value("Start", TaggedValue::DVec2(DVec2::new(0., 0.5)), false),
-				DocumentInputType::value("End", TaggedValue::DVec2(DVec2::new(1., 0.5)), false),
-				DocumentInputType::value("Transform", TaggedValue::DAffine2(DAffine2::IDENTITY), false),
-				DocumentInputType::value("Positions", TaggedValue::GradientPositions(vec![(0., Color::BLACK), (1., Color::WHITE)]), false),
+				DocumentInputType::value("Fill", TaggedValue::Fill(vector::style::Fill::Solid(Color::BLACK)), false),
+				// These backup values aren't exposed to the user, but are used to store the previous fill choices so the user can flip back from Solid to Gradient (or vice versa) without losing their settings
+				DocumentInputType::value("Backup Color", TaggedValue::OptionalColor(Some(Color::BLACK)), false),
+				DocumentInputType::value("Backup Gradient", TaggedValue::Gradient(Default::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
 			properties: node_properties::fill_properties,
@@ -2522,7 +2532,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Instance", TaggedValue::VectorData(graphene_core::vector::VectorData::empty()), true),
 				DocumentInputType::value("Random Scale Min", TaggedValue::F64(1.), false),
 				DocumentInputType::value("Random Scale Max", TaggedValue::F64(1.), false),
-				DocumentInputType::value("Random Scale Bias", TaggedValue::F64(1.), false),
+				DocumentInputType::value("Random Scale Bias", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Random Rotation", TaggedValue::F64(0.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],

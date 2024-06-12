@@ -375,7 +375,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						self.load_document(document, document_id, responses);
 					}
 					Err(e) => {
-						println!("Failed to open document: {e}");
 						if !document_is_auto_saved {
 							responses.add(DialogMessage::DisplayDialogError {
 								title: "Failed to open document".to_string(),
@@ -612,7 +611,7 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
+	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		self.document_ids.push(document_id);
 

@@ -78,7 +78,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value)).into(),
+			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -88,7 +88,7 @@ impl LayoutHolder for RectangleTool {
 			true,
 			|_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value)).into(),
+			|color: &ColorButton| RectangleToolMessage::UpdateOptions(RectangleOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));

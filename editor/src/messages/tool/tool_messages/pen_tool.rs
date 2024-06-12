@@ -109,7 +109,7 @@ impl LayoutHolder for PenTool {
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorButton| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value)).into(),
+			|color: &ColorButton| PenToolMessage::UpdateOptions(PenOptionsUpdate::FillColor(color.value.as_solid())).into(),
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -119,7 +119,7 @@ impl LayoutHolder for PenTool {
 			true,
 			|_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(None)).into(),
 			|color_type: ToolColorType| WidgetCallback::new(move |_| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorButton| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value)).into(),
+			|color: &ColorButton| PenToolMessage::UpdateOptions(PenOptionsUpdate::StrokeColor(color.value.as_solid())).into(),
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
