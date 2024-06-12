@@ -68,7 +68,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					if let Some(document) = self.documents.get_mut(&document_id) {
 						if let Some(animation_handler) = self.animation_handlers.get_mut(&document_id) {
 							let data = AnimationMessageData {
-								persistent_data: &mut self.persistent_data,
 								executor: &mut self.executor,
 								document,
 								ipp,
