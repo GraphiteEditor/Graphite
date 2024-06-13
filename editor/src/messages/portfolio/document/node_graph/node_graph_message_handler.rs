@@ -1338,20 +1338,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::ToggleSelectedLocked => {
-				// If node is selected in document network, then ctrl+L should lock it
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
-					return;
-				};
-				responses.add(DocumentMessage::StartTransaction);
-
-				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_nodes(network).all(|&node_id| network.nodes.get(&node_id).is_some_and(|node| node.locked));
-
-				for &node_id in selected_nodes.selected_nodes(network) {
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked });
-				}
-			}
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
 					return;
@@ -1539,7 +1525,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 		if self.has_selection {
 			common.extend(actions!(NodeGraphMessageDiscriminant;
-				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
 			));
 		}

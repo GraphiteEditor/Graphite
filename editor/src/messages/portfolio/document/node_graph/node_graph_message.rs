@@ -142,7 +142,6 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ToggleSelectedAsLayersOrNodes,
-	ToggleSelectedLocked,
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,
