@@ -286,9 +286,9 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 pub use graph_craft::document::value::RenderOutput;
 pub struct RenderNode<Data, Surface, Parameter> {
 	data: Data,
-	#[cfg(any(feature = "resvg", feature = "vello"))]
+	#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 	surface_handle: Surface,
-	#[cfg(not(any(feature = "resvg", feature = "vello")))]
+	#[cfg(not(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32")))]
 	surface_handle: PhantomData<Surface>,
 	parameter: PhantomData<Parameter>,
 }
