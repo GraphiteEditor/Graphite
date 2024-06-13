@@ -322,16 +322,6 @@ impl TextToolData {
 		let combined_bounds = bounds.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]).unwrap_or_default();
 		Some(combined_bounds)
 	}
-
-	fn fix_text_bounds(&self, new_text: &str, _document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> Option<()> {
-		responses.add(GraphOperationMessage::UpdateBounds {
-			layer: self.layer,
-			old_bounds: self.get_bounds(&self.editing_text.as_ref()?.text, font_cache)?,
-			new_bounds: self.get_bounds(new_text, font_cache)?,
-		});
-
-		Some(())
-	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -429,7 +419,6 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
-				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
 					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
 					input_index: 1,
