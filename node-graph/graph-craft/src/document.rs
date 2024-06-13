@@ -683,7 +683,7 @@ pub struct NodeNetwork {
 	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
 	#[serde(skip)]
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
-	/// Mapping of all layer nodes to the width of their displayed text
+	/// Stores the width in grid cell units from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
 	#[serde(skip)]
 	pub layer_widths: HashMap<NodeId, u32>,
 	/// Transform from node graph space to viewport space.
@@ -816,7 +816,6 @@ impl NodeNetwork {
 
 		if let Some(node) = self.nodes.get(&node_id) {
 			// Update node click target
-			// TODO: Fix width/positions for layers with and without left inputs
 			let width = if node.is_layer {
 				let half_grid_cell_offset = 24. / 2.;
 				let thumbnail_width = 3. * 24.;
@@ -855,7 +854,12 @@ impl NodeNetwork {
 			};
 
 			let corner2 = corner1 + DVec2::new(width as f64, height as f64);
-			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1, corner2, [radius; 4]);
+			let mut click_target_corner_1 = corner1;
+			if node.is_layer && node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+				click_target_corner_1 -= DVec2::new(24., 0.)
+			}
+
+			let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
 			let stroke_width = 1.;
 			let node_click_target = ClickTarget { subpath, stroke_width };
 
@@ -881,15 +885,13 @@ impl NodeNetwork {
 					node_top_right.y += 24.;
 				}
 
-				let input_top_left = DVec2::new(-5., 6.);
-				let input_bottom_left = DVec2::new(-5., 18.);
-				let input_right = DVec2::new(5., 12.);
+				let input_top_left = DVec2::new(-8., 4.);
+				let input_bottom_right = DVec2::new(8., 20.);
 
 				loop {
 					if node_row_index < number_of_inputs {
-						let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
 						let stroke_width = 1.;
-						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+						let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
 						let input_click_target = ClickTarget { subpath, stroke_width };
 						self.input_click_targets.insert((node_id, node_row_index), input_click_target);
 						node_top_left.y += 24.;
@@ -900,9 +902,8 @@ impl NodeNetwork {
 					}
 
 					if node_row_index < number_of_outputs {
-						let anchors = vec![input_top_left + node_top_right, input_bottom_left + node_top_right, input_right + node_top_right];
 						let stroke_width = 1.;
-						let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+						let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
 						let output_click_target = ClickTarget { subpath, stroke_width };
 						self.output_click_targets.insert((node_id, node_row_index), output_click_target);
 						node_top_right.y += 24.;
@@ -919,43 +920,27 @@ impl NodeNetwork {
 				// Nodes cannot have visibility buttons
 				self.visibility_click_targets.remove(&node_id);
 			} else {
-				// Layer nodes have 2 exposed inputs
-				let input_top_left = DVec2::new(-5., 8.);
-				let input_bottom_left = DVec2::new(-5., 16.);
-				let input_right = DVec2::new(5., 12.);
-				let input_offset = node_top_left + DVec2::new(24., 12.);
-				let anchors = vec![input_top_left + input_offset, input_bottom_left + input_offset, input_right + input_offset];
-				let stroke_width = 1.;
-				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
-				let input_click_target = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((node_id, 1), input_click_target);
+				let input_top_left = DVec2::new(-8., -8.);
+				let input_bottom_right = DVec2::new(8., 8.);
+				let layer_input_offset = node_top_left + DVec2::new(2. * 24., 2. * 24. + 8.);
 
-				let layer_input_top_left = DVec2::new(-5., 0.);
-				let layer_input_bottom_left = DVec2::new(-5., 12.);
-				let layer_input_bottom_right = DVec2::new(5., 12.);
-				let layer_input_top_right = DVec2::new(5., 0.);
-				let layer_input_offset = node_top_left + DVec2::new(3. * 24., 2. * 24.);
-				let anchors = vec![
-					layer_input_top_left + layer_input_offset,
-					layer_input_bottom_left + layer_input_offset,
-					layer_input_bottom_right + layer_input_offset,
-					layer_input_top_right + layer_input_offset,
-				];
 				let stroke_width = 1.;
-				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
 				let layer_input_click_target = ClickTarget { subpath, stroke_width };
 				self.input_click_targets.insert((node_id, 0), layer_input_click_target);
 
+				if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+					let layer_input_offset = node_top_left + DVec2::new(0., 24.);
+					let stroke_width = 1.;
+					let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
+					let input_click_target = ClickTarget { subpath, stroke_width };
+					self.input_click_targets.insert((node_id, 1), input_click_target);
+				}
+
 				// Output
-				let layer_output_offset = node_top_left + DVec2::new(3. * 24., -12.);
-				let anchors = vec![
-					layer_input_top_left + layer_output_offset,
-					layer_input_bottom_left + layer_output_offset,
-					layer_input_bottom_right + layer_output_offset,
-					layer_input_top_right + layer_output_offset,
-				];
+				let layer_output_offset = node_top_left + DVec2::new(2. * 24., -8.);
 				let stroke_width = 1.;
-				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
 				let layer_output_click_target = ClickTarget { subpath, stroke_width };
 				self.output_click_targets.insert((node_id, 0), layer_output_click_target);
 
@@ -983,13 +968,12 @@ impl NodeNetwork {
 			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
 			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
 			node_top_left.y += 36.;
-			let input_top_left = DVec2::new(-5., 8.);
-			let input_bottom_left = DVec2::new(-5., 16.);
-			let input_right = DVec2::new(5., 12.);
+			let input_top_left = DVec2::new(-8., 4.);
+			let input_bottom_right = DVec2::new(8., 20.);
+
 			for i in 0..self.exports.len() {
-				let anchors = vec![input_top_left + node_top_left, input_bottom_left + node_top_left, input_right + node_top_left];
 				let stroke_width = 1.;
-				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
 				let top_left_input = ClickTarget { subpath, stroke_width };
 				self.input_click_targets.insert((self.exports_metadata.0, i), top_left_input);
 
@@ -1016,13 +1000,11 @@ impl NodeNetwork {
 			let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
 			// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
 			node_top_right.y += 36.;
-			let output_top_left = DVec2::new(-5., 8.);
-			let output_bottom_left = DVec2::new(-5., 16.);
-			let output_right = DVec2::new(5., 12.);
+			let input_top_left = DVec2::new(-8., 4.);
+			let input_bottom_right = DVec2::new(8., 20.);
 			for i in 0..import_count {
-				let anchors = vec![output_top_left + node_top_right, output_bottom_left + node_top_right, output_right + node_top_right];
 				let stroke_width = 1.;
-				let subpath = Subpath::from_anchors(anchors.into_iter(), true);
+				let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
 				let top_left_input = ClickTarget { subpath, stroke_width };
 				self.output_click_targets.insert((self.imports_metadata.0, i), top_left_input);
 
@@ -1030,7 +1012,6 @@ impl NodeNetwork {
 			}
 		} else {
 			// self.node_click_targets.remove(&node_id);
-			//TODO: Remove input click targets - fixed by clearing click targets every time it is updated, but there may be a more efficient way
 		};
 
 		// if node_click_target is outside the current bounding box, update the bounding box

@@ -691,6 +691,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 				node.metadata.position = position;
 				document_network.update_click_target(node_id, Some(1));
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			GraphOperationMessage::SetName { layer, name } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -700,6 +702,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
 					node.alias = name;
 					document_network.update_click_target(layer.to_node(), None);
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}

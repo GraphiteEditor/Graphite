@@ -23,10 +23,9 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
-	const contextMenuInformation: ContextMenuInformation = { contextMenuCoordinates: undefined, toggleDisplayAsLayerNodeId: undefined, toggleDisplayAsLayerCurrentlyIsNode: false };
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
-		contextMenuInformation,
+		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
 		nodes: [] as FrontendNode[],
 		wires: [] as FrontendNodeWire[],

@@ -444,16 +444,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
 				// Auto-save the document we are leaving
-				let mut node_graph_open = false;
-				if let Some(document) = self.active_document() {
-					if !document.is_auto_saved() {
-						responses.add(PortfolioMessage::AutoSaveDocument {
-							// Safe to unwrap since we know that there is an active document
-							document_id: self.active_document_id.unwrap(),
-						});
-					}
-					node_graph_open = document.is_graph_overlay_open();
-				}
+				// let mut node_graph_open = false;
+				// if let Some(document) = self.active_document() {
+				// 	if !document.is_auto_saved() {
+				// 		responses.add(PortfolioMessage::AutoSaveDocument {
+				// 			// Safe to unwrap since we know that there is an active document
+				// 			document_id: self.active_document_id.unwrap(),
+				// 		});
+				// 	}
+				// 	node_graph_open = document.is_graph_overlay_open();
+				// }
 
 				// Set the new active document ID
 				self.active_document_id = Some(document_id);
@@ -467,7 +467,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
+				// Fixes issue where creating a new document when the node graph was opened applied the wrong transform to the new document viewport
+				//responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				file_name,

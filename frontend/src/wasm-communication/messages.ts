@@ -30,15 +30,18 @@ export class UpdateBox extends JsMessage {
 }
 
 const ContextTupleToVec2 = Transform((data) => {
-	if (data.obj.contextMenuInformation.contextMenuCoordinates !== undefined) {
-		data.obj.contextMenuInformation.contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
+	if (data.obj.contextMenuInformation === undefined) return undefined;
+	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
+	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
+	if (contextMenuData.ToggleLayer !== undefined) {
+		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
 	}
-	return data.obj.contextMenuInformation;
+	return { contextMenuCoordinates, contextMenuData };
 });
 
 export class UpdateContextMenuInformation extends JsMessage {
 	@ContextTupleToVec2
-	readonly contextMenuInformation!: ContextMenuInformation;
+	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 
@@ -124,13 +127,11 @@ export class Box {
 	readonly endY!: number;
 }
 
-export class ContextMenuInformation {
-	readonly contextMenuCoordinates!: XY | undefined;
+export type ContextMenuInformation = {
+	contextMenuCoordinates: XY;
 
-	readonly toggleDisplayAsLayerNodeId!: bigint | undefined;
-
-	readonly toggleDisplayAsLayerCurrentlyIsNode!: boolean;
-}
+	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
+};
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
@@ -177,6 +178,8 @@ export class FrontendNode {
 
 	@TupleToVec2
 	readonly position!: XY | undefined;
+
+	//TODO: Store field for the width of the left node chain
 
 	readonly previewed!: boolean;
 

@@ -115,7 +115,7 @@ pub enum FrontendMessage {
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
-		context_menu_information: ContextMenuInformation,
+		context_menu_information: Option<ContextMenuInformation>,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]

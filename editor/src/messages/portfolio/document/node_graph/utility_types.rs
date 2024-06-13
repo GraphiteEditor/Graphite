@@ -147,13 +147,22 @@ pub struct BoxSelection {
 	pub end_y: u32,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ContextMenuData {
+	ToggleLayer {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "currentlyIsNode")]
+		currently_is_node: bool,
+	},
+	CreateNode,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: Option<(i32, i32)>,
-	#[serde(rename = "toggleDisplayAsLayerNodeId")]
-	pub toggle_display_as_layer_node_id: Option<NodeId>,
-	#[serde(rename = "toggleDisplayAsLayerCurrentlyIsNode")]
-	pub toggle_display_as_layer_currently_is_node: bool,
+	pub context_menu_coordinates: (i32, i32),
+	#[serde(rename = "contextMenuData")]
+	pub context_menu_data: ContextMenuData,
 }

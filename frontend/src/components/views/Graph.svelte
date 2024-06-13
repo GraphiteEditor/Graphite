@@ -63,19 +63,24 @@
 	let appearRightOfMouse = false;
 
 	$: (() => {
-		const bounds = graph?.getBoundingClientRect();
-		if (!bounds) return;
-		const { width, height } = bounds;
-
-		//TODO: Why does the XY type not work
-		if ($nodeGraph.contextMenuInformation.contextMenuCoordinates) {
-			const contextMenuX = ($nodeGraph.contextMenuInformation.contextMenuCoordinates[0] + $nodeGraph.transform.x) * $nodeGraph.transform.scale;
-			const contextMenuY = ($nodeGraph.contextMenuInformation.contextMenuCoordinates[1] + $nodeGraph.transform.y) * $nodeGraph.transform.scale;
-
-			appearRightOfMouse = contextMenuX > width - ADD_NODE_MENU_WIDTH;
-			appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
+		if ($nodeGraph.contextMenuInformation?.contextMenuData == "CreateNode") {
+			setTimeout(() => nodeSearchInput?.focus(), 0);
 		}
 	})();
+
+	// $: (() => {
+	// 	const bounds = graph?.getBoundingClientRect();
+	// 	if (!bounds) return;
+	// 	const { width, height } = bounds;
+
+	// 	if ($nodeGraph.contextMenuInformation) {
+	// 		const contextMenuX = ($nodeGraph.contextMenuInformation.contextMenuCoordinates.x + $nodeGraph.transform.x) * $nodeGraph.transform.scale;
+	// 		const contextMenuY = ($nodeGraph.contextMenuInformation.contextMenuCoordinates.y + $nodeGraph.transform.y) * $nodeGraph.transform.scale;
+
+	// 		appearRightOfMouse = contextMenuX > width - ADD_NODE_MENU_WIDTH;
+	// 		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
+	// 	}
+	// })();
 
 	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
@@ -315,16 +320,16 @@
 	// 		//$nodeGraph.transform.y -= scrollY / $nodeGraph.transform.scale;
 	// 	}
 	// }
-	document.addEventListener("keydown", keydown);
-	function keydown(e: KeyboardEvent) {
-		console.log("layerWidths", $nodeGraph.layerWidths);
-		if (e.key.toLowerCase() === "escape") {
-			contextMenuOpenCoordinates = undefined;
-			wireInProgressFromConnector = undefined;
-			// wireInProgressFromLayerTop = undefined;
-			// wireInProgressFromLayerBottom = undefined;
-		}
-	}
+
+	// TODO: Move into Rust
+	// function keydown(e: KeyboardEvent) {
+	// 	if (e.key.toLowerCase() === "escape") {
+	// 		contextMenuOpenCoordinates = undefined;
+	// 		wireInProgressFromConnector = undefined;
+	// 		// wireInProgressFromLayerTop = undefined;
+	// 		// wireInProgressFromLayerBottom = undefined;
+	// 	}
+	// }
 
 	// function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
 	// 	contextMenuOpenCoordinates = {
@@ -562,8 +567,8 @@
 	// 	//editor.handle.toggleNodeVisibilityGraph(id);
 	// }
 
-	function toggleLayerDisplay(displayAsLayer: boolean) {
-		let node = $nodeGraph.nodes.find((node) => node.id === $nodeGraph.contextMenuInformation.toggleDisplayAsLayerNodeId);
+	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
+		let node = $nodeGraph.nodes.find((node) => node.id === toggleId);
 		if (node !== undefined) {
 			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
 		}
@@ -696,7 +701,7 @@
 	// }
 
 	function createNode(nodeType: string) {
-		if (!$nodeGraph.contextMenuInformation.contextMenuCoordinates) return;
+		if ($nodeGraph.contextMenuInformation === undefined) return;
 
 		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 
@@ -787,14 +792,14 @@
 >
 	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
-	{#if $nodeGraph.contextMenuInformation.contextMenuCoordinates}
+	{#if $nodeGraph.contextMenuInformation}
 		<LayoutCol
 			class="context-menu"
 			data-context-menu
 			styles={{
 				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
-				...($nodeGraph.contextMenuInformation.toggleDisplayAsLayerNodeId === undefined
+				...($nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"
 					? {
 							transform: `translate(0%, 0%)`,
 							width: `${ADD_NODE_MENU_WIDTH}px`,
@@ -803,7 +808,7 @@
 					: {}),
 			}}
 		>
-			{#if $nodeGraph.contextMenuInformation.toggleDisplayAsLayerNodeId === undefined}
+			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 				<div class="list-results" on:wheel|passive|stopPropagation>
 					{#each nodeCategories as nodeCategory}
@@ -823,24 +828,24 @@
 				<LayoutRow class="toggle-layer-or-node">
 					<TextLabel>Display as</TextLabel>
 					<RadioInput
-						selectedIndex={$nodeGraph.contextMenuInformation.toggleDisplayAsLayerCurrentlyIsNode ? 0 : 1}
+						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.currentlyIsNode ? 0 : 1}
 						entries={[
 							{
 								value: "node",
 								label: "Node",
 								action: () => {
-									toggleLayerDisplay(false);
+									toggleLayerDisplay(false, $nodeGraph.contextMenuInformation.contextMenuData.nodeId);
 								},
 							},
 							{
 								value: "layer",
 								label: "Layer",
 								action: () => {
-									toggleLayerDisplay(true);
+									toggleLayerDisplay(true, $nodeGraph.contextMenuInformation.contextMenuData.nodeId);
 								},
 							},
 						]}
-						disabled={!canBeToggledBetweenNodeAndLayer($nodeGraph.contextMenuInformation.toggleDisplayAsLayerNodeId)}
+						disabled={!canBeToggledBetweenNodeAndLayer($nodeGraph.contextMenuInformation.contextMenuData.nodeId)}
 					/>
 				</LayoutRow>
 			{/if}
@@ -871,14 +876,13 @@
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
-			{@const extraWidthToReachGridMultiple = 8}
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={node.position?.x || 0}
+				style:--offset-left={(node.position?.x || 0) - 1}
 				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
@@ -992,8 +996,8 @@
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={node.position?.x || 0}
+				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
