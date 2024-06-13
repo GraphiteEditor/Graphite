@@ -1051,7 +1051,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								let overlapping_wire = Self::collect_wires(network).into_iter().find(|frontend_wire| {
-									// Get positions in order to build wire positions and then use rectangleIntersects
 									let (end_node_position, end_node_is_layer) = network.nodes.get(&frontend_wire.wire_end).map_or(
 										(DVec2::new(network.exports_metadata.1.x as f64 * 24., network.exports_metadata.1.y as f64 * 24. + 24.), false),
 										|node| (DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.), node.is_layer),
@@ -1521,13 +1520,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
-
-		if self.has_selection {
-			common.extend(actions!(NodeGraphMessageDiscriminant;
-				ToggleSelectedVisibility,
-			));
-		}
+		let mut common = vec![];
 
 		if self
 			.context_menu
@@ -1544,18 +1537,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 impl NodeGraphMessageHandler {
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
+		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
+
 		if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant;
+			common.extend(actions!(NodeGraphMessageDiscriminant;
 				Copy,
 				Cut,
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
 				PrintSelectedNodeCoordinates,
-			)
-		} else {
-			actions!(NodeGraphMessageDiscriminant;)
+			));
 		}
+
+		common
 	}
 
 	/// Get the clicked target from a mouse click

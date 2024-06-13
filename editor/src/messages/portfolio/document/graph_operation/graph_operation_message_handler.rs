@@ -753,11 +753,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::ToggleSelectedLocked => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
+				// If any of the selected nodes are locked, show them all. Otherwise, hide them all.
+				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
-					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
+					responses.add(GraphOperationMessage::SetLocked { node_id: layer.to_node(), locked });
 				}
 			}
 			GraphOperationMessage::ToggleLocked { node_id } => {

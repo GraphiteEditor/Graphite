@@ -621,7 +621,8 @@ impl PortfolioMessageHandler {
 	}
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Load*
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		let mut new_document = new_document;
 		self.document_ids.push(document_id);
 		new_document.update_layers_panel_options_bar_widgets(responses);
 

@@ -1168,11 +1168,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				GraphViewOverlay,
 			));
 			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
-			common.extend(self.node_graph_handler.actions());
 		}
 		// More additional actions
 		common.extend(self.navigation_handler.actions());
-
+		common.extend(self.node_graph_handler.actions());
+		common.extend(actions!(GraphOperationMessageDiscriminant; ToggleSelectedLocked, ToggleSelectedVisibility));
 		common
 	}
 }
