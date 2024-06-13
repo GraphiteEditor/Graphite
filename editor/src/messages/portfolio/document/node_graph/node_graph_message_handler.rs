@@ -180,6 +180,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
 			}
+			NodeGraphMessage::CloseCreateNodeMenu => {
+				self.context_menu = None;
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
+				self.wire_in_progress_from_connector = None;
+				self.wire_in_progress_to_connector = None;
+				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
@@ -615,39 +624,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// If the user is clicking on the create nodes list or context menu, break here
-				if !right_click {
-					if let Some(context_menu) = &self.context_menu {
-						let context_menu_viewport = network
-							.node_graph_to_viewport
-							.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
-						let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
-							// Height and width for toggle layer menu
-							(173., 34.)
-						} else {
-							// Height and width for create node menu
-							(180., 200.)
-						};
-						let context_menu_subpath = bezier_rs::Subpath::new_rounded_rect(
-							DVec2::new(context_menu_viewport.x, context_menu_viewport.y),
-							DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
-							[5.; 4],
-						);
-						let context_menu_click_target = ClickTarget {
-							subpath: context_menu_subpath,
-							stroke_width: 1.,
-						};
-						if context_menu_click_target.intersect_point(viewport_location, DAffine2::IDENTITY) {
-							return;
-						}
+				if let Some(context_menu) = &self.context_menu {
+					let context_menu_viewport = network
+						.node_graph_to_viewport
+						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
+					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
+						// Height and width for toggle layer menu
+						(173., 34.)
+					} else {
+						// Height and width for create node menu
+						(180., 200.)
+					};
+					let context_menu_subpath = bezier_rs::Subpath::new_rounded_rect(
+						DVec2::new(context_menu_viewport.x, context_menu_viewport.y),
+						DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
+						[5.; 4],
+					);
+					let context_menu_click_target = ClickTarget {
+						subpath: context_menu_subpath,
+						stroke_width: 1.,
+					};
+					if context_menu_click_target.intersect_point(viewport_location, DAffine2::IDENTITY) {
+						return;
 					}
 				}
 
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if !right_click && self.context_menu.is_some() {
 					self.context_menu = None;
+					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_to_connector = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
 					});
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				}
 
 				// Alt-click sets the clicked node as previewed
@@ -947,7 +957,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PointerUp => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
+				let Some(network) = document_network.nested_network(&self.network) else {
 					warn!("No network");
 					return;
 				};
@@ -1532,6 +1542,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
 			));
+		}
+
+		if self
+			.context_menu
+			.as_ref()
+			.is_some_and(|context_menu| matches!(context_menu.context_menu_data, ContextMenuData::CreateNode))
+		{
+			common.extend(actions!(NodeGraphMessageDiscriminant; CloseCreateNodeMenu));
 		}
 
 		common

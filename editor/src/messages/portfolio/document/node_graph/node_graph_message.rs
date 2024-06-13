@@ -19,6 +19,7 @@ pub enum NodeGraphMessage {
 		input_node_connector_index: usize,
 	},
 	Copy,
+	CloseCreateNodeMenu,
 	CreateNode {
 		node_id: Option<NodeId>,
 		node_type: String,
