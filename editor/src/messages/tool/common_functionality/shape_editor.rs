@@ -64,7 +64,7 @@ pub struct ManipulatorPointInfo {
 	pub point_id: ManipulatorPointId,
 }
 
-pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<PointId, Option<f64>>>;
+pub type OpposingHandleLengths = HashMap<LayerNodeIdentifier, HashMap<HandleId, f64>>;
 
 struct ClosestSegmentInfo {
 	pub segment: SegmentId,
@@ -588,13 +588,14 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, handle_lengths: Option<OpposingHandleLengths>, document: &DocumentMessageHandler, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
+			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
 				continue;
 			};
+			let opposing_handles = handle_lengths.as_ref().and_then(|handle_lengths| handle_lengths.get(&layer));
 
-			let transform = document_metadata.transform_to_viewport(layer);
+			let transform = document.metadata.transform_to_viewport(layer);
 			let delta = transform.inverse().transform_vector2(delta);
 
 			for &point in state.selected_points.iter() {
@@ -626,9 +627,12 @@ impl ShapeState {
 				let new_relative = if equidistant {
 					-(handle_position - anchor_position)
 				} else {
+					let transform = document.metadata.document_to_viewport.inverse() * transform;
 					let Some(other_position) = other.to_point().get_position(&vector_data) else { continue };
-					let direction = (handle_position - anchor_position).try_normalize();
-					direction.map_or(other_position - anchor_position, |direction| -direction * (other_position - anchor_position).length())
+					let direction = transform.transform_vector2(handle_position - anchor_position).try_normalize();
+					let opposing_handle = opposing_handles.and_then(|handles| handles.get(&other));
+					let length = opposing_handle.copied().unwrap_or_else(|| transform.transform_vector2(other_position - anchor_position).length());
+					direction.map_or(other_position - anchor_position, |direction| transform.inverse().transform_vector2(-direction * length))
 				};
 				let modification_type = other.set_pos(new_relative);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -695,103 +699,43 @@ impl ShapeState {
 
 	/// The opposing handle lengths.
 	pub fn opposing_handle_lengths(&self, document: &DocumentMessageHandler) -> OpposingHandleLengths {
-		// self.selected_shape_state
-		// 	.iter()
-		// 	.filter_map(|(&layer, state)| {
-		// 		let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
-		// 		let opposing_handle_lengths = vector_data
-		// 			.manipulator_groups()
-		// 			.filter_map(|manipulator_group| {
-		// 				// We will keep track of the opposing handle length when:
-		// 				// i) Exactly one handle is selected.
-		// 				// ii) The anchor is not selected.
+		self.selected_shape_state
+			.iter()
+			.filter_map(|(&layer, state)| {
+				let vector_data = document.metadata.compute_modified_vector(layer, &document.network)?;
+				let transform = document.metadata.transform_to_document(layer);
+				let opposing_handle_lengths = vector_data
+					.colinear_manipulators
+					.iter()
+					.filter_map(|&handles| {
+						// We will keep track of the opposing handle length when:
+						// i) Exactly one handle is selected.
+						// ii) The anchor is not selected.
 
-		// 				let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
-		// 				let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
-		// 				let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
+						let anchor = handles[0].to_point().get_anchor(&vector_data)?;
+						let anchor_selected = state.is_selected(ManipulatorPointId::Anchor(anchor));
+						if anchor_selected {
+							return None;
+						}
 
-		// 				if anchor_selected {
-		// 					return None;
-		// 				}
+						let handles_selected = handles.map(|handle| state.is_selected(handle.to_point()));
 
-		// 				let single_selected_handle = match (in_handle_selected, out_handle_selected) {
-		// 					(true, false) => SelectedType::InHandle,
-		// 					(false, true) => SelectedType::OutHandle,
-		// 					_ => return None,
-		// 				};
+						let [selected, other] = match handles_selected {
+							[true, false] => handles,
+							[false, true] => [handles[1], handles[0]],
+							_ => return None,
+						};
 
-		// 				let Some(opposing_handle_position) = single_selected_handle.opposite().get_position(&manipulator_group) else {
-		// 					return Some((manipulator_group.id, None));
-		// 				};
+						let opposing_handle_position = other.to_point().get_position(&vector_data)?;
+						let anchor_position = vector_data.point_domain.pos_from_id(anchor)?;
 
-		// 				let opposing_handle_length = opposing_handle_position.distance(manipulator_group.anchor);
-		// 				Some((manipulator_group.id, Some(opposing_handle_length)))
-		// 			})
-		// 			.collect::<HashMap<_, _>>();
-		// 		Some((layer, opposing_handle_lengths))
-		// 	})
-		// 	.collect::<HashMap<_, _>>()
-		HashMap::new()
-	}
-
-	/// Reset the opposing handle lengths.
-	pub fn reset_opposing_handle_lengths(&self, document: &DocumentMessageHandler, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
-		// 		continue;
-		// 	};
-		// 	let colinear_manipulators = get_colinear_manipulators(layer, &document.network);
-		// 	let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };
-
-		// 	for manipulator_group in vector_data.manipulator_groups() {
-		// 		if !colinear_manipulators.contains(&manipulator_group.id) {
-		// 			continue;
-		// 		}
-
-		// 		let Some(opposing_handle_length) = opposing_handle_lengths.get(&manipulator_group.id) else {
-		// 			continue;
-		// 		};
-
-		// 		let in_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::InHandle));
-		// 		let out_handle_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::OutHandle));
-		// 		let anchor_selected = state.is_selected(ManipulatorPointId::new(manipulator_group.id, SelectedType::Anchor));
-
-		// 		if anchor_selected {
-		// 			continue;
-		// 		}
-
-		// 		let single_selected_handle = match (in_handle_selected, out_handle_selected) {
-		// 			(true, false) => SelectedType::InHandle,
-		// 			(false, true) => SelectedType::OutHandle,
-		// 			_ => continue,
-		// 		};
-
-		// 		let Some(opposing_handle_length) = opposing_handle_length else {
-		// 			responses.add(GraphOperationMessage::Vector {
-		// 				layer,
-		// 				modification_type: VectorModificationType::RemoveManipulatorPoint {
-		// 					point: ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite()),
-		// 				},
-		// 			});
-		// 			continue;
-		// 		};
-
-		// 		let Some(opposing_handle) = single_selected_handle.opposite().get_position(&manipulator_group) else {
-		// 			continue;
-		// 		};
-
-		// 		let Some(offset) = (opposing_handle - manipulator_group.anchor).try_normalize() else { continue };
-
-		// 		let point = ManipulatorPointId::new(manipulator_group.id, single_selected_handle.opposite());
-		// 		let position = manipulator_group.anchor + offset * (*opposing_handle_length);
-		// 		assert!(position.is_finite(), "Opposing handle not finite!");
-
-		// 		responses.add(GraphOperationMessage::Vector {
-		// 			layer,
-		// 			modification_type: VectorModificationType::SetManipulatorPosition { point, position },
-		// 		});
-		// 	}
-		// }
+						let opposing_handle_length = transform.transform_vector2(opposing_handle_position - anchor_position).length();
+						Some((other, opposing_handle_length))
+					})
+					.collect::<HashMap<_, _>>();
+				Some((layer, opposing_handle_lengths))
+			})
+			.collect::<HashMap<_, _>>()
 	}
 
 	fn disolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {

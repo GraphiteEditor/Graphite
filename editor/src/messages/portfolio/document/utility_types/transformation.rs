@@ -428,8 +428,9 @@ impl<'a> Selected<'a> {
 			let modification_type = id.set_pos(new_pos_viewport - relative);
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			if let Some((id, initial)) = handle.mirror {
-				let direction = (new_pos_viewport - relative).try_normalize();
-				let new_relative = direction.map_or(initial - relative, |direction| -direction * (initial - relative).length());
+				let direction = viewspace.transform_vector2(new_pos_viewport - relative).try_normalize();
+				let length = viewspace.transform_vector2(initial - relative).length();
+				let new_relative = direction.map_or(initial - relative, |direction| viewspace.inverse().transform_vector2(-direction * length));
 				let modification_type = id.set_pos(new_relative);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
