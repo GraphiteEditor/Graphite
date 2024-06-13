@@ -178,8 +178,12 @@ impl ShapeState {
 		let mut snap_data = SnapData::new(document, input);
 
 		for (layer, state) in &self.selected_shape_state {
+			let Some(vector_data) = document.metadata.compute_modified_vector(*layer, &document.network) else {
+				continue;
+			};
 			for point in &state.selected_points {
-				// snap_data.manipulators.push((*layer, point.group));
+				let Some(anchor) = point.get_anchor(&vector_data) else { continue };
+				snap_data.manipulators.push((*layer, anchor));
 			}
 		}
 
@@ -193,50 +197,32 @@ impl ShapeState {
 
 			let to_document = document.metadata.transform_to_document(*layer);
 
-			// for subpath in vector_data.stroke_bezier_paths() {
-			// 	for (index, group) in subpath.manipulator_groups().iter().enumerate() {
-			// 		for handle in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {
-			// 			if !state.is_selected(ManipulatorPointId::new(group.id.into(), handle)) {
-			// 				continue;
-			// 			}
-			// 			let source = if handle.is_handle() {
-			// 				SnapSource::Geometry(GeometrySnapSource::Handle)
-			// 			} else if are_manipulator_handles_colinear(group, to_document, &subpath, index) {
-			// 				SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles)
-			// 			} else {
-			// 				SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles)
-			// 			};
-			// 			let Some(position) = handle.get_position(group) else { continue };
-			// 			let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
+			for &selected in &state.selected_points {
+				let source = match selected {
+					ManipulatorPointId::Anchor(_) if vector_data.colinear(selected) => SnapSource::Geometry(GeometrySnapSource::AnchorWithColinearHandles),
+					ManipulatorPointId::Anchor(_) => SnapSource::Geometry(GeometrySnapSource::AnchorWithFreeHandles),
+					_ => SnapSource::Geometry(GeometrySnapSource::Handle),
+				};
 
-			// 			let mut push_neighbor = |group: ManipulatorGroup<PointId>| {
-			// 				if !state.is_selected(ManipulatorPointId::new(group.id.into(), SelectedType::Anchor)) {
-			// 					point.neighbors.push(to_document.transform_point2(group.anchor));
-			// 				}
-			// 			};
-			// 			if handle == SelectedType::Anchor {
-			// 				// Previous anchor (looping if closed)
-			// 				if index > 0 {
-			// 					push_neighbor(subpath.manipulator_groups()[index - 1]);
-			// 				} else if subpath.closed() {
-			// 					push_neighbor(subpath.manipulator_groups()[subpath.len() - 1]);
-			// 				}
-			// 				// Next anchor (looping if closed)
-			// 				if index + 1 < subpath.len() {
-			// 					push_neighbor(subpath.manipulator_groups()[index + 1]);
-			// 				} else if subpath.closed() {
-			// 					push_neighbor(subpath.manipulator_groups()[0]);
-			// 				}
-			// 			}
+				let Some(position) = selected.get_position(&vector_data) else { continue };
+				let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
 
-			// 			let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
-			// 			if best_snapped.other_snap_better(&snapped) {
-			// 				offset = snapped.snapped_point_document - point.document_point + mouse_delta;
-			// 				best_snapped = snapped;
-			// 			}
-			// 		}
-			// 	}
-			// }
+				if let Some(id) = selected.as_anchor() {
+					for neighbour in vector_data.segment_domain.connected_points(id) {
+						if state.is_selected(ManipulatorPointId::Anchor(neighbour)) {
+							continue;
+						}
+						let Some(position) = vector_data.point_domain.pos_from_id(neighbour) else { continue };
+						point.neighbors.push(to_document.transform_point2(position));
+					}
+				}
+
+				let snapped = snap_manager.free_snap(&snap_data, &point, None, false);
+				if best_snapped.other_snap_better(&snapped) {
+					offset = snapped.snapped_point_document - point.document_point + mouse_delta;
+					best_snapped = snapped;
+				}
+			}
 		}
 		snap_manager.update_indicator(best_snapped);
 		document.metadata.document_to_viewport.transform_vector2(offset)

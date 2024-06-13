@@ -701,11 +701,11 @@ impl PathStyle {
 	/// # use graphene_core::raster::color::Color;
 	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
 	///
-	/// assert!(style.fill().is_some());
+	/// assert_eq!(style.fill(), &Fill::Solid(Color::RED));
 	///
 	/// style.clear_fill();
 	///
-	/// assert!(!style.fill().is_some());
+	/// assert_eq!(style.fill(), &Fill::None);
 	/// ```
 	pub fn clear_fill(&mut self) {
 		self.fill = Fill::None;

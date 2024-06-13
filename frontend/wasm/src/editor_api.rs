@@ -874,7 +874,9 @@ async fn poll_node_graph_evaluation() {
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();
-		editor.poll_node_graph_evaluation(&mut messages);
+		if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
+			error!("Error evaluating node graph {e}");
+		}
 
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {

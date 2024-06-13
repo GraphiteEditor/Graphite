@@ -394,7 +394,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push("Artboard".into());
+					render.svg.push(self.alias.clone().unwrap_or_else(|| "Artboard".to_string()).into());
 				},
 			);
 		}
@@ -470,7 +470,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		true
+		!self.artboards.is_empty()
 	}
 }
 impl GraphicElementRendered for ImageFrame<Color> {

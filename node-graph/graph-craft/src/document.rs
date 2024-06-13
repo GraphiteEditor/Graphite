@@ -136,7 +136,6 @@ pub struct DocumentNode {
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
 	///   In the root network, it is resolved when evaluating the borrow tree.
-	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
 	///
@@ -1347,6 +1346,24 @@ impl NodeNetwork {
 		for id in id_nodes {
 			if let Err(e) = self.remove_id_node(id) {
 				log::warn!("{e}")
+			}
+		}
+	}
+
+	/// Resolve nodes using TaggedValue::NodeAlias to access their alias e.g. artboard node
+	pub fn resolve_alias(&mut self) {
+		for node in self.nodes.values_mut() {
+			if let Some(network) = node.implementation.get_network_mut() {
+				network.resolve_alias();
+			}
+			for input in node.inputs.iter_mut() {
+				if let NodeInput::Value {
+					tagged_value: crate::document::TaggedValue::NodeAlias(alias),
+					..
+				} = input
+				{
+					*alias = node.alias.clone();
+				}
 			}
 		}
 	}

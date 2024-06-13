@@ -424,10 +424,9 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	/// Changes the inputs of a specific node
-	pub fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let existing_node_id = self
-			.document_network
+	/// Find a node id as part of the layer
+	fn existing_node_id(&mut self, name: &'static str) -> Option<NodeId> {
+		self.document_network
 			.upstream_flow_back_from_nodes(
 				self.layer_node.map_or_else(
 					|| {
@@ -442,7 +441,20 @@ impl<'a> ModifyInputsContext<'a> {
 				graph_craft::document::FlowType::HorizontalFlow,
 			)
 			.find(|(node, _)| node.name == name)
-			.map(|(_, id)| id);
+			.map(|(_, id)| id)
+	}
+
+	/// Changes the input of a specific node; skipping if it doesn't exist
+	pub fn modify_existing_inputs(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
+		let existing_node_id = self.existing_node_id(name);
+		if let Some(node_id) = existing_node_id {
+			self.modify_existing_node_inputs(node_id, update_input);
+		}
+	}
+
+	/// Changes the inputs of a specific node; creating it if it doesn't exist
+	pub fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
+		let existing_node_id = self.existing_node_id(name);
 		if let Some(node_id) = existing_node_id {
 			self.modify_existing_node_inputs(node_id, update_input);
 		} else {
@@ -607,12 +619,6 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
 		self.modify_inputs("Transform", false, |inputs, node_id, metadata| {
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let upstream_transform = metadata.upstream_transform(node_id);
-			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(transform_utils::get_current_normalized_pivot(inputs))));
-			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(new_pivot)));
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}

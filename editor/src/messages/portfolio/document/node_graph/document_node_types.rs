@@ -271,8 +271,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(TaggedValue), 3),
 								NodeInput::network(concrete!(TaggedValue), 4),
 								NodeInput::network(concrete!(TaggedValue), 5),
+								NodeInput::network(concrete!(TaggedValue), 6),
 							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, -3) }, // To Artboard
 							..Default::default()
 						},
@@ -314,6 +315,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 				DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
+				DocumentInputType::value("Alias", TaggedValue::NodeAlias(String::new()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,

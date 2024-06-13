@@ -33,6 +33,13 @@ impl PointModification {
 			point_domain.push(add_id, position);
 		}
 	}
+	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+		Self {
+			add: vector_data.point_domain.ids().to_vec(),
+			remove: HashSet::new(),
+			delta: vector_data.point_domain.ids().iter().copied().zip(vector_data.point_domain.positions().iter().cloned()).collect(),
+		}
+	}
 	fn push(&mut self, id: PointId, pos: DVec2) {
 		self.add.push(id);
 		self.delta.insert(id, pos);
@@ -144,6 +151,17 @@ impl SegmentModification {
 			segment_domain.push(add_id, start, end, handles, stroke);
 		}
 	}
+	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+		Self {
+			add: vector_data.segment_domain.ids().to_vec(),
+			remove: HashSet::new(),
+			start_point: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.start_point().iter().cloned()).collect(),
+			end_point: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.end_point().iter().cloned()).collect(),
+			handle_primary: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_start().map(|handle| handle - b.start))).collect(),
+			handle_end: vector_data.segment_bezier_iter().map(|(id, b, _, _)| (id, b.handle_end().map(|handle| handle - b.end))).collect(),
+			stroke: vector_data.segment_domain.ids().iter().copied().zip(vector_data.segment_domain.stroke().iter().cloned()).collect(),
+		}
+	}
 	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2], stroke: StrokeId) {
 		self.add.push(id);
 		self.start_point.insert(id, points[0]);
@@ -188,6 +206,14 @@ impl RegionModification {
 			let Some(segment_range) = self.segment_range.get(&add_id) else { continue };
 			let Some(&fill) = self.fill.get(&add_id) else { continue };
 			region_domain.push(add_id, segment_range.clone(), fill);
+		}
+	}
+	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+		Self {
+			add: vector_data.region_domain.ids().to_vec(),
+			remove: HashSet::new(),
+			segment_range: vector_data.region_domain.ids().iter().copied().zip(vector_data.region_domain.segment_range().iter().cloned()).collect(),
+			fill: vector_data.region_domain.ids().iter().copied().zip(vector_data.region_domain.fill().iter().cloned()).collect(),
 		}
 	}
 }
@@ -288,6 +314,16 @@ impl VectorModification {
 			}
 		}
 	}
+
+	pub fn create_from_vector(vector_data: &VectorData) -> Self {
+		Self {
+			points: PointModification::create_from_vector(vector_data),
+			segments: SegmentModification::create_from_vector(vector_data),
+			regions: RegionModification::create_from_vector(vector_data),
+			add_g1_continous: vector_data.colinear_manipulators.iter().copied().collect(),
+			remove_g1_continous: HashSet::new(),
+		}
+	}
 }
 
 impl core::hash::Hash for VectorModification {
@@ -306,4 +342,18 @@ pub struct PathModify<VectorModificationNode> {
 fn path_modify(mut vector_data: VectorData, modification: VectorModification) -> VectorData {
 	modification.apply(&mut vector_data);
 	vector_data
+}
+
+#[test]
+fn modify_new() {
+	let vector_data = VectorData::from_subpaths(
+		[bezier_rs::Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), bezier_rs::Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)],
+		false,
+	);
+
+	let modify = VectorModification::create_from_vector(&vector_data);
+
+	let mut new = VectorData::empty();
+	modify.apply(&mut new);
+	assert_eq!(vector_data, new);
 }

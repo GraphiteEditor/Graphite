@@ -694,6 +694,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::SetName { layer, name } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::SetNameImpl { layer, name });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				let Some(node) = document_network.nodes.get_mut(&layer.to_node()) else { return };

@@ -92,6 +92,7 @@ pub struct Artboard {
 	pub dimensions: IVec2,
 	pub background: Color,
 	pub clip: bool,
+	pub alias: Option<String>,
 }
 
 impl Artboard {
@@ -102,6 +103,7 @@ impl Artboard {
 			dimensions: dimensions.abs(),
 			background: Color::WHITE,
 			clip: false,
+			alias: None,
 		}
 	}
 }
@@ -165,12 +167,13 @@ fn to_graphic_group<Data: Into<GraphicGroup>>(data: Data) -> GraphicGroup {
 	data.into()
 }
 
-pub struct ConstructArtboardNode<Contents, Location, Dimensions, Background, Clip> {
+pub struct ConstructArtboardNode<Contents, Location, Dimensions, Background, Clip, Alias> {
 	contents: Contents,
 	location: Location,
 	dimensions: Dimensions,
 	background: Background,
 	clip: Clip,
+	alias: Alias,
 }
 
 #[node_fn(ConstructArtboardNode)]
@@ -181,6 +184,7 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 	dimensions: IVec2,
 	background: Color,
 	clip: bool,
+	alias: String,
 ) -> Artboard {
 	footprint.transform *= DAffine2::from_translation(location.as_dvec2());
 	let graphic_group = self.contents.eval(footprint).await;
@@ -190,6 +194,7 @@ async fn construct_artboard<Fut: Future<Output = GraphicGroup>>(
 		dimensions: dimensions.abs(),
 		background,
 		clip,
+		alias: (!alias.is_empty()).then_some(alias),
 	}
 }
 pub struct AddArtboardNode<ArtboardGroup, Artboard> {

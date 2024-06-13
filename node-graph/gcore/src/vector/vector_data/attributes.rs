@@ -172,6 +172,12 @@ impl SegmentDomain {
 	pub fn end_point(&self) -> &[PointId] {
 		&self.end_point
 	}
+	pub fn handles(&self) -> &[bezier_rs::BezierHandles] {
+		&self.handles
+	}
+	pub fn stroke(&self) -> &[StrokeId] {
+		&self.stroke
+	}
 
 	pub fn push(&mut self, id: SegmentId, start: PointId, end: PointId, handles: bezier_rs::BezierHandles, stroke: StrokeId) {
 		if self.ids.contains(&id) {
@@ -218,6 +224,13 @@ impl SegmentDomain {
 	}
 	pub fn other_point(&self, segment: SegmentId, current: PointId) -> Option<PointId> {
 		self.points_from_id(segment).and_then(|points| points.into_iter().find(|&point| point != current))
+	}
+	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
+		self.start_point.iter().zip(&self.end_point).filter_map(move |(&a, &b)| match (a == current, b == current) {
+			(true, false) => Some(b),
+			(false, true) => Some(a),
+			_ => None,
+		})
 	}
 
 	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
@@ -324,6 +337,16 @@ impl RegionDomain {
 
 	pub fn fill_mut(&mut self) -> impl Iterator<Item = (RegionId, &mut FillId)> {
 		self.ids.iter().copied().zip(self.fill.iter_mut())
+	}
+
+	pub fn ids(&self) -> &[RegionId] {
+		&self.ids
+	}
+	pub fn segment_range(&self) -> &[core::ops::RangeInclusive<SegmentId>] {
+		&self.segment_range
+	}
+	pub fn fill(&self) -> &[FillId] {
+		&self.fill
 	}
 
 	fn concat(&mut self, other: &Self, _transform: DAffine2, id_map: &IdMap) {
