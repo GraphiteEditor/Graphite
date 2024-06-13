@@ -324,6 +324,8 @@ impl PathToolData {
 		let document_network = document.network();
 		let document_metadata = document.metadata();
 
+		self.drag_start_pos = input.mouse.position;
+
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
@@ -576,18 +578,18 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
 
-				let nearest_point = shape_editor
-					.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD)
-					.map(|(_, nearest_point)| nearest_point);
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD);
 
 				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.metadata, &tool_data.opposing_handle_lengths, responses);
 
-				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
-					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
-					if clicked_selected {
-						shape_editor.deselect_all_points();
-						shape_editor.change_point_selection(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD, false);
-						responses.add(OverlaysMessage::Draw);
+				if let Some((layer, nearest_point)) = nearest_point {
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
+						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+						if clicked_selected {
+							shape_editor.deselect_all_points();
+							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
+							responses.add(OverlaysMessage::Draw);
+						}
 					}
 				}
 

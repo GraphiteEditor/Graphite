@@ -371,8 +371,15 @@ impl super::VectorData {
 
 	/// Tries to convert a segment with the specified id to a [`bezier_rs::Bezier`], returning None if the id is invalid.
 	pub fn segment_from_id(&self, id: SegmentId) -> Option<bezier_rs::Bezier> {
-		let index = self.segment_domain.resolve_id(id)?;
-		self.segment_to_bezier(self.segment_domain.start_point[index], self.segment_domain.end_point[index], self.segment_domain.handles[index])
+		self.segment_points_from_id(id).map(|(_, _, bezier)| bezier)
+	}
+
+	/// Tries to convert a segment with the specified id to the start and end points and a [`bezier_rs::Bezier`], returning None if the id is invalid.
+	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, bezier_rs::Bezier)> {
+		let index: usize = self.segment_domain.resolve_id(id)?;
+		let start = self.segment_domain.start_point[index];
+		let end = self.segment_domain.end_point[index];
+		Some((start, end, self.segment_to_bezier(start, end, self.segment_domain.handles[index])?))
 	}
 
 	/// Iterator over all of the [`bezier_rs::Bezier`] following the order that they are stored in the segment domain, skipping invalid segments.

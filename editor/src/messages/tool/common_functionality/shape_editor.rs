@@ -369,17 +369,20 @@ impl ShapeState {
 		});
 	}
 
-	pub fn move_anchor(&self, point: PointId, vector_data: &VectorData, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+	pub fn move_anchor(&self, point: PointId, vector_data: &VectorData, delta: DVec2, layer: LayerNodeIdentifier, selected: Option<&SelectedLayerState>, responses: &mut VecDeque<Message>) {
 		responses.add(GraphOperationMessage::Vector {
 			layer,
 			modification_type: VectorModificationType::ApplyPointDelta { point, delta },
 		});
 		for segment in vector_data.segment_domain.end_connected(point) {
-			let Some(bezier) = vector_data.segment_from_id(segment) else { continue };
+			let Some((start, end, bezier)) = vector_data.segment_points_from_id(segment) else { continue };
 			if let Some(pos) = bezier.handle_end().map(|handle| handle - bezier.end) {
 				let modification_type = VectorModificationType::SetEndHandle { segment, pos };
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			} else if let Some(pos) = bezier.handle_start().map(|handle| handle - bezier.start + delta) {
+				if selected.is_some_and(|selected| selected.is_selected(ManipulatorPointId::Anchor(start))) {
+					continue;
+				}
 				let modification_type = VectorModificationType::SetPrimaryHandle { segment, pos };
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
@@ -411,7 +414,7 @@ impl ShapeState {
 		let delta = position - current_position;
 
 		match *point {
-			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector_data, delta, layer, responses),
+			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector_data, delta, layer, None, responses),
 			ManipulatorPointId::PrimaryHandle(segment) => {
 				self.move_primary(segment, delta, layer, responses);
 				if let Some(handles) = point.get_handle_pair(&vector_data) {
@@ -591,7 +594,7 @@ impl ShapeState {
 			for &point in state.selected_points.iter() {
 				let handle = match point {
 					ManipulatorPointId::Anchor(point) => {
-						self.move_anchor(point, &vector_data, delta, layer, responses);
+						self.move_anchor(point, &vector_data, delta, layer, Some(state), responses);
 						continue;
 					}
 					ManipulatorPointId::PrimaryHandle(segment) => HandleId::primary(segment),
