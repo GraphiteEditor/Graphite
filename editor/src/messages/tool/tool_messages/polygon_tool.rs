@@ -252,7 +252,7 @@ impl Fsm for PolygonToolFsmState {
 								[
 									None,
 									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
-									Some(NodeInput::value(TaggedValue::F64(1.), false)),
+									Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 								],
 								Default::default(),
 							),
@@ -260,8 +260,8 @@ impl Fsm for PolygonToolFsmState {
 							[
 								None,
 								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
-								Some(NodeInput::value(TaggedValue::F64(1.), false)),
 								Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+								Some(NodeInput::value(TaggedValue::F64(0.25), false)),
 							],
 							Default::default(),
 						),
@@ -284,8 +284,16 @@ impl Fsm for PolygonToolFsmState {
 				PolygonToolFsmState::Drawing
 			}
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(message) = polygon_data.calculate_transform(document, input, center, lock_ratio, false) {
-					responses.add(message);
+				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
+					if let Some(layer) = tool_data.data.layer {
+						// todo: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
+						responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
 				}
 
 				// Auto-panning
