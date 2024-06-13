@@ -2,6 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
+use super::utility_types::node_metadata::{NetworkMetadata, NodeMetadata};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -118,6 +119,12 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
+	/// Click targets for every node in every network by using the path to that node
+	#[serde(skip)]
+	pub node_metadata: HashMap<Vec<NodeId>, NodeMetadata>,
+	// Bounding box around all nodes and the node graph to viewport transform for all networks
+	#[serde(skip)]
+	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
 }
 
 impl Default for DocumentMessageHandler {
@@ -134,6 +141,8 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network: root_network(),
+			node_metadata: HashMap::new(),
+			network_metadata: HashMap::new(),
 			selected_nodes: SelectedNodes::default(),
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),

@@ -668,6 +668,7 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
+	//TODO: Move the following information into the document_message_handler
 	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
 	#[serde(skip)]
 	pub node_click_targets: HashMap<NodeId, ClickTarget>,
@@ -740,6 +741,7 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
+	// TODO: Move to node_metadata.rs
 	// Inserts a node into the network and updates the click target
 	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode) {
 		self.nodes.insert(node_id, node);
@@ -750,6 +752,7 @@ impl NodeNetwork {
 		self.update_click_target(node_id, None);
 	}
 
+	// TODO: Move to node_metadata.rs
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
 		use web_sys::window;
 		let document = window().unwrap().document().unwrap();
@@ -797,6 +800,8 @@ impl NodeNetwork {
 
 		Some(text_width)
 	}
+
+	// TODO: Move to node_metadata.rs
 	/// Update the click targets when a private field for a DocumentNode changes. Import count only needs to be correct when node_id is the import node.
 	pub fn update_click_target(&mut self, node_id: NodeId, import_count: Option<usize>) {
 		// Clear all click targets for the node
@@ -1035,6 +1040,7 @@ impl NodeNetwork {
 		}
 	}
 
+	// TODO: Move to node_metadata.rs
 	pub fn update_all_click_targets(&mut self, number_of_imports: Option<usize>) {
 		let node_ids = self.nodes.clone();
 		for (node_id, _) in node_ids {
@@ -1046,7 +1052,7 @@ impl NodeNetwork {
 			self.update_click_target(self.imports_metadata.0, number_of_imports)
 		}
 	}
-
+	// TODO: Move to node_metadata.rs
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
 	pub fn graph_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
 		self.bounding_box_subpath
