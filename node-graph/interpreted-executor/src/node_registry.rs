@@ -383,8 +383,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		),
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::ReadOutputBufferNode<_, _>, input: Arc<ShaderInput<WgpuExecutor>>, output: Vec<u8>, params: [&WgpuExecutor, ()]),
-		#[cfg(feature = "gpu")]
-		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, params: []),
 		// todo!(gpu) get this to compie without saying that one type is more general than the other
 		// #[cfg(feature = "gpu")]
 		// async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, &WgpuExecutor]),
@@ -689,7 +687,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Artboard, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ArtboardGroup, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => ImageFrame<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => VectorData, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => Artboard, () => Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => bool, () => Arc<WasmSurfaceHandle>]),
@@ -788,7 +785,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::vector::AreaNode<_>, input: (), output: f64, fn_params: [Footprint => VectorData]),
 		async_node!(graphene_core::vector::CentroidNode<_, _>, input: (), output: DVec2, fn_params: [Footprint => VectorData, () => graphene_core::vector::misc::CentroidType]),
 		async_node!(graphene_core::vector::MorphNode<_, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, Footprint => VectorData, () => u32, () => f64]),
-		register_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), params: [f64]),
+		async_node!(graphene_core::vector::generator_nodes::CircleGenerator<_>, input: (), output: VectorData, fn_params: [() => f64]),
 		register_node!(graphene_core::vector::generator_nodes::EllipseGenerator<_, _>, input: (), params: [f64, f64]),
 		register_node!(graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>, input: (), params: [f64, f64, bool, f64, bool]),
 		register_node!(graphene_core::vector::generator_nodes::RectangleGenerator<_, _, _, _, _>, input: (), params: [f64, f64, bool, [f64; 4], bool]),

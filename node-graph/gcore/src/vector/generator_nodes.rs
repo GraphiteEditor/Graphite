@@ -12,7 +12,7 @@ pub struct CircleGenerator<Radius> {
 }
 
 #[node_macro::node_fn(CircleGenerator)]
-fn circle_generator(_input: (), radius: f64) -> VectorData {
+async fn circle_generator(_input: (), radius: f64) -> VectorData {
 	let radius: f64 = radius;
 	super::VectorData::from_subpath(Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius)))
 }

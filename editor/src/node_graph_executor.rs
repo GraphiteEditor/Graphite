@@ -193,6 +193,8 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
+		// Temporarily hash the time so we force re-insert the nodes each frame
+		editor_api.render_config.animation_config.time.to_bits().hash(&mut graph_input_hash);
 		let font_hash_code = graph_input_hash.finish();
 		graph.hash(&mut graph_input_hash);
 		let hash_code = graph_input_hash.finish();
@@ -219,14 +221,17 @@ impl NodeRuntime {
 			};
 
 			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
+			info!("Beginning to update executor");
 			if let Err(e) = self.executor.update(proto_network).await {
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);
 			}
+			info!("Finished updating exector - during this point secondary non-async inputs have been already evaluated");
 			self.resolved_types = self.executor.document_node_types();
 		}
 
+		info!("Running graph input {:?}", self.executor.input_type());
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
