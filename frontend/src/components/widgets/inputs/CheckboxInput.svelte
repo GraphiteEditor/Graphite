@@ -38,7 +38,7 @@
 	<input
 		type="checkbox"
 		id={`checkbox-input-${id}`}
-		{checked}
+		bind:checked
 		on:change={(_) => dispatch("checked", inputElement?.checked || false)}
 		{disabled}
 		tabindex={disabled ? -1 : 0}

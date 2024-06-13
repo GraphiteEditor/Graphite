@@ -455,49 +455,53 @@ impl ShapeState {
 		let Some(anchor_position) = ManipulatorPointId::Anchor(point_id).get_position(vector_data) else {
 			return;
 		};
-		let Some(handles) = ManipulatorPointId::Anchor(point_id).get_handle_pair(&vector_data) else {
-			return;
-		};
-
-		let handle_positions = handles.map(|handle| handle.to_point().get_position(vector_data));
+		let handles = vector_data.segment_domain.all_connected(point_id).take(2).collect::<Vec<_>>();
 
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
-		let points = handles.map(|handle| vector_data.segment_domain.other_point(handle.segment, point_id));
-		let anchor_positions = points.map(|point| point.and_then(|point| ManipulatorPointId::Anchor(point).get_position(vector_data)));
-
-		// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
-		let lengths = anchor_positions.map(|position| position.map(|position| (position - anchor_position).length() / 3.));
+		let points = handles.iter().map(|handle| vector_data.segment_domain.other_point(handle.segment, point_id));
+		let anchor_positions = points
+			.map(|point| point.and_then(|point| ManipulatorPointId::Anchor(point).get_position(vector_data)))
+			.collect::<Vec<_>>();
 
 		// Use the position relative to the anchor
-		let directions = anchor_positions.map(|position| position.map(|position| (position - anchor_position)).and_then(DVec2::try_normalize));
+		let mut directions = anchor_positions
+			.iter()
+			.map(|position| position.map(|position| (position - anchor_position)).and_then(DVec2::try_normalize));
 
 		// The direction of the handles is either the perpendicular vector to the sum of the anchors' positions or just the anchor's position (if only one)
-		let mut handle_direction = match (directions[0], directions[1]) {
+		let mut handle_direction = match (directions.next().flatten(), directions.next().flatten()) {
 			(Some(previous), Some(next)) => (previous - next).try_normalize().unwrap_or(next.perp()),
 			(Some(val), None) | (None, Some(val)) => val,
 			(None, None) => return,
 		};
 
 		// Set the manipulator to have colinear handles
-		let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
-		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		if let (Some(a), Some(b)) = (handles.get(0), handles.get(1)) {
+			let handles = [*a, *b];
+			let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 
 		// Flip the vector if it is not facing towards the same direction as the anchor
-		if anchor_positions[0].filter(|&group| (group - anchor_position).normalize_or_zero().dot(handle_direction) < 0.).is_some()
-			|| anchor_positions[1].filter(|&group| (group - anchor_position).normalize_or_zero().dot(handle_direction) > 0.).is_some()
+		let [first, second] = [anchor_positions.get(0).copied().flatten(), anchor_positions.get(1).copied().flatten()];
+		if first.is_some_and(|group| (group - anchor_position).normalize_or_zero().dot(handle_direction) < 0.)
+			|| second.is_some_and(|group| (group - anchor_position).normalize_or_zero().dot(handle_direction) > 0.)
 		{
 			handle_direction = -handle_direction;
 		}
 
 		// Push both in and out handles into the correct position
-		for (index, sign) in [(0, 1.), (1, -1.)] {
-			let Some(length) = lengths[index] else { continue };
+		for ((handle, sign), other_anchor) in handles.iter().zip([1., -1.]).zip(&anchor_positions) {
+			// To find the length of the new tangent we just take the distance to the anchor and divide by 3 (pretty arbitrary)
+			let Some(length) = other_anchor.map(|position| (position - anchor_position).length() / 3.) else {
+				continue;
+			};
 			let new_position = anchor_position + handle_direction * length * sign;
-			let modification_type = handles[index].move_pos(new_position - handle_positions[index].unwrap_or(anchor_position));
+			let modification_type = handle.move_pos(new_position - handle.to_point().get_position(vector_data).unwrap_or(anchor_position));
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-			if handles[index].opposite().to_point().get_position(&vector_data).is_none() {
-				let modification_type = handles[index].opposite().move_pos(DVec2::ZERO);
+			if handle.opposite().to_point().get_position(&vector_data).is_none() {
+				let modification_type = handle.opposite().move_pos(DVec2::ZERO);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 		}
