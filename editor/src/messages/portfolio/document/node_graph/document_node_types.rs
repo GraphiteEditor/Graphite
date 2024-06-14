@@ -2787,43 +2787,42 @@ impl DocumentNodeDefinition {
 	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: DocumentNodeMetadata) -> DocumentNode {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
+		let implementation = self.implementation.clone();
 
-		let mut implementation = self.implementation.clone();
-		if let DocumentNodeImplementation::Network(network) = &mut implementation {
-			let mut click_targets = HashMap::new();
+		// I don't think this is necessary since all click targets are loaded when entering a network
+		// if let DocumentNodeImplementation::Network(network) = &mut implementation {
+		// 	let mut click_targets = HashMap::new();
 
-			let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-			let width = 5 * grid_size;
+		// 	let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
+		// 	let width = 5 * grid_size;
 
-			let imports_height = (inputs.len() + 1) as i32 * grid_size;
-			let exports_height = (network.exports.len() + 1) as i32 * grid_size;
+		// 	let imports_height = (inputs.len() + 1) as i32 * grid_size;
+		// 	let exports_height = (network.exports.len() + 1) as i32 * grid_size;
 
-			let imports_corner_1 = IVec2::new(network.imports_metadata.1.x * grid_size, network.imports_metadata.1.y * grid_size);
-			let exports_corner_1 = IVec2::new(network.exports_metadata.1.x * grid_size, network.exports_metadata.1.y * grid_size);
+		// 	let imports_corner_1 = IVec2::new(network.imports_metadata.1.x * grid_size, network.imports_metadata.1.y * grid_size);
+		// 	let exports_corner_1 = IVec2::new(network.exports_metadata.1.x * grid_size, network.exports_metadata.1.y * grid_size);
 
-			let imports_corner_2 = imports_corner_1 + IVec2::new(width, imports_height);
-			let exports_corner_2 = exports_corner_1 + IVec2::new(width, exports_height);
-			let radius = 3.;
+		// 	let imports_corner_2 = imports_corner_1 + IVec2::new(width, imports_height);
+		// 	let exports_corner_2 = exports_corner_1 + IVec2::new(width, exports_height);
+		// 	let radius = 3.;
 
-			let imports_subpath = bezier_rs::Subpath::new_rounded_rect(imports_corner_1.into(), imports_corner_2.into(), [radius; 4]);
-			let exports_subpath = bezier_rs::Subpath::new_rounded_rect(exports_corner_1.into(), exports_corner_2.into(), [radius; 4]);
+		// 	let imports_subpath = bezier_rs::Subpath::new_rounded_rect(imports_corner_1.into(), imports_corner_2.into(), [radius; 4]);
+		// 	let exports_subpath = bezier_rs::Subpath::new_rounded_rect(exports_corner_1.into(), exports_corner_2.into(), [radius; 4]);
 
-			let stroke_width = 1.;
-			let imports_click_target = ClickTarget {
-				subpath: imports_subpath,
-				stroke_width,
-			};
-			let exports_click_target = ClickTarget {
-				subpath: exports_subpath,
-				stroke_width,
-			};
+		// 	let stroke_width = 1.;
+		// 	let imports_click_target = ClickTarget {
+		// 		subpath: imports_subpath,
+		// 		stroke_width,
+		// 	};
+		// 	let exports_click_target = ClickTarget {
+		// 		subpath: exports_subpath,
+		// 		stroke_width,
+		// 	};
 
-			click_targets.insert(network.imports_metadata.0, imports_click_target);
-			click_targets.insert(network.exports_metadata.0, exports_click_target);
-			network.node_click_targets = click_targets;
-
-			//TODO: Add input and output click targets
-		}
+		// 	click_targets.insert(network.imports_metadata.0, imports_click_target);
+		// 	click_targets.insert(network.exports_metadata.0, exports_click_target);
+		// 	network.node_click_targets = click_targets;
+		// }
 		DocumentNode {
 			name: self.name.to_string(),
 			is_layer: self.is_layer,
@@ -2928,41 +2927,43 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 	}
 }
 
-pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
-	let mut network = NodeNetwork { ..Default::default() };
-	network.push_node_to_document_network(
-		resolve_document_node_type("Input Frame")
-			.expect("Input Frame node does not exist")
-			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
-	);
-	network.push_node_to_document_network(
-		resolve_document_node_type("Output")
-			.expect("Output node does not exist")
-			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
-	);
-	network
-}
+// Previously used by the Imaginate node, but usage was commented out since it did nothing.
+// pub fn new_image_network(output_offset: i32, output_node_id: NodeId) -> NodeNetwork {
+// 	let mut network = NodeNetwork { ..Default::default() };
+// 	network.push_node_to_document_network(
+// 		resolve_document_node_type("Input Frame")
+// 			.expect("Input Frame node does not exist")
+// 			.to_document_node_default_inputs([], DocumentNodeMetadata::position((8, 4))),
+// 	);
+// 	network.push_node_to_document_network(
+// 		resolve_document_node_type("Output")
+// 			.expect("Output node does not exist")
+// 			.to_document_node([NodeInput::node(output_node_id, 0)], DocumentNodeMetadata::position((output_offset + 8, 4))),
+// 	);
+// 	network
+// }
 
-pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
-	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
-	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
-	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
-	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
-	let output = resolve_document_node_type("Output").expect("Output node does not exist");
+// Unused
+// pub fn new_text_network(text: String, font: Font, size: f64) -> NodeNetwork {
+// 	let text_generator = resolve_document_node_type("Text").expect("Text node does not exist");
+// 	let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
+// 	let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
+// 	let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
+// 	let output = resolve_document_node_type("Output").expect("Output node does not exist");
 
-	let mut network = NodeNetwork { ..Default::default() };
-	network.push_node_to_document_network(text_generator.to_document_node(
-		[
-			NodeInput::network(concrete!(WasmEditorApi), 0),
-			NodeInput::value(TaggedValue::String(text), false),
-			NodeInput::value(TaggedValue::Font(font), false),
-			NodeInput::value(TaggedValue::F64(size), false),
-		],
-		DocumentNodeMetadata::position((0, 4)),
-	));
-	network.push_node_to_document_network(transform.to_document_node_default_inputs([None], Default::default()));
-	network.push_node_to_document_network(fill.to_document_node_default_inputs([None], Default::default()));
-	network.push_node_to_document_network(stroke.to_document_node_default_inputs([None], Default::default()));
-	network.push_node_to_document_network(output.to_document_node_default_inputs([None], Default::default()));
-	network
-}
+// 	let mut network = NodeNetwork { ..Default::default() };
+// 	network.push_node_to_document_network(text_generator.to_document_node(
+// 		[
+// 			NodeInput::network(concrete!(WasmEditorApi), 0),
+// 			NodeInput::value(TaggedValue::String(text), false),
+// 			NodeInput::value(TaggedValue::Font(font), false),
+// 			NodeInput::value(TaggedValue::F64(size), false),
+// 		],
+// 		DocumentNodeMetadata::position((0, 4)),
+// 	));
+// 	network.push_node_to_document_network(transform.to_document_node_default_inputs([None], Default::default()));
+// 	network.push_node_to_document_network(fill.to_document_node_default_inputs([None], Default::default()));
+// 	network.push_node_to_document_network(stroke.to_document_node_default_inputs([None], Default::default()));
+// 	network.push_node_to_document_network(output.to_document_node_default_inputs([None], Default::default()));
+// 	network
+// }

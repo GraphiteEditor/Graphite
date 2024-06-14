@@ -66,7 +66,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					document_node = document_node.map_ids(default_inputs, &new_ids);
 
 					// Insert node into network
-					document_network.insert_node(node_id, document_node);
+					node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
 				}
 
 				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
@@ -128,14 +128,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						],
 						Default::default(),
 					);
-				document_network.insert_node(node_id, new_boolean_operation_node);
+
+				node_graph.insert_node(node_id, new_boolean_operation_node, document_network, &Vec::new());
 			}
 			GraphOperationMessage::DeleteLayer { layer, reconnect } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Cannot delete ROOT_PARENT");
 					return;
 				}
-				ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![layer.to_node()], reconnect, responses, Vec::new(), &node_graph.resolved_types);
+				ModifyInputsContext::delete_nodes(node_graph, document_network, selected_nodes, vec![layer.to_node()], reconnect, responses, Vec::new());
 
 				load_network_structure(document_network, document_metadata, collapsed);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -143,7 +144,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
 				if document_network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
-					ModifyInputsContext::delete_nodes(document_network, selected_nodes, vec![NodeId(0)], true, responses, Vec::new(), &node_graph.resolved_types);
+					ModifyInputsContext::delete_nodes(node_graph, document_network, selected_nodes, vec![NodeId(0)], true, responses, Vec::new());
 				}
 			}
 			// Make sure to also update NodeGraphMessage::DisconnectInput when changing this
@@ -181,7 +182,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
-				ModifyInputsContext::remove_references_from_network(document_network, node_id, reconnect_to_sibling, &Vec::new(), &node_graph.resolved_types);
+				ModifyInputsContext::remove_references_from_network(node_graph, document_network, node_id, reconnect_to_sibling, &Vec::new());
 				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index: 0 });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
@@ -559,7 +560,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
+				if let Some(artboard_id) = ModifyInputsContext::create_artboard(node_graph, document_network, id, artboard) {
 					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
@@ -571,8 +572,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
-					modify_inputs.insert_image_data(image_frame, layer);
+				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
+					ModifyInputsContext::insert_image_data(node_graph, document_network, image_frame, layer, responses);
 				}
 			}
 			GraphOperationMessage::NewCustomLayer {
@@ -584,13 +585,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 
-				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
+				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
 					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
 						node.alias = alias.clone();
 					}
-					modify_inputs.document_network.update_click_target(id, None);
+					modify_inputs.node_graph.update_click_target(id, &modify_inputs.document_network, Vec::new());
 
 					let shift = nodes
 						.get(&NodeId(0))
@@ -613,7 +614,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						document_node = document_node.map_ids(default_inputs, &new_ids);
 
 						// Insert node into network
-						document_network.insert_node(node_id, document_node);
+						node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
 					}
 
 					if let Some(layer_node) = document_network.nodes.get_mut(&layer) {
@@ -631,7 +632,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
+				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
@@ -645,7 +646,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 			} => {
 				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
-				if let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) {
+				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
@@ -690,7 +691,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				};
 				node.metadata.position = position;
-				document_network.update_click_target(node_id, Some(1));
+				node_graph.update_click_target(node_id, document_network, Vec::new());
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 			}
@@ -701,19 +702,19 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
 					node.alias = name;
-					document_network.update_click_target(layer.to_node(), None);
+					node_graph.update_click_target(layer.to_node(), document_network, Vec::new());
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
 			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {
-				if ModifyInputsContext::set_input(document_network, node_id, input_index, input, true) {
+				if ModifyInputsContext::set_input(node_graph, document_network, &Vec::new(), node_id, input_index, input, true) {
 					load_network_structure(document_network, document_metadata, collapsed);
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				ModifyInputsContext::shift_upstream(document_network, node_id, shift, shift_self, 1);
+				ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), node_id, shift, shift_self, 1);
 			}
 			GraphOperationMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -803,7 +804,7 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) {
-	let Some(layer) = modify_inputs.create_layer_with_insert_index(id, insert_index, parent) else {
+	let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) else {
 		return;
 	};
 	modify_inputs.layer_node = Some(layer);

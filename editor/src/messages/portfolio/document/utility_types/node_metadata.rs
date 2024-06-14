@@ -1,6 +1,6 @@
 use bezier_rs::Subpath;
 use glam::DAffine2;
-use graphene_core::renderer::{ClickTarget, Quad};
+use graphene_core::renderer::ClickTarget;
 use graphene_core::uuid::ManipulatorGroupId;
 
 #[derive(Debug, Clone)]
@@ -12,9 +12,9 @@ pub struct NodeMetadata {
 	/// Cache for all node outputs. Should be automatically updated when update_click_target is called
 	pub output_click_targets: Vec<ClickTarget>,
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	pub visibility_click_target: ClickTarget,
-	/// Stores the width in grid cell units from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
-	pub layer_width: u32,
+	pub visibility_click_target: Option<ClickTarget>,
+	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
+	pub layer_width: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

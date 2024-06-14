@@ -626,7 +626,7 @@ impl PortfolioMessageHandler {
 		self.document_ids.push(document_id);
 		new_document.update_layers_panel_options_bar_widgets(responses);
 
-		new_document.network.update_all_click_targets(None);
+		new_document.node_graph_handler.update_all_click_targets(&mut new_document.network, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 

@@ -2,7 +2,6 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::node_metadata::{NetworkMetadata, NodeMetadata};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -119,12 +118,6 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
-	/// Click targets for every node in every network by using the path to that node
-	#[serde(skip)]
-	pub node_metadata: HashMap<Vec<NodeId>, NodeMetadata>,
-	// Bounding box around all nodes and the node graph to viewport transform for all networks
-	#[serde(skip)]
-	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
 }
 
 impl Default for DocumentMessageHandler {
@@ -141,8 +134,6 @@ impl Default for DocumentMessageHandler {
 			// Fields that are saved in the document format
 			// ============================================
 			network: root_network(),
-			node_metadata: HashMap::new(),
-			network_metadata: HashMap::new(),
 			selected_nodes: SelectedNodes::default(),
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
@@ -766,11 +757,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
-					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-						log::error!("Nested network not found in RenderScrollbars");
-						return;
-					};
-					network.graph_bounds_viewport_space().unwrap_or([viewport_mid; 2])
+					self.node_graph_handler.graph_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -1121,9 +1108,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.network
-						.nested_network(&self.node_graph_handler.network)
-						.and_then(|nested_network| nested_network.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
+
+					self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network)
+						.and_then(|network_metadata| network_metadata.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
 				} else {
 					self.metadata().document_bounds_document_space(true)
 				};
@@ -1274,11 +1261,17 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_nodes(network)
 			.filter_map(|node| {
-				let Some(click_target) = self.network.node_click_targets.get(node) else {
+				let mut node_path = self.node_graph_handler.network.clone();
+				node_path.push(*node);
+				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node_path) else {
 					log::debug!("Could not get click target for node {node}");
 					return None;
 				};
-				click_target.subpath.bounding_box_with_transform(network.node_graph_to_viewport)
+				let Some(network_metadata) = self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network) else {
+					log::debug!("Could not get network_metadata in selected_nodes_bounding_box_viewport");
+					return None;
+				};
+				node_metadata.node_click_target.subpath.bounding_box_with_transform(network_metadata.node_graph_to_viewport)
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}

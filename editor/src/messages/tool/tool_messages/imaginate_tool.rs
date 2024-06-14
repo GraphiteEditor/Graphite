@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
-use crate::messages::portfolio::document::node_graph::document_node_types::{new_image_network, IMAGINATE_NODE};
+use crate::messages::portfolio::document::node_graph::document_node_types::IMAGINATE_NODE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::resize::Resize;
 
@@ -125,17 +125,17 @@ impl Fsm for ImaginateToolFsmState {
 				let imaginate_node_id = NodeId(101);
 
 				// Create the network based on the Input -> Output passthrough default network
-				let mut network = new_image_network(16, imaginate_node_id);
+				// let mut network = new_image_network(16, imaginate_node_id);
 
-				// Insert the nodes into the default network
-				network.insert_node(
-					transform_node_id,
-					transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(NodeId(0), 0))], next_pos()),
-				);
-				network.insert_node(
-					imaginate_node_id,
-					imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
-				);
+				// // Insert the nodes into the default network
+				// network.insert_node(
+				// 	transform_node_id,
+				// 	transform_node_type.to_document_node_default_inputs([Some(NodeInput::node(NodeId(0), 0))], next_pos()),
+				// );
+				// network.insert_node(
+				// 	imaginate_node_id,
+				// 	imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
+				// );
 				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 
 				// // Add a layer with a frame to the document

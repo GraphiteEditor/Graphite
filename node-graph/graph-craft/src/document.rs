@@ -668,25 +668,6 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
-	//TODO: Move the following information into the document_message_handler
-	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
-	#[serde(skip)]
-	pub node_click_targets: HashMap<NodeId, ClickTarget>,
-	/// Cache for all node inputs. Should be automatically updated when update_click_target is called
-	#[serde(skip)]
-	pub input_click_targets: HashMap<(NodeId, usize), ClickTarget>,
-	/// Cache for all node outputs. Should be automatically updated when update_click_target is called
-	#[serde(skip)]
-	pub output_click_targets: HashMap<(NodeId, usize), ClickTarget>,
-	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	#[serde(skip)]
-	pub visibility_click_targets: HashMap<NodeId, ClickTarget>,
-	/// Cache for the bounding box around all nodes in node graph space. TODO: How should this handle the export node in an empty network?
-	#[serde(skip)]
-	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
-	/// Stores the width in grid cell units from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
-	#[serde(skip)]
-	pub layer_widths: HashMap<NodeId, u32>,
 	/// Transform from node graph space to viewport space.
 	#[serde(default)]
 	pub node_graph_to_viewport: DAffine2,
@@ -712,24 +693,13 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
-			node_click_targets: HashMap::new(),
-			input_click_targets: HashMap::new(),
-			output_click_targets: HashMap::new(),
-			visibility_click_targets: HashMap::new(),
-			bounding_box_subpath: None,
-			layer_widths: HashMap::new(),
-			node_graph_to_viewport: DAffine2::IDENTITY,
+			node_graph_to_viewport: DAffine2::default(),
 		}
 	}
 }
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports
-			&& self.previewing == other.previewing
-			&& self.imports_metadata == other.imports_metadata
-			&& self.exports_metadata == other.exports_metadata
-			&& self.bounding_box_subpath == other.bounding_box_subpath
-			&& self.node_graph_to_viewport == other.node_graph_to_viewport
+		self.exports == other.exports && self.previewing == other.previewing && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
 	}
 }
 
@@ -739,325 +709,6 @@ impl NodeNetwork {
 		let mut hasher = DefaultHasher::new();
 		self.hash(&mut hasher);
 		hasher.finish()
-	}
-
-	// TODO: Move to node_metadata.rs
-	// Inserts a node into the network and updates the click target
-	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode) {
-		self.nodes.insert(node_id, node);
-		assert!(
-			node_id != self.imports_metadata.0 && node_id != self.exports_metadata.0,
-			"Cannot insert import/export node into self.nodes"
-		);
-		self.update_click_target(node_id, None);
-	}
-
-	// TODO: Move to node_metadata.rs
-	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		use web_sys::window;
-		let document = window().unwrap().document().unwrap();
-		let div = match document.create_element("div") {
-			Ok(div) => div,
-			Err(err) => {
-				log::error!("Error creating div: {:?}", err);
-				return None;
-			}
-		};
-
-		// Set the div's style to make it offscreen and single line
-		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
-			Err(err) => {
-				log::error!("Error setting attribute: {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// From NodeGraphMessageHandler::untitled_layer_label(node)
-		let name = (node.alias != "")
-			.then_some(node.alias.to_string())
-			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() });
-
-		div.set_text_content(Some(&name));
-
-		// Append the div to the document body
-		match document.body().unwrap().append_child(&div) {
-			Err(err) => {
-				log::error!("Error setting adding child to document {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// Measure the width
-		let text_width = div.get_bounding_client_rect().width();
-
-		// Remove the div from the document
-		match document.body().unwrap().remove_child(&div) {
-			Err(_) => log::error!("Could not remove child when rendering text"),
-			_ => {}
-		};
-
-		Some(text_width)
-	}
-
-	// TODO: Move to node_metadata.rs
-	/// Update the click targets when a private field for a DocumentNode changes. Import count only needs to be correct when node_id is the import node.
-	pub fn update_click_target(&mut self, node_id: NodeId, import_count: Option<usize>) {
-		// Clear all click targets for the node
-		self.node_click_targets.remove(&node_id);
-		let mut current_input_index = 0;
-		while self.input_click_targets.remove(&(node_id, current_input_index)).is_some() {
-			current_input_index += 1;
-		}
-		let mut current_output_index = 0;
-		while self.output_click_targets.remove(&(node_id, current_output_index)).is_some() {
-			current_output_index += 1;
-		}
-		self.visibility_click_targets.remove(&node_id);
-		self.layer_widths.remove(&node_id);
-
-		let grid_size = 24_u32; // Number of pixels per grid unit at 100% zoom
-
-		if let Some(node) = self.nodes.get(&node_id) {
-			// Update node click target
-			let width = if node.is_layer {
-				let half_grid_cell_offset = 24. / 2.;
-				let thumbnail_width = 3. * 24.;
-				let gap_width = 8.;
-				let text_width = Self::get_text_width(node).unwrap_or_default();
-				let icon_width = 24.;
-				let icon_overhang_width = icon_width / 2.;
-
-				let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
-				let layer_width = text_right + gap_width + icon_width - icon_overhang_width;
-				let layer_width_cells = (((layer_width) / 24.).ceil() as u32).max(8);
-
-				self.layer_widths.insert(node_id, layer_width_cells);
-
-				layer_width_cells * grid_size
-			} else {
-				5 * grid_size
-			};
-			let height = if node.is_layer {
-				2 * grid_size
-			} else {
-				let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
-				let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-					network.exports.len()
-				} else {
-					1
-				};
-				std::cmp::max(inputs_count, outputs_count) as u32 * grid_size
-			};
-			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size as i32) as f64, (node.metadata.position.y * grid_size as i32) as f64);
-			let radius = if !node.is_layer {
-				corner1 += DVec2::new(0., (grid_size / 2) as f64);
-				3.
-			} else {
-				10.
-			};
-
-			let corner2 = corner1 + DVec2::new(width as f64, height as f64);
-			let mut click_target_corner_1 = corner1;
-			if node.is_layer && node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-				click_target_corner_1 -= DVec2::new(24., 0.)
-			}
-
-			let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
-
-			self.node_click_targets.insert(node_id, node_click_target);
-
-			// Update input/output click targets
-			let mut node_top_left = corner1;
-			// Only for non layer nodes
-			let mut node_top_right = corner1 + DVec2::new(5. * 24., 0.);
-
-			if !node.is_layer {
-				let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
-				let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-					network.exports.len()
-				} else {
-					1
-				};
-				let mut inputs_complete = false;
-				let mut outputs_complete = false;
-				let mut node_row_index = 0;
-
-				if !node.has_primary_output {
-					node_top_right.y += 24.;
-				}
-
-				let input_top_left = DVec2::new(-8., 4.);
-				let input_bottom_right = DVec2::new(8., 20.);
-
-				loop {
-					if node_row_index < number_of_inputs {
-						let stroke_width = 1.;
-						let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
-						let input_click_target = ClickTarget { subpath, stroke_width };
-						self.input_click_targets.insert((node_id, node_row_index), input_click_target);
-						node_top_left.y += 24.;
-					}
-					// If the new number of inputs is smaller than the old one, remove the old ones
-					else if self.input_click_targets.remove(&(node_id, node_row_index)).is_none() {
-						inputs_complete = true;
-					}
-
-					if node_row_index < number_of_outputs {
-						let stroke_width = 1.;
-						let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
-						let output_click_target = ClickTarget { subpath, stroke_width };
-						self.output_click_targets.insert((node_id, node_row_index), output_click_target);
-						node_top_right.y += 24.;
-					} else {
-						outputs_complete = true;
-					}
-
-					if inputs_complete && outputs_complete {
-						break;
-					}
-
-					node_row_index += 1;
-				}
-				// Nodes cannot have visibility buttons
-				self.visibility_click_targets.remove(&node_id);
-			} else {
-				let input_top_left = DVec2::new(-8., -8.);
-				let input_bottom_right = DVec2::new(8., 8.);
-				let layer_input_offset = node_top_left + DVec2::new(2. * 24., 2. * 24. + 8.);
-
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-				let layer_input_click_target = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((node_id, 0), layer_input_click_target);
-
-				if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-					let layer_input_offset = node_top_left + DVec2::new(0., 24.);
-					let stroke_width = 1.;
-					let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-					let input_click_target = ClickTarget { subpath, stroke_width };
-					self.input_click_targets.insert((node_id, 1), input_click_target);
-				}
-
-				// Output
-				let layer_output_offset = node_top_left + DVec2::new(2. * 24., -8.);
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
-				let layer_output_click_target = ClickTarget { subpath, stroke_width };
-				self.output_click_targets.insert((node_id, 0), layer_output_click_target);
-
-				// Update visibility button click target
-				let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
-				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
-				let stroke_width = 1.;
-				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
-				self.visibility_click_targets.insert(node_id, layer_visibility_click_target);
-			}
-		} else if node_id == self.exports_metadata.0 {
-			let width = 5 * grid_size;
-			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (self.exports.len() as u32 + 1) * grid_size;
-
-			let corner1 = IVec2::new(self.exports_metadata.1.x * grid_size as i32, self.exports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
-			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
-			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
-			self.node_click_targets.insert(self.exports_metadata.0, node_click_target);
-
-			let node_top_left = self.exports_metadata.1 * grid_size as i32;
-			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
-			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
-			node_top_left.y += 36.;
-			let input_top_left = DVec2::new(-8., 4.);
-			let input_bottom_right = DVec2::new(8., 20.);
-
-			for i in 0..self.exports.len() {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
-				let top_left_input = ClickTarget { subpath, stroke_width };
-				self.input_click_targets.insert((self.exports_metadata.0, i), top_left_input);
-
-				node_top_left += 24.;
-			}
-		}
-		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
-		else if node_id == self.imports_metadata.0 {
-			// Import count should always be Some when updating the Imports node
-			let import_count = import_count.expect("Import count should exist when updating imports node");
-			let width = 5 * grid_size;
-			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (import_count + 1) as u32 * grid_size;
-
-			let corner1 = IVec2::new(self.imports_metadata.1.x * grid_size as i32, self.imports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
-			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
-			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
-			self.node_click_targets.insert(self.imports_metadata.0, node_click_target);
-
-			let node_top_right = self.imports_metadata.1 * grid_size as i32;
-			let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
-			// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
-			node_top_right.y += 36.;
-			let input_top_left = DVec2::new(-8., 4.);
-			let input_bottom_right = DVec2::new(8., 20.);
-			for i in 0..import_count {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
-				let top_left_input = ClickTarget { subpath, stroke_width };
-				self.output_click_targets.insert((self.imports_metadata.0, i), top_left_input);
-
-				node_top_right.y += 24.;
-			}
-		} else {
-			// self.node_click_targets.remove(&node_id);
-		};
-
-		// if node_click_target is outside the current bounding box, update the bounding box
-		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
-			bounding_box.bounding_box().is_some_and(|bounding_box| {
-				self.node_click_targets.get(&node_id).map_or(true, |click_target| {
-					click_target.subpath.bounding_box().is_some_and(|click_target| {
-						// Combine bounds and check if new vec is larger than current bounding box
-						let new_bounds = Quad::combine_bounds(click_target, bounding_box);
-						bounding_box != new_bounds
-					})
-				})
-			})
-		}) {
-			let bounds = self
-				.node_click_targets
-				.iter()
-				.filter_map(|(_, click_target)| click_target.subpath.bounding_box())
-				.reduce(Quad::combine_bounds);
-			self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
-		}
-	}
-
-	// TODO: Move to node_metadata.rs
-	pub fn update_all_click_targets(&mut self, number_of_imports: Option<usize>) {
-		let node_ids = self.nodes.clone();
-		for (node_id, _) in node_ids {
-			self.update_click_target(node_id, None);
-		}
-		self.update_click_target(self.exports_metadata.0, None);
-		// Only add Import node click target in nested networks, since the document network import node is hidden
-		if number_of_imports.is_some() {
-			self.update_click_target(self.imports_metadata.0, number_of_imports)
-		}
-	}
-	// TODO: Move to node_metadata.rs
-	/// Gets the bounding box in viewport coordinates for each node in the node graph
-	pub fn graph_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
-		self.bounding_box_subpath
-			.as_ref()
-			.and_then(|bounding_box| bounding_box.bounding_box_with_transform(self.node_graph_to_viewport))
 	}
 
 	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
@@ -1139,26 +790,27 @@ impl NodeNetwork {
 	}
 
 	/// Appends a new node to the network after the output node and sets it as the new output
-	pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
-		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
-		// Set the correct position for the new node
-		if node.metadata.position == IVec2::default() {
-			if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
-				node.metadata.position = pos + IVec2::new(8, 0);
-			}
-		}
-		if !self.exports.is_empty() {
-			let input = self.exports[0].clone();
-			if node.inputs.is_empty() {
-				node.inputs.push(input);
-			} else {
-				node.inputs[0] = input;
-			}
-		}
-		self.insert_node(id, node);
-		self.exports = vec![NodeInput::node(id, 0)];
-		id
-	}
+	// pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
+	// 	let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
+	// 	// Set the correct position for the new node
+	// 	if node.metadata.position == IVec2::default() {
+	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
+	// 			node.metadata.position = pos + IVec2::new(8, 0);
+	// 		}
+	// 	}
+	// 	if !self.exports.is_empty() {
+	// 		let input = self.exports[0].clone();
+	// 		if node.inputs.is_empty() {
+	// 			node.inputs.push(input);
+	// 		} else {
+	// 			node.inputs[0] = input;
+	// 		}
+	// 	}
+	//  // Use node_graph.insert_node
+	// 	self.insert_node(id, node);
+	// 	self.exports = vec![NodeInput::node(id, 0)];
+	// 	id
+	// }
 
 	/// Get the nested network given by the path of node ids
 	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
