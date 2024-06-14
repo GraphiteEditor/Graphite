@@ -1,43 +1,21 @@
 use crate::tiff::file::TiffRead;
-use crate::tiff::tags::{BITS_PER_SAMPLE, CFA_PATTERN, CFA_PATTERN_DIM, COMPRESSION, IMAGE_LENGTH, IMAGE_WIDTH, ROWS_PER_STRIP, SAMPLES_PER_PIXEL, SONY_DATA_OFFSET, STRIP_BYTE_COUNTS, STRIP_OFFSETS};
+use crate::tiff::tags::SonyDataOffset;
 use crate::tiff::Ifd;
 use crate::RawImage;
 use bitstream_io::{BitRead, BitReader, Endianness, BE};
 use std::io::{Read, Seek};
 
 pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
-	// let strip_offsets = ifd.get(STRIP_OFFSETS, file).unwrap();
-	// let strip_byte_counts = ifd.get(STRIP_BYTE_COUNTS, file).unwrap();
-	// assert!(strip_offsets.len() == strip_byte_counts.len());
-
-	let data_offset = ifd.get(SONY_DATA_OFFSET, file).unwrap();
-
-	let image_width: usize = ifd.get(IMAGE_WIDTH, file).unwrap().try_into().unwrap();
-	let image_height: usize = ifd.get(IMAGE_LENGTH, file).unwrap().try_into().unwrap();
-	// let rows_per_strip: usize = ifd.get(ROWS_PER_STRIP, file).unwrap().try_into().unwrap();
-	// let bits_per_sample: usize = ifd.get(BITS_PER_SAMPLE, file).unwrap().into();
-	// let bytes_per_sample: usize = bits_per_sample.div_ceil(8);
-	// let samples_per_pixel: usize = ifd.get(SAMPLES_PER_PIXEL, file).unwrap().into();
-	// let compression = ifd.get(COMPRESSION, file).unwrap();
-	// assert!(compression == 32767);
-
-	// let photometric_interpretation = ifd.get(PHOTOMETRIC_INTERPRETATION, file).unwrap();
-
-	// let [cfa_pattern_width, cfa_pattern_height] = ifd.get(CFA_PATTERN_DIM, file).unwrap();
-	// assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
-
-	// let cfa_pattern = ifd.get(CFA_PATTERN, file).unwrap();
+	let data_offset = ifd.get_value::<SonyDataOffset, _>(file).unwrap();
 
 	let image_width = 3881;
 	let image_height = 2608;
 
-	// assert!(strip_offsets.len() == 1);
 	file.seek_from_start(data_offset).unwrap();
-
 	let mut image = sony_arw_load_raw(image_width, image_height, &mut BitReader::<_, BE>::new(file)).unwrap();
 
 	let len = image.len();
-	image[len - 3881..].fill(0);
+	image[len - image_width..].fill(0);
 
 	RawImage {
 		data: image,

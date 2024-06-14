@@ -3,48 +3,6 @@ use super::{Ifd, TagId, TiffError, TiffRead};
 
 use std::io::{Read, Seek};
 
-pub struct TagOld<T: TagType> {
-	tag_id: TagId,
-	name: &'static str,
-	tag_type: std::marker::PhantomData<T>,
-}
-
-impl<T: TagType> TagOld<T> {
-	const fn new(tag_id: TagId, name: &'static str) -> Self {
-		TagOld {
-			tag_id,
-			name,
-			tag_type: std::marker::PhantomData,
-		}
-	}
-
-	pub fn id(&self) -> TagId {
-		self.tag_id
-	}
-
-	pub fn name(&self) -> &'static str {
-		self.name
-	}
-}
-
-pub const IMAGE_WIDTH: TagOld<TypeNumber> = TagOld::new(TagId::ImageWidth, "Image Width");
-pub const IMAGE_LENGTH: TagOld<TypeNumber> = TagOld::new(TagId::ImageLength, "Image Length");
-pub const BITS_PER_SAMPLE: TagOld<TypeShort> = TagOld::new(TagId::BitsPerSample, "Bits per Sample");
-pub const COMPRESSION: TagOld<TypeShort> = TagOld::new(TagId::Compression, "Compression");
-pub const PHOTOMETRIC_INTERPRETATION: TagOld<TypeShort> = TagOld::new(TagId::PhotometricInterpretation, "Photometric Interpretation");
-pub const STRIP_OFFSETS: TagOld<Array<TypeNumber>> = TagOld::new(TagId::StripOffsets, "Strip Offsets");
-pub const SAMPLES_PER_PIXEL: TagOld<TypeShort> = TagOld::new(TagId::SamplesPerPixel, "Samples per Pixel");
-pub const ROWS_PER_STRIP: TagOld<TypeNumber> = TagOld::new(TagId::RowsPerStrip, "Rows per Strip");
-pub const STRIP_BYTE_COUNTS: TagOld<Array<TypeNumber>> = TagOld::new(TagId::StripByteCounts, "Strip Byte Counts");
-pub const SUBIFD: TagOld<TypeIfd> = TagOld::new(TagId::SubIfd, "SubIFD");
-pub const JPEG_OFFSET: TagOld<TypeLong> = TagOld::new(TagId::JpegOffset, "Jpeg Offset");
-pub const JPEG_LENGTH: TagOld<TypeLong> = TagOld::new(TagId::JpegLength, "Jpeg Length");
-pub const APPLICATION_NOTES: TagOld<Array<TypeByte>> = TagOld::new(TagId::ApplicationNotes, "Application Notes");
-pub const CFA_PATTERN_DIM: TagOld<ConstArray<TypeShort, 2>> = TagOld::new(TagId::CfaPatternDim, "CFA Pattern Dimension");
-pub const CFA_PATTERN: TagOld<Array<TypeByte>> = TagOld::new(TagId::CfaPattern, "CFA Pattern");
-pub const SONY_DATA_OFFSET: TagOld<TypeLong> = TagOld::new(TagId::SubIfd, "Sony Data Offset");
-pub const SONY_TONE_CURVE: TagOld<TypeSonyToneCurve> = TagOld::new(TagId::SonyToneCurve, "Sony Tone Curve");
-
 pub trait SimpleTag {
 	const ID: TagId;
 	type Type: TagType;
@@ -194,8 +152,4 @@ impl<T: Tag> Tag for Option<T> {
 			Err(x) => Err(x),
 		}
 	}
-}
-
-pub struct TagValue<T: Tag> {
-	pub value: T::Output,
 }

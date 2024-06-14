@@ -4780,6 +4780,7 @@ dependencies = [
  "downloader",
  "libraw-rs",
  "num_enum 0.7.2",
+ "tag-derive",
  "thiserror",
 ]
 
@@ -5900,6 +5901,14 @@ dependencies = [
  "pkg-config",
  "toml 0.8.14",
  "version-compare 0.2.0",
+]
+
+[[package]]
+name = "tag-derive"
+version = "0.0.1"
+dependencies = [
+ "quote",
+ "syn 2.0.63",
 ]
 
 [[package]]

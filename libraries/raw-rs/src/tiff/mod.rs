@@ -8,8 +8,7 @@ use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
 use std::io::{Read, Seek};
 use thiserror::Error;
 
-use tags::{Tag, TagOld, TagValue};
-use types::TagType;
+use tags::Tag;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u16)]
@@ -26,7 +25,6 @@ pub enum TagId {
 	SubIfd = 0x14a,
 	JpegOffset = 0x201,
 	JpegLength = 0x202,
-	ApplicationNotes = 0x2bc,
 	SonyToneCurve = 0x7010,
 	CfaPatternDim = 0x828d,
 	CfaPattern = 0x828e,
@@ -118,18 +116,8 @@ impl Ifd {
 		self.iter().position(|x| Into::<u16>::into(x.tag) == tag)
 	}
 
-	pub fn get<T: TagType, R: Read + Seek>(&self, tag: TagOld<T>, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
-		let tag_id = tag.id();
-		let index: u32 = self.iter().position(|x| x.tag == tag_id).ok_or(TiffError::MissingTag)?.try_into()?;
-
-		file.seek_from_start(self.current_ifd_offset + 2 + 12 * index + 2)?;
-		T::read(file)
-	}
-
-	pub fn get_value<T: Tag, R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<TagValue<T>, TiffError> {
-		let value = T::get(self, file)?;
-
-		Ok(TagValue::<T> { value })
+	pub fn get_value<T: Tag, R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
+		T::get(self, file)
 	}
 }
 

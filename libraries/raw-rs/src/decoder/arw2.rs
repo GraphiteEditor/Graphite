@@ -1,42 +1,42 @@
 use crate::tiff::file::{Endian, TiffRead};
-use crate::tiff::tags::{
-	ImageWidth, TagValue, BITS_PER_SAMPLE, CFA_PATTERN, CFA_PATTERN_DIM, COMPRESSION, IMAGE_LENGTH, IMAGE_WIDTH, ROWS_PER_STRIP, SAMPLES_PER_PIXEL, SONY_TONE_CURVE, STRIP_BYTE_COUNTS, STRIP_OFFSETS,
-};
+use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag};
 use crate::tiff::values::CurveLookupTable;
-use crate::tiff::Ifd;
+use crate::tiff::{Ifd, TiffError};
 use crate::RawImage;
 use std::io::{Read, Seek};
+use tag_derive::Tag;
+
+#[allow(dead_code)]
+#[derive(Tag)]
+struct Arw2Ifd {
+	image_width: ImageWidth,
+	image_height: ImageLength,
+	bits_per_sample: BitsPerSample,
+	compression: Compression,
+	cfa_pattern: CfaPattern,
+	cfa_pattern_dim: CfaPatternDim,
+	strip_offsets: StripOffsets,
+	strip_byte_counts: StripByteCounts,
+	sony_tone_curve: SonyToneCurve,
+}
 
 pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
-	let strip_offsets = ifd.get(STRIP_OFFSETS, file).unwrap();
-	let strip_byte_counts = ifd.get(STRIP_BYTE_COUNTS, file).unwrap();
-	assert!(strip_offsets.len() == strip_byte_counts.len());
-	assert!(strip_offsets.len() == 1);
+	let ifd = ifd.get_value::<Arw2Ifd, _>(file).unwrap();
 
-	let image_width: usize = ifd.get(IMAGE_WIDTH, file).unwrap().try_into().unwrap();
-	let image_height: usize = ifd.get(IMAGE_LENGTH, file).unwrap().try_into().unwrap();
-	// let rows_per_strip: usize = ifd.get(ROWS_PER_STRIP, file).unwrap().try_into().unwrap();
-	// let bits_per_sample: usize = ifd.get(BITS_PER_SAMPLE, file).unwrap().into();
-	// let bytes_per_sample: usize = bits_per_sample.div_ceil(8);
-	// let samples_per_pixel: usize = ifd.get(SAMPLES_PER_PIXEL, file).unwrap().into();
-	let compression = ifd.get(COMPRESSION, file).unwrap();
-	assert!(compression == 32767);
-	// let photometric_interpretation = ifd.get(PHOTOMETRIC_INTERPRETATION, file).unwrap();
-
-	let [cfa_pattern_width, cfa_pattern_height] = ifd.get(CFA_PATTERN_DIM, file).unwrap();
+	assert!(ifd.strip_offsets.len() == ifd.strip_byte_counts.len());
+	assert!(ifd.strip_offsets.len() == 1);
+	let image_width: usize = ifd.image_width.try_into().unwrap();
+	let image_height: usize = ifd.image_height.try_into().unwrap();
+	let bits_per_sample: usize = ifd.bits_per_sample.into();
+	assert!(ifd.compression == 32767);
+	let [cfa_pattern_width, cfa_pattern_height] = ifd.cfa_pattern_dim;
 	assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
+	let cfa_pattern = ifd.cfa_pattern;
 
-	let cfa_pattern = ifd.get(CFA_PATTERN, file).unwrap();
+	file.seek_from_start(ifd.strip_offsets[0]).unwrap();
+	let mut image = sony_arw2_load_raw(image_width, image_height, ifd.sony_tone_curve, file).unwrap();
 
-	// let rows_per_strip_last = image_height % rows_per_strip;
-	// let bytes_per_row = bytes_per_sample * samples_per_pixel * image_width;
-
-	let curve = ifd.get(SONY_TONE_CURVE, file).unwrap();
-
-	file.seek_from_start(strip_offsets[0]).unwrap();
-	let mut image = sony_arw2_load_raw(image_width, image_height, curve, file).unwrap();
-
-	// Converting the bps from 12 to 14 so that ARW 2.1 and 2.3 have the same 14 bps.
+	// Converting the bps from 12 to 14 so that ARW 2.3.1 and 2.3.5 have the same 14 bps.
 	image.iter_mut().for_each(|x| *x *= 4);
 
 	RawImage {
