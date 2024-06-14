@@ -115,7 +115,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		node_graph.insert_node(id, new_node, document_network, &Vec::new());
 
-		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, shift_upstream, false, 1);
+		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, shift_upstream, false);
 
 		Some(id)
 	}
@@ -149,7 +149,7 @@ impl<'a> ModifyInputsContext<'a> {
 			// Insert whatever non artboard node previously fed into export as a child of the new node
 			let node_input_index = if new_node.is_artboard() && !previous_root_node.is_artboard() { 1 } else { 0 };
 			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
-			ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), root_node.id, IVec2::new(8, 0), true, 1);
+			ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), root_node.id, IVec2::new(8, 0), true);
 		}
 
 		let Some(export) = document_network.exports.get_mut(0) else {
@@ -160,7 +160,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		node_graph.insert_node(id, new_node, document_network, &Vec::new());
 
-		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, IVec2::new(-8, 3), false, 1);
+		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, IVec2::new(-8, 3), false);
 
 		Some(id)
 	}
@@ -382,7 +382,6 @@ impl<'a> ModifyInputsContext<'a> {
 		node_id: NodeId,
 		shift: IVec2,
 		shift_self: bool,
-		import_count: usize,
 	) {
 		let Some(network) = document_network.nested_network(network_path) else {
 			log::error!("Could not get nested network for shift_upstream");
@@ -946,8 +945,6 @@ impl<'a> ModifyInputsContext<'a> {
 				}
 			}
 		}
-
-		let mut start_previewing_without_restore = false;
 
 		let is_document_network = network_path.is_empty();
 		for (node_id, input_index, value_input) in nodes_to_set_input {

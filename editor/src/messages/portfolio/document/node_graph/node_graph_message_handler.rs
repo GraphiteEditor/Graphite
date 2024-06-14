@@ -42,6 +42,8 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	drag_start: Option<DragStart>,
+	// Used to add a transaction for the first node move when dragging
+	begin_dragging: bool,
 	// Stored in pixel coordinates
 	box_selection_start: Option<UVec2>,
 	disconnecting: Option<(NodeId, usize)>,
@@ -196,10 +198,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
-				let Some(network) = document_network.nested_network(&self.network) else {
-					return;
-				};
-
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -224,7 +222,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						&self
 							.node_metadata
 							.iter()
-							.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
 								//TODO: There should be a way to do this without cloning
 								node_metadata
@@ -378,7 +376,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				if let DocumentNodeImplementation::Network(nested_network) = &mut node.implementation {
+				if let DocumentNodeImplementation::Network(_) = node.implementation {
 					self.network.push(node_id);
 					self.update_all_click_targets(document_network, self.network.clone());
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
@@ -432,6 +430,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for _ in 0..steps_back {
 					self.network.pop();
 				}
+				// TODO: Find a better way to update click targets when undoing/redoing
+				self.update_all_click_targets(document_network, self.network.clone());
+
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
@@ -532,20 +533,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					Vec::new()
 				} else {
 					self.network.clone()
-				};
-				let mut encapsulating_path = network_path.clone();
-				let import_count = if let Some(encapsulating_node) = encapsulating_path.pop() {
-					let parent_node = document_network
-						.nested_network(&encapsulating_path)
-						.expect("Encapsulating path should always exist")
-						.nodes
-						.get(&encapsulating_node)
-						.expect("Last path node should always exist in encapsulating network");
-
-					parent_node.inputs.len()
-				} else {
-					//The encapsulating network is the document network, which has 1 input (although the import node is hidden)
-					1
 				};
 
 				let Some(network) = document_network.nested_network(&network_path) else {
@@ -683,7 +670,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					&self
 						.node_metadata
 						.iter()
-						.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 						.flat_map(|(path, node_metadata)| {
 							//TODO: There should be a way to do this without cloning
 							node_metadata
@@ -699,7 +686,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					&self
 						.node_metadata
 						.iter()
-						.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 						.flat_map(|(path, node_metadata)| {
 							//TODO: There should be a way to do this without cloning
 							node_metadata
@@ -930,6 +917,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 
 						self.drag_start = Some(drag_start);
+						self.begin_dragging = true;
 					}
 
 					// Update the selection if it was modified
@@ -959,7 +947,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						&self
 							.node_metadata
 							.iter()
-							.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
 								//TODO: There should be a way to do this without cloning
 								node_metadata
@@ -999,7 +987,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						&self
 							.node_metadata
 							.iter()
-							.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
 								//TODO: There should be a way to do this without cloning
 								node_metadata
@@ -1062,6 +1050,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
 				} else if let Some(drag_start) = &mut self.drag_start {
+					if self.begin_dragging {
+						responses.add(DocumentMessage::StartTransaction);
+						self.begin_dragging = false;
+					}
 					let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
 					if drag_start.round_x != graph_delta.x || drag_start.round_y != graph_delta.y {
 						responses.add(NodeGraphMessage::MoveSelectedNodes {
@@ -1137,7 +1129,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						&self
 							.node_metadata
 							.iter()
-							.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
 								//TODO: There should be a way to do this without cloning
 								node_metadata
@@ -1153,7 +1145,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						&self
 							.node_metadata
 							.iter()
-							.filter(|(path, node_metadata)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
 								//TODO: There should be a way to do this without cloning
 								node_metadata
@@ -1295,6 +1287,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.select_if_not_dragged = None
 				}
 				self.drag_start = None;
+				self.begin_dragging = false;
 				self.box_selection_start = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_to_connector = None;
@@ -1379,10 +1372,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetNodeInput { node_id, input_index, input } => {
 				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
 
-				let Some(network) = document_network.nested_network_mut(&network_path) else {
-					return;
-				};
-
 				if ModifyInputsContext::set_input(self, document_network, &network_path, node_id, input_index, input, self.network.is_empty()) {
 					load_network_structure(document_network, document_metadata, collapsed);
 				}
@@ -1406,20 +1395,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
 			NodeGraphMessage::ShiftNode { node_id } => {
 				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
-				let mut encapsulating_path = network_path.clone();
-				let import_count = if let Some(encapsulating_node) = encapsulating_path.pop() {
-					let parent_node = document_network
-						.nested_network(&encapsulating_path)
-						.expect("Encapsulating path should always exist")
-						.nodes
-						.get(&encapsulating_node)
-						.expect("Last path node should always exist in encapsulating network");
-
-					parent_node.inputs.len()
-				} else {
-					//The encapsulating network is the document network, which has 1 input (although the import node is hidden)
-					1
-				};
 
 				let Some(network) = document_network.nested_network(&network_path) else {
 					return;
@@ -1441,7 +1416,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					}
 				};
 
-				let mut shift_node = |node_id: NodeId, shift: i32, document_network: &mut NodeNetwork, network_imports: usize| {
+				let mut shift_node = |node_id: NodeId, shift: i32, document_network: &mut NodeNetwork| {
 					let Some(network) = document_network.nested_network_mut(&network_path) else {
 						return;
 					};
@@ -1461,7 +1436,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				for input_node in inputs {
 					let shift = required_shift(input_node, node_id, document_network);
-					shift_node(node_id, shift, document_network, import_count);
+					shift_node(node_id, shift, document_network);
 				}
 
 				// Shift nodes connected to the output port of the specified node
@@ -1469,7 +1444,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let shift = required_shift(node_id, descendant, document_network);
 					let mut stack = vec![descendant];
 					while let Some(id) = stack.pop() {
-						shift_node(id, shift, document_network, import_count);
+						shift_node(id, shift, document_network);
 						stack.extend(outwards_wires.get(&id).unwrap_or(&Vec::new()).iter().copied())
 					}
 				}
@@ -2005,7 +1980,6 @@ impl NodeGraphMessageHandler {
 		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
 		else if node_id == network.imports_metadata.0 {
 			let mut encapsulating_path = self.network.clone();
-			log::debug!("encapsulating_path: {encapsulating_path:?}");
 			// Import count is based on the number of inputs to the encapsulating node. If the current network is the document network, there is no import node
 			if let Some(encapsulating_node) = encapsulating_path.pop() {
 				let parent_node = document_network
@@ -2098,7 +2072,6 @@ impl NodeGraphMessageHandler {
 				);
 			}
 		}
-		log::debug!("node_metadata: {:#?}", self.node_metadata);
 	}
 
 	// Updates all click targets in a certain network
@@ -2117,12 +2090,13 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
-	pub fn graph_bounds_viewport_space(&self) -> Option<[DVec2; 2]> {
+	pub fn graph_bounds_viewport_space(&self, document_network: &NodeNetwork) -> Option<[DVec2; 2]> {
 		self.network_metadata.get(&self.network).and_then(|network_metadata| {
-			network_metadata
-				.bounding_box_subpath
-				.as_ref()
-				.and_then(|bounding_box| bounding_box.bounding_box_with_transform(network_metadata.node_graph_to_viewport))
+			network_metadata.bounding_box_subpath.as_ref().and_then(|bounding_box| {
+				document_network
+					.nested_network(&self.network)
+					.and_then(|network| bounding_box.bounding_box_with_transform(network.node_graph_to_viewport))
+			})
 		})
 	}
 
@@ -3007,6 +2981,7 @@ impl Default for NodeGraphMessageHandler {
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
 			drag_start: None,
+			begin_dragging: false,
 			box_selection_start: None,
 			disconnecting: None,
 			initial_disconnecting: false,
@@ -3028,6 +3003,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.has_selection == other.has_selection
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
+			&& self.begin_dragging == other.begin_dragging
 			&& self.box_selection_start == other.box_selection_start
 			&& self.disconnecting == other.disconnecting
 			&& self.initial_disconnecting == other.initial_disconnecting

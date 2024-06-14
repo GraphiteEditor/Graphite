@@ -377,6 +377,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
+				// TODO: Find a better way to update click targets when undoing/redoing
+				if self.graph_view_overlay_open {
+					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+				}
+
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
 				// Update the tilt menu bar buttons to be disabled when the graph is open
@@ -384,7 +389,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					// TODO: Ensure this refreshes the click targets for the network
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -757,7 +761,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
-					self.node_graph_handler.graph_bounds_viewport_space().unwrap_or([viewport_mid; 2])
+					self.node_graph_handler.graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -982,7 +986,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::UndoFinished);
 				responses.add(ToolMessage::Undo);
 			}
-			DocumentMessage::UndoFinished => self.undo_in_progress = false,
+			DocumentMessage::UndoFinished => {
+				self.undo_in_progress = false;
+			}
 			DocumentMessage::UngroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -1108,8 +1114,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-
-					self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network)
+					self.node_graph_handler
+						.network_metadata
+						.get(&self.node_graph_handler.network)
 						.and_then(|network_metadata| network_metadata.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
 				} else {
 					self.metadata().document_bounds_document_space(true)
@@ -1432,6 +1439,10 @@ impl DocumentMessageHandler {
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
+		// TODO: Find a better way to update click targets when undoing/redoing
+		if self.graph_view_overlay_open {
+			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+		}
 	}
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
@@ -1462,6 +1473,10 @@ impl DocumentMessageHandler {
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
+		}
+		// TODO: Find a better way to update click targets when undoing/redoing
+		if self.graph_view_overlay_open {
+			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 		}
 	}
 

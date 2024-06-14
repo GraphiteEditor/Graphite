@@ -21,12 +21,11 @@ use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
-use renderer::ClickTarget;
 #[cfg(feature = "gpu")]
 use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
 
 use once_cell::sync::Lazy;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DocumentInputType {

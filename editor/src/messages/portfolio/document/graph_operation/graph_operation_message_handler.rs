@@ -559,7 +559,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
 				if let Some(artboard_id) = ModifyInputsContext::create_artboard(node_graph, document_network, id, artboard) {
 					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
 				}
@@ -714,7 +713,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), node_id, shift, shift_self, 1);
+				ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), node_id, shift, shift_self);
 			}
 			GraphOperationMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);

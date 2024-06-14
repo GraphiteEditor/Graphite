@@ -1,14 +1,11 @@
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
-use bezier_rs::Subpath;
 use dyn_any::{DynAny, StaticType};
-use graphene_core::renderer::{ClickTarget, Quad};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::{DAffine2, DVec2, IVec2};
+use glam::{DAffine2, IVec2};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};

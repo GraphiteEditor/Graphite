@@ -175,11 +175,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-
-					node_graph_handler.graph_bounds_viewport_space()
+					node_graph_handler.graph_bounds_viewport_space(document_network)
 				};
 				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
 
@@ -191,7 +187,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
-					node_graph_handler.graph_bounds_viewport_space()
+					node_graph_handler.graph_bounds_viewport_space(document_network)
 				};
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
@@ -348,7 +344,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 								//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 								metadata.document_bounds_viewport_space()
 							} else {
-								node_graph_handler.graph_bounds_viewport_space()
+								node_graph_handler.graph_bounds_viewport_space(document_network)
 							};
 
 							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)
