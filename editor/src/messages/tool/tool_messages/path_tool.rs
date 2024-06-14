@@ -321,6 +321,7 @@ impl PathToolData {
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
+				self.drag_start_pos = input.mouse.position;
 				self.start_dragging_point(selected_points, input, document, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -762,8 +763,6 @@ struct SingleSelectedPoint {
 	layer: LayerNodeIdentifier,
 	manipulator_angle: ManipulatorAngle,
 }
-
-// I believe, this code below needs to be changed
 
 /// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
 /// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
