@@ -25,6 +25,7 @@ const ALLOWED_LICENSES = [
 	"MIT",
 	"MPL-2.0",
 	"OpenSSL",
+	"Unicode-3.0",
 	"Unicode-DFS-2016",
 	"Zlib",
 ];
