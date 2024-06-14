@@ -763,6 +763,8 @@ struct SingleSelectedPoint {
 	manipulator_angle: ManipulatorAngle,
 }
 
+// I believe, this code below needs to be changed
+
 /// Sets the cumulative description of the selected points: if `None` are selected, if `One` is selected, or if `Multiple` are selected.
 /// Applies to any selected points, whether they are anchors or handles; and whether they are from a single shape or across multiple shapes.
 fn get_selection_status(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, shape_state: &mut ShapeState) -> SelectionStatus {
