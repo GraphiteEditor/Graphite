@@ -472,7 +472,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		true
+		self.artboards.len() > 0
 	}
 }
 impl GraphicElementRendered for ImageFrame<Color> {
