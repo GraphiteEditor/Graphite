@@ -21,6 +21,7 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use renderer::{ClickTarget, Quad};
+use web_sys::{window, Document, Element};
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -1710,7 +1711,6 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		use web_sys::window;
 		let document = window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
 			Ok(div) => div,
