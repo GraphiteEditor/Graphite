@@ -375,14 +375,7 @@ impl<'a> ModifyInputsContext<'a> {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(
-		node_graph: &mut NodeGraphMessageHandler,
-		document_network: &mut NodeNetwork,
-		network_path: &Vec<NodeId>,
-		node_id: NodeId,
-		shift: IVec2,
-		shift_self: bool,
-	) {
+	pub fn shift_upstream(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, shift: IVec2, shift_self: bool) {
 		let Some(network) = document_network.nested_network(network_path) else {
 			log::error!("Could not get nested network for shift_upstream");
 			return;
