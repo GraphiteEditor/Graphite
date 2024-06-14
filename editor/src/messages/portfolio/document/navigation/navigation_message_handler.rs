@@ -56,7 +56,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
-				// If node graph is open, prevent tilt and instead start panning
+				// If the node graph is open, prevent tilt and instead start panning
 				if graph_view_overlay_open {
 					responses.add(NavigationMessage::BeginCanvasPan);
 				} else {
@@ -172,7 +172,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					zoom_factor = 1. / zoom_factor
 				}
 				let document_bounds = if !graph_view_overlay_open {
-					//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
 					node_graph_handler.graph_bounds_viewport_space(document_network)
@@ -184,7 +184,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
 				let document_bounds = if !graph_view_overlay_open {
-					//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
 					node_graph_handler.graph_bounds_viewport_space(document_network)
@@ -341,7 +341,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							let updated_zoom = zoom_raw_not_snapped * (1. + amount);
 
 							let document_bounds = if !graph_view_overlay_open {
-								//TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+								// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 								metadata.document_bounds_viewport_space()
 							} else {
 								node_graph_handler.graph_bounds_viewport_space(document_network)

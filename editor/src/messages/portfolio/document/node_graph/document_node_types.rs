@@ -25,7 +25,7 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
 
 use once_cell::sync::Lazy;
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DocumentInputType {
@@ -2786,49 +2786,14 @@ impl DocumentNodeDefinition {
 	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: DocumentNodeMetadata) -> DocumentNode {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
-		let implementation = self.implementation.clone();
 
-		// I don't think this is necessary since all click targets are loaded when entering a network
-		// if let DocumentNodeImplementation::Network(network) = &mut implementation {
-		// 	let mut click_targets = HashMap::new();
-
-		// 	let grid_size = 24 as i32; // Number of pixels per grid unit at 100% zoom
-		// 	let width = 5 * grid_size;
-
-		// 	let imports_height = (inputs.len() + 1) as i32 * grid_size;
-		// 	let exports_height = (network.exports.len() + 1) as i32 * grid_size;
-
-		// 	let imports_corner_1 = IVec2::new(network.imports_metadata.1.x * grid_size, network.imports_metadata.1.y * grid_size);
-		// 	let exports_corner_1 = IVec2::new(network.exports_metadata.1.x * grid_size, network.exports_metadata.1.y * grid_size);
-
-		// 	let imports_corner_2 = imports_corner_1 + IVec2::new(width, imports_height);
-		// 	let exports_corner_2 = exports_corner_1 + IVec2::new(width, exports_height);
-		// 	let radius = 3.;
-
-		// 	let imports_subpath = bezier_rs::Subpath::new_rounded_rect(imports_corner_1.into(), imports_corner_2.into(), [radius; 4]);
-		// 	let exports_subpath = bezier_rs::Subpath::new_rounded_rect(exports_corner_1.into(), exports_corner_2.into(), [radius; 4]);
-
-		// 	let stroke_width = 1.;
-		// 	let imports_click_target = ClickTarget {
-		// 		subpath: imports_subpath,
-		// 		stroke_width,
-		// 	};
-		// 	let exports_click_target = ClickTarget {
-		// 		subpath: exports_subpath,
-		// 		stroke_width,
-		// 	};
-
-		// 	click_targets.insert(network.imports_metadata.0, imports_click_target);
-		// 	click_targets.insert(network.exports_metadata.0, exports_click_target);
-		// 	network.node_click_targets = click_targets;
-		// }
 		DocumentNode {
 			name: self.name.to_string(),
 			is_layer: self.is_layer,
 			inputs,
 			manual_composition: self.manual_composition.clone(),
 			has_primary_output: self.has_primary_output,
-			implementation,
+			implementation: self.implementation.clone(),
 			metadata,
 			..Default::default()
 		}

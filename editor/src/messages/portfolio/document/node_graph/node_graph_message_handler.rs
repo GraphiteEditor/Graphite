@@ -224,7 +224,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.iter()
 							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								node_metadata
 									.output_click_targets
 									.iter()
@@ -333,7 +333,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let mut path = path.clone();
 							let node_id = path.pop().expect("Path to node should not be empty");
 							if *path == self.network {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								Some((node_id, node_metadata.node_click_target.clone()))
 							} else {
 								None
@@ -352,7 +352,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let mut path = path.clone();
 							let node_id = path.pop().expect("Path to node should not be empty");
 							if *path == self.network {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
 									Some((node_id, visibility_click_target.clone()))
 								} else {
@@ -623,7 +623,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let viewport_location = ipp.mouse.position;
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
-				log::debug!("point: {point:?}");
 
 				if let Some(clicked_visibility) = NodeGraphMessageHandler::get_key_from_point(
 					&self
@@ -633,7 +632,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let mut path = path.clone();
 							let node_id = path.pop().expect("Path to node should not be empty");
 							if *path == self.network {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
 									Some((node_id, visibility_click_target.clone()))
 								} else {
@@ -657,7 +656,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let mut path = path.clone();
 							let node_id = path.pop().expect("Path to node should not be empty");
 							if *path == self.network {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								Some((node_id, node_metadata.node_click_target.clone()))
 							} else {
 								None
@@ -672,7 +671,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.iter()
 						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 						.flat_map(|(path, node_metadata)| {
-							//TODO: There should be a way to do this without cloning
+							// TODO: There should be a way to do this without cloning
 							node_metadata
 								.input_click_targets
 								.iter()
@@ -688,7 +687,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.iter()
 						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 						.flat_map(|(path, node_metadata)| {
-							//TODO: There should be a way to do this without cloning
+							// TODO: There should be a way to do this without cloning
 							node_metadata
 								.output_click_targets
 								.iter()
@@ -710,7 +709,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						ContextMenuData::CreateNode
 					};
 
-					//TODO: Create function
+					// TODO: Create function
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
@@ -783,7 +782,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// Input: Begin moving an existing wire
 				if let Some(clicked_input) = clicked_input {
 					self.initial_disconnecting = true;
-					log::debug!("Clicked input: {} index: {}", clicked_input.0, clicked_input.1);
 					let input_index = NodeGraphMessageHandler::get_input_index(network, clicked_input.0, clicked_input.1);
 					if let Some(NodeInput::Node { node_id, output_index, .. }) = network
 						.nodes
@@ -792,7 +790,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.or(network.exports.get(input_index))
 					{
 						self.disconnecting = Some((clicked_input.0, clicked_input.1));
-						log::debug!("node_id: {node_id}, output_index: {output_index}");
 						let Some(output_node) = network.nodes.get(&node_id) else {
 							log::error!("Could not find node {}", node_id);
 							return;
@@ -830,7 +827,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				if let Some(clicked_output) = clicked_output {
-					log::debug!("Clicked output: {} index: {}", clicked_output.0, clicked_output.1);
 					self.initial_disconnecting = false;
 
 					if let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) {
@@ -879,7 +875,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				if let Some(clicked_id) = clicked_id {
-					log::debug!("Clicked node: {clicked_id}");
 					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
 					let mut modified_selected = false;
 
@@ -934,7 +929,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				self.box_selection_start = Some(UVec2::new(viewport_location.x.round().abs() as u32, viewport_location.y.round().abs() as u32));
 			}
-			//TODO: Alt+drag should move all upstream nodes as well
+			// TODO: Alt+drag should move all upstream nodes as well
 			NodeGraphMessage::PointerMove { shift } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
@@ -949,7 +944,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.iter()
 							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								node_metadata
 									.input_click_targets
 									.iter()
@@ -989,7 +984,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.iter()
 							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								node_metadata
 									.output_click_targets
 									.iter()
@@ -1030,11 +1025,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						}
 					}
 
-					log::debug!(
-						"wire_in_progress_from_connector: {:?}, wire_in_progress_to_connector: {:?}",
-						self.wire_in_progress_from_connector,
-						self.wire_in_progress_to_connector
-					);
 					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 						let wire_path = WirePath {
 							path_string: Self::build_wire_path_string(
@@ -1064,7 +1054,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						drag_start.round_y = graph_delta.y;
 					}
 				} else if let Some(box_selection_start) = self.box_selection_start {
-					//TODO: Is this still an issue? The mouse button was released but we missed the pointer up event
+					// TODO: Is this still an issue? The mouse button was released but we missed the pointer up event
 					// if ((e.buttons & 1) === 0) {
 					// 	completeBoxSelection();
 					// 	boxSelection = undefined;
@@ -1101,7 +1091,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							nodes.push(*node_id);
 						}
 					}
-					log::debug!("updating box");
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 					responses.add(FrontendMessage::UpdateBox { box_selection })
 				}
@@ -1116,14 +1105,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
-					// log::debug!(
-					// 	"Self::get_key_from_point(&network.output_click_targets, wire_in_progress_from_connector.0): {:?}",
-					// 	Self::get_key_from_point(&network.output_click_targets, wire_in_progress_from_connector.0)
-					// );
-					// log::debug!(
-					// 	"Self::get_key_from_point(&network.input_click_targets, wire_in_progress_to_connector.0),: {:?}",
-					// 	Self::get_key_from_point(&network.input_click_targets, wire_in_progress_to_connector.0)
-					// );
 					// Check if dragged connector is reconnected to another input
 					let node_from = NodeGraphMessageHandler::get_key_from_point(
 						&self
@@ -1131,7 +1112,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.iter()
 							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								node_metadata
 									.output_click_targets
 									.iter()
@@ -1147,7 +1128,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							.iter()
 							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
 							.flat_map(|(path, node_metadata)| {
-								//TODO: There should be a way to do this without cloning
+								// TODO: There should be a way to do this without cloning
 								node_metadata
 									.input_click_targets
 									.iter()

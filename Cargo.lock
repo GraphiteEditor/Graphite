@@ -2243,7 +2243,6 @@ dependencies = [
  "rustc-hash",
  "serde",
  "specta",
- "web-sys",
 ]
 
 [[package]]

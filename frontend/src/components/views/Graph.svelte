@@ -310,8 +310,8 @@
 	class="graph"
 	bind:this={graph}
 	style:--grid-spacing={`${gridSpacing}px`}
-	style:--grid-offset-x={`${$nodeGraph.transform.x /** $nodeGraph.transform.scale*/}px`}
-	style:--grid-offset-y={`${$nodeGraph.transform.y /** $nodeGraph.transform.scale*/}px`}
+	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
+	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
 	style:--dot-radius={`${dotRadius}px`}
 	data-node-graph
 >
