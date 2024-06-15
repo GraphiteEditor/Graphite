@@ -14,6 +14,7 @@ use glam::{DAffine2, DVec2};
 
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTarget {
 	pub subpath: bezier_rs::Subpath<PointId>,
 	pub stroke_width: f64,
@@ -471,7 +472,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		true
+		self.artboards.len() > 0
 	}
 }
 impl GraphicElementRendered for ImageFrame<Color> {

@@ -6,7 +6,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType } from "@graphite/wasm-communication/messages";
+	import type { FrontendNodeWire, FrontendNodeType, FrontendNode, FrontendGraphInput, FrontendGraphOutput, FrontendGraphDataType, WirePath } from "@graphite/wasm-communication/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -17,7 +17,6 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	const WHEEL_RATE = (1 / 600) * 3;
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
 	const ADD_NODE_MENU_WIDTH = 180;
@@ -26,32 +25,16 @@
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
-	type WirePath = { pathString: string; dataType: FrontendGraphDataType; thick: boolean; dashed: boolean };
-
 	let graph: HTMLDivElement | undefined;
 	let nodesContainer: HTMLDivElement | undefined;
 	let nodeSearchInput: TextInput | undefined;
-	// TODO: MEMORY LEAK: Items never get removed from this array, so find a way to deal with garbage collection
-	let layerNameLabelWidths: Record<string, number> = {};
 
-	let transform = { scale: 1, x: 1200, y: 0 };
-	let panning = false;
-	let draggingNodes: { startX: number; startY: number; roundX: number; roundY: number } | undefined = undefined;
-	type Box = { startX: number; startY: number; endX: number; endY: number };
-	let boxSelection: Box | undefined = undefined;
-	let previousSelection: bigint[] = [];
-	let selectIfNotDragged: undefined | bigint = undefined;
-	let wireInProgressFromConnector: SVGSVGElement | undefined = undefined;
-	let wireInProgressToConnector: SVGSVGElement | DOMRect | undefined = undefined;
 	// TODO: Using this not-complete code, or another better approach, make it so the dragged in-progress connector correctly handles showing/hiding the SVG shape of the connector caps
 	// let wireInProgressFromLayerTop: bigint | undefined = undefined;
 	// let wireInProgressFromLayerBottom: bigint | undefined = undefined;
-	let disconnecting: { nodeId: bigint; inputIndex: number; wireIndex: number } | undefined = undefined;
+
 	let nodeWirePaths: WirePath[] = [];
 	let searchTerm = "";
-	let contextMenuOpenCoordinates: { x: number; y: number } | undefined = undefined;
-	let toggleDisplayAsLayerNodeId: bigint | undefined = undefined;
-	let toggleDisplayAsLayerCurrentlyIsNode: boolean = false;
 
 	let inputs: SVGSVGElement[][] = [];
 	let outputs: SVGSVGElement[][] = [];
@@ -59,26 +42,17 @@
 
 	$: watchNodes($nodeGraph.nodes);
 
-	$: gridSpacing = calculateGridSpacing(transform.scale);
-	$: dotRadius = 1 + Math.floor(transform.scale - 0.5 + 0.001) / 2;
+	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
+	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
-	$: contextMenuX = ((contextMenuOpenCoordinates?.x || 0) + transform.x) * transform.scale;
-	$: contextMenuY = ((contextMenuOpenCoordinates?.y || 0) + transform.y) * transform.scale;
-
-	let appearAboveMouse = false;
-	let appearRightOfMouse = false;
 
 	$: (() => {
-		const bounds = graph?.getBoundingClientRect();
-		if (!bounds) return;
-		const { width, height } = bounds;
-
-		appearRightOfMouse = contextMenuX > width - ADD_NODE_MENU_WIDTH;
-		appearAboveMouse = contextMenuY > height - ADD_NODE_MENU_HEIGHT;
+		if ($nodeGraph.contextMenuInformation?.contextMenuData == "CreateNode") {
+			setTimeout(() => nodeSearchInput?.focus(), 0);
+		}
 	})();
 
-	$: wirePathInProgress = createWirePathInProgress(wireInProgressFromConnector, wireInProgressToConnector);
-	$: wirePaths = createWirePaths(wirePathInProgress, nodeWirePaths);
+	$: wirePaths = createWirePaths($nodeGraph.wirePathInProgress, nodeWirePaths);
 
 	function calculateGridSpacing(scale: number): number {
 		const dense = scale * GRID_SIZE;
@@ -129,18 +103,6 @@
 		return Array.from(categories);
 	}
 
-	function createWirePathInProgress(wireInProgressFromConnector?: SVGSVGElement, wireInProgressToConnector?: SVGSVGElement | DOMRect): WirePath | undefined {
-		if (wireInProgressFromConnector && wireInProgressToConnector && nodesContainer) {
-			const from = connectorToNodeIndex(wireInProgressFromConnector);
-			const to = wireInProgressToConnector instanceof SVGSVGElement ? connectorToNodeIndex(wireInProgressToConnector) : undefined;
-
-			const wireStart = $nodeGraph.nodes.find((n) => n.id === from?.nodeId)?.isLayer || false;
-			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === to?.nodeId)?.isLayer && to?.index == 0) || false;
-			return createWirePath(wireInProgressFromConnector, wireInProgressToConnector, wireStart, wireEnd, false);
-		}
-		return undefined;
-	}
-
 	function createWirePaths(wirePathInProgress: WirePath | undefined, nodeWirePaths: WirePath[]): WirePath[] {
 		const maybeWirePathInProgress = wirePathInProgress ? [wirePathInProgress] : [];
 		return [...maybeWirePathInProgress, ...nodeWirePaths];
@@ -171,10 +133,9 @@
 		await tick();
 
 		const wires = $nodeGraph.wires;
-		nodeWirePaths = wires.flatMap((wire, index) => {
+		nodeWirePaths = wires.flatMap((wire) => {
 			const { nodeInput, nodeOutput } = resolveWire(wire);
 			if (!nodeInput || !nodeOutput) return [];
-			if (disconnecting?.wireIndex === index) return [];
 
 			const wireStart = $nodeGraph.nodes.find((n) => n.id === wire.wireStart)?.isLayer || false;
 			const wireEnd = ($nodeGraph.nodes.find((n) => n.id === wire.wireEnd)?.isLayer && Number(wire.wireEndInputIndex) == 0) || false;
@@ -201,13 +162,13 @@
 
 		const outX = verticalOut ? outputBounds.x + outputBounds.width / 2 : outputBounds.x + outputBounds.width - 1;
 		const outY = verticalOut ? outputBounds.y + VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : outputBounds.y + outputBounds.height / 2;
-		const outConnectorX = (outX - containerBounds.x) / transform.scale;
-		const outConnectorY = (outY - containerBounds.y) / transform.scale;
+		const outConnectorX = (outX - containerBounds.x) / $nodeGraph.transform.scale;
+		const outConnectorY = (outY - containerBounds.y) / $nodeGraph.transform.scale;
 
 		const inX = verticalIn ? inputBounds.x + inputBounds.width / 2 : inputBounds.x + 1;
 		const inY = verticalIn ? inputBounds.y + inputBounds.height - VERTICAL_WIRE_OVERLAP_ON_SHAPED_CAP : inputBounds.y + inputBounds.height / 2;
-		const inConnectorX = (inX - containerBounds.x) / transform.scale;
-		const inConnectorY = (inY - containerBounds.y) / transform.scale;
+		const inConnectorX = (inX - containerBounds.x) / $nodeGraph.transform.scale;
+		const inConnectorY = (inY - containerBounds.y) / $nodeGraph.transform.scale;
 		const horizontalGap = Math.abs(outConnectorX - inConnectorX);
 		const verticalGap = Math.abs(outConnectorY - inConnectorY);
 
@@ -269,307 +230,10 @@
 		return { pathString, dataType, thick: verticalIn && verticalOut, dashed };
 	}
 
-	function scroll(e: WheelEvent) {
-		const [scrollX, scrollY] = [e.deltaX, e.deltaY];
-
-		// If zoom with scroll is enabled: horizontal pan with Ctrl, vertical pan with Shift
-		const zoomWithScroll = $nodeGraph.zoomWithScroll;
-		const zoom = zoomWithScroll ? !e.ctrlKey && !e.shiftKey : e.ctrlKey;
-		const horizontalPan = zoomWithScroll ? e.ctrlKey : !e.ctrlKey && e.shiftKey;
-
-		// Prevent the web page from being zoomed
-		if (e.ctrlKey) e.preventDefault();
-
-		// Always pan horizontally in response to a horizontal scroll wheel movement
-		transform.x -= scrollX / transform.scale;
-
-		// Zoom
-		if (zoom) {
-			let zoomFactor = 1 + Math.abs(scrollY) * WHEEL_RATE;
-			if (scrollY > 0) zoomFactor = 1 / zoomFactor;
-
-			const bounds = graph?.getBoundingClientRect();
-			if (!bounds) return;
-			const { x, y, width, height } = bounds;
-
-			transform.scale *= zoomFactor;
-
-			const newViewportX = width / zoomFactor;
-			const newViewportY = height / zoomFactor;
-
-			const deltaSizeX = width - newViewportX;
-			const deltaSizeY = height - newViewportY;
-
-			const deltaX = deltaSizeX * ((e.x - x) / width);
-			const deltaY = deltaSizeY * ((e.y - y) / height);
-
-			transform.x -= (deltaX / transform.scale) * zoomFactor;
-			transform.y -= (deltaY / transform.scale) * zoomFactor;
-
-			return;
-		}
-
-		// Pan
-		if (horizontalPan) {
-			transform.x -= scrollY / transform.scale;
-		} else {
-			transform.y -= scrollY / transform.scale;
-		}
-	}
-
-	function keydown(e: KeyboardEvent) {
-		if (e.key.toLowerCase() === "escape") {
-			contextMenuOpenCoordinates = undefined;
-			document.removeEventListener("keydown", keydown);
-			wireInProgressFromConnector = undefined;
-			// wireInProgressFromLayerTop = undefined;
-			// wireInProgressFromLayerBottom = undefined;
-		}
-	}
-
-	function loadNodeList(e: PointerEvent, graphBounds: DOMRect) {
-		contextMenuOpenCoordinates = {
-			x: (e.clientX - graphBounds.x) / transform.scale - transform.x,
-			y: (e.clientY - graphBounds.y) / transform.scale - transform.y,
-		};
-
-		// Find actual relevant child and focus it (setTimeout is required to actually focus the input element)
-		setTimeout(() => nodeSearchInput?.focus(), 0);
-
-		document.addEventListener("keydown", keydown);
-	}
-
-	// TODO: Move the event listener from the graph to the window so dragging outside the graph area (or even the whole browser window) works
-	function pointerDown(e: PointerEvent) {
-		const [lmb, rmb] = [e.button === 0, e.button === 2];
-
-		const nodeError = (e.target as SVGSVGElement).closest("[data-node-error]") as HTMLElement;
-		if (nodeError && lmb) return;
-		const port = (e.target as SVGSVGElement).closest("[data-port]") as SVGSVGElement;
-		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeIdString = node?.getAttribute("data-node") || undefined;
-		const nodeId = nodeIdString ? BigInt(nodeIdString) : undefined;
-		const contextMenu = (e.target as HTMLElement).closest("[data-context-menu]") as HTMLElement | undefined;
-
-		// Create the add node popup on right click, then exit
-		if (rmb) {
-			toggleDisplayAsLayerNodeId = undefined;
-
-			if (node) {
-				toggleDisplayAsLayerNodeId = nodeId;
-				toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === nodeId)?.isLayer || false);
-			}
-
-			const graphBounds = graph?.getBoundingClientRect();
-			if (!graphBounds) return;
-
-			loadNodeList(e, graphBounds);
-
-			return;
-		}
-
-		// If the user is clicking on the add nodes list or context menu, exit here
-		if (lmb && contextMenu) return;
-
-		// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
-		if (lmb) {
-			contextMenuOpenCoordinates = undefined;
-			wireInProgressFromConnector = undefined;
-			toggleDisplayAsLayerNodeId = undefined;
-			// wireInProgressFromLayerTop = undefined;
-			// wireInProgressFromLayerBottom = undefined;
-		}
-
-		// Alt-click sets the clicked node as previewed
-		if (lmb && e.altKey && nodeId !== undefined) {
-			editor.handle.togglePreview(nodeId);
-		}
-
-		// Clicked on a port dot
-		if (lmb && port && node) {
-			const isOutput = Boolean(port.getAttribute("data-port") === "output");
-			const frontendNode = (nodeId !== undefined && $nodeGraph.nodes.find((n) => n.id === nodeId)) || undefined;
-
-			// Output: Begin dragging out a new wire
-			if (isOutput) {
-				// Disallow creating additional vertical output wires from an already-connected layer
-				if (frontendNode?.isLayer && frontendNode.primaryOutput && frontendNode.primaryOutput.connected.length > 0) return;
-
-				wireInProgressFromConnector = port;
-				// // Since we are just beginning to drag out a wire from the top, we know the in-progress wire exists from this layer's top and has no connection to any other layer bottom yet
-				// wireInProgressFromLayerTop = nodeId !== undefined && frontendNode?.isLayer ? nodeId : undefined;
-				// wireInProgressFromLayerBottom = undefined;
-			}
-			// Input: Begin moving an existing wire
-			else {
-				const inputNodeInPorts = Array.from(node.querySelectorAll(`[data-port="input"]`));
-				const inputNodeConnectionIndexSearch = inputNodeInPorts.indexOf(port);
-				const inputIndex = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
-				if (inputIndex === undefined || nodeId === undefined) return;
-
-				// Set the wire to draw from the input that a previous wire was on
-
-				const wireIndex = $nodeGraph.wires.filter((wire) => !wire.dashed).findIndex((value) => value.wireEnd === nodeId && value.wireEndInputIndex === BigInt(inputIndex));
-				if (wireIndex === -1) return;
-
-				const nodeOutputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.wires[wireIndex].wireStart)}"] [data-port="output"]`) || undefined;
-				wireInProgressFromConnector = nodeOutputConnectors?.[Number($nodeGraph.wires[wireIndex].wireStartOutputIndex)] as SVGSVGElement | undefined;
-
-				const nodeInputConnectors = nodesContainer?.querySelectorAll(`[data-node="${String($nodeGraph.wires[wireIndex].wireEnd)}"] [data-port="input"]`) || undefined;
-				wireInProgressToConnector = nodeInputConnectors?.[Number($nodeGraph.wires[wireIndex].wireEndInputIndex)] as SVGSVGElement | undefined;
-
-				disconnecting = { nodeId: nodeId, inputIndex, wireIndex };
-				refreshWires();
-			}
-
-			return;
-		}
-
-		// Clicked on a node, so we select it
-		if (lmb && nodeId !== undefined) {
-			let updatedSelected = [...$nodeGraph.selected];
-			let modifiedSelected = false;
-
-			// Add to/remove from selection if holding Shift or Ctrl
-			if (e.shiftKey || e.ctrlKey) {
-				modifiedSelected = true;
-
-				// Remove from selection if already selected
-				if (!updatedSelected.includes(nodeId)) updatedSelected.push(nodeId);
-				// Add to selection if not already selected
-				else updatedSelected.splice(updatedSelected.lastIndexOf(nodeId), 1);
-			}
-			// Replace selection with a non-selected node
-			else if (!updatedSelected.includes(nodeId)) {
-				modifiedSelected = true;
-
-				updatedSelected = [nodeId];
-			}
-			// Replace selection (of multiple nodes including this one) with just this one, but only upon pointer up if the user didn't drag the selected nodes
-			else {
-				selectIfNotDragged = nodeId;
-			}
-
-			// If this node is selected (whether from before or just now), prepare it for dragging
-			if (updatedSelected.includes(nodeId)) {
-				draggingNodes = { startX: e.x, startY: e.y, roundX: 0, roundY: 0 };
-			}
-
-			// Update the selection in the backend if it was modified
-			if (modifiedSelected) editor.handle.selectNodes(new BigUint64Array(updatedSelected));
-
-			return;
-		}
-
-		// Clicked on the graph background so we box select
-		if (lmb) {
-			previousSelection = $nodeGraph.selected;
-			// Clear current selection
-			if (!e.shiftKey) editor.handle.selectNodes(new BigUint64Array(0));
-
-			const graphBounds = graph?.getBoundingClientRect();
-			boxSelection = { startX: e.x - (graphBounds?.x || 0), startY: e.y - (graphBounds?.y || 0), endX: e.x - (graphBounds?.x || 0), endY: e.y - (graphBounds?.y || 0) };
-
-			return;
-		}
-
-		// LMB clicked on the graph background or MMB clicked anywhere
-		panning = true;
-	}
-
-	function doubleClick(e: MouseEvent) {
-		if ((e.target as HTMLElement).closest("[data-visibility-button]")) return;
-
-		const node = (e.target as HTMLElement).closest("[data-node]") as HTMLElement | undefined;
-		const nodeId = node?.getAttribute("data-node") || undefined;
-		if (nodeId !== undefined && !e.altKey) {
-			const id = BigInt(nodeId);
-			editor.handle.enterNestedNetwork(id);
-		}
-	}
-
-	function pointerMove(e: PointerEvent) {
-		if (panning) {
-			transform.x += e.movementX / transform.scale;
-			transform.y += e.movementY / transform.scale;
-		} else if (wireInProgressFromConnector && !contextMenuOpenCoordinates) {
-			const target = e.target as Element | undefined;
-			const dot = (target?.closest(`[data-port="input"]`) || undefined) as SVGSVGElement | undefined;
-			if (dot) {
-				wireInProgressToConnector = dot;
-			} else {
-				wireInProgressToConnector = new DOMRect(e.x, e.y);
-			}
-		} else if (draggingNodes) {
-			const deltaX = Math.round((e.x - draggingNodes.startX) / transform.scale / GRID_SIZE);
-			const deltaY = Math.round((e.y - draggingNodes.startY) / transform.scale / GRID_SIZE);
-			if (draggingNodes.roundX !== deltaX || draggingNodes.roundY !== deltaY) {
-				draggingNodes.roundX = deltaX;
-				draggingNodes.roundY = deltaY;
-
-				let stop = false;
-				const refresh = () => {
-					if (!stop) refreshWires();
-					requestAnimationFrame(refresh);
-				};
-				refresh();
-				// const DRAG_SMOOTHING_TIME = 0.1;
-				const DRAG_SMOOTHING_TIME = 0; // TODO: Reenable this after fixing the bugs with the wires, see the CSS `transition` attribute todo for other info
-				setTimeout(
-					() => {
-						stop = true;
-					},
-					DRAG_SMOOTHING_TIME * 1000 + 10,
-				);
-			}
-		} else if (boxSelection) {
-			// The mouse button was released but we missed the pointer up event
-			if ((e.buttons & 1) === 0) {
-				completeBoxSelection();
-				boxSelection = undefined;
-			} else if ((e.buttons & 2) !== 0) {
-				editor.handle.selectNodes(new BigUint64Array(previousSelection));
-				boxSelection = undefined;
-			} else {
-				const graphBounds = graph?.getBoundingClientRect();
-				boxSelection.endX = e.x - (graphBounds?.x || 0);
-				boxSelection.endY = e.y - (graphBounds?.y || 0);
-			}
-		}
-	}
-
-	function intersetNodeAABB(boxSelection: Box | undefined, nodeIndex: number): boolean {
-		const bounds = nodeElements[nodeIndex]?.getBoundingClientRect();
-		const graphBounds = graph?.getBoundingClientRect();
-		return (
-			boxSelection !== undefined &&
-			bounds &&
-			Math.min(boxSelection.startX, boxSelection.endX) < bounds.right - (graphBounds?.x || 0) &&
-			Math.max(boxSelection.startX, boxSelection.endX) > bounds.left - (graphBounds?.x || 0) &&
-			Math.min(boxSelection.startY, boxSelection.endY) < bounds.bottom - (graphBounds?.y || 0) &&
-			Math.max(boxSelection.startY, boxSelection.endY) > bounds.top - (graphBounds?.y || 0)
-		);
-	}
-
-	function completeBoxSelection() {
-		editor.handle.selectNodes(new BigUint64Array($nodeGraph.selected.concat($nodeGraph.nodes.filter((_, nodeIndex) => intersetNodeAABB(boxSelection, nodeIndex)).map((node) => node.id))));
-	}
-
-	function showSelected(selected: bigint[], boxSelect: Box | undefined, node: bigint, nodeIndex: number): boolean {
-		return selected.includes(node) || intersetNodeAABB(boxSelect, nodeIndex);
-	}
-
-	function toggleNodeVisibilityGraph(id: bigint) {
-		editor.handle.toggleNodeVisibilityGraph(id);
-	}
-
-	function toggleLayerDisplay(displayAsLayer: boolean) {
-		let node = $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId);
+	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
+		let node = $nodeGraph.nodes.find((node) => node.id === toggleId);
 		if (node !== undefined) {
-			contextMenuOpenCoordinates = undefined;
 			editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
-			toggleDisplayAsLayerCurrentlyIsNode = !($nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.isLayer || false);
-			toggleDisplayAsLayerNodeId = undefined;
 		}
 	}
 
@@ -577,144 +241,10 @@
 		return $nodeGraph.nodes.find((node) => node.id === toggleDisplayAsLayerNodeId)?.canBeLayer || false;
 	}
 
-	function connectorToNodeIndex(svg: SVGSVGElement): { nodeId: bigint; index: number } | undefined {
-		const node = svg.closest("[data-node]");
-
-		if (!node) return undefined;
-		const nodeIdAttribute = node.getAttribute("data-node");
-		if (!nodeIdAttribute) return undefined;
-		const nodeId = BigInt(nodeIdAttribute);
-
-		const inputPortElements = Array.from(node.querySelectorAll(`[data-port="input"]`));
-		const outputPortElements = Array.from(node.querySelectorAll(`[data-port="output"]`));
-		const inputNodeConnectionIndexSearch = inputPortElements.includes(svg) ? inputPortElements.indexOf(svg) : outputPortElements.indexOf(svg);
-		const index = inputNodeConnectionIndexSearch > -1 ? inputNodeConnectionIndexSearch : undefined;
-
-		if (nodeId !== undefined && index !== undefined) return { nodeId, index };
-		else return undefined;
-	}
-
-	// Check if this node should be inserted between two other nodes
-	function checkInsertBetween() {
-		if ($nodeGraph.selected.length !== 1) return;
-		const selectedNodeId = $nodeGraph.selected[0];
-		const selectedNode = nodesContainer?.querySelector(`[data-node="${String(selectedNodeId)}"]`) || undefined;
-
-		// Check that neither the primary input or output of the selected node are already connected.
-		const notConnected = $nodeGraph.wires.findIndex((wire) => wire.wireStart === selectedNodeId || (wire.wireEnd === selectedNodeId && wire.wireEndInputIndex === BigInt(0))) === -1;
-		const input = selectedNode?.querySelector(`[data-port="input"]`) || undefined;
-		const output = selectedNode?.querySelector(`[data-port="output"]`) || undefined;
-
-		// TODO: Make sure inputs are correctly typed
-		if (!selectedNode || !notConnected || !input || !output || !nodesContainer) return;
-
-		// Fixes typing for some reason?
-		const theNodesContainer = nodesContainer;
-
-		// Find the wire that the node has been dragged on top of
-		const wire = $nodeGraph.wires.find((wire) => {
-			const { nodeInput, nodeOutput } = resolveWire(wire);
-			if (!nodeInput || !nodeOutput) return false;
-
-			const wireCurveLocations = buildWirePathLocations(nodeOutput.getBoundingClientRect(), nodeInput.getBoundingClientRect(), false, false);
-
-			const selectedNodeBounds = selectedNode.getBoundingClientRect();
-			const containerBoundsBounds = theNodesContainer.getBoundingClientRect();
-
-			return (
-				wire.wireEnd != selectedNodeId &&
-				editor.handle.rectangleIntersects(
-					new Float64Array(wireCurveLocations.map((loc) => loc.x)),
-					new Float64Array(wireCurveLocations.map((loc) => loc.y)),
-					selectedNodeBounds.top - containerBoundsBounds.y,
-					selectedNodeBounds.left - containerBoundsBounds.x,
-					selectedNodeBounds.bottom - containerBoundsBounds.y,
-					selectedNodeBounds.right - containerBoundsBounds.x,
-				)
-			);
-		});
-
-		// If the node has been dragged on top of the wire then connect it into the middle.
-		if (wire) {
-			const isLayer = $nodeGraph.nodes.find((n) => n.id === selectedNodeId)?.isLayer;
-			editor.handle.insertNodeBetween(wire.wireEnd, Number(wire.wireEndInputIndex), 0, selectedNodeId, 0, Number(wire.wireStartOutputIndex), wire.wireStart);
-			if (!isLayer) editor.handle.shiftNode(selectedNodeId);
-		}
-	}
-
-	function pointerUp(e: PointerEvent) {
-		panning = false;
-
-		const initialDisconnecting = disconnecting;
-		if (disconnecting) {
-			editor.handle.disconnectNodes(BigInt(disconnecting.nodeId), disconnecting.inputIndex);
-		}
-		disconnecting = undefined;
-
-		if (wireInProgressToConnector instanceof SVGSVGElement && wireInProgressFromConnector) {
-			const from = connectorToNodeIndex(wireInProgressFromConnector);
-			const to = connectorToNodeIndex(wireInProgressToConnector);
-
-			if (from !== undefined && to !== undefined) {
-				const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-				const { nodeId: inputConnectedNodeID, index: inputNodeConnectionIndex } = to;
-				editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
-			}
-		} else if (wireInProgressFromConnector && !initialDisconnecting) {
-			// If the add node menu is already open, we don't want to open it again
-			if (contextMenuOpenCoordinates) return;
-
-			const graphBounds = graph?.getBoundingClientRect();
-			if (!graphBounds) return;
-
-			// Create the node list, which should set nodeListLocation to a valid value
-			loadNodeList(e, graphBounds);
-			if (!contextMenuOpenCoordinates) return;
-			let contextMenuLocation2: { x: number; y: number } = contextMenuOpenCoordinates;
-
-			wireInProgressToConnector = new DOMRect((contextMenuLocation2.x + transform.x) * transform.scale + graphBounds.x, (contextMenuLocation2.y + transform.y) * transform.scale + graphBounds.y);
-
-			return;
-		} else if (draggingNodes) {
-			if (draggingNodes.startX === e.x && draggingNodes.startY === e.y) {
-				if (selectIfNotDragged !== undefined && ($nodeGraph.selected.length !== 1 || $nodeGraph.selected[0] !== selectIfNotDragged)) {
-					editor.handle.selectNodes(new BigUint64Array([selectIfNotDragged]));
-				}
-			}
-
-			if ($nodeGraph.selected.length > 0 && (draggingNodes.roundX !== 0 || draggingNodes.roundY !== 0)) editor.handle.moveSelectedNodes(draggingNodes.roundX, draggingNodes.roundY);
-
-			checkInsertBetween();
-
-			draggingNodes = undefined;
-			selectIfNotDragged = undefined;
-		} else if (boxSelection) {
-			completeBoxSelection();
-			boxSelection = undefined;
-		}
-
-		wireInProgressFromConnector = undefined;
-		wireInProgressToConnector = undefined;
-	}
-
 	function createNode(nodeType: string) {
-		if (!contextMenuOpenCoordinates) return;
+		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		const inputNodeConnectionIndex = 0;
-		const x = Math.round(contextMenuOpenCoordinates.x / GRID_SIZE);
-		const y = Math.round(contextMenuOpenCoordinates.y / GRID_SIZE) - 1;
-		const inputConnectedNodeID = editor.handle.createNode(nodeType, x, y);
-		contextMenuOpenCoordinates = undefined;
-
-		if (!wireInProgressFromConnector) return;
-		const from = connectorToNodeIndex(wireInProgressFromConnector);
-
-		if (from !== undefined) {
-			const { nodeId: outputConnectedNodeID, index: outputNodeConnectionIndex } = from;
-			editor.handle.connectNodesByWire(outputConnectedNodeID, outputNodeConnectionIndex, inputConnectedNodeID, inputNodeConnectionIndex);
-		}
-
-		wireInProgressFromConnector = undefined;
+		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, parameters: number, primaryOutputExists: boolean, exposedOutputs: number): string {
@@ -779,35 +309,31 @@
 <div
 	class="graph"
 	bind:this={graph}
-	on:wheel|nonpassive={scroll}
-	on:pointerdown={pointerDown}
-	on:pointermove={pointerMove}
-	on:pointerup={pointerUp}
-	on:dblclick={doubleClick}
 	style:--grid-spacing={`${gridSpacing}px`}
-	style:--grid-offset-x={`${transform.x * transform.scale}px`}
-	style:--grid-offset-y={`${transform.y * transform.scale}px`}
+	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
+	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
 	style:--dot-radius={`${dotRadius}px`}
+	data-node-graph
 >
 	<BreadcrumbTrailButtons labels={["Document"].concat($nodeGraph.subgraphPath)} action={(index) => editor.handle.exitNestedNetwork($nodeGraph.subgraphPath?.length - index)} />
 	<!-- Right click menu for adding nodes -->
-	{#if contextMenuOpenCoordinates}
+	{#if $nodeGraph.contextMenuInformation}
 		<LayoutCol
 			class="context-menu"
 			data-context-menu
 			styles={{
-				left: `${contextMenuX}px`,
-				top: `${contextMenuY}px`,
-				...(toggleDisplayAsLayerNodeId === undefined
+				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
+				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
+				...($nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"
 					? {
-							transform: `translate(${appearRightOfMouse ? -100 : 0}%, ${appearAboveMouse ? -100 : 0}%)`,
+							transform: `translate(0%, 0%)`,
 							width: `${ADD_NODE_MENU_WIDTH}px`,
 							height: `${ADD_NODE_MENU_HEIGHT}px`,
 						}
 					: {}),
 			}}
 		>
-			{#if toggleDisplayAsLayerNodeId === undefined}
+			{#if $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
 				<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 				<div class="list-results" on:wheel|passive|stopPropagation>
 					{#each nodeCategories as nodeCategory}
@@ -824,34 +350,35 @@
 					{/each}
 				</div>
 			{:else}
+				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
 				<LayoutRow class="toggle-layer-or-node">
 					<TextLabel>Display as</TextLabel>
 					<RadioInput
-						selectedIndex={toggleDisplayAsLayerCurrentlyIsNode ? 0 : 1}
+						selectedIndex={contextMenuData.currentlyIsNode ? 0 : 1}
 						entries={[
 							{
 								value: "node",
 								label: "Node",
 								action: () => {
-									toggleLayerDisplay(false);
+									toggleLayerDisplay(false, contextMenuData.nodeId);
 								},
 							},
 							{
 								value: "layer",
 								label: "Layer",
 								action: () => {
-									toggleLayerDisplay(true);
+									toggleLayerDisplay(true, contextMenuData.nodeId);
 								},
 							},
 						]}
-						disabled={!canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId)}
+						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
 					/>
 				</LayoutRow>
 			{/if}
 		</LayoutCol>
 	{/if}
 	<!-- Node connection wires -->
-	<div class="wires" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`}>
+	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each wirePaths as { pathString, dataType, thick, dashed }}
 				<path
@@ -865,24 +392,28 @@
 		</svg>
 	</div>
 	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform={`scale(${transform.scale}) translate(${transform.x}px, ${transform.y}px)`} style:transform-origin={`0 0`} bind:this={nodesContainer}>
+	<div
+		class="layers-and-nodes"
+		style:transform-origin={`0 0`}
+		style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}
+		bind:this={nodesContainer}
+	>
 		<!-- Layers -->
 		{#each $nodeGraph.nodes.flatMap((node, nodeIndex) => (node.isLayer ? [{ node, nodeIndex }] : [])) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
-			{@const extraWidthToReachGridMultiple = 8}
-			{@const labelWidthGridCells = Math.ceil(((layerNameLabelWidths?.[String(node.id)] || 0) - extraWidthToReachGridMultiple) / 24)}
+			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			<div
 				class="layer"
-				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
+				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={(node.position?.x || 0) - 1}
+				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				style:--label-width={labelWidthGridCells}
+				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={node.exposedInputs.length === 0 ? 0 : 1.5}
 				data-node={node.id}
 				bind:this={nodeElements[nodeIndex]}
@@ -966,16 +497,18 @@
 				{/if}
 				<div class="details">
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined} bind:offsetWidth={layerNameLabelWidths[String(node.id)]}>
+					<span title={editor.handle.inDevelopmentMode() ? `Node ID: ${node.id}` : undefined}>
 						{node.alias}
 					</span>
 				</div>
 				<IconButton
 					class={"visibility"}
 					data-visibility-button
-					action={(e) => (toggleNodeVisibilityGraph(node.id), e?.stopPropagation())}
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
+					action={() => {
+						/*Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown*/
+					}}
 					tooltip={node.visible ? "Visible" : "Hidden"}
 				/>
 
@@ -983,10 +516,7 @@
 					<defs>
 						<clipPath id={clipPathId}>
 							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path
-								clip-rule="evenodd"
-								d={layerBorderMask(72 + 8 + 24 * Math.max(3, labelWidthGridCells) + 8 + 12 + extraWidthToReachGridMultiple, node.exposedInputs.length === 0 ? 0 : 36)}
-							/>
+							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, node.exposedInputs.length === 0 ? 0 : 36)} />
 						</clipPath>
 					</defs>
 				</svg>
@@ -998,11 +528,11 @@
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
-				class:selected={showSelected($nodeGraph.selected, boxSelection, node.id, nodeIndex)}
+				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.x || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundX || 0 : 0)}
-				style:--offset-top={(node.position?.y || 0) + ($nodeGraph.selected.includes(node.id) ? draggingNodes?.roundY || 0 : 0)}
+				style:--offset-left={node.position?.x || 0}
+				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
@@ -1129,13 +659,13 @@
 </div>
 
 <!-- Box select widget -->
-{#if boxSelection}
+{#if $nodeGraph.box}
 	<div
 		class="box-selection"
-		style:left={`${Math.min(boxSelection.startX, boxSelection.endX)}px`}
-		style:top={`${Math.min(boxSelection.startY, boxSelection.endY)}px`}
-		style:width={`${Math.abs(boxSelection.startX - boxSelection.endX)}px`}
-		style:height={`${Math.abs(boxSelection.startY - boxSelection.endY)}px`}
+		style:left={`${Math.min($nodeGraph.box.startX, $nodeGraph.box.endX)}px`}
+		style:top={`${Math.min($nodeGraph.box.startY, $nodeGraph.box.endY)}px`}
+		style:width={`${Math.abs($nodeGraph.box.startX - $nodeGraph.box.endX)}px`}
+		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
 	></div>
 {/if}
 
@@ -1155,9 +685,8 @@
 			height: 100%;
 			background-size: var(--grid-spacing) var(--grid-spacing);
 			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-f-white) var(--dot-radius), transparent 0),
-				radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
-			background-repeat: no-repeat, repeat;
+			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			background-repeat: repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
 		}
@@ -1403,7 +932,7 @@
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
 			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above
-			width: calc(72px + 8px + 24px * Max(3, var(--label-width)) + 8px + 12px + var(--extra-width-to-reach-grid-multiple));
+			width: calc(24px * var(--layer-area-width) - 12px);
 			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
 			margin-left: calc((1.5 - var(--node-chain-area-left-extension)) * 24px);
 

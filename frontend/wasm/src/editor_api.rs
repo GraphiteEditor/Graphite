@@ -551,86 +551,11 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Notifies the backend that the user connected a node's primary output to one of another node's inputs
-	#[wasm_bindgen(js_name = connectNodesByWire)]
-	pub fn connect_nodes_by_wire(&self, output_node: u64, output_node_connector_index: usize, input_node: u64, input_node_connector_index: usize) {
-		let output_node = NodeId(output_node);
-		let input_node = NodeId(input_node);
-		let message = NodeGraphMessage::ConnectNodesByWire {
-			output_node,
-			output_node_connector_index,
-			input_node,
-			input_node_connector_index,
-		};
-		self.dispatch(message);
-	}
-
-	/// Inserts node in-between two other nodes
-	#[wasm_bindgen(js_name = insertNodeBetween)]
-	pub fn insert_node_between(
-		&self,
-		post_node_id: u64,
-		post_node_input_index: usize,
-		insert_node_output_index: usize,
-		insert_node_id: u64,
-		insert_node_input_index: usize,
-		pre_node_output_index: usize,
-		pre_node_id: u64,
-	) {
-		let message = NodeGraphMessage::InsertNodeBetween {
-			post_node_id: NodeId(post_node_id),
-			post_node_input_index,
-			insert_node_output_index,
-			insert_node_id: NodeId(insert_node_id),
-			insert_node_input_index,
-			pre_node_output_index,
-			pre_node_id: NodeId(pre_node_id),
-		};
-		self.dispatch(message);
-	}
-
-	/// Shifts the node and its children to stop nodes going on top of each other
-	#[wasm_bindgen(js_name = shiftNode)]
-	pub fn shift_node(&self, node_id: u64) {
-		let node_id = NodeId(node_id);
-		let message = NodeGraphMessage::ShiftNode { node_id };
-		self.dispatch(message);
-	}
-
-	/// Notifies the backend that the user disconnected a node
-	#[wasm_bindgen(js_name = disconnectNodes)]
-	pub fn disconnect_nodes(&self, node_id: u64, input_index: usize) {
-		let node_id = NodeId(node_id);
-		let message = NodeGraphMessage::DisconnectInput { node_id, input_index };
-		self.dispatch(message);
-	}
-
-	/// Check for intersections between the curve and a rectangle defined by opposite corners
-	#[wasm_bindgen(js_name = rectangleIntersects)]
-	pub fn rectangle_intersects(&self, bezier_x: Vec<f64>, bezier_y: Vec<f64>, top: f64, left: f64, bottom: f64, right: f64) -> bool {
-		let bezier = bezier_rs::Bezier::from_cubic_dvec2(
-			(bezier_x[0], bezier_y[0]).into(),
-			(bezier_x[1], bezier_y[1]).into(),
-			(bezier_x[2], bezier_y[2]).into(),
-			(bezier_x[3], bezier_y[3]).into(),
-		);
-		!bezier.rectangle_intersections((left, top).into(), (right, bottom).into()).is_empty() || bezier.is_contained_within((left, top).into(), (right, bottom).into())
-	}
-
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) -> u64 {
+	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
 		let id = NodeId(generate_uuid());
 		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
-		self.dispatch(message);
-		id.0
-	}
-
-	/// Notifies the backend that the user selected a node in the node graph
-	#[wasm_bindgen(js_name = selectNodes)]
-	pub fn select_nodes(&self, nodes: Vec<u64>) {
-		let nodes = nodes.into_iter().map(NodeId).collect::<Vec<_>>();
-		let message = NodeGraphMessage::SelectedNodesSet { nodes };
 		self.dispatch(message);
 	}
 
@@ -641,36 +566,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Notifies the backend that the user double clicked a node
-	#[wasm_bindgen(js_name = enterNestedNetwork)]
-	pub fn enter_nested_network(&self, node: u64) {
-		let node = NodeId(node);
-		let message = NodeGraphMessage::EnterNestedNetwork { node };
-		self.dispatch(message);
-	}
-
 	/// Go back a certain number of nested levels
 	#[wasm_bindgen(js_name = exitNestedNetwork)]
 	pub fn exit_nested_network(&self, steps_back: usize) {
 		let message = NodeGraphMessage::ExitNestedNetwork { steps_back };
-		self.dispatch(message);
-	}
-
-	/// Notifies the backend that the selected nodes have been moved
-	#[wasm_bindgen(js_name = moveSelectedNodes)]
-	pub fn move_selected_nodes(&self, displacement_x: i32, displacement_y: i32) {
-		let message = DocumentMessage::StartTransaction;
-		self.dispatch(message);
-
-		let message = NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y };
-		self.dispatch(message);
-	}
-
-	/// Toggle preview on node
-	#[wasm_bindgen(js_name = togglePreview)]
-	pub fn toggle_preview(&self, node_id: u64) {
-		let node_id = NodeId(node_id);
-		let message = NodeGraphMessage::TogglePreview { node_id };
 		self.dispatch(message);
 	}
 
@@ -695,14 +594,6 @@ impl EditorHandle {
 	pub fn toggle_node_visibility_layer(&self, id: u64) {
 		let node_id = NodeId(id);
 		let message = GraphOperationMessage::ToggleVisibility { node_id };
-		self.dispatch(message);
-	}
-
-	/// Toggle visibility of a layer or node given its node ID
-	#[wasm_bindgen(js_name = toggleNodeVisibilityGraph)]
-	pub fn toggle_node_visibility_graph(&self, id: u64) {
-		let node_id = NodeId(id);
-		let message = NodeGraphMessage::ToggleVisibility { node_id };
 		self.dispatch(message);
 	}
 

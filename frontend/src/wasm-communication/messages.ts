@@ -25,12 +25,41 @@ export type XY = { x: number; y: number };
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
+export class UpdateBox extends JsMessage {
+	readonly box!: Box | undefined;
+}
+
+const ContextTupleToVec2 = Transform((data) => {
+	if (data.obj.contextMenuInformation === undefined) return undefined;
+	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
+	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
+	if (contextMenuData.ToggleLayer !== undefined) {
+		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
+	}
+	return { contextMenuCoordinates, contextMenuData };
+});
+
+export class UpdateContextMenuInformation extends JsMessage {
+	@ContextTupleToVec2
+	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
+const LayerWidths = Transform(({ obj }) => obj.layerWidths);
+
+export class UpdateLayerWidths extends JsMessage {
+	@LayerWidths
+	readonly layerWidths!: Map<bigint, number>;
+}
+
 export class UpdateNodeGraph extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
 
 	@Type(() => FrontendNodeWire)
 	readonly wires!: FrontendNodeWire[];
+}
+
+export class UpdateNodeGraphTransform extends JsMessage {
+	readonly transform!: NodeGraphTransform;
 }
 
 export class UpdateNodeTypes extends JsMessage {
@@ -58,6 +87,10 @@ export class UpdateSubgraphPath extends JsMessage {
 	readonly subgraphPath!: string[];
 }
 
+export class UpdateWirePathInProgress extends JsMessage {
+	readonly wirePath!: WirePath | undefined;
+}
+
 export class UpdateZoomWithScroll extends JsMessage {
 	readonly zoomWithScroll!: boolean;
 }
@@ -83,6 +116,22 @@ export abstract class DocumentDetails {
 export class FrontendDocumentDetails extends DocumentDetails {
 	readonly id!: bigint;
 }
+
+export class Box {
+	readonly startX!: number;
+
+	readonly startY!: number;
+
+	readonly endX!: number;
+
+	readonly endY!: number;
+}
+
+export type ContextMenuInformation = {
+	contextMenuCoordinates: XY;
+
+	contextMenuData: "CreateNode" | { nodeId: bigint; currentlyIsNode: boolean };
+};
 
 export type FrontendGraphDataType = "General" | "Raster" | "VectorData" | "Number" | "Graphic" | "Artboard";
 
@@ -130,6 +179,8 @@ export class FrontendNode {
 	@TupleToVec2
 	readonly position!: XY | undefined;
 
+	//TODO: Store field for the width of the left node chain
+
 	readonly previewed!: boolean;
 
 	readonly visible!: boolean;
@@ -157,6 +208,19 @@ export class FrontendNodeType {
 	readonly name!: string;
 
 	readonly category!: string;
+}
+
+export class NodeGraphTransform {
+	readonly scale!: number;
+	readonly x!: number;
+	readonly y!: number;
+}
+
+export class WirePath {
+	readonly pathString!: string;
+	readonly dataType!: FrontendGraphDataType;
+	readonly thick!: boolean;
+	readonly dashed!: boolean;
 }
 
 export class IndexedDbDocumentDetails extends DocumentDetails {
@@ -1378,6 +1442,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,
+	UpdateBox,
+	UpdateContextMenuInformation,
+	UpdateLayerWidths,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
@@ -1396,6 +1463,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraph,
 	UpdateNodeGraphBarLayout,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateNodeTypes,
 	UpdateOpenDocumentsList,
@@ -1405,6 +1473,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
+	UpdateWirePathInProgress,
 	UpdateZoomWithScroll,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

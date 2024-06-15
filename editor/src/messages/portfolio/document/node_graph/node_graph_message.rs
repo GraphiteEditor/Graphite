@@ -1,3 +1,4 @@
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -18,6 +19,7 @@ pub enum NodeGraphMessage {
 		input_node_connector_index: usize,
 	},
 	Copy,
+	CloseCreateNodeMenu,
 	CreateNode {
 		node_id: Option<NodeId>,
 		node_type: String,
@@ -36,9 +38,7 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		input_index: usize,
 	},
-	EnterNestedNetwork {
-		node: NodeId,
-	},
+	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	EnforceLayerHasNoMultiParams {
 		node_id: NodeId,
@@ -71,6 +71,16 @@ pub enum NodeGraphMessage {
 	PasteNodes {
 		serialized_nodes: String,
 	},
+	PointerDown {
+		shift_click: bool,
+		control_click: bool,
+		alt_click: bool,
+		right_click: bool,
+	},
+	PointerMove {
+		shift: Key,
+	},
+	PointerUp,
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,
 	SelectedNodesAdd {
@@ -132,7 +142,6 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 	},
 	ToggleSelectedAsLayersOrNodes,
-	ToggleSelectedLocked,
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,

@@ -1,6 +1,6 @@
 use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::utility_types::{FrontendNode, FrontendNodeType, FrontendNodeWire};
+use crate::messages::portfolio::document::node_graph::utility_types::{BoxSelection, ContextMenuInformation, FrontendNode, FrontendNodeType, FrontendNodeWire, Transform, WirePath};
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
@@ -109,6 +109,18 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
+	UpdateBox {
+		#[serde(rename = "box")]
+		box_selection: Option<BoxSelection>,
+	},
+	UpdateContextMenuInformation {
+		#[serde(rename = "contextMenuInformation")]
+		context_menu_information: Option<ContextMenuInformation>,
+	},
+	UpdateLayerWidths {
+		#[serde(rename = "layerWidths")]
+		layer_widths: HashMap<NodeId, u32>,
+	},
 	UpdateDialogButtons {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -198,6 +210,9 @@ pub enum FrontendMessage {
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
 	},
+	UpdateNodeGraphTransform {
+		transform: Transform,
+	},
 	UpdateNodeThumbnail {
 		id: NodeId,
 		value: String,
@@ -233,6 +248,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
+	},
+	UpdateWirePathInProgress {
+		#[serde(rename = "wirePath")]
+		wire_path: Option<WirePath>,
 	},
 	UpdateWorkingColorsLayout {
 		#[serde(rename = "layoutTarget")]

@@ -110,3 +110,59 @@ impl FrontendNodeType {
 		}
 	}
 }
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DragStart {
+	pub start_x: f64,
+	pub start_y: f64,
+	pub round_x: i32,
+	pub round_y: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct Transform {
+	pub scale: f64,
+	pub x: f64,
+	pub y: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WirePath {
+	#[serde(rename = "pathString")]
+	pub path_string: String,
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	pub thick: bool,
+	pub dashed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct BoxSelection {
+	#[serde(rename = "startX")]
+	pub start_x: u32,
+	#[serde(rename = "startY")]
+	pub start_y: u32,
+	#[serde(rename = "endX")]
+	pub end_x: u32,
+	#[serde(rename = "endY")]
+	pub end_y: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub enum ContextMenuData {
+	ToggleLayer {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
+		#[serde(rename = "currentlyIsNode")]
+		currently_is_node: bool,
+	},
+	CreateNode,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct ContextMenuInformation {
+	// Stores whether the context menu is open and its position in graph coordinates
+	#[serde(rename = "contextMenuCoordinates")]
+	pub context_menu_coordinates: (i32, i32),
+	#[serde(rename = "contextMenuData")]
+	pub context_menu_data: ContextMenuData,
+}

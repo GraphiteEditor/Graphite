@@ -6,20 +6,26 @@ use crate::messages::prelude::*;
 pub struct MenuBarMessageData {
 	pub has_active_document: bool,
 	pub rulers_visible: bool,
+	pub node_graph_open: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MenuBarMessageHandler {
 	has_active_document: bool,
 	rulers_visible: bool,
+	node_graph_open: bool,
 }
 
 impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandler {
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, data: MenuBarMessageData) {
-		let MenuBarMessageData { has_active_document, rulers_visible } = data;
-
+		let MenuBarMessageData {
+			has_active_document,
+			rulers_visible,
+			node_graph_open,
+		} = data;
 		self.has_active_document = has_active_document;
 		self.rulers_visible = rulers_visible;
+		self.node_graph_open = node_graph_open;
 
 		match message {
 			MenuBarMessage::SendLayout => self.send_layout(responses, LayoutTarget::MenuBar),
@@ -34,6 +40,7 @@ impl MessageHandler<MenuBarMessage, MenuBarMessageData> for MenuBarMessageHandle
 impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
 		let no_active_document = !self.has_active_document;
+		let node_graph_open = self.node_graph_open;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -271,14 +278,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 							label: "Tilt".into(),
 							shortcut: action_keys!(NavigationMessageDiscriminant::BeginCanvasTilt),
 							action: MenuBarEntry::create_action(|_| NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: true }.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || node_graph_open,
 							..MenuBarEntry::default()
 						},
 						MenuBarEntry {
 							label: "Reset Tilt".into(),
 							shortcut: action_keys!(NavigationMessageDiscriminant::CanvasTiltSet),
 							action: MenuBarEntry::create_action(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into()),
-							disabled: no_active_document,
+							disabled: no_active_document || node_graph_open,
 							..MenuBarEntry::default()
 						},
 					],
