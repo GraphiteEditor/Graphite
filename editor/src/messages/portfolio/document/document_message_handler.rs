@@ -575,9 +575,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
 				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
 				for layer_to_move in ordered_last_elements {
-					if layer_to_move
-						.upstream_siblings(&self.metadata)
-						.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
+					if insert_index > 0
+						&& layer_to_move
+							.upstream_siblings(&self.metadata)
+							.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
 					{
 						insert_index -= 1;
 					}
