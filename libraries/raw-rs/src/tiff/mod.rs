@@ -4,7 +4,8 @@ mod types;
 pub mod values;
 
 use file::TiffRead;
-use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+use num_enum::{FromPrimitive, IntoPrimitive};
+use std::fmt::Display;
 use std::io::{Read, Seek};
 use thiserror::Error;
 
@@ -36,26 +37,29 @@ pub enum TagId {
 }
 
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum IfdTagType {
-	Ascii = 2,
 	Byte = 1,
+	Ascii = 2,
 	Short = 3,
 	Long = 4,
 	Rational = 5,
 	SByte = 6,
+	Undefined = 7,
 	SShort = 8,
 	SLong = 9,
 	SRational = 10,
 	Float = 11,
 	Double = 12,
-	Undefined = 7,
+
+	#[num_enum(catch_all)]
+	Unknown(u16),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct IfdEntry {
 	tag: TagId,
-	type_: u16,
+	type_: IfdTagType,
 	count: u32,
 	value: u32,
 }
@@ -68,15 +72,15 @@ pub struct Ifd {
 }
 
 impl Ifd {
-	pub fn new_first_ifd<R: Read + Seek>(file: &mut TiffRead<R>) -> std::io::Result<Self> {
+	pub fn new_first_ifd<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self, TiffError> {
 		file.seek_from_start(4)?;
 		let current_ifd_offset = file.read_u32()?;
 		Ifd::new_from_offset(file, current_ifd_offset)
 	}
 
-	pub fn new_from_offset<R: Read + Seek>(file: &mut TiffRead<R>, offset: u32) -> std::io::Result<Self> {
+	pub fn new_from_offset<R: Read + Seek>(file: &mut TiffRead<R>, offset: u32) -> Result<Self, TiffError> {
 		if offset == 0 {
-			return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Ifd at offset zero does not exist"));
+			return Err(TiffError::InvalidOffset);
 		}
 
 		file.seek_from_start(offset)?;
@@ -85,7 +89,7 @@ impl Ifd {
 		let mut ifd_entries = Vec::with_capacity(num.into());
 		for _ in 0..num {
 			let tag = file.read_u16()?.into();
-			let type_ = file.read_u16()?;
+			let type_ = file.read_u16()?.into();
 			let count = file.read_u32()?;
 			let value = file.read_u32()?;
 
@@ -102,7 +106,7 @@ impl Ifd {
 		})
 	}
 
-	fn next_ifd<R: Read + Seek>(&self, file: &mut TiffRead<R>) -> std::io::Result<Self> {
+	fn next_ifd<R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<Self, TiffError> {
 		Ifd::new_from_offset(file, self.next_ifd_offset.unwrap_or(0))
 	}
 
@@ -114,12 +118,33 @@ impl Ifd {
 		self.ifd_entries.iter()
 	}
 
-	pub fn find(&self, tag: u16) -> Option<usize> {
-		self.iter().position(|x| Into::<u16>::into(x.tag) == tag)
-	}
-
 	pub fn get_value<T: Tag, R: Read + Seek>(&self, file: &mut TiffRead<R>) -> Result<T::Output, TiffError> {
 		T::get(self, file)
+	}
+}
+
+impl Display for Ifd {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("IFD offset: ")?;
+		self.current_ifd_offset.fmt(f)?;
+		f.write_str("\n")?;
+
+		for ifd_entry in self.ifd_entries() {
+			f.write_fmt(format_args!(
+				"|- Tag: {:x?}, Type: {:?}, Count: {}, Value: {:x}\n",
+				ifd_entry.tag, ifd_entry.type_, ifd_entry.count, ifd_entry.value
+			))?;
+		}
+
+		f.write_str("Next IFD offset: ")?;
+		if let Some(offset) = self.next_ifd_offset {
+			offset.fmt(f)?;
+		} else {
+			f.write_str("None")?;
+		}
+		f.write_str("\n")?;
+
+		Ok(())
 	}
 }
 
@@ -133,6 +158,8 @@ pub enum TiffError {
 	InvalidCount,
 	#[error("The tag was missing")]
 	MissingTag,
+	#[error("The offset was invalid or zero")]
+	InvalidOffset,
 	#[error("An error occurred when converting integer from one type to another")]
 	ConversionError(#[from] std::num::TryFromIntError),
 	#[error("An IO Error ocurred")]

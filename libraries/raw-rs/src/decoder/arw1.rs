@@ -85,7 +85,6 @@ fn sony_arw_load_raw<R: Read + Seek>(width: usize, height: usize, file: &mut Bit
 				return None;
 			}
 			if counter < 10 {
-				println!("sum: {}", sum);
 				counter += 1;
 			}
 			if row < height {
