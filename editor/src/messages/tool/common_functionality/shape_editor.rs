@@ -292,9 +292,45 @@ impl ShapeState {
 		selected_state.select_point(point);
 	}
 
+	/// Selects all anchors connected to the selected subpath, and deselects all handles, for the given layer.
+	pub fn select_connected_anchors(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, mouse: DVec2) {
+		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
+			return;
+		};
+		let to_viewport = document.metadata.transform_to_viewport(layer);
+		let layer_mouse = to_viewport.inverse().transform_point2(mouse);
+		let state = self.selected_shape_state.entry(layer).or_default();
+
+		let mut selected_stack = Vec::new();
+		// Find all subpaths that have been clicked
+		for stroke in vector_data.stroke_bezier_paths() {
+			if stroke.contains_point_autoclose(layer_mouse) {
+				if let Some(first) = stroke.manipulator_groups().first() {
+					selected_stack.push(first.id);
+				}
+			}
+		}
+		state.clear_points();
+		if selected_stack.is_empty() {
+			// Fall back on just selecting all points in the layer
+			for &point in vector_data.point_domain.ids() {
+				state.select_point(ManipulatorPointId::Anchor(point))
+			}
+		} else {
+			// Select all connected points
+			while let Some(point) = selected_stack.pop() {
+				if state.is_selected(ManipulatorPointId::Anchor(point)) {
+					continue;
+				}
+				state.select_point(ManipulatorPointId::Anchor(point));
+				selected_stack.extend(vector_data.segment_domain.connected_points(point));
+			}
+		}
+	}
+
 	/// Selects all anchors, and deselects all handles, for the given layer.
 	pub fn select_all_anchors_in_layer(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier) {
-		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
+		let state = self.selected_shape_state.entry(layer).or_default();
 		Self::select_all_anchors_in_layer_with_state(document, layer, state);
 	}
 
@@ -969,8 +1005,7 @@ impl ShapeState {
 		let transform = document_metadata.transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 
-		let scale = document_metadata.document_to_viewport.decompose_scale().x;
-		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
+		let tolerance = tolerance + 0.5;
 
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;

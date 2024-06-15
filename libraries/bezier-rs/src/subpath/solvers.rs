@@ -302,6 +302,18 @@ impl<PointId: crate::Identifier> Subpath<PointId> {
 		self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>() != 0
 	}
 
+	/// Does a path contain a point? Based on the non zero winding. Automatically adds a linear segment if the subpath is not closed.
+	pub fn contains_point_autoclose(&self, target_point: DVec2) -> bool {
+		let mut winding = self.iter().map(|bezier| bezier.winding(target_point)).sum::<i32>();
+		if !self.closed {
+			if let [Some(first), Some(last)] = [self.manipulator_groups.first(), self.manipulator_groups.last()] {
+				winding += Bezier::from_linear_dvec2(first.anchor, last.anchor).winding(target_point);
+			}
+		}
+
+		winding != 0
+	}
+
 	/// Randomly places points across the filled surface of this subpath (which is assumed to be closed).
 	/// The `separation_disk_diameter` determines the minimum distance between all points from one another.
 	/// Conceptually, this works by "throwing a dart" at the subpath's bounding box and keeping the dart only if:

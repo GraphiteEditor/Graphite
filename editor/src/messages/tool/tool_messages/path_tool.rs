@@ -352,7 +352,7 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position);
-			shape_editor.select_all_anchors_in_layer(document, layer);
+			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
 			PathToolFsmState::Dragging
 		}
