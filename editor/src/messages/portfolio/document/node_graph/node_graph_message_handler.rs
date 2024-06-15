@@ -58,8 +58,10 @@ pub struct NodeGraphMessageHandler {
 	// State for the context menu popups
 	context_menu: Option<ContextMenuInformation>,
 	/// Click targets for every node in every network by using the path to that node
+	/// TODO: Only store click targets for nodes in the current network
 	pub node_metadata: HashMap<Vec<NodeId>, NodeMetadata>,
 	// Bounding box around all nodes and the node graph to viewport transform for all networks
+	/// TODO: Only store network metadata for the network that is being viewed
 	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
 }
 
