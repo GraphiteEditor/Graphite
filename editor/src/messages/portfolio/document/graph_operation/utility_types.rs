@@ -324,13 +324,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-7, 0));
 		let fill_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-6, 0));
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-6, 0));
 		let shape_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, shape_id, transform_id, 0, shape, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, shape_id, transform_id, 0, shape, IVec2::new(-6, 0));
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -349,13 +349,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-7, 0));
 		let fill_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-6, 0));
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-6, 0));
 		let text_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, text_id, transform_id, 0, text, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, text_id, transform_id, 0, text, IVec2::new(-6, 0));
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -367,10 +367,10 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(node_graph, document_network, transform_id, layer, 1, transform, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(node_graph, document_network, transform_id, layer, 1, transform, IVec2::new(-6, 0));
 
 		let image_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(node_graph, document_network, image_id, transform_id, 0, image, IVec2::new(-8, 0));
+		ModifyInputsContext::insert_node_before(node_graph, document_network, image_id, transform_id, 0, image, IVec2::new(-5, 0));
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

@@ -415,7 +415,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 
 	let brush_node = resolve_document_node_type("Brush")
 		.expect("Brush node does not exist")
-		.to_document_node_default_inputs([], DocumentNodeMetadata::position((-8, 0)));
+		.to_document_node_default_inputs([], DocumentNodeMetadata::position((-6, 0)));
 
 	let id = NodeId(generate_uuid());
 	responses.add(GraphOperationMessage::NewCustomLayer {
