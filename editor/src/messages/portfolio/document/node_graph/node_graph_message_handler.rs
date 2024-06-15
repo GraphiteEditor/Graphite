@@ -21,7 +21,7 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use renderer::{ClickTarget, Quad};
-use web_sys::{window};
+use web_sys::window;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
