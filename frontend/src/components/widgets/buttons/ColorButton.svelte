@@ -1,33 +1,36 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { Color } from "@graphite/wasm-communication/messages";
+	import type { FillChoice } from "@graphite/wasm-communication/messages";
+	import { Color, Gradient } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ value: Color; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
 	let open = false;
 
-	export let value: Color;
+	export let value: FillChoice;
 	export let disabled = false;
 	export let allowNone = false;
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltip: string | undefined = undefined;
+
+	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
 </script>
 
-<LayoutCol class="color-button" classes={{ disabled, none: value.none, open }} {tooltip}>
-	<button {disabled} style:--chosen-color={value.toHexOptionalAlpha()} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
-	{#if disabled && !value.none}
+<LayoutCol class="color-button" classes={{ disabled, none: value instanceof Color ? value.none : false, open }} {tooltip}>
+	<button {disabled} style:--chosen-gradient={chosenGradient} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
+	{#if disabled && value instanceof Color && !value.none}
 		<TextLabel>sRGB</TextLabel>
 	{/if}
 	<ColorPicker
 		{open}
 		on:open={({ detail }) => (open = detail)}
-		color={value}
-		on:color={({ detail }) => {
+		colorOrGradient={value}
+		on:colorOrGradient={({ detail }) => {
 			value = detail;
 			dispatch("value", detail);
 		}}
@@ -71,9 +74,14 @@
 			margin-top: 2px;
 			width: calc(100% - 4px);
 			height: calc(100% - 4px);
-			background: linear-gradient(var(--chosen-color), var(--chosen-color)), var(--color-transparent-checkered-background);
-			background-size: var(--color-transparent-checkered-background-size);
-			background-position: var(--color-transparent-checkered-background-position);
+			background-image: var(--chosen-gradient), var(--color-transparent-checkered-background);
+			background-size:
+				100% 100%,
+				var(--color-transparent-checkered-background-size);
+			background-position:
+				0 0,
+				var(--color-transparent-checkered-background-position);
+			background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 		}
 
 		&.none {

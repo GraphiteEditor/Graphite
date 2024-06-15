@@ -523,7 +523,7 @@
 
 				.entry-icon,
 				.no-icon {
-					margin-left: 4px;
+					margin: 0 4px;
 				}
 
 				.user-input-label {

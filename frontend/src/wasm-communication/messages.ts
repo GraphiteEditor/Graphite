@@ -281,8 +281,62 @@ export type HSV = { h: number; s: number; v: number };
 export type RGBA = { r: number; g: number; b: number; a: number };
 export type RGB = { r: number; g: number; b: number };
 
+export class Gradient {
+	readonly stops!: { position: number; color: Color }[];
+
+	constructor(stops: { position: number; color: Color }[]) {
+		this.stops = stops;
+	}
+
+	toLinearGradientCSS(): string {
+		if (this.stops.length === 1) {
+			return `linear-gradient(to right, ${this.stops[0].color.toHexOptionalAlpha()} 0%, ${this.stops[0].color.toHexOptionalAlpha()} 100%)`;
+		}
+		const pieces = this.stops.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
+		return `linear-gradient(to right, ${pieces.join(", ")})`;
+	}
+
+	toLinearGradientCSSNoAlpha(): string {
+		if (this.stops.length === 1) {
+			return `linear-gradient(to right, ${this.stops[0].color.toHexNoAlpha()} 0%, ${this.stops[0].color.toHexNoAlpha()} 100%)`;
+		}
+		const pieces = this.stops.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
+		return `linear-gradient(to right, ${pieces.join(", ")})`;
+	}
+
+	firstColor(): Color | undefined {
+		return this.stops[0]?.color;
+	}
+
+	lastColor(): Color | undefined {
+		return this.stops[this.stops.length - 1]?.color;
+	}
+
+	atIndex(index: number): { position: number; color: Color } | undefined {
+		return this.stops[index];
+	}
+
+	colorAtIndex(index: number): Color | undefined {
+		return this.stops[index]?.color;
+	}
+
+	positionAtIndex(index: number): number | undefined {
+		return this.stops[index]?.position;
+	}
+}
+
 // All channels range from 0 to 1
 export class Color {
+	readonly red!: number;
+
+	readonly green!: number;
+
+	readonly blue!: number;
+
+	readonly alpha!: number;
+
+	readonly none!: boolean;
+
 	constructor();
 
 	constructor(none: "none");
@@ -330,16 +384,6 @@ export class Color {
 		}
 	}
 
-	readonly red!: number;
-
-	readonly green!: number;
-
-	readonly blue!: number;
-
-	readonly alpha!: number;
-
-	readonly none!: boolean;
-
 	static fromCSS(colorCode: string): Color | undefined {
 		// Allow single-digit hex value inputs
 		let colorValue = colorCode.trim();
@@ -375,6 +419,15 @@ export class Color {
 
 		const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
 		return new Color(r / 255, g / 255, b / 255, a / 255);
+	}
+
+	equals(other: Color): boolean {
+		if (this.none && other.none) return true;
+		return Math.abs(this.red - other.red) < 1e-6 && Math.abs(this.green - other.green) < 1e-6 && Math.abs(this.blue - other.blue) < 1e-6 && Math.abs(this.alpha - other.alpha) < 1e-6;
+	}
+
+	lerp(other: Color, t: number): Color {
+		return new Color(this.red * (1 - t) + other.red * t, this.green * (1 - t) + other.green * t, this.blue * (1 - t) + other.blue * t, this.alpha * (1 - t) + other.alpha * t);
 	}
 
 	toHexNoAlpha(): string | undefined {
@@ -414,29 +467,18 @@ export class Color {
 		};
 	}
 
-	toRgba255(): RGBA | undefined {
-		if (this.none) return undefined;
-
-		return {
-			r: Math.round(this.red * 255),
-			g: Math.round(this.green * 255),
-			b: Math.round(this.blue * 255),
-			a: Math.round(this.alpha * 255),
-		};
-	}
-
 	toRgbCSS(): string | undefined {
-		const rgba = this.toRgba255();
-		if (!rgba) return undefined;
+		const rgb = this.toRgb255();
+		if (!rgb) return undefined;
 
-		return `rgb(${rgba.r}, ${rgba.g}, ${rgba.b})`;
+		return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 	}
 
 	toRgbaCSS(): string | undefined {
-		const rgba = this.toRgba255();
-		if (!rgba) return undefined;
+		const rgb = this.toRgb255();
+		if (!rgb) return undefined;
 
-		return `rgba(${rgba.r}, ${rgba.g}, ${rgba.b}, ${rgba.a})`;
+		return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.alpha})`;
 	}
 
 	toHSV(): HSV | undefined {
@@ -764,10 +806,24 @@ export class CheckboxInput extends WidgetProps {
 }
 
 export class ColorButton extends WidgetProps {
-	@Transform(({ value }: { value: { red: number; green: number; blue: number; alpha: number } | undefined }) =>
-		value === undefined ? new Color("none") : new Color(value.red, value.green, value.blue, value.alpha),
-	)
-	value!: Color;
+	@Transform(({ value }) => {
+		const gradient = value["Gradient"];
+		if (gradient) {
+			const stops = gradient.map(([position, color]: [number, color: { red: number; green: number; blue: number; alpha: number }]) => ({
+				position,
+				color: new Color(color.red, color.green, color.blue, color.alpha),
+			}));
+			return new Gradient(stops);
+		}
+
+		const solid = value["Solid"];
+		if (solid) {
+			return new Color(solid.red, solid.green, solid.blue, solid.alpha);
+		}
+
+		return new Color("none");
+	})
+	value!: FillChoice;
 
 	disabled!: boolean;
 
@@ -778,6 +834,8 @@ export class ColorButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 }
+
+export type FillChoice = Color | Gradient;
 
 type MenuEntryCommon = {
 	label: string;

@@ -27,6 +27,7 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::vector::style::ViewMode;
+use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -1306,9 +1307,68 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
+		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 
-		// TODO: Use this to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
+		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
+			Ok(mut document) => {
+				for (_, node) in &mut document.network.nodes {
+					// Upgrade Fill nodes to the format change in #1778
+					// TODO: Eventually remove this (probably starting late 2024)
+					if node.name == "Fill" && node.inputs.len() == 8 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+						let default_definition_node = node_definition.default_document_node();
+
+						node.implementation = default_definition_node.implementation.clone();
+						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
+
+						node.inputs[0] = old_inputs[0].clone();
+
+						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
+						let TaggedValue::FillType(fill_type) = fill_type else { continue };
+						let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
+						let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
+						let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
+						let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
+						let Some(start) = old_inputs[4].as_value().cloned() else { continue };
+						let TaggedValue::DVec2(start) = start else { continue };
+						let Some(end) = old_inputs[5].as_value().cloned() else { continue };
+						let TaggedValue::DVec2(end) = end else { continue };
+						let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
+						let TaggedValue::DAffine2(transform) = transform else { continue };
+						let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
+						let TaggedValue::GradientStops(positions) = positions else { continue };
+
+						let fill = match (fill_type, solid_color) {
+							(FillType::Solid, None) => Fill::None,
+							(FillType::Solid, Some(color)) => Fill::Solid(color),
+							(FillType::Gradient, _) => Fill::Gradient(Gradient {
+								stops: positions,
+								gradient_type,
+								start,
+								end,
+								transform,
+							}),
+						};
+						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
+						match fill {
+							Fill::None => {
+								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+							}
+							Fill::Solid(color) => {
+								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
+							}
+							Fill::Gradient(gradient) => {
+								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
+							}
+						}
+					}
+				}
+				Ok(document)
+			}
+			Err(e) => Err(e),
+		}
+
+		// TODO: This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
 		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
 		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 		// 	Ok(mut document) => {

@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/wasm-communication/editor";
-	import type { Color } from "@graphite/wasm-communication/messages";
+	import { Color } from "@graphite/wasm-communication/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -38,11 +38,23 @@
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
 		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={primary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker open={primaryOpen} on:open={({ detail }) => (primaryOpen = detail)} color={primary} on:color={({ detail }) => primaryColorChanged(detail)} direction="Right" />
+		<ColorPicker
+			open={primaryOpen}
+			on:open={({ detail }) => (primaryOpen = detail)}
+			colorOrGradient={primary}
+			on:colorOrGradient={({ detail }) => detail instanceof Color && primaryColorChanged(detail)}
+			direction="Right"
+		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
 		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={secondary.toRgbaCSS()} data-floating-menu-spawner="no-hover-transfer" tabindex="0" />
-		<ColorPicker open={secondaryOpen} on:open={({ detail }) => (secondaryOpen = detail)} color={secondary} on:color={({ detail }) => secondaryColorChanged(detail)} direction="Right" />
+		<ColorPicker
+			open={secondaryOpen}
+			on:open={({ detail }) => (secondaryOpen = detail)}
+			colorOrGradient={secondary}
+			on:colorOrGradient={({ detail }) => detail instanceof Color && secondaryColorChanged(detail)}
+			direction="Right"
+		/>
 	</LayoutRow>
 </LayoutCol>
 
@@ -67,8 +79,13 @@
 				padding: 0;
 				box-sizing: border-box;
 				background: linear-gradient(var(--swatch-color), var(--swatch-color)), var(--color-transparent-checkered-background);
-				background-size: var(--color-transparent-checkered-background-size);
-				background-position: var(--color-transparent-checkered-background-position);
+				background-size:
+					100% 100%,
+					var(--color-transparent-checkered-background-size);
+				background-position:
+					0 0,
+					var(--color-transparent-checkered-background-position);
+				background-repeat: no-repeat, var(--color-transparent-checkered-background-repeat);
 				overflow: hidden;
 
 				&:hover,

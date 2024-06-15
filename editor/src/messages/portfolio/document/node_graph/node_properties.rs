@@ -15,7 +15,8 @@ use graphene_core::raster::{
 };
 use graphene_core::text::Font;
 use graphene_core::vector::misc::CentroidType;
-use graphene_core::vector::style::{FillType, GradientType, LineCap, LineJoin};
+use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
+use graphene_std::vector::style::{Fill, FillChoice};
 
 use glam::{DVec2, IVec2, UVec2};
 use graphene_std::vector::misc::BooleanOperation;
@@ -692,206 +693,48 @@ fn line_join_widget(document_node: &DocumentNode, node_id: NodeId, index: usize,
 	LayoutGroup::Row { widgets }
 }
 
-fn fill_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, "Fill Type", FrontendGraphDataType::General, true);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::FillType(fill_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		let entries = vec![
-			RadioEntryData::new("solid")
-				.label("Solid")
-				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Solid), node_id, index))
-				.on_commit(commit_value),
-			RadioEntryData::new("gradient")
-				.label("Gradient")
-				.on_update(update_value(move |_| TaggedValue::FillType(FillType::Gradient), node_id, index))
-				.on_commit(commit_value),
-		];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries)
-				.selected_index(match fill_type {
-					FillType::Solid => Some(0),
-					FillType::Gradient => Some(1),
-				})
-				.widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
-}
-
-fn gradient_type_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> LayoutGroup {
-	let mut widgets = start_widgets(document_node, node_id, index, "Gradient Type", FrontendGraphDataType::General, true);
-	if let &NodeInput::Value {
-		tagged_value: TaggedValue::GradientType(gradient_type),
-		exposed: false,
-	} = &document_node.inputs[index]
-	{
-		let entries = vec![
-			RadioEntryData::new("linear")
-				.label("Linear")
-				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Linear), node_id, index))
-				.on_commit(commit_value),
-			RadioEntryData::new("radial")
-				.label("Radial")
-				.on_update(update_value(move |_| TaggedValue::GradientType(GradientType::Radial), node_id, index))
-				.on_commit(commit_value),
-		];
-
-		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(gradient_type as u32)).widget_holder(),
-		]);
-	}
-	LayoutGroup::Row { widgets }
-}
-
-fn gradient_row(row: &mut Vec<WidgetHolder>, positions: &Vec<(f64, Color)>, index: usize, node_id: NodeId, input_index: usize) {
-	let label = TextLabel::new(format!("Gradient: {:.0}%", positions[index].0 * 100.)).tooltip("Adjustable by dragging the gradient stops in the viewport with the Gradient tool active");
-	row.push(label.widget_holder());
-	let on_update = {
-		let positions = positions.clone();
-		move |color_button: &ColorButton| {
-			let mut new_positions = positions.clone();
-			new_positions[index].1 = color_button.value.unwrap();
-			TaggedValue::GradientPositions(new_positions)
-		}
-	};
-	let color = ColorButton::new(Some(positions[index].1))
-		.on_update(update_value(on_update, node_id, input_index))
-		.on_commit(commit_value)
-		.allow_none(false);
-	add_blank_assist(row);
-	row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-	row.push(color.widget_holder());
-
-	let mut skip_separator = false;
-	// Remove button
-	if positions.len() != index + 1 && index != 0 {
-		let on_update = {
-			let in_positions = positions.clone();
-			move |_: &IconButton| {
-				let mut new_positions = in_positions.clone();
-				new_positions.remove(index);
-				TaggedValue::GradientPositions(new_positions)
-			}
-		};
-
-		skip_separator = true;
-		row.push(Separator::new(SeparatorType::Related).widget_holder());
-		row.push(
-			IconButton::new("Remove", 16)
-				.tooltip("Remove this gradient stop")
-				.on_update(update_value(on_update, node_id, input_index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		);
-	}
-	// Add button
-	if positions.len() != index + 1 {
-		let on_update = {
-			let positions = positions.clone();
-			move |_: &IconButton| {
-				let mut new_positions = positions.clone();
-
-				// Blend linearly between the two colors.
-				let get_color = |index: usize| match (new_positions[index].1, new_positions.get(index + 1).map(|x| x.1)) {
-					(a, Some(b)) => Color::from_rgbaf32_unchecked((a.r() + b.r()) / 2., (a.g() + b.g()) / 2., (a.b() + b.b()) / 2., ((a.a() + b.a()) / 2.).clamp(0., 1.)),
-					(_, None) => Color::WHITE,
-				};
-				let get_pos = |index: usize| (new_positions[index].0 + new_positions.get(index + 1).map(|v| v.0).unwrap_or(1.)) / 2.;
-
-				new_positions.push((get_pos(index), get_color(index)));
-
-				new_positions.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
-				TaggedValue::GradientPositions(new_positions)
-			}
-		};
-
-		if !skip_separator {
-			row.push(Separator::new(SeparatorType::Related).widget_holder());
-		}
-		row.push(
-			IconButton::new("Add", 16)
-				.tooltip("Add a gradient stop after this")
-				.on_update(update_value(on_update, node_id, input_index))
-				.on_commit(commit_value)
-				.widget_holder(),
-		);
-	}
-}
-
-fn gradient_positions(rows: &mut Vec<LayoutGroup>, document_node: &DocumentNode, name: &str, node_id: NodeId, input_index: usize) {
-	let mut widgets = vec![expose_widget(node_id, input_index, FrontendGraphDataType::General, document_node.inputs[input_index].is_exposed())];
-	if let NodeInput::Value {
-		tagged_value: TaggedValue::GradientPositions(gradient_positions),
-		exposed: false,
-	} = &document_node.inputs[input_index]
-	{
-		for index in 0..gradient_positions.len() {
-			gradient_row(&mut widgets, gradient_positions, index, node_id, input_index);
-
-			let widgets = std::mem::take(&mut widgets);
-			rows.push(LayoutGroup::Row { widgets });
-		}
-		let on_update = {
-			let gradient_positions = gradient_positions.clone();
-			move |_: &TextButton| {
-				let mut new_positions = gradient_positions.clone();
-				new_positions = new_positions.iter().map(|(distance, color)| (1. - distance, *color)).collect();
-				new_positions.reverse();
-				TaggedValue::GradientPositions(new_positions)
-			}
-		};
-		let invert = TextButton::new("Invert")
-			.icon(Some("Swap".into()))
-			.tooltip("Reverse the order of each color stop")
-			.on_update(update_value(on_update, node_id, input_index))
-			.on_commit(commit_value)
-			.widget_holder();
-
-		if widgets.is_empty() {
-			widgets.push(TextLabel::new("").widget_holder());
-			add_blank_assist(&mut widgets);
-		}
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-		widgets.push(invert);
-
-		rows.push(LayoutGroup::Row { widgets });
-	} else {
-		widgets.push(TextLabel::new(name).widget_holder());
-		rows.push(LayoutGroup::Row { widgets })
-	}
-}
-
 fn color_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, color_props: ColorButton, blank_assist: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(document_node, node_id, index, name, FrontendGraphDataType::General, blank_assist);
 
-	if let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] {
-		if let &TaggedValue::Color(x) = tagged_value {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				color_props
-					.value(Some(x as Color))
-					.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.unwrap()), node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			])
-		} else if let &TaggedValue::OptionalColor(x) = tagged_value {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				color_props
-					.value(x)
-					.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value), node_id, index))
-					.on_commit(commit_value)
-					.widget_holder(),
-			])
-		}
+	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
+	let NodeInput::Value { tagged_value, exposed: false } = &document_node.inputs[index] else {
+		return LayoutGroup::Row { widgets };
+	};
+
+	widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	match tagged_value {
+		TaggedValue::Color(color) => widgets.push(
+			color_props
+				.value(FillChoice::Solid(*color))
+				.on_update(update_value(|x: &ColorButton| TaggedValue::Color(x.value.as_solid().unwrap_or_default()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		TaggedValue::OptionalColor(color) => widgets.push(
+			color_props
+				.value(match color {
+					Some(color) => FillChoice::Solid(*color),
+					None => FillChoice::None,
+				})
+				.on_update(update_value(|x: &ColorButton| TaggedValue::OptionalColor(x.value.as_solid()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		TaggedValue::GradientStops(ref x) => widgets.push(
+			color_props
+				.value(FillChoice::Gradient(x.clone()))
+				.on_update(update_value(
+					|x: &ColorButton| TaggedValue::GradientStops(x.value.as_gradient().cloned().unwrap_or_default()),
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		_ => {}
 	}
+
 	LayoutGroup::Row { widgets }
 }
 
@@ -2460,37 +2303,141 @@ pub fn morph_properties(document_node: &DocumentNode, node_id: NodeId, _context:
 
 /// Fill Node Widgets LayoutGroup
 pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let fill_type_index = 1;
-	let solid_color_index = 2;
-	let gradient_type_index = 3;
-	let positions_index = 7;
+	let fill_index = 1;
+	let backup_color_index = 2;
+	let backup_gradient_index = 3;
 
-	let fill_type = if let &NodeInput::Value {
-		tagged_value: TaggedValue::FillType(fill_type),
-		..
-	} = &document_node.inputs[fill_type_index]
-	{
-		Some(fill_type)
+	let mut widgets_first_row = start_widgets(document_node, node_id, fill_index, "Fill", FrontendGraphDataType::General, true);
+
+	let (fill, backup_color, backup_gradient) = if let (
+		NodeInput::Value {
+			tagged_value: TaggedValue::Fill(fill),
+			..
+		},
+		NodeInput::Value {
+			tagged_value: TaggedValue::OptionalColor(backup_color),
+			..
+		},
+		NodeInput::Value {
+			tagged_value: TaggedValue::Gradient(backup_gradient),
+			..
+		},
+	) = (
+		&document_node.inputs[fill_index],
+		&document_node.inputs[backup_color_index],
+		&document_node.inputs[backup_gradient_index],
+	) {
+		(fill, backup_color, backup_gradient)
 	} else {
-		None
+		return vec![LayoutGroup::Row { widgets: widgets_first_row }];
 	};
+	let fill2 = fill.clone();
+	let backup_color_fill: Fill = backup_color.clone().into();
+	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
-	let mut widgets = Vec::new();
-	let gradient = fill_type == Some(graphene_core::vector::style::FillType::Gradient);
-	let solid = fill_type == Some(graphene_core::vector::style::FillType::Solid);
+	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	widgets_first_row.push(
+		ColorButton::default()
+			.value(fill.clone().into())
+			.on_update(move |x: &ColorButton| {
+				Message::Batched(Box::new([
+					match &fill2 {
+						Fill::None => NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: backup_color_index,
+							value: TaggedValue::OptionalColor(None),
+						}
+						.into(),
+						Fill::Solid(color) => NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: backup_color_index,
+							value: TaggedValue::OptionalColor(Some(color.clone())),
+						}
+						.into(),
+						Fill::Gradient(gradient) => NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: backup_gradient_index,
+							value: TaggedValue::Gradient(gradient.clone()),
+						}
+						.into(),
+					},
+					NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: fill_index,
+						value: TaggedValue::Fill(x.value.to_fill(fill2.as_gradient())),
+					}
+					.into(),
+				]))
+			})
+			.on_commit(commit_value)
+			.widget_holder(),
+	);
+	let mut widgets = vec![LayoutGroup::Row { widgets: widgets_first_row }];
 
-	let fill_type_switch = fill_type_widget(document_node, node_id, fill_type_index);
+	let fill_type_switch = {
+		let mut row = vec![TextLabel::new("").widget_holder()];
+		add_blank_assist(&mut row);
+
+		let entries = vec![
+			RadioEntryData::new("solid")
+				.label("Solid")
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_color_fill.clone()), node_id, fill_index))
+				.on_commit(commit_value),
+			RadioEntryData::new("gradient")
+				.label("Gradient")
+				.on_update(update_value(move |_| TaggedValue::Fill(backup_gradient_fill.clone()), node_id, fill_index))
+				.on_commit(commit_value),
+		];
+
+		row.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(if fill.as_gradient().is_some() { 1 } else { 0 })).widget_holder(),
+		]);
+
+		LayoutGroup::Row { widgets: row }
+	};
 	widgets.push(fill_type_switch);
 
-	if fill_type.is_none() || solid {
-		let solid_color = color_widget(document_node, node_id, solid_color_index, "Color", ColorButton::default(), true);
-		widgets.push(solid_color);
-	}
+	if let Fill::Gradient(gradient) = fill {
+		let mut row = vec![TextLabel::new("").widget_holder()];
+		add_blank_assist(&mut row);
 
-	if fill_type.is_none() || gradient {
-		let gradient_type_switch = gradient_type_widget(document_node, node_id, gradient_type_index);
-		widgets.push(gradient_type_switch);
-		gradient_positions(&mut widgets, document_node, "Gradient Positions", node_id, positions_index);
+		let new_gradient1 = gradient.clone();
+		let new_gradient2 = gradient.clone();
+
+		let entries = vec![
+			RadioEntryData::new("linear")
+				.label("Linear")
+				.on_update(update_value(
+					move |_| {
+						let mut new_gradient = new_gradient1.clone();
+						new_gradient.gradient_type = GradientType::Linear;
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					fill_index,
+				))
+				.on_commit(commit_value),
+			RadioEntryData::new("radial")
+				.label("Radial")
+				.on_update(update_value(
+					move |_| {
+						let mut new_gradient = new_gradient2.clone();
+						new_gradient.gradient_type = GradientType::Radial;
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					fill_index,
+				))
+				.on_commit(commit_value),
+		];
+
+		row.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(entries).selected_index(Some(gradient.gradient_type as u32)).widget_holder(),
+		]);
+
+		widgets.push(LayoutGroup::Row { widgets: row });
 	}
 
 	widgets

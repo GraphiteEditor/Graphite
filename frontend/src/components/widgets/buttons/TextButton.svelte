@@ -5,7 +5,6 @@
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	let self: MenuList;
@@ -73,9 +72,6 @@
 			{#if hoverIcon && !disabled}
 				<IconLabel icon={hoverIcon} />
 			{/if}
-		{/if}
-		{#if icon && label}
-			<Separator type={flush ? "Unrelated" : "Related"} />
 		{/if}
 		{#if label}
 			<TextLabel>{label}</TextLabel>
@@ -161,22 +157,26 @@
 			}
 		}
 
-		.widget-span.row > & + .text-button,
-		.layout-row > & + .text-button {
-			margin-left: 8px;
-		}
-
-		.widget-span.column > & + .text-button,
-		.layout-column > & + .text-button {
-			margin-top: 8px;
-		}
-
 		.icon-label {
 			fill: var(--button-text-color);
+
+			+ .text-label {
+				margin-left: 8px;
+			}
 		}
 
 		.text-label {
 			overflow: hidden;
+		}
+
+		// Custom styling for when multiple TextButton widgets are used next to one another in a row or column
+		.widget-span.row > & + .text-button,
+		.layout-row > & + .text-button {
+			margin-left: 8px;
+		}
+		.widget-span.column > & + .text-button,
+		.layout-column > & + .text-button {
+			margin-top: 8px;
 		}
 	}
 </style>

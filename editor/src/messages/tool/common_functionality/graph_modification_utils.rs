@@ -7,7 +7,7 @@ use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput,
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
 use graphene_core::uuid::ManipulatorGroupId;
-use graphene_core::vector::style::{FillType, Gradient};
+use graphene_core::vector::style::Gradient;
 use graphene_core::Color;
 
 use glam::DVec2;
@@ -95,38 +95,21 @@ pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &
 
 /// Get the current gradient of a layer from the closest Fill node
 pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Gradient> {
+	let fill_index = 1;
+
 	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
-	let TaggedValue::FillType(FillType::Gradient) = inputs.get(1)?.as_value()? else {
+	let TaggedValue::Fill(graphene_std::vector::style::Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::GradientType(gradient_type) = inputs.get(3)?.as_value()? else {
-		return None;
-	};
-	let TaggedValue::DVec2(start) = inputs.get(4)?.as_value()? else {
-		return None;
-	};
-	let TaggedValue::DVec2(end) = inputs.get(5)?.as_value()? else {
-		return None;
-	};
-	let TaggedValue::DAffine2(transform) = inputs.get(6)?.as_value()? else {
-		return None;
-	};
-	let TaggedValue::GradientPositions(positions) = inputs.get(7)?.as_value()? else {
-		return None;
-	};
-	Some(Gradient {
-		start: *start,
-		end: *end,
-		transform: *transform,
-		positions: positions.clone(),
-		gradient_type: *gradient_type,
-	})
+	Some(gradient.clone())
 }
 
 /// Get the current fill of a layer from the closest Fill node
 pub fn get_fill_color(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Color> {
+	let fill_index = 1;
+
 	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
-	let TaggedValue::Color(color) = inputs.get(2)?.as_value()? else {
+	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(*color)
