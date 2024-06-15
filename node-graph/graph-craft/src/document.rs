@@ -5,7 +5,7 @@ use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::IVec2;
+use glam::{DAffine2, IVec2};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -125,6 +125,7 @@ where
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
+	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
@@ -135,7 +136,10 @@ pub struct DocumentNode {
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
-	///   In the root network, it is resolved when evaluating the borrow tree.
+	///
+	/// In the root network, it is resolved when evaluating the borrow tree.
+	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
+	// #[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
 	///
@@ -228,7 +232,7 @@ pub struct DocumentNode {
 	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer.
+	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
 	#[serde(default)]
 	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
@@ -237,7 +241,7 @@ pub struct DocumentNode {
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI.
+	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
@@ -287,7 +291,7 @@ impl Default for DocumentNode {
 			is_layer: false,
 			visible: true,
 			locked: Default::default(),
-			metadata: Default::default(),
+			metadata: DocumentNodeMetadata::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
 			original_location: OriginalLocation::default(),
@@ -644,7 +648,7 @@ fn default_export_metadata() -> (NodeId, IVec2) {
 	(NodeId(generate_uuid()), IVec2::new(8, -4))
 }
 
-#[derive(Clone, Debug, PartialEq, DynAny)]
+#[derive(Clone, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 /// A network (subgraph) of nodes containing each [`DocumentNode`] and its ID, as well as list mapping each export to its connected node, or a value if disconnected
 pub struct NodeNetwork {
@@ -662,6 +666,9 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
+	/// Transform from node graph space to viewport space.
+	#[serde(default)]
+	pub node_graph_to_viewport: DAffine2,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -684,9 +691,16 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
+			node_graph_to_viewport: DAffine2::default(),
 		}
 	}
 }
+impl PartialEq for NodeNetwork {
+	fn eq(&self, other: &Self) -> bool {
+		self.exports == other.exports && self.previewing == other.previewing && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
+	}
+}
+
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
@@ -774,26 +788,27 @@ impl NodeNetwork {
 	}
 
 	/// Appends a new node to the network after the output node and sets it as the new output
-	pub fn push_node(&mut self, mut node: DocumentNode) -> NodeId {
-		let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
-		// Set the correct position for the new node
-		if node.metadata.position == IVec2::default() {
-			if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
-				node.metadata.position = pos + IVec2::new(8, 0);
-			}
-		}
-		if !self.exports.is_empty() {
-			let input = self.exports[0].clone();
-			if node.inputs.is_empty() {
-				node.inputs.push(input);
-			} else {
-				node.inputs[0] = input;
-			}
-		}
-		self.nodes.insert(id, node);
-		self.exports = vec![NodeInput::node(id, 0)];
-		id
-	}
+	// pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
+	// 	let id = NodeId(self.nodes.len().try_into().expect("Too many nodes in network"));
+	// 	// Set the correct position for the new node
+	// 	if node.metadata.position == IVec2::default() {
+	// 		if let Some(pos) = self.get_root_node().and_then(|root_node| self.nodes.get(&root_node.id)).map(|n| n.metadata.position) {
+	// 			node.metadata.position = pos + IVec2::new(8, 0);
+	// 		}
+	// 	}
+	// 	if !self.exports.is_empty() {
+	// 		let input = self.exports[0].clone();
+	// 		if node.inputs.is_empty() {
+	// 			node.inputs.push(input);
+	// 		} else {
+	// 			node.inputs[0] = input;
+	// 		}
+	// 	}
+	//  // Use node_graph.insert_node
+	// 	self.insert_node(id, node);
+	// 	self.exports = vec![NodeInput::node(id, 0)];
+	// 	id
+	// }
 
 	/// Get the nested network given by the path of node ids
 	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
@@ -815,7 +830,7 @@ impl NodeNetwork {
 		network
 	}
 
-	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path
+	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
@@ -824,7 +839,7 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path
+	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
 	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
 			Some(self)

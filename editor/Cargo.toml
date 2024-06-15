@@ -53,6 +53,7 @@ wasm-bindgen-futures = { workspace = true, optional = true }
 once_cell = "1.13.0"
 web-sys = { workspace = true, features = [
 	"Document",
+	"DomRect",
 	"Element",
 	"HtmlCanvasElement",
 	"CanvasRenderingContext2d",

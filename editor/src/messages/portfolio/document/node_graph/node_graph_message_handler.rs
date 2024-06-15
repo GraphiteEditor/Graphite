@@ -1,4 +1,4 @@
-use super::utility_types::{FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -6,18 +6,22 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::graph_operation::load_network_structure;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::node_metadata::{NetworkMetadata, NodeMetadata};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 
+use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
-use glam::IVec2;
+use glam::{DAffine2, DVec2, IVec2, UVec2};
+use renderer::{ClickTarget, Quad};
+use web_sys::window;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -27,17 +31,38 @@ pub struct NodeGraphHandlerData<'a> {
 	pub document_id: DocumentId,
 	pub document_name: &'a str,
 	pub collapsed: &'a mut CollapsedLayers,
-	pub input: &'a InputPreprocessorMessageHandler,
+	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct NodeGraphMessageHandler {
 	pub network: Vec<NodeId>,
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
+	drag_start: Option<DragStart>,
+	// Used to add a transaction for the first node move when dragging
+	begin_dragging: bool,
+	// Stored in pixel coordinates
+	box_selection_start: Option<UVec2>,
+	disconnecting: Option<(NodeId, usize)>,
+	initial_disconnecting: bool,
+	// Node to select on pointer up if multiple nodes are selected and they were not dragged
+	select_if_not_dragged: Option<NodeId>,
+	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
+	wire_in_progress_from_connector: Option<(DVec2, bool)>,
+	// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
+	wire_in_progress_to_connector: Option<(DVec2, bool)>,
+	// State for the context menu popups
+	context_menu: Option<ContextMenuInformation>,
+	/// Click targets for every node in every network by using the path to that node
+	/// TODO: Only store click targets for nodes in the current network
+	pub node_metadata: HashMap<Vec<NodeId>, NodeMetadata>,
+	// Bounding box around all nodes and the node graph to viewport transform for all networks
+	/// TODO: Only store network metadata for the network that is being viewed
+	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -50,6 +75,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			document_id,
 			collapsed,
 			graph_view_overlay_open,
+			ipp,
 			..
 		} = data;
 
@@ -98,7 +124,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							input_index,
 							input,
 						});
-
 						if network.connected_to_output(input_node_id) {
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 						}
@@ -166,6 +191,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
 			}
+			NodeGraphMessage::CloseCreateNodeMenu => {
+				self.context_menu = None;
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
+				self.wire_in_progress_from_connector = None;
+				self.wire_in_progress_to_connector = None;
+				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+			}
 			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
@@ -177,13 +211,49 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				responses.add(DocumentMessage::StartTransaction);
-
 				let document_node = document_node_type.to_document_node(
 					document_node_type.inputs.iter().map(|input| input.default.clone()),
-					graph_craft::document::DocumentNodeMetadata::position((x, y)),
+					graph_craft::document::DocumentNodeMetadata::position((x / 24, y / 24)),
 				);
+				self.context_menu = None;
+
+				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
+
+				if let Some(wire_in_progress) = self.wire_in_progress_from_connector {
+					let Some((from_node, output_index)) = NodeGraphMessageHandler::get_key_from_point(
+						&self
+							.node_metadata
+							.iter()
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.flat_map(|(path, node_metadata)| {
+								// TODO: There should be a way to do this without cloning
+								node_metadata
+									.output_click_targets
+									.iter()
+									.enumerate()
+									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+							})
+							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+						wire_in_progress.0,
+					) else {
+						log::error!("Could not get output form connector start");
+						return;
+					};
+					responses.add(NodeGraphMessage::ConnectNodesByWire {
+						output_node: from_node,
+						output_node_connector_index: output_index,
+						input_node: node_id,
+						input_node_connector_index: 0,
+					});
+					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_to_connector = None;
+				}
+
+				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Cut => {
@@ -191,7 +261,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				ModifyInputsContext::delete_nodes(document_network, selected_nodes, node_ids, reconnect, responses, self.network.clone(), &self.resolved_types);
+				ModifyInputsContext::delete_nodes(self, document_network, selected_nodes, node_ids, reconnect, responses, self.network.clone());
 
 				// Load structure if the selected network is the document network
 				if self.network.is_empty() {
@@ -252,16 +322,67 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::EnterNestedNetwork { node } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node)) else {
+			NodeGraphMessage::EnterNestedNetwork => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else {
 					return;
 				};
-				if network.imports_metadata.0 == node || network.exports_metadata.0 == node {
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let Some(node_id) = NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter_map(|(path, node_metadata)| {
+							let mut path = path.clone();
+							let node_id = path.pop().expect("Path to node should not be empty");
+							if *path == self.network {
+								// TODO: There should be a way to do this without cloning
+								Some((node_id, node_metadata.node_click_target.clone()))
+							} else {
+								None
+							}
+						})
+						.collect::<HashMap<NodeId, ClickTarget>>(),
+					point,
+				) else {
+					return;
+				};
+				if NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter_map(|(path, node_metadata)| {
+							let mut path = path.clone();
+							let node_id = path.pop().expect("Path to node should not be empty");
+							if *path == self.network {
+								// TODO: There should be a way to do this without cloning
+								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
+									Some((node_id, visibility_click_target.clone()))
+								} else {
+									None
+								}
+							} else {
+								None
+							}
+						})
+						.collect::<HashMap<NodeId, ClickTarget>>(),
+					point,
+				)
+				.is_some()
+				{
+					return;
+				};
+				if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
 					return;
 				}
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					return;
+				};
 
-				if network.nodes.get(&node).and_then(|node| node.implementation.get_network()).is_some() {
-					self.network.push(node);
+				if let DocumentNodeImplementation::Network(_) = node.implementation {
+					self.network.push(node_id);
+					self.update_all_click_targets(document_network, self.network.clone());
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 
 				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
@@ -312,8 +433,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for _ in 0..steps_back {
 					self.network.pop();
 				}
+				// TODO: Find a better way to update click targets when undoing/redoing
+				self.update_all_click_targets(document_network, self.network.clone());
 
-				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+				responses.add(DocumentMessage::UpdateDocumentTransform {
+					transform: network.node_graph_to_viewport,
+				});
+				responses.add(NodeGraphMessage::SendGraph);
 				self.update_selected(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
@@ -343,10 +472,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, document_node } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
-					return;
-				};
-				network.nodes.insert(node_id, document_node);
+				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
+				self.insert_node(node_id, document_node, document_network, &network_path);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				post_node_id,
@@ -405,20 +532,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
+				let network_path = if selected_nodes.selected_nodes_ref().iter().any(|node_id| document_network.nodes.contains_key(node_id)) {
+					Vec::new()
+				} else {
+					self.network.clone()
+				};
+
+				let Some(network) = document_network.nested_network(&network_path) else {
 					warn!("No network");
 					return;
 				};
 				for node_id in selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>() {
-					if network.exports_metadata.0 == node_id {
+					if document_network.nested_network(&network_path).unwrap().exports_metadata.0 == node_id {
+						let network = document_network.nested_network_mut(&network_path).unwrap();
 						network.exports_metadata.1 += IVec2::new(displacement_x, displacement_y);
-					} else if network.imports_metadata.0 == node_id {
+					} else if document_network.nested_network(&network_path).unwrap().imports_metadata.0 == node_id {
+						let network = document_network.nested_network_mut(&network_path).unwrap();
 						network.imports_metadata.1 += IVec2::new(displacement_x, displacement_y);
-					} else if let Some(node) = network.nodes.get_mut(&node_id) {
+					} else if let Some(node) = document_network.nested_network_mut(&network_path).unwrap().nodes.get_mut(&node_id) {
 						node.metadata.position += IVec2::new(displacement_x, displacement_y)
 					}
+					self.update_click_target(node_id, document_network, network_path.clone());
 				}
 
+				// TODO: Cache all nodes and wires in the network, only update the moved node/connected wires, and send all nodes to the front end.
 				// Since document structure doesn't change, just update the nodes
 				if graph_view_overlay_open {
 					let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
@@ -428,6 +565,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let wires = Self::collect_wires(network);
 					let nodes = self.collect_nodes(document_network, network, &wires);
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
@@ -475,6 +614,671 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let nodes = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
+			NodeGraphMessage::PointerDown {
+				shift_click,
+				control_click,
+				alt_click,
+				right_click,
+			} => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+
+				if let Some(clicked_visibility) = NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter_map(|(path, node_metadata)| {
+							let mut path = path.clone();
+							let node_id = path.pop().expect("Path to node should not be empty");
+							if *path == self.network {
+								// TODO: There should be a way to do this without cloning
+								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
+									Some((node_id, visibility_click_target.clone()))
+								} else {
+									None
+								}
+							} else {
+								None
+							}
+						})
+						.collect::<HashMap<NodeId, ClickTarget>>(),
+					point,
+				) {
+					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					return;
+				}
+				let clicked_id = NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter_map(|(path, node_metadata)| {
+							let mut path = path.clone();
+							let node_id = path.pop().expect("Path to node should not be empty");
+							if *path == self.network {
+								// TODO: There should be a way to do this without cloning
+								Some((node_id, node_metadata.node_click_target.clone()))
+							} else {
+								None
+							}
+						})
+						.collect::<HashMap<NodeId, ClickTarget>>(),
+					point,
+				);
+				let clicked_input = NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+						.flat_map(|(path, node_metadata)| {
+							// TODO: There should be a way to do this without cloning
+							node_metadata
+								.input_click_targets
+								.iter()
+								.enumerate()
+								.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+						})
+						.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+					point,
+				);
+				let clicked_output = NodeGraphMessageHandler::get_key_from_point(
+					&self
+						.node_metadata
+						.iter()
+						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+						.flat_map(|(path, node_metadata)| {
+							// TODO: There should be a way to do this without cloning
+							node_metadata
+								.output_click_targets
+								.iter()
+								.enumerate()
+								.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+						})
+						.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+					point,
+				);
+
+				// Create the add node popup on right click, then exit
+				if right_click {
+					let context_menu_data = if let Some((node_id, node)) = clicked_id.and_then(|node_id| network.nodes.get(&node_id).map(|node| (node_id, node))) {
+						ContextMenuData::ToggleLayer {
+							node_id: node_id,
+							currently_is_node: !node.is_layer,
+						}
+					} else {
+						ContextMenuData::CreateNode
+					};
+
+					// TODO: Create function
+					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
+						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
+						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+					} else {
+						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
+						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+					};
+
+					let context_menu_coordinates = ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32);
+
+					self.context_menu = Some(ContextMenuInformation {
+						context_menu_coordinates,
+						context_menu_data,
+					});
+
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+
+					return;
+				}
+
+				// If the user is clicking on the create nodes list or context menu, break here
+				if let Some(context_menu) = &self.context_menu {
+					let context_menu_viewport = network
+						.node_graph_to_viewport
+						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
+					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
+						// Height and width for toggle layer menu
+						(173., 34.)
+					} else {
+						// Height and width for create node menu
+						(180., 200.)
+					};
+					let context_menu_subpath = bezier_rs::Subpath::new_rounded_rect(
+						DVec2::new(context_menu_viewport.x, context_menu_viewport.y),
+						DVec2::new(context_menu_viewport.x + width, context_menu_viewport.y + height),
+						[5.; 4],
+					);
+					let context_menu_click_target = ClickTarget {
+						subpath: context_menu_subpath,
+						stroke_width: 1.,
+					};
+					if context_menu_click_target.intersect_point(viewport_location, DAffine2::IDENTITY) {
+						return;
+					}
+				}
+
+				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
+				if !right_click && self.context_menu.is_some() {
+					self.context_menu = None;
+					self.wire_in_progress_from_connector = None;
+					self.wire_in_progress_to_connector = None;
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				}
+
+				// Alt-click sets the clicked node as previewed
+				if alt_click {
+					if let Some(clicked_node) = clicked_id {
+						responses.add(NodeGraphMessage::TogglePreview { node_id: clicked_node });
+						return;
+					}
+				}
+
+				// Input: Begin moving an existing wire
+				if let Some(clicked_input) = clicked_input {
+					self.initial_disconnecting = true;
+					let input_index = NodeGraphMessageHandler::get_input_index(network, clicked_input.0, clicked_input.1);
+					if let Some(NodeInput::Node { node_id, output_index, .. }) = network
+						.nodes
+						.get(&clicked_input.0)
+						.and_then(|clicked_node| clicked_node.inputs.get(input_index))
+						.or(network.exports.get(input_index))
+					{
+						self.disconnecting = Some((clicked_input.0, clicked_input.1));
+						let Some(output_node) = network.nodes.get(&node_id) else {
+							log::error!("Could not find node {}", node_id);
+							return;
+						};
+						self.wire_in_progress_from_connector = if output_node.is_layer {
+							Some((
+								DVec2::new(output_node.metadata.position.x as f64 * 24. + 2. * 24., output_node.metadata.position.y as f64 * 24. - 24. / 2.),
+								true,
+							))
+						} else {
+							// The 4.95 is to ensure wire generated here aligns with the frontend wire when the mouse is moved within a node connector, but the wire is not disconnected yet. Eventually all wires should be generated in Rust so that all positions will be aligned.
+							Some((
+								DVec2::new(
+									output_node.metadata.position.x as f64 * 24. + 5. * 24. + 4.95,
+									output_node.metadata.position.y as f64 * 24. + 24. + 24. * *output_index as f64,
+								),
+								false,
+							))
+						};
+					} else if let Some(NodeInput::Network { import_index, .. }) = network.nodes.get(&clicked_input.0).and_then(|clicked_node| clicked_node.inputs.get(input_index)) {
+						self.disconnecting = Some((clicked_input.0, clicked_input.1));
+
+						self.wire_in_progress_from_connector =
+							// The 4.95 is to ensure wire generated here aligns with the frontend wire when the mouse is moved within a node connector, but the wire is not disconnected yet. Eventually all wires should be generated in Rust so that all positions will be aligned.
+							Some((
+								DVec2::new(
+									network.imports_metadata.1.x as f64 * 24. + 5. * 24. + 4.95,
+									network.imports_metadata.1.y as f64 * 24. + 48. + 24. * *import_index as f64,
+								),
+								false,
+							))
+					}
+
+					return;
+				}
+
+				if let Some(clicked_output) = clicked_output {
+					self.initial_disconnecting = false;
+
+					if let Some(clicked_output_node) = network.nodes.get(&clicked_output.0) {
+						// Disallow creating additional vertical output wires from an already-connected layer
+						if clicked_output_node.is_layer && clicked_output_node.has_primary_output {
+							for (_, node) in &network.nodes {
+								if node
+									.inputs
+									.iter()
+									.chain(network.exports.iter())
+									.any(|node_input| node_input.as_node().is_some_and(|node_id| node_id == clicked_output.0))
+								{
+									return;
+								}
+							}
+						}
+						self.wire_in_progress_from_connector = if clicked_output_node.is_layer {
+							Some((
+								DVec2::new(
+									clicked_output_node.metadata.position.x as f64 * 24. + 2. * 24.,
+									clicked_output_node.metadata.position.y as f64 * 24. - 12.,
+								),
+								true,
+							))
+						} else {
+							Some((
+								DVec2::new(
+									clicked_output_node.metadata.position.x as f64 * 24. + 5. * 24.,
+									clicked_output_node.metadata.position.y as f64 * 24. + 24. + 24. * clicked_output.1 as f64,
+								),
+								false,
+							))
+						};
+					} else {
+						// Imports node is clicked
+						self.wire_in_progress_from_connector = Some((
+							DVec2::new(
+								network.imports_metadata.1.x as f64 * 24. + 5. * 24.,
+								network.imports_metadata.1.y as f64 * 24. + 48. + 24. * clicked_output.1 as f64,
+							),
+							false,
+						));
+					};
+
+					return;
+				}
+
+				if let Some(clicked_id) = clicked_id {
+					let mut updated_selected = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
+					let mut modified_selected = false;
+
+					// Add to/remove from selection if holding Shift or Ctrl
+					if shift_click || control_click {
+						modified_selected = true;
+
+						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
+						// Remove from selection if already selected
+						if let Some(index) = index {
+							updated_selected.remove(index);
+						}
+						// Add to selection if not already selected. Necessary in order to drag multiple nodes
+						else {
+							updated_selected.push(clicked_id);
+						};
+					}
+					// Replace selection with a non-selected node
+					else if !updated_selected.contains(&clicked_id) {
+						modified_selected = true;
+						updated_selected = vec![clicked_id];
+					}
+					// Replace selection (of multiple nodes including this one) with just this one, but only upon pointer up if the user didn't drag the selected nodes
+					else {
+						self.select_if_not_dragged = Some(clicked_id);
+					}
+
+					// If this node is selected (whether from before or just now), prepare it for dragging
+					if updated_selected.contains(&clicked_id) {
+						let drag_start = DragStart {
+							start_x: point.x,
+							start_y: point.y,
+							round_x: 0,
+							round_y: 0,
+						};
+
+						self.drag_start = Some(drag_start);
+						self.begin_dragging = true;
+					}
+
+					// Update the selection if it was modified
+					if modified_selected {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: updated_selected })
+					}
+
+					return;
+				}
+
+				// Clicked on the graph background so we box select
+				if !shift_click {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
+				}
+				self.box_selection_start = Some(UVec2::new(viewport_location.x.round().abs() as u32, viewport_location.y.round().abs() as u32));
+			}
+			// TODO: Alt+drag should move all upstream nodes as well
+			NodeGraphMessage::PointerMove { shift } => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					return;
+				};
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+
+				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
+					if let Some((to_connector_node_position, is_layer, input_index)) = NodeGraphMessageHandler::get_key_from_point(
+						&self
+							.node_metadata
+							.iter()
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.flat_map(|(path, node_metadata)| {
+								// TODO: There should be a way to do this without cloning
+								node_metadata
+									.input_click_targets
+									.iter()
+									.enumerate()
+									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+							})
+							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+						point,
+					)
+					.and_then(|(node_id, input_index)| {
+						network.nodes.get(&node_id).map(|node| (node.metadata.position, node.is_layer, input_index)).or_else(|| {
+							if node_id == network.exports_metadata.0 {
+								Some((network.exports_metadata.1 + IVec2::new(0, 1), false, input_index))
+							} else if node_id == network.imports_metadata.0 {
+								Some((network.imports_metadata.1 + IVec2::new(0, 1), false, input_index))
+							} else {
+								None
+							}
+						})
+					}) {
+						let to_connector_position = if is_layer {
+							if input_index == 0 {
+								DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. + 2. * 24. + 12.)
+							} else {
+								DVec2::new(to_connector_node_position.x as f64 * 24. - 2.95, to_connector_node_position.y as f64 * 24. + 24.)
+							}
+						} else {
+							DVec2::new(
+								to_connector_node_position.x as f64 * 24. - 2.95,
+								to_connector_node_position.y as f64 * 24. + input_index as f64 * 24. + 24.,
+							)
+						};
+						self.wire_in_progress_to_connector = Some((to_connector_position, input_index == 0 && is_layer));
+					} else if let Some((to_connector_node_position, is_layer, output_index)) = NodeGraphMessageHandler::get_key_from_point(
+						&self
+							.node_metadata
+							.iter()
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.flat_map(|(path, node_metadata)| {
+								// TODO: There should be a way to do this without cloning
+								node_metadata
+									.output_click_targets
+									.iter()
+									.enumerate()
+									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+							})
+							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+						point,
+					)
+					.and_then(|(node_id, output_index)| {
+						network
+							.nodes
+							.get(&node_id)
+							.map(|node| (node.metadata.position, node.is_layer, output_index + if node.has_primary_output { 0 } else { 1 }))
+					}) {
+						let to_connector_position = if is_layer {
+							DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. - 12.)
+						} else {
+							DVec2::new(
+								to_connector_node_position.x as f64 * 24. + 5. * 24. + 2.95,
+								to_connector_node_position.y as f64 * 24. + output_index as f64 * 24. + 24.,
+							)
+						};
+						self.wire_in_progress_to_connector = Some((to_connector_position, is_layer));
+					}
+					// Not hovering over a node input or node output, update with the mouse position.
+					else {
+						self.wire_in_progress_to_connector = Some((point, false));
+						// Disconnect if the wire was previously connected to an input
+						if let Some(disconnecting) = self.disconnecting {
+							responses.add(NodeGraphMessage::DisconnectInput {
+								node_id: disconnecting.0,
+								input_index: disconnecting.1,
+							});
+							// Update the front end that the node is disconnected
+							responses.add(NodeGraphMessage::SendGraph);
+							self.disconnecting = None;
+						}
+					}
+
+					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
+						let wire_path = WirePath {
+							path_string: Self::build_wire_path_string(
+								wire_in_progress_from_connector.0,
+								wire_in_progress_to_connector.0,
+								wire_in_progress_from_connector.1,
+								wire_in_progress_to_connector.1,
+							),
+							data_type: FrontendGraphDataType::General,
+							thick: false,
+							dashed: false,
+						};
+						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
+					}
+				} else if let Some(drag_start) = &mut self.drag_start {
+					if self.begin_dragging {
+						responses.add(DocumentMessage::StartTransaction);
+						self.begin_dragging = false;
+					}
+					let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
+					if drag_start.round_x != graph_delta.x || drag_start.round_y != graph_delta.y {
+						responses.add(NodeGraphMessage::MoveSelectedNodes {
+							displacement_x: graph_delta.x - drag_start.round_x,
+							displacement_y: graph_delta.y - drag_start.round_y,
+						});
+						drag_start.round_x = graph_delta.x;
+						drag_start.round_y = graph_delta.y;
+					}
+				} else if let Some(box_selection_start) = self.box_selection_start {
+					// TODO: Is this still an issue? The mouse button was released but we missed the pointer up event
+					// if ((e.buttons & 1) === 0) {
+					// 	completeBoxSelection();
+					// 	boxSelection = undefined;
+					// } else if ((e.buttons & 2) !== 0) {
+					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
+					// 	boxSelection = undefined;
+					// }
+
+					let box_selection = Some(BoxSelection {
+						start_x: box_selection_start.x,
+						start_y: box_selection_start.y,
+						end_x: viewport_location.x.round().abs() as u32,
+						end_y: viewport_location.y.round().abs() as u32,
+					});
+
+					let graph_start = network.node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
+
+					// TODO: Only loop through visible nodes
+					let shift = ipp.keyboard.get(shift as usize);
+					let mut nodes = if shift { selected_nodes.selected_nodes_ref().clone() } else { Vec::new() };
+					for node_id in network
+						.nodes
+						.iter()
+						.map(|(node_id, _)| node_id)
+						.chain(vec![network.exports_metadata.0, network.imports_metadata.0].iter())
+					{
+						let mut node_id_path = self.network.clone();
+						node_id_path.push(*node_id);
+						if self
+							.node_metadata
+							.get(&node_id_path)
+							.is_some_and(|node_metadata| node_metadata.node_click_target.intersect_rectangle(Quad::from_box([graph_start, point]), DAffine2::IDENTITY))
+						{
+							nodes.push(*node_id);
+						}
+					}
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					responses.add(FrontendMessage::UpdateBox { box_selection })
+				}
+			}
+			NodeGraphMessage::PointerUp => {
+				let Some(network) = document_network.nested_network(&self.network) else {
+					warn!("No network");
+					return;
+				};
+				// Disconnect if the wire was previously connected to an input
+				let viewport_location = ipp.mouse.position;
+				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+
+				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
+					// Check if dragged connector is reconnected to another input
+					let node_from = NodeGraphMessageHandler::get_key_from_point(
+						&self
+							.node_metadata
+							.iter()
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.flat_map(|(path, node_metadata)| {
+								// TODO: There should be a way to do this without cloning
+								node_metadata
+									.output_click_targets
+									.iter()
+									.enumerate()
+									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+							})
+							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+						wire_in_progress_from_connector.0,
+					);
+					let node_to = NodeGraphMessageHandler::get_key_from_point(
+						&self
+							.node_metadata
+							.iter()
+							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
+							.flat_map(|(path, node_metadata)| {
+								// TODO: There should be a way to do this without cloning
+								node_metadata
+									.input_click_targets
+									.iter()
+									.enumerate()
+									.map(|(index, input_click_target)| ((*path.last().expect("Path should not be empty"), index), input_click_target.clone()))
+							})
+							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
+						wire_in_progress_to_connector.0,
+					);
+
+					if let (Some(node_from), Some(node_to)) = (node_from, node_to) {
+						responses.add(NodeGraphMessage::ConnectNodesByWire {
+							output_node: node_from.0,
+							output_node_connector_index: node_from.1,
+							input_node: node_to.0,
+							input_node_connector_index: node_to.1,
+						})
+					} else if node_from.is_some() && node_to.is_none() && !self.initial_disconnecting {
+						// If the add node menu is already open, we don't want to open it again
+						if self.context_menu.is_some() {
+							return;
+						}
+
+						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
+						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x;
+
+						self.context_menu = Some(ContextMenuInformation {
+							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
+							context_menu_data: ContextMenuData::CreateNode,
+						});
+
+						responses.add(FrontendMessage::UpdateContextMenuInformation {
+							context_menu_information: self.context_menu.clone(),
+						});
+						return;
+					}
+				} else if let Some(drag_start) = &self.drag_start {
+					// Only select clicked node if multiple are selected and they were not dragged
+					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
+						if drag_start.start_x == point.x
+							&& drag_start.start_y == point.y
+							&& (selected_nodes.selected_nodes_ref().len() != 1
+								|| selected_nodes
+									.selected_nodes_ref()
+									.get(0)
+									.is_some_and(|first_selected_node| *first_selected_node != select_if_not_dragged))
+						{
+							responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![select_if_not_dragged] })
+						}
+					}
+
+					// Check if a single node was dragged onto a wire
+					if selected_nodes.selected_nodes_ref().len() == 1 {
+						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
+						// Check that neither the primary input or output of the selected node are already connected.
+						let (selected_node_input, selected_node_is_layer) = network
+							.nodes
+							.get(&selected_node_id)
+							.map(|selected_node| (selected_node.inputs.get(0), selected_node.is_layer))
+							.unwrap_or((network.exports.get(0), false));
+
+						// Check if primary input is disconnected
+						if selected_node_input.is_some_and(|first_input| first_input.as_value().is_some()) {
+							let has_primary_output_connection = network.nodes.iter().flat_map(|(_, node)| node.inputs.iter()).any(|input| {
+								if let NodeInput::Node { node_id, output_index, .. } = input {
+									if *node_id == selected_node_id && *output_index == 0 {
+										true
+									} else {
+										false
+									}
+								} else {
+									false
+								}
+							});
+							// Check if primary output is disconnected
+							if !has_primary_output_connection {
+								// TODO: Cache all wire locations. This will be difficult since there are many ways for an input to changes, and each change will have to update the cache
+								let mut node_id_path = self.network.clone();
+								node_id_path.push(selected_node_id);
+								let Some(bounding_box) = self.node_metadata.get(&node_id_path).and_then(|node_metadata| node_metadata.node_click_target.subpath.bounding_box()) else {
+									log::error!("Could not get bounding box for node: {node_id_path:?}");
+									return;
+								};
+								let overlapping_wire = Self::collect_wires(network).into_iter().find(|frontend_wire| {
+									let (end_node_position, end_node_is_layer) = network.nodes.get(&frontend_wire.wire_end).map_or(
+										(DVec2::new(network.exports_metadata.1.x as f64 * 24., network.exports_metadata.1.y as f64 * 24. + 24.), false),
+										|node| (DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.), node.is_layer),
+									);
+									let (start_node_position, start_node_is_layer) = network.nodes.get(&frontend_wire.wire_start).map_or(
+										(DVec2::new(network.imports_metadata.1.x as f64 * 24., network.imports_metadata.1.y as f64 * 24. + 24.), false),
+										|node| (DVec2::new(node.metadata.position.x as f64 * 24., node.metadata.position.y as f64 * 24.), node.is_layer),
+									);
+
+									let input_position = if end_node_is_layer {
+										DVec2::new(end_node_position.x + 2. * 24., end_node_position.y + 2. * 24. + 12.)
+									} else {
+										DVec2::new(end_node_position.x, end_node_position.y + 24. + 24. * frontend_wire.wire_end_input_index as f64)
+									};
+
+									let output_position = if start_node_is_layer {
+										DVec2::new(start_node_position.x + 2. * 24., start_node_position.y - 12.)
+									} else {
+										DVec2::new(start_node_position.x + 5. * 24., start_node_position.y + 24. + 24. * frontend_wire.wire_start_output_index as f64)
+									};
+
+									let locations = Self::build_wire_path_locations(output_position, input_position, start_node_is_layer, end_node_is_layer);
+									let bezier = bezier_rs::Bezier::from_cubic_dvec2(
+										(locations[0].x, locations[0].y).into(),
+										(locations[1].x, locations[1].y).into(),
+										(locations[2].x, locations[2].y).into(),
+										(locations[3].x, locations[3].y).into(),
+									);
+
+									!bezier.rectangle_intersections(bounding_box[0], bounding_box[1]).is_empty() || bezier.is_contained_within(bounding_box[0], bounding_box[1])
+								});
+								if let Some(overlapping_wire) = overlapping_wire {
+									// Prevent inserting on a link that is connected to the selected node
+									if overlapping_wire.wire_end != selected_node_id && overlapping_wire.wire_start != selected_node_id {
+										responses.add(NodeGraphMessage::InsertNodeBetween {
+											post_node_id: overlapping_wire.wire_end,
+											post_node_input_index: overlapping_wire.wire_end_input_index,
+											insert_node_output_index: 0,
+											insert_node_id: selected_node_id,
+											insert_node_input_index: 0,
+											pre_node_output_index: overlapping_wire.wire_start_output_index,
+											pre_node_id: overlapping_wire.wire_start,
+										});
+										if !selected_node_is_layer {
+											responses.add(NodeGraphMessage::ShiftNode { node_id: selected_node_id });
+										}
+									}
+								}
+							}
+						}
+					}
+					self.select_if_not_dragged = None
+				}
+				self.drag_start = None;
+				self.begin_dragging = false;
+				self.box_selection_start = None;
+				self.wire_in_progress_from_connector = None;
+				self.wire_in_progress_to_connector = None;
+				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				responses.add(FrontendMessage::UpdateBox { box_selection: None })
+			}
+
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");
@@ -550,10 +1354,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetNodeInput { node_id, input_index, input } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
-					return;
-				};
-				if ModifyInputsContext::set_input(network, node_id, input_index, input, self.network.is_empty()) {
+				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
+
+				if ModifyInputsContext::set_input(self, document_network, &network_path, node_id, input_index, input, self.network.is_empty()) {
 					load_network_structure(document_network, document_metadata, collapsed);
 				}
 			}
@@ -575,12 +1378,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
 			NodeGraphMessage::ShiftNode { node_id } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
+				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
+
+				let Some(network) = document_network.nested_network(&network_path) else {
 					return;
 				};
 				debug_assert!(network.is_acyclic(), "Not acyclic. Network: {network:#?}");
 				let outwards_wires = network.collect_outwards_wires();
-				let required_shift = |left: NodeId, right: NodeId, network: &NodeNetwork| {
+				let required_shift = |left: NodeId, right: NodeId, document_network: &NodeNetwork| {
+					let Some(network) = document_network.nested_network(&network_path) else {
+						return 0;
+					};
 					if let (Some(left), Some(right)) = (network.nodes.get(&left), network.nodes.get(&right)) {
 						if right.metadata.position.x < left.metadata.position.x {
 							0
@@ -591,10 +1399,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						0
 					}
 				};
-				let shift_node = |node_id: NodeId, shift: i32, network: &mut NodeNetwork| {
+
+				let mut shift_node = |node_id: NodeId, shift: i32, document_network: &mut NodeNetwork| {
+					let Some(network) = document_network.nested_network_mut(&network_path) else {
+						return;
+					};
 					if let Some(node) = network.nodes.get_mut(&node_id) {
 						node.metadata.position.x += shift
 					}
+					self.update_click_target(node_id, document_network, network_path.clone());
 				};
 				// Shift the actual node
 				let inputs = network
@@ -606,21 +1419,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					.collect::<Vec<_>>();
 
 				for input_node in inputs {
-					let shift = required_shift(input_node, node_id, network);
-					shift_node(node_id, shift, network);
+					let shift = required_shift(input_node, node_id, document_network);
+					shift_node(node_id, shift, document_network);
 				}
 
 				// Shift nodes connected to the output port of the specified node
 				for &descendant in outwards_wires.get(&node_id).unwrap_or(&Vec::new()) {
-					let shift = required_shift(node_id, descendant, network);
+					let shift = required_shift(node_id, descendant, document_network);
 					let mut stack = vec![descendant];
 					while let Some(id) = stack.pop() {
-						shift_node(id, shift, network);
+						shift_node(id, shift, document_network);
 						stack.extend(outwards_wires.get(&id).unwrap_or(&Vec::new()).iter().copied())
 					}
 				}
 
 				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+				responses.add(DocumentMessage::RenderRulers);
+				responses.add(DocumentMessage::RenderScrollbars);
 			}
 			NodeGraphMessage::ToggleSelectedVisibility => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
@@ -681,20 +1496,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::ToggleSelectedLocked => {
-				// If node is selected in document network, then ctrl+L should lock it
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
-					return;
-				};
-				responses.add(DocumentMessage::StartTransaction);
-
-				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_nodes(network).all(|&node_id| network.nodes.get(&node_id).is_some_and(|node| node.locked));
-
-				for &node_id in selected_nodes.selected_nodes(network) {
-					responses.add(NodeGraphMessage::SetLocked { node_id, locked });
-				}
-			}
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
 					return;
@@ -749,6 +1550,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(node) = network.nodes.get_mut(&node_id) {
 					node.is_layer = is_layer;
 				}
+				self.update_click_target(node_id, document_network, self.network.clone());
+
+				self.context_menu = None;
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
@@ -762,6 +1569,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				if let Some(node) = network.nodes.get_mut(&node_id) {
 					node.alias = name;
+					self.update_click_target(node_id, document_network, self.network.clone());
+					responses.add(DocumentMessage::RenderRulers);
+					responses.add(DocumentMessage::RenderScrollbars);
 					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 				}
 			}
@@ -869,32 +1679,421 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 	}
 
 	fn actions(&self) -> ActionList {
-		if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant;
-				ToggleSelectedLocked,
-				ToggleSelectedVisibility,
-			)
-		} else {
-			actions!(NodeGraphMessageDiscriminant;)
+		let mut common = vec![];
+
+		if self
+			.context_menu
+			.as_ref()
+			.is_some_and(|context_menu| matches!(context_menu.context_menu_data, ContextMenuData::CreateNode))
+		{
+			common.extend(actions!(NodeGraphMessageDiscriminant; CloseCreateNodeMenu));
 		}
+
+		common
 	}
 }
 
 impl NodeGraphMessageHandler {
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
+		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
+
 		if self.has_selection {
-			actions!(NodeGraphMessageDiscriminant;
+			common.extend(actions!(NodeGraphMessageDiscriminant;
 				Copy,
 				Cut,
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
 				PrintSelectedNodeCoordinates,
-			)
-		} else {
-			actions!(NodeGraphMessageDiscriminant;)
+			));
 		}
+
+		common
+	}
+
+	fn get_text_width(node: &DocumentNode) -> Option<f64> {
+		// We don't care about trying to do this hacky div thing on non wasm
+		#[cfg(not(target_arch = "wasm"))]
+		return None;
+
+		let document = window().unwrap().document().unwrap();
+		let div = match document.create_element("div") {
+			Ok(div) => div,
+			Err(err) => {
+				log::error!("Error creating div: {:?}", err);
+				return None;
+			}
+		};
+
+		// Set the div's style to make it offscreen and single line
+		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
+			Err(err) => {
+				log::error!("Error setting attribute: {:?}", err);
+				return None;
+			}
+			_ => {}
+		};
+
+		// From NodeGraphMessageHandler::untitled_layer_label(node)
+		let name = (node.alias != "")
+			.then_some(node.alias.to_string())
+			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() });
+
+		div.set_text_content(Some(&name));
+
+		// Append the div to the document body
+		match document.body().unwrap().append_child(&div) {
+			Err(err) => {
+				log::error!("Error setting adding child to document {:?}", err);
+				return None;
+			}
+			_ => {}
+		};
+
+		// Measure the width
+		let text_width = div.get_bounding_client_rect().width();
+
+		// Remove the div from the document
+		match document.body().unwrap().remove_child(&div) {
+			Err(_) => log::error!("Could not remove child when rendering text"),
+			_ => {}
+		};
+
+		Some(text_width)
+	}
+
+	// Inserts a node into the network and updates the click target
+	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>) {
+		let Some(network) = document_network.nested_network_mut(network_path) else {
+			log::error!("Network not found in update_click_target");
+			return;
+		};
+		assert!(
+			node_id != network.imports_metadata.0 && node_id != network.exports_metadata.0,
+			"Cannot insert import/export node into network.nodes"
+		);
+		network.nodes.insert(node_id, node);
+		self.update_click_target(node_id, document_network, network_path.clone());
+	}
+
+	/// Update the click targets when a DocumentNode's click target changes. network_path is the path to the encapsulating network
+	pub fn update_click_target(&mut self, node_id: NodeId, document_network: &NodeNetwork, network_path: Vec<NodeId>) {
+		let Some(network) = document_network.nested_network(&network_path) else {
+			log::error!("Network not found in update_click_target");
+			return;
+		};
+
+		let mut node_id_path = network_path.clone();
+		node_id_path.push(node_id);
+		// Clear all click targets for the node
+		self.node_metadata.remove(&node_id_path);
+
+		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
+
+		if let Some(node) = network.nodes.get(&node_id) {
+			let mut layer_width = None;
+			let width = if node.is_layer {
+				let half_grid_cell_offset = 24. / 2.;
+				let thumbnail_width = 3. * 24.;
+				let gap_width = 8.;
+				let text_width = Self::get_text_width(node).unwrap_or_default();
+				let icon_width = 24.;
+				let icon_overhang_width = icon_width / 2.;
+
+				let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
+				let layer_width_pixels = text_right + gap_width + icon_width - icon_overhang_width;
+				let layer_width_cells = (((layer_width_pixels) / 24.).ceil() as u32).max(8);
+
+				layer_width = Some(layer_width_cells);
+
+				layer_width_cells * grid_size
+			} else {
+				5 * grid_size
+			};
+			let height = if node.is_layer {
+				2 * grid_size
+			} else {
+				let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
+				let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+					network.exports.len()
+				} else {
+					1
+				};
+				std::cmp::max(inputs_count, outputs_count) as u32 * grid_size
+			};
+			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size as i32) as f64, (node.metadata.position.y * grid_size as i32) as f64);
+			let radius = if !node.is_layer {
+				corner1 += DVec2::new(0., (grid_size / 2) as f64);
+				3.
+			} else {
+				10.
+			};
+
+			let corner2 = corner1 + DVec2::new(width as f64, height as f64);
+			let mut click_target_corner_1 = corner1;
+			if node.is_layer && node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+				click_target_corner_1 -= DVec2::new(24., 0.)
+			}
+
+			let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
+			let stroke_width = 1.;
+			let node_click_target = ClickTarget { subpath, stroke_width };
+
+			// Create input/output click targets
+			let mut input_click_targets = Vec::new();
+			let mut output_click_targets = Vec::new();
+			let mut visibility_click_target = None;
+
+			if !node.is_layer {
+				let mut node_top_right: DVec2 = corner1 + DVec2::new(5. * 24., 0.);
+
+				let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
+				let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+					network.exports.len()
+				} else {
+					1
+				};
+
+				if !node.has_primary_output {
+					node_top_right.y += 24.;
+				}
+
+				let input_top_left = DVec2::new(-8., 4.);
+				let input_bottom_right = DVec2::new(8., 20.);
+
+				for node_row_index in 0..number_of_inputs {
+					let stroke_width = 1.;
+					let subpath = Subpath::new_ellipse(
+						input_top_left + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
+						input_bottom_right + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
+					);
+					let input_click_target = ClickTarget { subpath, stroke_width };
+					input_click_targets.push(input_click_target);
+				}
+
+				for node_row_index in 0..number_of_outputs {
+					let stroke_width = 1.;
+					let subpath = Subpath::new_ellipse(
+						input_top_left + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
+						input_bottom_right + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
+					);
+					let output_click_target = ClickTarget { subpath, stroke_width };
+					output_click_targets.push(output_click_target);
+				}
+			} else {
+				let input_top_left = DVec2::new(-8., -8.);
+				let input_bottom_right = DVec2::new(8., 8.);
+				let layer_input_offset = corner1 + DVec2::new(2. * 24., 2. * 24. + 8.);
+
+				let stroke_width = 1.;
+				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
+				let layer_input_click_target = ClickTarget { subpath, stroke_width };
+				input_click_targets.push(layer_input_click_target);
+
+				if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+					let layer_input_offset = corner1 + DVec2::new(0., 24.);
+					let stroke_width = 1.;
+					let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
+					let input_click_target = ClickTarget { subpath, stroke_width };
+					input_click_targets.push(input_click_target);
+				}
+
+				// Output
+				let layer_output_offset = corner1 + DVec2::new(2. * 24., -8.);
+				let stroke_width = 1.;
+				let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
+				let layer_output_click_target = ClickTarget { subpath, stroke_width };
+				output_click_targets.push(layer_output_click_target);
+
+				// Update visibility button click target
+				let visibility_offset = corner1 + DVec2::new(width as f64, 24.);
+				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
+				let stroke_width = 1.;
+				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
+				visibility_click_target = Some(layer_visibility_click_target);
+			}
+			let node_metadata = NodeMetadata {
+				node_click_target,
+				input_click_targets,
+				output_click_targets,
+				visibility_click_target,
+				layer_width,
+			};
+			self.node_metadata.insert(node_id_path.clone(), node_metadata);
+		} else if node_id == network.exports_metadata.0 {
+			let width = 5 * grid_size;
+			// 1 is added since the first row is reserved for the "Exports" name
+			let height = (network.exports.len() as u32 + 1) * grid_size;
+
+			let corner1 = IVec2::new(network.exports_metadata.1.x * grid_size as i32, network.exports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
+			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
+			let radius = 3.;
+			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+			let stroke_width = 1.;
+			let node_click_target = ClickTarget { subpath, stroke_width };
+
+			let node_top_left = network.exports_metadata.1 * grid_size as i32;
+			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
+			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
+			node_top_left.y += 36.;
+			let input_top_left = DVec2::new(-8., 4.);
+			let input_bottom_right = DVec2::new(8., 20.);
+
+			// Create input/output click targets
+			let mut input_click_targets = Vec::new();
+			let output_click_targets = Vec::new();
+			let visibility_click_target = None;
+
+			for _ in 0..network.exports.len() {
+				let stroke_width = 1.;
+				let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
+				let top_left_input = ClickTarget { subpath, stroke_width };
+				input_click_targets.push(top_left_input);
+
+				node_top_left += 24.;
+			}
+
+			let node_metadata = NodeMetadata {
+				node_click_target,
+				input_click_targets,
+				output_click_targets,
+				visibility_click_target,
+				layer_width: None,
+			};
+
+			self.node_metadata.insert(node_id_path.clone(), node_metadata);
+		}
+		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
+		else if node_id == network.imports_metadata.0 {
+			let mut encapsulating_path = self.network.clone();
+			// Import count is based on the number of inputs to the encapsulating node. If the current network is the document network, there is no import node
+			if let Some(encapsulating_node) = encapsulating_path.pop() {
+				let parent_node = document_network
+					.nested_network(&encapsulating_path)
+					.expect("Encapsulating path should always exist")
+					.nodes
+					.get(&encapsulating_node)
+					.expect("Last path node should always exist in encapsulating network");
+				let import_count = parent_node.inputs.len();
+
+				let width = 5 * grid_size;
+				// 1 is added since the first row is reserved for the "Exports" name
+				let height = (import_count + 1) as u32 * grid_size;
+
+				let corner1 = IVec2::new(network.imports_metadata.1.x * grid_size as i32, network.imports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
+				let corner2 = corner1 + IVec2::new(width as i32, height as i32);
+				let radius = 3.;
+				let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
+				let stroke_width = 1.;
+				let node_click_target = ClickTarget { subpath, stroke_width };
+
+				let node_top_right = network.imports_metadata.1 * grid_size as i32;
+				let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
+				// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
+				node_top_right.y += 36.;
+				let input_top_left = DVec2::new(-8., 4.);
+				let input_bottom_right = DVec2::new(8., 20.);
+
+				// Create input/output click targets
+				let input_click_targets = Vec::new();
+				let mut output_click_targets = Vec::new();
+				let visibility_click_target = None;
+				for _ in 0..import_count {
+					let stroke_width = 1.;
+					let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
+					let top_left_input = ClickTarget { subpath, stroke_width };
+					output_click_targets.push(top_left_input);
+
+					node_top_right.y += 24.;
+				}
+				let node_metadata = NodeMetadata {
+					node_click_target,
+					input_click_targets,
+					output_click_targets,
+					visibility_click_target,
+					layer_width: None,
+				};
+				self.node_metadata.insert(node_id_path.clone(), node_metadata);
+			}
+		}
+
+		// if node_click_target is outside the current bounding box, update the bounding box
+		if self.network_metadata.get(&network_path).map_or(true, |network_metadata| {
+			network_metadata.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
+				bounding_box.bounding_box().is_some_and(|bounding_box| {
+					self.node_metadata.get(&node_id_path).map_or(true, |node_metadata| {
+						node_metadata.node_click_target.subpath.bounding_box().is_some_and(|click_target| {
+							// Combine bounds and check if new vec is larger than current bounding box
+							let new_bounds = Quad::combine_bounds(click_target, bounding_box);
+							bounding_box != new_bounds
+						})
+					})
+				})
+			})
+		}) {
+			let node_id_path_len = node_id_path.len();
+			let bounds = self
+				.node_metadata
+				.iter()
+				.filter_map(|(node_path, node_metadata)| {
+					// Check if node is in same network as the updated node
+					if node_path.len() == node_id_path_len && node_path.starts_with(&network_path) {
+						node_metadata.node_click_target.subpath.bounding_box()
+					} else {
+						None
+					}
+				})
+				.reduce(Quad::combine_bounds);
+
+			let bounds = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
+			if let Some(network_metadata) = self.network_metadata.get_mut(&network_path) {
+				network_metadata.bounding_box_subpath = bounds;
+			} else {
+				self.network_metadata.insert(
+					network_path,
+					NetworkMetadata {
+						bounding_box_subpath: bounds,
+						node_graph_to_viewport: DAffine2::IDENTITY,
+					},
+				);
+			}
+		}
+	}
+
+	// Updates all click targets in a certain network
+	pub fn update_all_click_targets(&mut self, document_network: &NodeNetwork, network_path: Vec<NodeId>) {
+		let Some(network) = document_network.nested_network(&network_path) else {
+			log::error!("Network not found in update_all_click_targets");
+			return;
+		};
+		let export_id = network.exports_metadata.0;
+		let import_id = network.imports_metadata.0;
+		for node_id in network.nodes.clone().keys() {
+			self.update_click_target(*node_id, document_network, network_path.clone());
+		}
+		self.update_click_target(export_id, document_network, network_path.clone());
+		self.update_click_target(import_id, document_network, network_path.clone())
+	}
+
+	/// Gets the bounding box in viewport coordinates for each node in the node graph
+	pub fn graph_bounds_viewport_space(&self, document_network: &NodeNetwork) -> Option<[DVec2; 2]> {
+		self.network_metadata.get(&self.network).and_then(|network_metadata| {
+			network_metadata.bounding_box_subpath.as_ref().and_then(|bounding_box| {
+				document_network
+					.nested_network(&self.network)
+					.and_then(|network| bounding_box.bounding_box_with_transform(network.node_graph_to_viewport))
+			})
+		})
+	}
+
+	/// Get the clicked target from a mouse click
+	fn get_key_from_point<T: Clone>(hashmap: &HashMap<T, ClickTarget>, point: DVec2) -> Option<T> {
+		hashmap
+			.iter()
+			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
+			.map(|(data, _)| data.clone())
+			.next()
 	}
 
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
@@ -1496,7 +2695,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn send_graph(&mut self, document_network: &NodeNetwork, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
-		// If a node cannot be found in collect_subgraph_names, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
+		// If a node cannot be found in collect_subgraph_names, for example when the nested node is deleted while it is entered, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
 		let Some(nested_path) = Self::collect_subgraph_names(&mut self.network, document_network) else {
 			self.send_graph(document_network, metadata, collapsed, graph_open, responses);
 			return;
@@ -1520,7 +2719,23 @@ impl NodeGraphMessageHandler {
 			let nodes = self.collect_nodes(document_network, network, &wires);
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
-			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path })
+			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path });
+			let layer_widths = self
+				.node_metadata
+				.iter()
+				.filter_map(|(node_path, node_metadata)| {
+					if node_path.starts_with(&self.network) && node_path.len() == self.network.len() + 1 {
+						if let Some(layer_width) = node_metadata.layer_width {
+							Some((*node_path.last().unwrap(), layer_width))
+						} else {
+							None
+						}
+					} else {
+						None
+					}
+				})
+				.collect::<HashMap<NodeId, u32>>();
+			responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
 		}
 	}
 
@@ -1641,7 +2856,7 @@ impl NodeGraphMessageHandler {
 
 	fn untitled_layer_label(node: &DocumentNode) -> String {
 		(node.alias != "")
-			.then_some(node.alias.clone())
+			.then_some(node.alias.to_string())
 			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() })
 	}
 
@@ -1669,6 +2884,66 @@ impl NodeGraphMessageHandler {
 			visible_index
 		}
 	}
+
+	fn build_wire_path_string(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> String {
+		let locations = Self::build_wire_path_locations(output_position, input_position, vertical_out, vertical_in);
+		let smoothing = 0.5;
+		let delta01 = DVec2::new((locations[1].x - locations[0].x) * smoothing, (locations[1].y - locations[0].y) * smoothing);
+		let delta23 = DVec2::new((locations[3].x - locations[2].x) * smoothing, (locations[3].y - locations[2].y) * smoothing);
+		format!(
+			"M{},{} L{},{} C{},{} {},{} {},{} L{},{}",
+			locations[0].x,
+			locations[0].y,
+			locations[1].x,
+			locations[1].y,
+			locations[1].x + delta01.x,
+			locations[1].y + delta01.y,
+			locations[2].x - delta23.x,
+			locations[2].y - delta23.y,
+			locations[2].x,
+			locations[2].y,
+			locations[3].x,
+			locations[3].y
+		)
+	}
+
+	fn build_wire_path_locations(output_position: DVec2, input_position: DVec2, vertical_out: bool, vertical_in: bool) -> Vec<DVec2> {
+		let horizontal_gap = (output_position.x - input_position.x).abs();
+		let vertical_gap = (output_position.y - input_position.y).abs();
+		// TODO: Finish this commented out code replacement for the code below it based on this diagram: <https://files.keavon.com/-/InsubstantialElegantQueenant/capture.png>
+		// // Straight: stacking lines which are always straight, or a straight horizontal wire between two aligned nodes
+		// if ((verticalOut && vertical_in) || (!verticalOut && !vertical_in && vertical_gap === 0)) {
+		// 	return [
+		// 		{ x: output_position.x, y: output_position.y },
+		// 		{ x: input_position.x, y: input_position.y },
+		// 	];
+		// }
+
+		// // L-shape bend
+		// if (verticalOut !== vertical_in) {
+		// }
+
+		let curve_length = 24.;
+		let curve_falloff_rate = curve_length * std::f64::consts::PI * 2.0;
+
+		let horizontal_curve_amount = -(2.0f64.powf((-10. * horizontal_gap) / curve_falloff_rate)) + 1.;
+		let vertical_curve_amount = -(2.0f64.powf((-10. * vertical_gap) / curve_falloff_rate)) + 1.;
+		let horizontal_curve = horizontal_curve_amount * curve_length;
+		let vertical_curve = vertical_curve_amount * curve_length;
+
+		return vec![
+			output_position,
+			DVec2::new(
+				if vertical_out { output_position.x } else { output_position.x + horizontal_curve },
+				if vertical_out { output_position.y - vertical_curve } else { output_position.y },
+			),
+			DVec2::new(
+				if vertical_in { input_position.x } else { input_position.x - horizontal_curve },
+				if vertical_in { input_position.y + vertical_curve } else { input_position.y },
+			),
+			DVec2::new(input_position.x, input_position.y),
+		];
+	}
 }
 
 impl Default for NodeGraphMessageHandler {
@@ -1692,6 +2967,36 @@ impl Default for NodeGraphMessageHandler {
 			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
+			drag_start: None,
+			begin_dragging: false,
+			box_selection_start: None,
+			disconnecting: None,
+			initial_disconnecting: false,
+			select_if_not_dragged: None,
+			wire_in_progress_from_connector: None,
+			wire_in_progress_to_connector: None,
+			context_menu: None,
+			node_metadata: HashMap::new(),
+			network_metadata: HashMap::new(),
 		}
+	}
+}
+
+impl PartialEq for NodeGraphMessageHandler {
+	fn eq(&self, other: &Self) -> bool {
+		self.network == other.network
+			&& self.resolved_types == other.resolved_types
+			&& self.node_graph_errors == other.node_graph_errors
+			&& self.has_selection == other.has_selection
+			&& self.widgets == other.widgets
+			&& self.drag_start == other.drag_start
+			&& self.begin_dragging == other.begin_dragging
+			&& self.box_selection_start == other.box_selection_start
+			&& self.disconnecting == other.disconnecting
+			&& self.initial_disconnecting == other.initial_disconnecting
+			&& self.select_if_not_dragged == other.select_if_not_dragged
+			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
+			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
+			&& self.context_menu == other.context_menu
 	}
 }

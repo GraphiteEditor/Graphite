@@ -52,6 +52,16 @@ pub fn input_mappings() -> Mapping {
 		// Hack to prevent LMB + CTRL (OPTION) + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Lmb], action_dispatch=DocumentMessage::Noop),
 		// NodeGraphMessage
+		entry!(KeyDown(Lmb); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
+		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),
+		entry!(KeyDown(Lmb); modifiers=[Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: true, alt_click: false, right_click: false}),
+		entry!(KeyDown(Lmb); modifiers=[Shift, Accel], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: true, alt_click: false, right_click: false}),
+		entry!(KeyDown(Lmb); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: true, right_click: false}),
+		entry!(KeyDown(Rmb); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: true}),
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
+		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove {shift: Shift}),
+		entry!(KeyUp(Lmb); action_dispatch=NodeGraphMessage::PointerUp),
+		entry!(KeyUp(Escape); action_dispatch=NodeGraphMessage::CloseCreateNodeMenu),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Backspace); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: false }),
 		entry!(KeyDown(Delete); action_dispatch=NodeGraphMessage::DeleteSelectedNodes { reconnect: true }),
@@ -59,8 +69,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=NodeGraphMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=NodeGraphMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=NodeGraphMessage::DuplicateSelectedNodes),
-		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedVisibility),
-		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=NodeGraphMessage::ToggleSelectedLocked),
+		entry!(KeyDown(KeyH); modifiers=[Accel], action_dispatch=GraphOperationMessage::ToggleSelectedVisibility),
+		entry!(KeyDown(KeyL); modifiers=[Accel], action_dispatch=GraphOperationMessage::ToggleSelectedLocked),
 		entry!(KeyDown(KeyL); modifiers=[Alt], action_dispatch=NodeGraphMessage::ToggleSelectedAsLayersOrNodes),
 		entry!(KeyDown(KeyC); modifiers=[Shift], action_dispatch=NodeGraphMessage::PrintSelectedNodeCoordinates),
 		//
