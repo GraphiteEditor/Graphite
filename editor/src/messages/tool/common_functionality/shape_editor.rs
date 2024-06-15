@@ -557,6 +557,7 @@ impl ShapeState {
 			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
 				continue;
 			};
+			let transform = document.metadata.transform_to_document(layer);
 
 			for &point in layer_state.selected_points.iter() {
 				let Some(handles) = point.get_handle_pair(&vector_data) else { continue };
@@ -580,8 +581,14 @@ impl ShapeState {
 					} else {
 						[(handles[1], pos1), (handles[0], pos0)]
 					};
-					let position = anchor * 2. - selected_position;
-					let modification_type = unselected_handle.move_pos(position - unselected_position);
+					let direction = transform
+						.transform_vector2(anchor - selected_position)
+						.try_normalize()
+						.unwrap_or_else(|| transform.transform_vector2(unselected_position - anchor).normalize_or_zero());
+
+					let length = transform.transform_vector2(unselected_position - anchor).length();
+					let position = transform.inverse().transform_vector2(direction * length);
+					let modification_type = unselected_handle.set_pos(position);
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				} else {
 					// If both handles are selected, average the angles of the handles
@@ -895,19 +902,6 @@ impl ShapeState {
 				}
 			}
 		}
-	}
-
-	/// Toggle if the handles of the selected points should be colinear.
-	pub fn toggle_colinear_handles_state_on_selected(&self, responses: &mut VecDeque<Message>) {
-		// for (&layer, state) in &self.selected_shape_state {
-		// 	for point in &state.selected_points {
-		// 		let modification = VectorModificationType::ToggleManipulatorColinearHandlesState { id: point.group };
-		// 		responses.add(GraphOperationMessage::Vector {
-		// 			layer,
-		// 			modification_type: modification,
-		// 		})
-		// 	}
-		// }
 	}
 
 	/// Disable colinear handles colinear.

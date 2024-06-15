@@ -92,10 +92,7 @@ impl LayoutHolder for PathTool {
 		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
 
 		let selection_status = &self.tool_data.selection_status;
-		let manipulator_angle = selection_status
-			.as_multiple()
-			.map(|multiple| multiple.manipulator_angle)
-			.or_else(|| selection_status.as_one().map(|point| point.manipulator_angle));
+		let manipulator_angle = selection_status.angle();
 
 		let x_location = NumberInput::new(x)
 			.unit(" px")
@@ -390,11 +387,22 @@ impl PathToolData {
 		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
 	}
 
-	fn update_colinear(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn update_colinear(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		// Check if the alt key has just been pressed
 		if alt && !self.alt_debounce {
 			self.opposing_handle_lengths = None;
-			shape_editor.toggle_colinear_handles_state_on_selected(responses);
+			let colinear = self.selection_status.angle().map_or(false, |angle| match angle {
+				ManipulatorAngle::Colinear => true,
+				ManipulatorAngle::Free => false,
+				ManipulatorAngle::Mixed => false,
+			});
+			if colinear {
+				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
+			} else {
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+			}
+			self.alt_debounce = true;
+			return true;
 		}
 		self.alt_debounce = alt;
 
@@ -403,6 +411,7 @@ impl PathToolData {
 				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 			}
 		}
+		false
 	}
 
 	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -505,8 +514,9 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
 				let alt_state = input.keyboard.get(alt as usize);
 				let shift_state = input.keyboard.get(shift as usize);
-				tool_data.update_colinear(shift_state, alt_state, shape_editor, document, responses);
-				tool_data.drag(shift_state, shape_editor, document, input, responses);
+				if !tool_data.update_colinear(shift_state, alt_state, shape_editor, document, responses) {
+					tool_data.drag(shift_state, shape_editor, document, input, responses);
+				}
 
 				// Auto-panning
 				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
@@ -750,6 +760,14 @@ impl SelectionStatus {
 		match self {
 			SelectionStatus::Multiple(multiple) => Some(multiple),
 			_ => None,
+		}
+	}
+
+	fn angle(&self) -> Option<ManipulatorAngle> {
+		match self {
+			Self::None => None,
+			Self::One(one) => Some(one.manipulator_angle),
+			Self::Multiple(one) => Some(one.manipulator_angle),
 		}
 	}
 }
