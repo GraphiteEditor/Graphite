@@ -5,7 +5,7 @@ use std::io::{Read, Seek};
 use tag_derive::Tag;
 use thiserror::Error;
 use tiff::file::TiffRead;
-use tiff::tags::{Compression, ImageLength, ImageWidth, StripByteCounts, SubIfd, Tag};
+use tiff::tags::{Compression, ImageLength, ImageWidth, Model, StripByteCounts, SubIfd, Tag};
 use tiff::{Ifd, TiffError};
 
 pub struct RawImage {
@@ -35,16 +35,22 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	let ifd = Ifd::new_first_ifd(&mut file)?;
 
 	// TODO: This is only for the tests to pass for now. Replace this with the correct implementation when the decoder is complete.
-	let subifd = ifd.get_value::<SubIfd, _>(&mut file)?;
-	let arw_ifd = subifd.get_value::<ArwIfd, _>(&mut file)?;
+	let model = ifd.get_value::<Model, _>(&mut file)?;
 
-	if arw_ifd.compression == 1 {
-		Ok(decoder::uncompressed::decode(subifd, &mut file))
-	} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
-		Ok(decoder::arw2::decode(subifd, &mut file))
+	if model == "DSLR-A100" {
+		Ok(decoder::arw1::decode_a100(ifd, &mut file))
 	} else {
-		// TODO: implement for arw 1.
-		todo!()
+		let subifd = ifd.get_value::<SubIfd, _>(&mut file)?;
+		let arw_ifd = subifd.get_value::<ArwIfd, _>(&mut file)?;
+
+		if arw_ifd.compression == 1 {
+			Ok(decoder::uncompressed::decode(subifd, &mut file))
+		} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
+			Ok(decoder::arw2::decode(subifd, &mut file))
+		} else {
+			// TODO: implement for arw 1.
+			todo!()
+		}
 	}
 }
 

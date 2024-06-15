@@ -18,6 +18,8 @@ pub enum TagId {
 	BitsPerSample = 0x102,
 	Compression = 0x103,
 	PhotometricInterpretation = 0x104,
+	Make = 0x10f,
+	Model = 0x110,
 	StripOffsets = 0x111,
 	SamplesPerPixel = 0x115,
 	RowsPerStrip = 0x116,

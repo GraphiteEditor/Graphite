@@ -265,10 +265,7 @@ impl PrimitiveType for TypeIfd {
 	type Output = Ifd;
 
 	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
-			IfdTagType::Long => Some(4),
-			_ => None,
-		}
+		TypeLong::get_size(type_)
 	}
 
 	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
@@ -358,7 +355,20 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 	}
 }
 
+pub struct TypeString;
 pub struct TypeSonyToneCurve;
+
+impl TagType for TypeString {
+	type Output = String;
+
+	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let string = Array::<TypeAscii>::read(file)?;
+
+		// Skip the NUL character at the end
+		let len = string.len();
+		Ok(string.into_iter().take(len - 1).collect())
+	}
+}
 
 impl TagType for TypeSonyToneCurve {
 	type Output = CurveLookupTable;
