@@ -1,10 +1,9 @@
 use super::utility_types::OverlayContext;
 use crate::consts::HIDE_HANDLE_DISTANCE;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_manipulator_groups, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::ManipulatorPointId;
 
 use glam::DVec2;
 use wasm_bindgen::JsCast;
@@ -34,7 +33,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 		overlay_context.outline_vector(&vector_data, transform);
 
-		for (segment_id, bezier, start, end) in vector_data.segment_bezier_iter() {
+		for (segment_id, bezier, _start, _end) in vector_data.segment_bezier_iter() {
 			let bezier = bezier.apply_transformation(|point| transform.transform_point2(point));
 			let not_under_anchor = |position: DVec2, anchor: DVec2| position.distance_squared(anchor) >= HIDE_HANDLE_DISTANCE * HIDE_HANDLE_DISTANCE;
 			match bezier.handles {
@@ -72,7 +71,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 
 		for point in vector_data.single_connected_points() {
-			let Some(position) = vector_data.point_domain.pos_from_id(point) else { continue };
+			let Some(position) = vector_data.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}

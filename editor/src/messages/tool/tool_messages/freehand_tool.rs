@@ -6,11 +6,9 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
-use bezier_rs::ManipulatorGroup;
 use glam::DVec2;
-use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
+use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 use graphene_std::vector::{HandleId, PointId, SegmentId};
@@ -190,8 +188,7 @@ struct FreehandToolData {
 }
 
 impl FreehandToolData {
-	fn smooth(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		const TOLLERANCE: f64 = 5.;
+	fn smooth(&mut self, responses: &mut VecDeque<Message>) {
 		const MAX_POSITIONS: usize = 16;
 
 		let Some(layer) = self.layer else { return };
@@ -347,14 +344,14 @@ impl Fsm for FreehandToolFsmState {
 					parent
 				};
 				tool_data.push(&document, layer, input.mouse.position);
-				tool_data.smooth(document, responses);
+				tool_data.smooth(responses);
 
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					tool_data.push(&document, layer, input.mouse.position);
-					tool_data.smooth(document, responses);
+					tool_data.smooth(responses);
 					tool_data.dragged = true;
 				}
 

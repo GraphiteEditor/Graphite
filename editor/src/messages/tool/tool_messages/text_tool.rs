@@ -313,15 +313,6 @@ impl TextToolData {
 			TextToolFsmState::Ready
 		}
 	}
-
-	fn get_bounds(&self, text: &str, font_cache: &FontCache) -> Option<[DVec2; 2]> {
-		let editing_text = self.editing_text.as_ref()?;
-		let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
-		let subpaths = graphene_core::text::to_path(text, buzz_face, editing_text.font_size, None);
-		let bounds = subpaths.iter().filter_map(|subpath| subpath.bounding_box());
-		let combined_bounds = bounds.reduce(|a, b| [a[0].min(b[0]), a[1].max(b[1])]).unwrap_or_default();
-		Some(combined_bounds)
-	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {

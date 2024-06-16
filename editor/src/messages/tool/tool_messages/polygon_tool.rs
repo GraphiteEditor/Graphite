@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
 #[derive(Default)]

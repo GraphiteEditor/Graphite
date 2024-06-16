@@ -8,14 +8,12 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::{ManipulatorPointId, PointId, SelectedType, VectorModificationType};
+use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Color;
 use graphene_std::vector::{HandleId, SegmentId};
 
@@ -232,7 +230,7 @@ impl PenToolData {
 	}
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
-	fn bend_from_previous_point(&mut self, mut snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) {
+	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) {
 		self.g1_continous = true;
 		let document = snap_data.document;
 		let mouse = snap_data.input.mouse.position;
@@ -250,7 +248,7 @@ impl PenToolData {
 		}
 	}
 
-	fn finish_placing_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+	fn finish_placing_handle(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
@@ -272,7 +270,7 @@ impl PenToolData {
 		let start = self.latest_point()?.id;
 		let transform = document.metadata.document_to_viewport * transform;
 		for id in vector_data.single_connected_points().filter(|&point| point != start) {
-			let Some(pos) = vector_data.point_domain.pos_from_id(id) else { continue };
+			let Some(pos) = vector_data.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 			if transformed_distance_between_squared < snap_point_tolerance_squared {
@@ -317,9 +315,7 @@ impl PenToolData {
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
-	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let document = snap_data.document;
-
+	fn drag_handle(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let colinear = !modifiers.break_handle && self.handle_end.is_some();
 		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, colinear, mouse, Some(self.next_point), false);
 		if let Some(handle_end) = self.handle_end.as_mut().filter(|_| colinear) {
@@ -334,7 +330,7 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle)
 	}
 
-	fn place_anchor(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+	fn place_anchor(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let relative = self.latest_point().map(|point| point.pos);
 		self.next_point = self.compute_snapped_angle(snap_data, transform, modifiers.lock_angle, modifiers.snap_angle, false, mouse, relative, true);
 		if let Some(handle_end) = self.handle_end.as_mut() {

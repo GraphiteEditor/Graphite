@@ -1,6 +1,5 @@
 use super::tool_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::{graph_operation::utility_types::TransformIn, overlays::utility_types::OverlayContext};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -9,7 +8,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -208,7 +206,6 @@ impl Fsm for RectangleToolFsmState {
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let insert_index = -1;
 				let nodes = {
 					let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node does not exist");
 					let node = node_type.to_document_node_default_inputs(

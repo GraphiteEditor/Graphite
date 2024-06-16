@@ -1,14 +1,7 @@
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-
-use bezier_rs::{ManipulatorGroup, Subpath};
+use bezier_rs::Subpath;
+use glam::{DAffine2, DVec2};
 use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::vector::PointId;
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
-
-use glam::{DAffine2, DVec2};
-use graphene_std::vector::VectorModification;
-
-use graphene_core::vector::VectorModificationType;
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
@@ -45,6 +38,7 @@ pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
 
+#[cfg(test)]
 // TODO: This should be extracted from the graph at the location of the transform node.
 pub struct LayerBounds {
 	pub bounds: [DVec2; 2],
@@ -52,6 +46,7 @@ pub struct LayerBounds {
 	pub layer_transform: DAffine2,
 }
 
+#[cfg(test)]
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
 	pub fn new(metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {

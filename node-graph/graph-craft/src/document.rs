@@ -65,58 +65,6 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	}
 	Ok(s)
 }
-// TODO: Eventually remove this (probably starting late 2024)
-#[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-enum NodeInputVersions {
-	OldNodeInput(OldNodeInput),
-	NodeInput(NodeInput),
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
-#[derive(Debug, serde::Deserialize)]
-pub enum OldNodeInput {
-	/// A reference to another node in the same network from which this node can receive its input.
-	Node { node_id: NodeId, output_index: usize, lambda: bool },
-
-	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
-	Value { tagged_value: TaggedValue, exposed: bool },
-
-	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
-	Network(Type),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-// TODO: Eventually remove this (probably starting late 2024)
-use serde::Deserialize;
-fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
-where
-	D: serde::Deserializer<'de>,
-{
-	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
-
-	// Convert Vec<NodeOutput> to Vec<NodeInput>
-	let inputs = input_versions
-		.into_iter()
-		.map(|old_input| {
-			let old_input = match old_input {
-				NodeInputVersions::OldNodeInput(old_input) => old_input,
-				NodeInputVersions::NodeInput(node_input) => return node_input,
-			};
-			match old_input {
-				OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
-				OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
-				OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
-				OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
-			}
-		})
-		.collect();
-
-	Ok(inputs)
-}
 
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
@@ -617,6 +565,7 @@ pub struct NodeOutput {
 	pub node_output_index: usize,
 }
 
+use serde::Deserialize;
 // TODO: Eventually remove this (probably starting late 2024)
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where

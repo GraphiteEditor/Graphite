@@ -4,13 +4,12 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_over
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_colinear_manipulators, get_manipulator_from_id, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::ManipulatorPointId;
 
 use std::vec;
 
@@ -376,7 +375,7 @@ impl PathToolData {
 		for point in selected_points.points.iter() {
 			let Some(anchor) = point.point_id.as_anchor() else { continue };
 
-			let connected = selected_points.vector_data.segment_domain.all_connected(anchor).map(|handle| handle.to_point());
+			let connected = selected_points.vector_data.segment_domain.all_connected(anchor).map(|handle| handle.to_manipulator_point());
 			let filtered = connected.filter(|point| point.get_position(&selected_points.vector_data).is_some());
 			let point_info = filtered.map(|point_id| ManipulatorPointInfo { layer: point.layer, point_id });
 			additional_selected_points.extend(point_info);
@@ -534,7 +533,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::PointerOutsideViewport { shift, .. }) => {
 				// Auto-panning
-				if let Some(delta) = tool_data.auto_panning.shift_viewport(input, responses) {
+				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
 					let shift_state = input.keyboard.get(shift as usize);
 					tool_data.drag(shift_state, shape_editor, document, input, responses);
 				}
@@ -589,8 +588,6 @@ impl Fsm for PathToolFsmState {
 				let equidistant = input.keyboard.get(equidistant as usize);
 
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD);
-
-				shape_editor.delete_selected_handles_with_zero_length(&document.network, &document.metadata, &tool_data.opposing_handle_lengths, responses);
 
 				if let Some((layer, nearest_point)) = nearest_point {
 					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
@@ -752,13 +749,6 @@ impl SelectionStatus {
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
 		match self {
 			SelectionStatus::One(one) => Some(one),
-			_ => None,
-		}
-	}
-
-	fn as_multiple(&self) -> Option<&MultipleSelectedPoints> {
-		match self {
-			SelectionStatus::Multiple(multiple) => Some(multiple),
 			_ => None,
 		}
 	}

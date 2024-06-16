@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use super::HandleId;
 
+/// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
@@ -21,12 +22,13 @@ macro_rules! create_ids {
 					Self(crate::uuid::generate_uuid())
 				}
 
+				/// Gets the inner raw value.
 				pub fn inner(self) -> u64 {
 					self.0
 				}
 
+				/// Adds one to the current value and returns the old value. Note that the ids are not going to be unique unless you use the largest id.
 				pub fn next_id(&mut self) -> Self {
-
 					self.0 += 1;
 					*self
 				}
@@ -87,14 +89,16 @@ impl PointDomain {
 	pub fn positions_mut(&mut self) -> impl Iterator<Item = (PointId, &mut DVec2)> {
 		self.id.iter().copied().zip(self.positions.iter_mut())
 	}
+
 	pub fn ids(&self) -> &[PointId] {
 		&self.id
 	}
+
 	pub fn next_id(&self) -> PointId {
 		self.ids().iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(PointId::ZERO)
 	}
 
-	pub fn pos_from_id(&self, id: PointId) -> Option<DVec2> {
+	pub fn position_from_id(&self, id: PointId) -> Option<DVec2> {
 		let pos = self.resolve_id(id).map(|index| self.positions[index]);
 		if pos.is_none() {
 			warn!("Resolving pos of invalid id");
@@ -163,18 +167,23 @@ impl SegmentDomain {
 	pub fn ids(&self) -> &[SegmentId] {
 		&self.ids
 	}
+
 	pub fn next_id(&self) -> SegmentId {
 		self.ids().iter().copied().max_by(|a, b| a.0.cmp(&b.0)).map(|mut id| id.next_id()).unwrap_or(SegmentId::ZERO)
 	}
+
 	pub fn start_point(&self) -> &[PointId] {
 		&self.start_point
 	}
+
 	pub fn end_point(&self) -> &[PointId] {
 		&self.end_point
 	}
+
 	pub fn handles(&self) -> &[bezier_rs::BezierHandles] {
 		&self.handles
 	}
+
 	pub fn stroke(&self) -> &[StrokeId] {
 		&self.stroke
 	}
@@ -202,29 +211,39 @@ impl SegmentDomain {
 	pub fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {
 		self.ids.iter().copied().zip(self.start_point.iter_mut())
 	}
+
 	pub fn end_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut PointId)> {
 		self.ids.iter().copied().zip(self.end_point.iter_mut())
 	}
+
 	pub fn handles_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut bezier_rs::BezierHandles, PointId, PointId)> {
 		let nested = self.ids.iter().zip(&mut self.handles).zip(&self.start_point).zip(&self.end_point);
 		nested.map(|(((&a, b), &c), &d)| (a, b, c, d))
 	}
+
 	pub fn stroke_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut StrokeId)> {
 		self.ids.iter().copied().zip(self.stroke.iter_mut())
 	}
 
 	pub fn segment_start_from_id(&self, segment: SegmentId) -> Option<PointId> {
-		self.resolve_id(segment).and_then(|index| self.start_point.get(index)).copied()
+		self.id_to_index(segment).and_then(|index| self.start_point.get(index)).copied()
 	}
+
 	pub fn segment_end_from_id(&self, segment: SegmentId) -> Option<PointId> {
-		self.resolve_id(segment).and_then(|index| self.end_point.get(index)).copied()
+		self.id_to_index(segment).and_then(|index| self.end_point.get(index)).copied()
 	}
+
+	/// Returns an array for the start and end points of a segment.
 	pub fn points_from_id(&self, segment: SegmentId) -> Option<[PointId; 2]> {
 		self.segment_start_from_id(segment).and_then(|start| self.segment_end_from_id(segment).map(|end| [start, end]))
 	}
+
+	/// Attempts to find another point in the segment that is not the one passed in.
 	pub fn other_point(&self, segment: SegmentId, current: PointId) -> Option<PointId> {
 		self.points_from_id(segment).and_then(|points| points.into_iter().find(|&point| point != current))
 	}
+
+	/// Gets all points connected to the current one but not including the current one.
 	pub fn connected_points(&self, current: PointId) -> impl Iterator<Item = PointId> + '_ {
 		self.start_point.iter().zip(&self.end_point).filter_map(move |(&a, &b)| match (a == current, b == current) {
 			(true, false) => Some(b),
@@ -233,7 +252,7 @@ impl SegmentDomain {
 		})
 	}
 
-	fn resolve_id(&self, id: SegmentId) -> Option<usize> {
+	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
 		debug_assert_eq!(self.ids.len(), self.handles.len());
 		debug_assert_eq!(self.ids.len(), self.start_point.len());
 		debug_assert_eq!(self.ids.len(), self.end_point.len());
@@ -241,8 +260,8 @@ impl SegmentDomain {
 	}
 
 	fn resolve_range(&self, range: &core::ops::RangeInclusive<SegmentId>) -> Option<core::ops::RangeInclusive<usize>> {
-		match (self.resolve_id(*range.start()), self.resolve_id(*range.end())) {
-			(Some(start), Some(end)) if start.max(end) < self.handles.len().min(self.ids.len()).min(self.start_point.len()).min(self.end_point.len()) => Some((start..=end)),
+		match (self.id_to_index(*range.start()), self.id_to_index(*range.end())) {
+			(Some(start), Some(end)) if start.max(end) < self.handles.len().min(self.ids.len()).min(self.start_point.len()).min(self.end_point.len()) => Some(start..=end),
 			_ => {
 				warn!("Resolving range with invalid id");
 				None
@@ -264,18 +283,22 @@ impl SegmentDomain {
 		}
 	}
 
+	/// Enumerate all segments that start a the point.
 	pub fn start_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
 		self.start_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
 	}
 
+	/// Enumerate all segments that end a the point.
 	pub fn end_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
 		self.end_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
 	}
 
+	/// Enumerate all segments that start or end at a point, converting them to [`HandleId`s]. Note that the handles may not exist e.g. for a linear segment.
 	pub fn all_connected(&self, point: PointId) -> impl Iterator<Item = HandleId> + '_ {
 		self.start_connected(point).map(HandleId::primary).chain(self.end_connected(point).map(HandleId::end))
 	}
 
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
 	pub fn connected_count(&self, point: PointId) -> usize {
 		self.all_connected(point).count()
 	}
@@ -364,8 +387,8 @@ impl RegionDomain {
 impl super::VectorData {
 	/// Construct a [`bezier_rs::Bezier`] curve spanning from the resolved position of the start and end points with the specified handles. Returns [`None`] if either ID is invalid.
 	fn segment_to_bezier(&self, start: PointId, end: PointId, handles: bezier_rs::BezierHandles) -> Option<bezier_rs::Bezier> {
-		let start = self.point_domain.pos_from_id(start)?;
-		let end = self.point_domain.pos_from_id(end)?;
+		let start = self.point_domain.position_from_id(start)?;
+		let end = self.point_domain.position_from_id(end)?;
 		Some(bezier_rs::Bezier { start, end, handles })
 	}
 
@@ -376,7 +399,7 @@ impl super::VectorData {
 
 	/// Tries to convert a segment with the specified id to the start and end points and a [`bezier_rs::Bezier`], returning None if the id is invalid.
 	pub fn segment_points_from_id(&self, id: SegmentId) -> Option<(PointId, PointId, bezier_rs::Bezier)> {
-		let index: usize = self.segment_domain.resolve_id(id)?;
+		let index: usize = self.segment_domain.id_to_index(id)?;
 		let start = self.segment_domain.start_point[index];
 		let end = self.segment_domain.end_point[index];
 		Some((start, end, self.segment_to_bezier(start, end, self.segment_domain.handles[index])?))
@@ -408,7 +431,7 @@ impl super::VectorData {
 			first_point = Some(first_point.unwrap_or(start));
 
 			groups.push(bezier_rs::ManipulatorGroup {
-				anchor: self.point_domain.pos_from_id(start)?,
+				anchor: self.point_domain.position_from_id(start)?,
 				in_handle: last.and_then(|(_, handle)| handle.end()),
 				out_handle: handle.start(),
 				id: start,
@@ -424,7 +447,7 @@ impl super::VectorData {
 				groups[0].in_handle = last_handle.end();
 			} else {
 				groups.push(bezier_rs::ManipulatorGroup {
-					anchor: self.point_domain.pos_from_id(end)?,
+					anchor: self.point_domain.position_from_id(end)?,
 					in_handle: last_handle.end(),
 					out_handle: None,
 					id: end,
@@ -542,6 +565,7 @@ impl crate::vector::ConcatElement for super::VectorData {
 	}
 }
 
+/// Represents the conversion of ids used when concatenating vector data with conflicting ids.
 struct IdMap {
 	point_map: HashMap<PointId, PointId>,
 	segment_map: HashMap<SegmentId, SegmentId>,

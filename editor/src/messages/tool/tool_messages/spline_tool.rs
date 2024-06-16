@@ -8,8 +8,6 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
-use graphene_core::vector::style::{Fill, Stroke};
-use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 
 #[derive(Default)]
@@ -217,7 +215,6 @@ impl Fsm for SplineToolFsmState {
 
 				tool_data.weight = tool_options.line_weight;
 
-				let insert_index = -1;
 				let nodes = {
 					let node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
 					let node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VecDVec2(Vec::new()), false))], Default::default());

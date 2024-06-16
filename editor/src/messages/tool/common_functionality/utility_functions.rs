@@ -1,6 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_subpaths;
 use glam::DVec2;
 use graphene_std::vector::PointId;
 
@@ -14,7 +13,7 @@ pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: 
 
 		let vector_data = document.metadata.compute_modified_vector(layer, document.network())?;
 		for id in vector_data.single_connected_points() {
-			let Some(point) = vector_data.point_domain.pos_from_id(id) else { continue };
+			let Some(point) = vector_data.point_domain.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
 

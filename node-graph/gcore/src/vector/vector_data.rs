@@ -175,6 +175,7 @@ impl VectorData {
 		self.point_domain.ids().iter().copied().filter(|&point| self.segment_domain.connected_count(point) == 1)
 	}
 
+	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.
 	pub fn colinear(&self, point: ManipulatorPointId) -> bool {
 		let has_handle = |target| self.colinear_manipulators.iter().flatten().any(|&handle| handle == target);
 		match point {
@@ -193,21 +194,31 @@ impl Default for VectorData {
 	}
 }
 
+/// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curviture).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ManipulatorPointId {
+	/// A control anchor - the start or end point of a bézier.
 	Anchor(PointId),
+	/// The handle for a bézier - the first handle on a cubic and the only handle on a quadratic.
 	PrimaryHandle(SegmentId),
+	/// The end handle on a cubic bézier.
 	EndHandle(SegmentId),
 }
+
 impl ManipulatorPointId {
+	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
+	#[must_use]
 	pub fn get_position(&self, vector_data: &VectorData) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::Anchor(id) => vector_data.point_domain.pos_from_id(*id),
+			ManipulatorPointId::Anchor(id) => vector_data.point_domain.position_from_id(*id),
 			ManipulatorPointId::PrimaryHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
 			ManipulatorPointId::EndHandle(id) => vector_data.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
 		}
 	}
+
+	/// Attempt to get a pair of handles. For an anchor this is the first to handles connected. For a handle it is self and the first opposing handle.
+	#[must_use]
 	pub fn get_handle_pair(self, vector_data: &VectorData) -> Option<[HandleId; 2]> {
 		match self {
 			ManipulatorPointId::Anchor(point) => vector_data.segment_domain.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
@@ -225,6 +236,9 @@ impl ManipulatorPointId {
 			}
 		}
 	}
+
+	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
+	#[must_use]
 	pub fn get_anchor(self, vector_data: &VectorData) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
@@ -232,6 +246,9 @@ impl ManipulatorPointId {
 			ManipulatorPointId::EndHandle(segment) => vector_data.segment_domain.segment_end_from_id(segment),
 		}
 	}
+
+	/// Attempt to convert self to a [`HandleId`], returning none for an anchor.
+	#[must_use]
 	pub fn as_handle(self) -> Option<HandleId> {
 		match self {
 			ManipulatorPointId::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
@@ -239,6 +256,9 @@ impl ManipulatorPointId {
 			ManipulatorPointId::Anchor(_) => None,
 		}
 	}
+
+	/// Attempt to convert self to an anchor, returning None for a handle.
+	#[must_use]
 	pub fn as_anchor(self) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
@@ -246,50 +266,58 @@ impl ManipulatorPointId {
 		}
 	}
 }
+
+/// The type of handle found on a bézier curve.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HandleType {
+	/// The first handle on a cubic bézier or the only handle on a quadratic bézier.
 	Primary,
+	/// The second handle on a cubic bézier.
 	End,
 }
+
+/// Represents a primary or end handle found in a particular segment.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HandleId {
 	pub ty: HandleType,
 	pub segment: SegmentId,
 }
+
 impl HandleId {
+	/// Construct a handle for the first handle on a cubic bézier or the only handle on a quadratic bézier.
 	#[must_use]
 	pub const fn primary(segment: SegmentId) -> Self {
 		Self { ty: HandleType::Primary, segment }
 	}
+
+	/// Construct a handle for the end handle on a cubic bézier.
 	#[must_use]
 	pub const fn end(segment: SegmentId) -> Self {
 		Self { ty: HandleType::End, segment }
 	}
+
+	/// Convert to [`ManipulatorPointId`].
 	#[must_use]
-	pub fn to_point(self) -> ManipulatorPointId {
+	pub fn to_manipulator_point(self) -> ManipulatorPointId {
 		match self.ty {
 			HandleType::Primary => ManipulatorPointId::PrimaryHandle(self.segment),
 			HandleType::End => ManipulatorPointId::EndHandle(self.segment),
 		}
 	}
+
+	/// Set the handle's position relative to the anchor which is the start anchor for the primary handle and end anchor for the end handle.
 	#[must_use]
-	pub fn move_pos(self, delta: DVec2) -> VectorModificationType {
+	pub fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
 		let Self { ty, segment } = self;
 		match ty {
-			HandleType::Primary => VectorModificationType::ApplyPrimaryDelta { segment, delta },
-			HandleType::End => VectorModificationType::ApplyEndDelta { segment, delta },
+			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
+			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
 		}
 	}
-	#[must_use]
-	pub fn set_pos(self, pos: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, pos },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, pos },
-		}
-	}
+
+	/// Convert an end handle to the primary handle and a primary handle to an end handle. Note that the new handle may not exist (e.g. for a quadratic bézier).
 	#[must_use]
 	pub fn opposite(self) -> Self {
 		match self.ty {
@@ -299,66 +327,17 @@ impl HandleId {
 	}
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum SelectedType {
-	Anchor = 1 << 0,
-	InHandle = 1 << 1,
-	OutHandle = 1 << 2,
-}
-impl SelectedType {
-	/// Get the location of the [SelectedType] in the [ManipulatorGroup]
-	pub fn get_position(&self, manipulator_group: &ManipulatorGroup<PointId>) -> Option<DVec2> {
-		match self {
-			Self::Anchor => Some(manipulator_group.anchor),
-			Self::InHandle => manipulator_group.in_handle,
-			Self::OutHandle => manipulator_group.out_handle,
-		}
-	}
-
-	/// Get the closest [SelectedType] in the [ManipulatorGroup].
-	pub fn closest_widget(manipulator_group: &ManipulatorGroup<PointId>, transform_space: DAffine2, target: DVec2, hide_handle_distance: f64) -> (Self, f64) {
-		let anchor = transform_space.transform_point2(manipulator_group.anchor);
-		// Skip handles under the anchor
-		let not_under_anchor = |&(selected_type, position): &(SelectedType, DVec2)| selected_type == Self::Anchor || position.distance_squared(anchor) > hide_handle_distance.powi(2);
-		let compute_distance = |selected_type: Self| {
-			selected_type.get_position(manipulator_group).and_then(|position| {
-				Some((selected_type, transform_space.transform_point2(position)))
-					.filter(not_under_anchor)
-					.map(|(selected_type, pos)| (selected_type, pos.distance_squared(target)))
-			})
-		};
-		[Self::Anchor, Self::InHandle, Self::OutHandle]
-			.into_iter()
-			.filter_map(compute_distance)
-			.min_by(|a, b| a.1.total_cmp(&b.1))
-			.unwrap_or((Self::Anchor, manipulator_group.anchor.distance_squared(target)))
-	}
-
-	/// Opposite handle
-	pub fn opposite(&self) -> Self {
-		match self {
-			SelectedType::Anchor => SelectedType::Anchor,
-			SelectedType::InHandle => SelectedType::OutHandle,
-			SelectedType::OutHandle => SelectedType::InHandle,
-		}
-	}
-
-	/// Check if handle
-	pub fn is_handle(self) -> bool {
-		self != SelectedType::Anchor
-	}
-}
-
 #[cfg(test)]
-fn assert_subpath_eq(generated: &Vec<bezier_rs::Subpath<PointId>>, expected: &bezier_rs::Subpath<PointId>) {
-	assert_eq!(generated.len(), 1);
-	assert_eq!(generated[0].manipulator_groups().len(), expected.manipulator_groups().len());
-	assert_eq!(generated[0].closed(), expected.closed());
-	for (generated, expected) in generated[0].manipulator_groups().iter().zip(expected.manipulator_groups()) {
-		assert_eq!(generated.in_handle, expected.in_handle);
-		assert_eq!(generated.out_handle, expected.out_handle);
-		assert_eq!(generated.anchor, expected.anchor);
+fn assert_subpath_eq(generated: &Vec<bezier_rs::Subpath<PointId>>, expected: &[bezier_rs::Subpath<PointId>]) {
+	assert_eq!(generated.len(), expected.len());
+	for (generated, expected) in generated.iter().zip(expected) {
+		assert_eq!(generated.manipulator_groups().len(), expected.manipulator_groups().len());
+		assert_eq!(generated.closed(), expected.closed());
+		for (generated, expected) in generated.manipulator_groups().iter().zip(expected.manipulator_groups()) {
+			assert_eq!(generated.in_handle, expected.in_handle);
+			assert_eq!(generated.out_handle, expected.out_handle);
+			assert_eq!(generated.anchor, expected.anchor);
+		}
 	}
 }
 
@@ -369,10 +348,10 @@ fn construct_closed_subpath() {
 	assert_eq!(vector_data.point_domain.ids().len(), 4);
 	let bézier_paths = vector_data.segment_bezier_iter().map(|(_, bézier, _, _)| bézier).collect::<Vec<_>>();
 	assert_eq!(bézier_paths.len(), 4);
-	assert!(bézier_paths.iter().all(|bézier| circle.iter().find(|original_bézier| original_bézier == bézier).is_some()));
+	assert!(bézier_paths.iter().all(|&bézier| circle.iter().any(|original_bézier| original_bézier == bézier)));
 
 	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &circle);
+	assert_subpath_eq(&generated, &[circle]);
 }
 
 #[test]
@@ -385,5 +364,22 @@ fn construct_open_subpath() {
 	assert_eq!(bézier_paths, vec![bézier]);
 
 	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
-	assert_subpath_eq(&generated, &subpath);
+	assert_subpath_eq(&generated, &[subpath]);
+}
+
+#[test]
+fn construct_many_subpath() {
+	let curve = bezier_rs::Bezier::from_cubic_dvec2(DVec2::ZERO, DVec2::NEG_ONE, DVec2::ONE, DVec2::X);
+	let curve = bezier_rs::Subpath::from_bezier(&curve);
+	let circle = bezier_rs::Subpath::new_ellipse(DVec2::NEG_ONE, DVec2::ONE);
+
+	let vector_data = VectorData::from_subpaths([&curve, &circle], false);
+	assert_eq!(vector_data.point_domain.ids().len(), 6);
+
+	let bézier_paths = vector_data.segment_bezier_iter().map(|(_, bézier, _, _)| bézier).collect::<Vec<_>>();
+	assert_eq!(bézier_paths.len(), 5);
+	assert!(bézier_paths.iter().all(|&bézier| circle.iter().chain(curve.iter()).any(|original_bézier| original_bézier == bézier)));
+
+	let generated = vector_data.stroke_bezier_paths().collect::<Vec<_>>();
+	assert_subpath_eq(&generated, &[curve, circle]);
 }

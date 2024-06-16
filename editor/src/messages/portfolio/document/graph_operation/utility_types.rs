@@ -1,4 +1,4 @@
-use super::transform_utils::{self, LayerBounds};
+use super::transform_utils;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -15,7 +15,6 @@ use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
 use graphene_core::Type;
 use graphene_core::{Artboard, Color};
-use graphene_std::vector::ManipulatorPointId;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -28,8 +27,6 @@ pub enum TransformIn {
 	Scope { scope: DAffine2 },
 	Viewport,
 }
-
-type ManipulatorGroup = bezier_rs::ManipulatorGroup<PointId>;
 
 // TODO: This is helpful to prevent passing the same arguments to multiple functions, but is currently inefficient due to the collect_outwards_wires. Move it into a function and use only when needed.
 /// NodeGraphMessage or GraphOperationMessage cannot be added in ModifyInputsContext, since the functions are called by both messages handlers
@@ -623,10 +620,9 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, bounds: LayerBounds, skip_rerender: bool) {
-		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
+	pub fn transform_change(&mut self, transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, skip_rerender: bool) {
+		self.modify_inputs("Transform", skip_rerender, |inputs, _node_id, _metadata| {
 			let layer_transform = transform_utils::get_current_transform(inputs);
-			let upstream_transform = metadata.upstream_transform(node_id);
 			let to = match transform_in {
 				TransformIn::Local => DAffine2::IDENTITY,
 				TransformIn::Scope { scope } => scope * parent_transform,
@@ -637,7 +633,7 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, bounds: LayerBounds, skip_rerender: bool) {
+	pub fn transform_set(&mut self, mut transform: DAffine2, transform_in: TransformIn, parent_transform: DAffine2, current_transform: Option<DAffine2>, skip_rerender: bool) {
 		self.modify_inputs("Transform", skip_rerender, |inputs, node_id, metadata| {
 			let upstream_transform = metadata.upstream_transform(node_id);
 
@@ -658,33 +654,13 @@ impl<'a> ModifyInputsContext<'a> {
 		});
 	}
 
-	pub fn pivot_set(&mut self, new_pivot: DVec2, bounds: LayerBounds) {
-		self.modify_inputs("Transform", false, |inputs, node_id, metadata| {
+	pub fn pivot_set(&mut self, new_pivot: DVec2) {
+		self.modify_inputs("Transform", false, |inputs, _node_id, _metadata| {
 			inputs[5] = NodeInput::value(TaggedValue::DVec2(new_pivot), false);
 		});
 	}
 
-	pub fn update_bounds(&mut self, [old_bounds_min, old_bounds_max]: [DVec2; 2], [new_bounds_min, new_bounds_max]: [DVec2; 2]) {
-		self.modify_all_node_inputs("Transform", false, |inputs, node_id, metadata| {
-			let upstream_transform = metadata.upstream_transform(node_id);
-			let layer_transform = transform_utils::get_current_transform(inputs);
-			let normalized_pivot = transform_utils::get_current_normalized_pivot(inputs);
-
-			let old_layerspace_pivot = (old_bounds_max - old_bounds_min) * normalized_pivot + old_bounds_min;
-			let new_layerspace_pivot = (new_bounds_max - new_bounds_min) * normalized_pivot + new_bounds_min;
-			let new_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(new_layerspace_pivot));
-			let old_pivot_transform = DAffine2::from_translation(upstream_transform.transform_point2(old_layerspace_pivot));
-
-			let transform = new_pivot_transform.inverse() * old_pivot_transform * layer_transform * old_pivot_transform.inverse() * new_pivot_transform;
-			transform_utils::update_transform(inputs, transform);
-		});
-	}
-
-	pub fn vector_modify(&mut self, modification_type: VectorModificationType) -> Option<LayerNodeIdentifier> {
-		let [mut old_bounds_min, mut old_bounds_max] = [DVec2::ZERO, DVec2::ONE];
-		let [mut new_bounds_min, mut new_bounds_max] = [DVec2::ZERO, DVec2::ONE];
-		let mut empty = false;
-
+	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
 		self.modify_inputs("Path Modify", false, |inputs, _node_id, _metadata| {
 			let [_, NodeInput::Value {
 				tagged_value: TaggedValue::VectorModification(modification),
@@ -694,19 +670,8 @@ impl<'a> ModifyInputsContext<'a> {
 				panic!("Path Modify does not have modification input");
 			};
 
-			//[old_bounds_min, old_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
-
 			modification.modify(&modification_type);
-			//empty = !subpaths.iter().any(|subpath| !subpath.is_empty());
-
-			//[new_bounds_min, new_bounds_max] = transform_utils::nonzero_subpath_bounds(subpaths);
 		});
-
-		if empty {
-			self.layer_node.map(|layer_id| LayerNodeIdentifier::new(layer_id, &self.document_network))
-		} else {
-			None
-		}
 	}
 
 	pub fn brush_modify(&mut self, strokes: Vec<BrushStroke>) {

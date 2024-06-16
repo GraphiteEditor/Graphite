@@ -3,7 +3,7 @@ use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLO
 use crate::messages::prelude::Message;
 use bezier_rs::{Bezier, Subpath};
 use core::borrow::Borrow;
-use core::f64::consts::{PI, TAU};
+use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_std::vector::{PointId, VectorData};

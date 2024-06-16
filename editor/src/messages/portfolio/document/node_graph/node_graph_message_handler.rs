@@ -1712,11 +1712,15 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
+	// We don't care about trying to do this hacky div thing on non wasm
+	#[cfg(not(target_arch = "wasm32"))]
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		// We don't care about trying to do this hacky div thing on non wasm
-		#[cfg(not(target_arch = "wasm"))]
+		warn!("Failed to find width of {node:#?} due to non-wasm arch");
 		return None;
+	}
 
+	#[cfg(target_arch = "wasm32")]
+	fn get_text_width(node: &DocumentNode) -> Option<f64> {
 		let document = window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
 			Ok(div) => div,

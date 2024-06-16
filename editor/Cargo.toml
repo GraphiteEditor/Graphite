@@ -65,3 +65,7 @@ web-sys = { workspace = true, features = [
 env_logger = "0.10"
 futures = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints.rust]
+# ToDo: figure out why we check these features when they do not exist
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("resvg", "vello"))'] }

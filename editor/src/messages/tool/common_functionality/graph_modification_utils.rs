@@ -1,8 +1,6 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
-use graphene_core::vector::VectorModificationType;
-
-use bezier_rs::{ManipulatorGroup, Subpath};
+use bezier_rs::Subpath;
 use graph_craft::document::{value::TaggedValue, DocumentNode, NodeId, NodeInput, NodeNetwork};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
@@ -47,7 +45,6 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 	LayerNodeIdentifier::new_unchecked(id)
 }
 pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, DocumentNode>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
-	let insert_index = -1;
 	responses.add(GraphOperationMessage::NewCustomLayer {
 		id,
 		nodes,
@@ -57,16 +54,6 @@ pub fn new_custom(id: NodeId, nodes: HashMap<NodeId, DocumentNode>, parent: Laye
 	});
 	responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 	LayerNodeIdentifier::new_unchecked(id)
-}
-
-/// Locate the subpaths from the shape nodes of a particular layer
-pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<PointId>>> {
-	let path_data_node_input_index = 0;
-	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document_network).find_input("Shape", path_data_node_input_index)? {
-		Some(subpaths)
-	} else {
-		None
-	}
 }
 
 /// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
@@ -83,17 +70,6 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document_network: &NodeNet
 	let [min, max] = document_metadata.nonzero_bounding_box(layer);
 	let pivot = get_pivot(layer, document_network).unwrap_or(DVec2::splat(0.5));
 	document_metadata.transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
-}
-
-/// Get the manipulator groups that currently have colinear handles for a particular layer from the shape node
-pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> &Vec<PointId> {
-	let colinear_manipulators_node_input_index = 1;
-	if let Some(TaggedValue::PointIds(manipulator_groups)) = NodeGraphLayer::new(layer, document_network).find_input("Shape", colinear_manipulators_node_input_index) {
-		manipulator_groups
-	} else {
-		static DEFAULT: &'static Vec<PointId> = &Vec::new();
-		DEFAULT
-	}
 }
 
 /// Get the current gradient of a layer from the closest Fill node
@@ -192,16 +168,6 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Op
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network: &NodeNetwork, node_name: &str) -> bool {
 	NodeGraphLayer::new(layer, document_network).find_node_inputs(node_name).is_some()
-}
-
-/// Convert subpaths to an iterator of manipulator groups
-pub fn get_manipulator_groups(subpaths: &[Subpath<PointId>]) -> impl Iterator<Item = &bezier_rs::ManipulatorGroup<PointId>> + DoubleEndedIterator {
-	subpaths.iter().flat_map(|subpath| subpath.manipulator_groups())
-}
-
-/// Find a manipulator group with a specific id from several subpaths
-pub fn get_manipulator_from_id(subpaths: &[Subpath<PointId>], id: PointId) -> Option<&bezier_rs::ManipulatorGroup<PointId>> {
-	subpaths.iter().find_map(|subpath| subpath.manipulator_from_id(id))
 }
 
 /// An immutable reference to a layer within the document node graph for easy access.

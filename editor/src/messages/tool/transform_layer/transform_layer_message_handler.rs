@@ -2,7 +2,6 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 

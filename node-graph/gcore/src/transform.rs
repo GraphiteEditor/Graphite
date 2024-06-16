@@ -152,8 +152,7 @@ pub struct TransformNode<TransformTarget, Translation, Rotation, Scale, Shear, P
 	pub(crate) rotate: Rotation,
 	pub(crate) scale: Scale,
 	pub(crate) shear: Shear,
-	#[deprecated]
-	pub(crate) pivot: Pivot,
+	pub(crate) _pivot: Pivot,
 }
 
 #[derive(Debug, Clone, Copy, dyn_any::DynAny, PartialEq)]
@@ -240,7 +239,7 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 	rotate: f64,
 	scale: DVec2,
 	shear: DVec2,
-	pivot: DVec2,
+	_pivot: DVec2,
 ) -> Fut::Output
 where
 	Fut::Output: TransformMut,

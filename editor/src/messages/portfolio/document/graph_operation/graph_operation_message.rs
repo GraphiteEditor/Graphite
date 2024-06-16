@@ -77,11 +77,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
 	},
-	UpdateBounds {
-		layer: LayerNodeIdentifier,
-		old_bounds: [DVec2; 2],
-		new_bounds: [DVec2; 2],
-	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,
