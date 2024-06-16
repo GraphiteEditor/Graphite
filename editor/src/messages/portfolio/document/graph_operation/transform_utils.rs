@@ -47,6 +47,9 @@ pub struct LayerBounds {
 }
 
 #[cfg(test)]
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+
+#[cfg(test)]
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
 	pub fn new(metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {

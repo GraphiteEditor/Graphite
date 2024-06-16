@@ -262,10 +262,7 @@ mod test {
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use crate::messages::prelude::*;
-	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
-
-	use graph_craft::document::NodeId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
