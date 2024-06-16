@@ -370,7 +370,7 @@ fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -
 		subpath.apply_transform(vector_data.transform);
 
 		for point in subpath.poisson_disk_points(separation_disk_diameter, || rng.gen::<f64>()) {
-			result.point_domain.push(PointId::generate(), vector_data.transform.inverse().transform_point2(point));
+			result.point_domain.push(PointId::generate(), point);
 		}
 	}
 

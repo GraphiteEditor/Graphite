@@ -325,6 +325,7 @@ impl PathToolData {
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(document_network, document_metadata, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
+				self.drag_start_pos = input.mouse.position;
 				self.start_dragging_point(selected_points, input, document, responses);
 				responses.add(OverlaysMessage::Draw);
 			}
