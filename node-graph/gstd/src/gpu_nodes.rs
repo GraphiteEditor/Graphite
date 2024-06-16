@@ -98,7 +98,7 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
 		self.cache.borrow().get(&node.name).unwrap().clone()
 	} else {
-		let name = node.name.clone();
+		let name = node.name.to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrame::empty();

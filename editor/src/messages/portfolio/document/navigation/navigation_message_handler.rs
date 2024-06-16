@@ -12,13 +12,16 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use glam::{DAffine2, DVec2};
+use graph_craft::document::NodeNetwork;
 
 pub struct NavigationMessageData<'a> {
 	pub metadata: &'a DocumentMetadata,
-	pub document_bounds: Option<[DVec2; 2]>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub selection_bounds: Option<[DVec2; 2]>,
 	pub ptz: &'a mut PTZ,
+	pub graph_view_overlay_open: bool,
+	pub document_network: &'a NodeNetwork,
+	pub node_graph_handler: &'a NodeGraphMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -32,10 +35,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, data: NavigationMessageData) {
 		let NavigationMessageData {
 			metadata,
-			document_bounds,
 			ipp,
 			selection_bounds,
 			ptz,
+			graph_view_overlay_open,
+			document_network,
+			node_graph_handler,
 		} = data;
 		let old_zoom = ptz.zoom;
 
@@ -51,29 +56,34 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo {
-							key_groups: vec![KeysGroup(vec![Key::Control]).into()],
-							key_groups_mac: None,
-							mouse: None,
-							label: String::from("Snap 15°"),
-							plus: false,
-							slash: false,
-						}]),
-					]),
-				});
+				// If the node graph is open, prevent tilt and instead start panning
+				if graph_view_overlay_open {
+					responses.add(NavigationMessage::BeginCanvasPan);
+				} else {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+					responses.add(FrontendMessage::UpdateInputHints {
+						hint_data: HintData(vec![
+							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+							HintGroup(vec![HintInfo {
+								key_groups: vec![KeysGroup(vec![Key::Control]).into()],
+								key_groups_mac: None,
+								mouse: None,
+								label: String::from("Snap 15°"),
+								plus: false,
+								slash: false,
+							}]),
+						]),
+					});
 
-				self.navigation_operation = NavigationOperation::Tilt {
-					tilt_original_for_abort: ptz.tilt,
-					tilt_raw_not_snapped: ptz.tilt,
-					snap: false,
-				};
+					self.navigation_operation = NavigationOperation::Tilt {
+						tilt_original_for_abort: ptz.tilt,
+						tilt_raw_not_snapped: ptz.tilt,
+						snap: false,
+					};
 
-				self.mouse_position = ipp.mouse.position;
-				self.finish_operation_with_click = was_dispatched_from_menu;
+					self.mouse_position = ipp.mouse.position;
+					self.finish_operation_with_click = was_dispatched_from_menu;
+				}
 			}
 			NavigationMessage::BeginCanvasZoom => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
@@ -99,15 +109,28 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				self.mouse_position = ipp.mouse.position;
 			}
 			NavigationMessage::CanvasPan { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta);
+				let transformed_delta = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_vector2(delta)
+				} else {
+					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+						return;
+					};
+					network.node_graph_to_viewport.inverse().transform_vector2(delta)
+				};
 
 				ptz.pan += transformed_delta;
 				responses.add(BroadcastEvent::CanvasTransformed);
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
-				let transformed_delta = metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
-
+				let transformed_delta = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
+				} else {
+					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+						return;
+					};
+					network.node_graph_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
+				};
 				ptz.pan += transformed_delta;
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
 			}
@@ -148,12 +171,24 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				if ipp.mouse.scroll_delta.y > 0. {
 					zoom_factor = 1. / zoom_factor
 				}
+				let document_bounds = if !graph_view_overlay_open {
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					metadata.document_bounds_viewport_space()
+				} else {
+					node_graph_handler.graph_bounds_viewport_space(document_network)
+				};
 				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
 
 				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom * zoom_factor });
 			}
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
+				let document_bounds = if !graph_view_overlay_open {
+					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+					metadata.document_bounds_viewport_space()
+				} else {
+					node_graph_handler.graph_bounds_viewport_space(document_network)
+				};
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
@@ -201,14 +236,35 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				bounds: [pos1, pos2],
 				prevent_zoom_past_100,
 			} => {
-				let v1 = metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
+				let v1 = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO)
+				} else {
+					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+						return;
+					};
+					network.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
+				};
+				let v2 = if !graph_view_overlay_open {
+					metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
+				} else {
+					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+						return;
+					};
+					network.node_graph_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
+				};
 
 				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
 				let size = 1. / ((pos2 - pos1) / (v2 - v1));
 				let new_scale = size.min_element();
 
-				let viewport_change = metadata.document_to_viewport.transform_vector2(center);
+				let viewport_change = if !graph_view_overlay_open {
+					metadata.document_to_viewport.transform_vector2(center)
+				} else {
+					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+						return;
+					};
+					network.node_graph_to_viewport.transform_vector2(center)
+				};
 
 				// Only change the pan if the change will be visible in the viewport
 				if viewport_change.x.abs() > 0.5 || viewport_change.y.abs() > 0.5 {
@@ -228,7 +284,14 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			}
 			NavigationMessage::FitViewportToSelection => {
 				if let Some(bounds) = selection_bounds {
-					let transform = metadata.document_to_viewport.inverse();
+					let transform = if !graph_view_overlay_open {
+						metadata.document_to_viewport.inverse()
+					} else {
+						let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
+							return;
+						};
+						network.node_graph_to_viewport.inverse()
+					};
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
@@ -276,6 +339,13 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 							let vertical_delta = self.mouse_position.y - ipp.mouse.position.y;
 							let amount = vertical_delta * VIEWPORT_ZOOM_MOUSE_RATE;
 							let updated_zoom = zoom_raw_not_snapped * (1. + amount);
+
+							let document_bounds = if !graph_view_overlay_open {
+								// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
+								metadata.document_bounds_viewport_space()
+							} else {
+								node_graph_handler.graph_bounds_viewport_space(document_network)
+							};
 
 							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)
 						};
@@ -376,7 +446,6 @@ impl NavigationMessageHandler {
 		let delta_size = viewport_bounds - new_viewport_bounds;
 		let mouse_fraction = mouse / viewport_bounds;
 		let delta = delta_size * (DVec2::splat(0.5) - mouse_fraction);
-
 		NavigationMessage::CanvasPan { delta }.into()
 	}
 

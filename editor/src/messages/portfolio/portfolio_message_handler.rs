@@ -40,14 +40,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			PortfolioMessage::MenuBar(message) => {
 				let mut has_active_document = false;
 				let mut rulers_visible = false;
+				let mut node_graph_open = false;
 
 				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
 					has_active_document = true;
 					rulers_visible = document.rulers_visible;
+					node_graph_open = document.is_graph_overlay_open();
 				}
-
-				self.menu_bar_message_handler
-					.process_message(message, responses, MenuBarMessageData { has_active_document, rulers_visible });
+				self.menu_bar_message_handler.process_message(
+					message,
+					responses,
+					MenuBarMessageData {
+						has_active_document,
+						rulers_visible,
+						node_graph_open,
+					},
+				);
 			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id {
@@ -216,7 +224,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
 							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
 							collapsed: false,
-							alias: previous_alias,
+							alias: previous_alias.to_string(),
 						});
 					}
 				};
@@ -613,9 +621,11 @@ impl PortfolioMessageHandler {
 
 	// TODO: Fix how this doesn't preserve tab order upon loading new document from *File > Open*
 	fn load_document(&mut self, new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		let mut new_document = new_document;
 		self.document_ids.push(document_id);
-
 		new_document.update_layers_panel_options_bar_widgets(responses);
+
+		new_document.node_graph_handler.update_all_click_targets(&mut new_document.network, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 
@@ -624,6 +634,8 @@ impl PortfolioMessageHandler {
 			responses.add(ToolMessage::DeactivateTools);
 		}
 
+		//TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect
+		responses.add(DocumentMessage::GraphViewOverlay { open: false });
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(PortfolioMessage::SelectDocument { document_id });
 		responses.add(PortfolioMessage::LoadDocumentResources { document_id });

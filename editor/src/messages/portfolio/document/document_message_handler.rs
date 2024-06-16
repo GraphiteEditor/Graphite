@@ -1,3 +1,4 @@
+use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
@@ -74,6 +75,8 @@ pub struct DocumentMessageHandler {
 	commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub navigation: PTZ,
+	/// The current pan, and zoom state of the viewport's view of the node graph.
+	node_graph_transform: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
@@ -137,6 +140,7 @@ impl Default for DocumentMessageHandler {
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			navigation: PTZ::default(),
+			node_graph_transform: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			overlays_visible: true,
@@ -169,13 +173,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 		match message {
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
-				let document_bounds = self.metadata().document_bounds_viewport_space();
 				let data = NavigationMessageData {
 					metadata: &self.metadata,
-					document_bounds,
 					ipp,
-					selection_bounds: self.selected_visible_layers_bounding_box_viewport(),
-					ptz: &mut self.navigation,
+					selection_bounds: if self.graph_view_overlay_open {
+						self.selected_nodes_bounding_box_viewport()
+					} else {
+						self.selected_visible_layers_bounding_box_viewport()
+					},
+					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
+					graph_view_overlay_open: self.graph_view_overlay_open,
+					document_network: &self.network,
+					node_graph_handler: &self.node_graph_handler,
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -207,7 +216,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						document_id,
 						document_name: self.name.as_str(),
 						collapsed: &mut self.collapsed,
-						input: ipp,
+						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 					},
 				);
@@ -369,10 +378,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
+				// TODO: Find a better way to update click targets when undoing/redoing
+				if self.graph_view_overlay_open {
+					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+				}
+
+				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
+				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
+				// Update the tilt menu bar buttons to be disabled when the graph is open
+				responses.add(MenuBarMessage::SendLayout);
 				if open {
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 				}
-				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
@@ -558,9 +576,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
 				let ordered_last_elements = self.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).rev().collect::<Vec<_>>();
 				for layer_to_move in ordered_last_elements {
-					if layer_to_move
-						.upstream_siblings(&self.metadata)
-						.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
+					if insert_index > 0
+						&& layer_to_move
+							.upstream_siblings(&self.metadata)
+							.any(|layer| layer_above_insertion.is_some_and(|layer_above_insertion| layer_above_insertion == layer))
 					{
 						insert_index -= 1;
 					}
@@ -714,9 +733,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::RenderRulers => {
 				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
 
-				let ruler_origin = self.metadata().document_to_viewport.transform_point2(DVec2::ZERO);
+				let ruler_origin = if !self.graph_view_overlay_open {
+					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
+				} else {
+					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+						log::error!("Nested network not found in UpdateDocumentTransform");
+						return;
+					};
+					network.node_graph_to_viewport.transform_point2(DVec2::ZERO)
+				};
 				let log = document_transform_scale.log2();
-				let ruler_interval = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
+				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
 				let ruler_spacing = ruler_interval * document_transform_scale;
 
 				responses.add(FrontendMessage::UpdateDocumentRulers {
@@ -733,7 +760,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let viewport_size = ipp.viewport_bounds.size();
 				let viewport_mid = ipp.viewport_bounds.center();
-				let [bounds1, bounds2] = self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2]);
+				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
+					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
+				} else {
+					self.node_graph_handler.graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
+				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
 				let bounds_length = (bounds2 - bounds1) * (1. + SCROLLBAR_SPACING);
@@ -957,7 +988,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::UndoFinished);
 				responses.add(ToolMessage::Undo);
 			}
-			DocumentMessage::UndoFinished => self.undo_in_progress = false,
+			DocumentMessage::UndoFinished => {
+				self.undo_in_progress = false;
+			}
 			DocumentMessage::UngroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -1050,11 +1083,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
-				self.metadata.document_to_viewport = transform;
-
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				if !self.graph_view_overlay_open {
+					self.metadata.document_to_viewport = transform;
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				} else {
+					let Some(network) = self.network.nested_network_mut(&self.node_graph_handler.network) else {
+						log::error!("Nested network not found in UpdateDocumentTransform");
+						return;
+					};
+					network.node_graph_to_viewport = transform;
+
+					responses.add(FrontendMessage::UpdateNodeGraphTransform {
+						transform: Transform {
+							scale: transform.matrix2.x_axis.x,
+							x: transform.translation.x,
+							y: transform.translation.y,
+						},
+					})
+				}
+
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::ZoomCanvasTo100Percent => {
@@ -1064,7 +1115,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(NavigationMessage::CanvasZoomSet { zoom_factor: 2. });
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
-				if let Some(bounds) = self.metadata().document_bounds_document_space(true) {
+				let bounds = if self.graph_view_overlay_open {
+					self.node_graph_handler
+						.network_metadata
+						.get(&self.node_graph_handler.network)
+						.and_then(|network_metadata| network_metadata.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
+				} else {
+					self.metadata().document_bounds_document_space(true)
+				};
+				if let Some(bounds) = bounds {
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
 				}
@@ -1116,9 +1175,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			common.extend(self.node_graph_handler.actions_additional_if_node_graph_is_open());
 		}
 		// More additional actions
-		common.extend(self.node_graph_handler.actions());
 		common.extend(self.navigation_handler.actions());
-
+		common.extend(self.node_graph_handler.actions());
+		common.extend(actions!(GraphOperationMessageDiscriminant; ToggleSelectedLocked, ToggleSelectedVisibility));
 		common
 	}
 }
@@ -1198,6 +1257,31 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_visible_layers(self.metadata())
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
+			.reduce(graphene_core::renderer::Quad::combine_bounds)
+	}
+
+	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in viewport space
+	pub fn selected_nodes_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+			log::error!("Could not get nested network in selected_nodes_bounding_box_viewport");
+			return None;
+		};
+
+		self.selected_nodes
+			.selected_nodes(network)
+			.filter_map(|node| {
+				let mut node_path = self.node_graph_handler.network.clone();
+				node_path.push(*node);
+				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node_path) else {
+					log::debug!("Could not get click target for node {node}");
+					return None;
+				};
+				let Some(network_metadata) = self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network) else {
+					log::debug!("Could not get network_metadata in selected_nodes_bounding_box_viewport");
+					return None;
+				};
+				node_metadata.node_click_target.subpath.bounding_box_with_transform(network_metadata.node_graph_to_viewport)
+			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
@@ -1416,6 +1500,10 @@ impl DocumentMessageHandler {
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
 		}
+		// TODO: Find a better way to update click targets when undoing/redoing
+		if self.graph_view_overlay_open {
+			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
+		}
 	}
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
@@ -1446,6 +1534,10 @@ impl DocumentMessageHandler {
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
+		}
+		// TODO: Find a better way to update click targets when undoing/redoing
+		if self.graph_view_overlay_open {
+			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 		}
 	}
 
