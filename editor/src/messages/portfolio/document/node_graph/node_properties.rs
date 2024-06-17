@@ -2444,12 +2444,16 @@ pub fn fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: 
 }
 
 pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let location = vec2_widget(document_node, node_id, 2, "Location", "X", "Y", " px", None, add_blank_assist);
-	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
-	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
-	let clip = bool_widget(document_node, node_id, 5, "Clip", true);
-	let clip = LayoutGroup::Row { widgets: clip };
-	vec![location, dimensions, background, clip]
+	let label = text_widget(document_node, node_id, 2, "Label", true);
+	let location = vec2_widget(document_node, node_id, 3, "Location", "X", "Y", " px", None, add_blank_assist);
+	let dimensions = vec2_widget(document_node, node_id, 4, "Dimensions", "W", "H", " px", None, add_blank_assist);
+	let background = color_widget(document_node, node_id, 5, "Background", ColorButton::default().allow_none(false), true);
+	let clip = bool_widget(document_node, node_id, 6, "Clip", true);
+
+	let label_row = LayoutGroup::Row { widgets: label };
+	let clip_row = LayoutGroup::Row { widgets: clip };
+
+	vec![label_row, location, dimensions, background, clip_row]
 }
 
 pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

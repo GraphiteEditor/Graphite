@@ -372,6 +372,7 @@ impl GraphicElementRendered for VectorData {
 
 impl GraphicElementRendered for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {
@@ -396,7 +397,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push("Artboard".into());
+					render.svg.push(self.label.to_string().into());
 				},
 			);
 		}
@@ -475,6 +476,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 		self.artboards.len() > 0
 	}
 }
+
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);

@@ -306,6 +306,7 @@ impl Fsm for ArtboardToolFsmState {
 						id,
 						artboard: graphene_core::Artboard {
 							graphic_group: graphene_core::GraphicGroup::EMPTY,
+							label: String::from("Artboard"),
 							location: start.round().as_ivec2(),
 							dimensions: IVec2::splat(1),
 							background: graphene_core::Color::WHITE,

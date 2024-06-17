@@ -1341,6 +1341,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
+				if let Some(node) = document_network.nodes.get_mut(&node_id) {
+					if node.name == "Artboard" && input_index == 2 {
+						node.alias = value.to_string();
+						self.update_click_target(node_id, document_network, Vec::new());
+
+						responses.add(DocumentMessage::RenderRulers);
+						responses.add(DocumentMessage::RenderScrollbars);
+						responses.add(NodeGraphMessage::SendGraph);
+					}
+				}
+
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
@@ -1572,7 +1583,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.update_click_target(node_id, document_network, self.network.clone());
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+					responses.add(NodeGraphMessage::SendGraph);
+					// self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+					
 				}
 			}
 			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {

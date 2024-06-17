@@ -701,11 +701,21 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
-					node.alias = name;
-					node_graph.update_click_target(layer.to_node(), document_network, Vec::new());
-					responses.add(DocumentMessage::RenderRulers);
-					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::SendGraph);
+					let node_id = layer.to_node();
+
+					if node.name == "Artboard" {
+						let input_index = 2;
+						let value = TaggedValue::String(name);
+
+						responses.add(NodeGraphMessage::SetInputValue { node_id, input_index, value });
+					} else {
+						node.alias = name.clone();
+						node_graph.update_click_target(node_id, document_network, Vec::new());
+
+						responses.add(DocumentMessage::RenderRulers);
+						responses.add(DocumentMessage::RenderScrollbars);
+						responses.add(NodeGraphMessage::SendGraph);
+					}
 				}
 			}
 			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {

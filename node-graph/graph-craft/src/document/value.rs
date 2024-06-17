@@ -238,6 +238,18 @@ impl<'a> TaggedValue {
 		}
 	}
 
+
+	pub fn to_string(&self) -> String {
+		match self {
+			TaggedValue::String(x) => x.to_string(),
+			TaggedValue::U32(x) => x.to_string(),
+			TaggedValue::U64(x) => x.to_string(),
+			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::Bool(x) => x.to_string(),
+			_ => panic!("Cannot convert to primitive string"),
+		}
+	}
+
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),

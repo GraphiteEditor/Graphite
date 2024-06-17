@@ -266,13 +266,15 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Artboard".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
-								NodeInput::network(concrete!(graphene_core::GraphicGroup), 1),
+								// NodeInput::network(concrete!(graphene_core::GraphicGroup), 1),
+								NodeInput::network(concrete!(TaggedValue), 1),
 								NodeInput::network(concrete!(TaggedValue), 2),
 								NodeInput::network(concrete!(TaggedValue), 3),
 								NodeInput::network(concrete!(TaggedValue), 4),
 								NodeInput::network(concrete!(TaggedValue), 5),
+								NodeInput::network(concrete!(TaggedValue), 6),
 							],
-							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, -3) }, // To Artboard
 							..Default::default()
 						},
@@ -309,7 +311,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Artboards", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
-				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Contents", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Label", TaggedValue::String(String::from("Artboard")), false),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),

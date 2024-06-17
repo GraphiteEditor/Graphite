@@ -304,6 +304,7 @@ impl<'a> ModifyInputsContext<'a> {
 			[
 				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
+				Some(NodeInput::value(TaggedValue::String(artboard.label), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -751,8 +752,8 @@ impl<'a> ModifyInputsContext<'a> {
 				location.y -= dimensions.y;
 			}
 
-			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
-			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(location), false);
+			inputs[4] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
 	}
 
