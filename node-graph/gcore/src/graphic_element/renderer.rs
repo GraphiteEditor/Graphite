@@ -372,7 +372,6 @@ impl GraphicElementRendered for VectorData {
 
 impl GraphicElementRendered for Artboard {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-
 		if !render_params.hide_artboards {
 			// Background
 			render.leaf_tag("rect", |attributes| {

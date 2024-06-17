@@ -238,7 +238,6 @@ impl<'a> TaggedValue {
 		}
 	}
 
-
 	pub fn to_string(&self) -> String {
 		match self {
 			TaggedValue::String(x) => x.to_string(),

@@ -1585,7 +1585,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::SendGraph);
 					// self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
-					
 				}
 			}
 			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {
