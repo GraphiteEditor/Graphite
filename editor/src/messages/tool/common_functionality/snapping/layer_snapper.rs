@@ -1,9 +1,7 @@
 use super::*;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{
-	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GeometrySnapSource, GeometrySnapTarget, SnapSource, SnapTarget,
-};
+use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
 use glam::{DAffine2, DVec2};
@@ -21,10 +19,17 @@ impl LayerSnapper {
 		if !document.snapping_state.target_enabled(target) {
 			return;
 		}
-		let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+		let Some(bounds) = (if document.metadata.is_artboard(layer) {
+			document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)).map(Quad::from_box)
+		} else {
+			document
+				.metadata
+				.bounding_box_with_transform(layer, DAffine2::IDENTITY)
+				.map(|bounds| document.metadata.transform_to_document(layer) * Quad::from_box(bounds))
+		}) else {
 			return;
 		};
-		let bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+
 		if bounds.0.iter().any(|point| !point.is_finite()) {
 			return;
 		}
@@ -46,7 +51,7 @@ impl LayerSnapper {
 		self.paths_to_snap.clear();
 
 		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) {
+			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
@@ -168,22 +173,14 @@ impl LayerSnapper {
 		self.points_to_snap.clear();
 
 		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) {
+			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
-				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
 					continue;
 				};
-				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-				let values = BBoxSnapValues {
-					corner_source: SnapSource::Board(BoardSnapSource::Corner),
-					corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
-					center_source: SnapSource::Board(BoardSnapSource::Center),
-					center_target: SnapTarget::Board(BoardSnapTarget::Center),
-					..Default::default()
-				};
-				get_bbox_points(quad, &mut self.points_to_snap, values, document);
+				get_bbox_points(Quad::from_box(bounds), &mut self.points_to_snap, BBoxSnapValues::ARTBOARD, document);
 			}
 		}
 		for &layer in snap_data.get_candidates() {
@@ -350,6 +347,15 @@ impl BBoxSnapValues {
 		edge_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
 		center_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Center),
 		center_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Center),
+	};
+
+	pub const ARTBOARD: Self = Self {
+		corner_source: SnapSource::Board(BoardSnapSource::Corner),
+		corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Board(BoardSnapSource::Center),
+		center_target: SnapTarget::Board(BoardSnapTarget::Center),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
