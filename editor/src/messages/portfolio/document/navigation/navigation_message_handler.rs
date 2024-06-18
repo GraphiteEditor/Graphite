@@ -12,16 +12,18 @@ use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 use glam::{DAffine2, DVec2};
-use graph_craft::document::NodeNetwork;
+use graph_craft::document::{NodeId, NodeNetwork};
 
 pub struct NavigationMessageData<'a> {
 	pub metadata: &'a DocumentMetadata,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub selection_bounds: Option<[DVec2; 2]>,
-	pub ptz: &'a mut PTZ,
+	pub document_ptz: &'a mut PTZ,
+	pub node_graph_ptz: &'a mut HashMap<Vec<NodeId>, PTZ>,
 	pub graph_view_overlay_open: bool,
 	pub document_network: &'a NodeNetwork,
 	pub node_graph_handler: &'a NodeGraphMessageHandler,
+	pub node_graph_to_viewport: &'a DAffine2,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -37,11 +39,18 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			metadata,
 			ipp,
 			selection_bounds,
-			ptz,
+			document_ptz,
+			node_graph_ptz,
 			graph_view_overlay_open,
 			document_network,
 			node_graph_handler,
+			node_graph_to_viewport,
 		} = data;
+		let ptz = if !graph_view_overlay_open {
+			document_ptz
+		} else {
+			node_graph_ptz.entry(node_graph_handler.network.clone()).or_insert(PTZ::default())
+		};
 		let old_zoom = ptz.zoom;
 
 		match message {
@@ -112,10 +121,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let transformed_delta = if !graph_view_overlay_open {
 					metadata.document_to_viewport.inverse().transform_vector2(delta)
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-					network.node_graph_to_viewport.inverse().transform_vector2(delta)
+					node_graph_to_viewport.inverse().transform_vector2(delta)
 				};
 
 				ptz.pan += transformed_delta;
@@ -126,10 +132,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let transformed_delta = if !graph_view_overlay_open {
 					metadata.document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-					network.node_graph_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
+					node_graph_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size())
 				};
 				ptz.pan += transformed_delta;
 				self.create_document_transform(ipp.viewport_bounds.center(), ptz, responses);
@@ -175,7 +178,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
-					node_graph_handler.graph_bounds_viewport_space(document_network)
+					node_graph_handler.graph_bounds_viewport_space( *node_graph_to_viewport)
 				};
 				zoom_factor *= Self::clamp_zoom(ptz.zoom * zoom_factor, document_bounds, old_zoom, ipp);
 
@@ -187,7 +190,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 					metadata.document_bounds_viewport_space()
 				} else {
-					node_graph_handler.graph_bounds_viewport_space(document_network)
+					node_graph_handler.graph_bounds_viewport_space( *node_graph_to_viewport)
 				};
 				ptz.zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				ptz.zoom *= Self::clamp_zoom(ptz.zoom, document_bounds, old_zoom, ipp);
@@ -239,18 +242,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let v1 = if !graph_view_overlay_open {
 					metadata.document_to_viewport.inverse().transform_point2(DVec2::ZERO)
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-					network.node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
+					node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO)
 				};
 				let v2 = if !graph_view_overlay_open {
 					metadata.document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-					network.node_graph_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
+					node_graph_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size())
 				};
 
 				let center = ((v1 + v2) - (pos1 + pos2)) / 2.;
@@ -260,10 +257,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 				let viewport_change = if !graph_view_overlay_open {
 					metadata.document_to_viewport.transform_vector2(center)
 				} else {
-					let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-						return;
-					};
-					network.node_graph_to_viewport.transform_vector2(center)
+					node_graph_to_viewport.transform_vector2(center)
 				};
 
 				// Only change the pan if the change will be visible in the viewport
@@ -287,10 +281,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 					let transform = if !graph_view_overlay_open {
 						metadata.document_to_viewport.inverse()
 					} else {
-						let Some(network) = document_network.nested_network(&node_graph_handler.network) else {
-							return;
-						};
-						network.node_graph_to_viewport.inverse()
+						node_graph_to_viewport.inverse()
 					};
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [transform.transform_point2(bounds[0]), transform.transform_point2(bounds[1])],
@@ -344,7 +335,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 								// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
 								metadata.document_bounds_viewport_space()
 							} else {
-								node_graph_handler.graph_bounds_viewport_space(document_network)
+								node_graph_handler.graph_bounds_viewport_space( *node_graph_to_viewport)
 							};
 
 							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)

@@ -1,4 +1,4 @@
-use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, WirePath};
+use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeWire, NodeMetadata, WirePath};
 use super::{document_node_types, node_properties};
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
@@ -8,7 +8,6 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::node_metadata::{NetworkMetadata, NodeMetadata};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -16,7 +15,9 @@ use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
+use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::*;
+
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -33,6 +34,7 @@ pub struct NodeGraphHandlerData<'a> {
 	pub collapsed: &'a mut CollapsedLayers,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
+	pub node_graph_to_viewport: &'a DAffine2,
 }
 
 #[derive(Debug, Clone)]
@@ -57,12 +59,10 @@ pub struct NodeGraphMessageHandler {
 	wire_in_progress_to_connector: Option<(DVec2, bool)>,
 	// State for the context menu popups
 	context_menu: Option<ContextMenuInformation>,
-	/// Click targets for every node in every network by using the path to that node
-	/// TODO: Only store click targets for nodes in the current network
-	pub node_metadata: HashMap<Vec<NodeId>, NodeMetadata>,
-	// Bounding box around all nodes and the node graph to viewport transform for all networks
-	/// TODO: Only store network metadata for the network that is being viewed
-	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
+	/// Click targets for every node in the network by using the path to that node
+	pub node_metadata: HashMap<NodeId, NodeMetadata>,
+	/// Cache for the bounding box around all nodes in node graph space.
+	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -76,6 +76,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			collapsed,
 			graph_view_overlay_open,
 			ipp,
+			node_graph_to_viewport,
 			..
 		} = data;
 
@@ -221,22 +222,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 
 				if let Some(wire_in_progress) = self.wire_in_progress_from_connector {
-					let Some((from_node, output_index)) = NodeGraphMessageHandler::get_key_from_point(
-						&self
-							.node_metadata
-							.iter()
-							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-							.flat_map(|(path, node_metadata)| {
-								// TODO: There should be a way to do this without cloning
-								node_metadata
-									.output_click_targets
-									.iter()
-									.enumerate()
-									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
-							})
-							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-						wire_in_progress.0,
-					) else {
+					let Some((from_node, output_index)) = self.get_connector_from_point(wire_in_progress.0, |metadata| &metadata.output_click_targets) else {
 						log::error!("Could not get output form connector start");
 						return;
 					};
@@ -322,73 +308,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::EnterNestedNetwork => {
-				let Some(network) = document_network.nested_network_mut(&self.network) else {
-					return;
-				};
-				let viewport_location = ipp.mouse.position;
-				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
-				let Some(node_id) = NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter_map(|(path, node_metadata)| {
-							let mut path = path.clone();
-							let node_id = path.pop().expect("Path to node should not be empty");
-							if *path == self.network {
-								// TODO: There should be a way to do this without cloning
-								Some((node_id, node_metadata.node_click_target.clone()))
-							} else {
-								None
-							}
-						})
-						.collect::<HashMap<NodeId, ClickTarget>>(),
-					point,
-				) else {
-					return;
-				};
-				if NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter_map(|(path, node_metadata)| {
-							let mut path = path.clone();
-							let node_id = path.pop().expect("Path to node should not be empty");
-							if *path == self.network {
-								// TODO: There should be a way to do this without cloning
-								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
-									Some((node_id, visibility_click_target.clone()))
-								} else {
-									None
-								}
-							} else {
-								None
-							}
-						})
-						.collect::<HashMap<NodeId, ClickTarget>>(),
-					point,
-				)
-				.is_some()
-				{
-					return;
-				};
-				if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
-					return;
-				}
-				let Some(node) = network.nodes.get_mut(&node_id) else {
-					return;
-				};
-
-				if let DocumentNodeImplementation::Network(_) = node.implementation {
-					self.network.push(node_id);
-					self.update_all_click_targets(document_network, self.network.clone());
-					responses.add(DocumentMessage::ZoomCanvasToFitAll);
-				}
-
-				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
-
-				self.update_selected(document_network, selected_nodes, responses);
-			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				if let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) {
 					responses.add(DocumentMessage::StartTransaction);
@@ -426,6 +345,36 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
 				}
 			}
+			NodeGraphMessage::EnterNestedNetwork => {
+				let Some(network) = document_network.nested_network_mut(&self.network) else {
+					return;
+				};
+				let viewport_location = ipp.mouse.position;
+				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let Some(node_id) = self.get_node_from_point(point) else {
+					return;
+				};
+				if self.get_visibility_from_point(point).is_some() {
+					return;
+				};
+				if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
+					return;
+				}
+				let Some(node) = network.nodes.get_mut(&node_id) else {
+					return;
+				};
+
+				if let DocumentNodeImplementation::Network(_) = node.implementation {
+					self.network.push(node_id);
+					self.update_all_click_targets(document_network, self.network.clone());
+					responses.add(DocumentMessage::ZoomCanvasToFitAll);
+				}
+
+				responses.add(DocumentMessage::ResetTransform);
+				responses.add(NodeGraphMessage::SendGraph);
+
+				self.update_selected(document_network, selected_nodes, responses);
+			}
 			NodeGraphMessage::ExitNestedNetwork { steps_back } => {
 				selected_nodes.clear_selected_nodes();
 				responses.add(BroadcastEvent::SelectionChanged);
@@ -435,13 +384,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				// TODO: Find a better way to update click targets when undoing/redoing
 				self.update_all_click_targets(document_network, self.network.clone());
-
-				let Some(network) = document_network.nested_network(&self.network) else {
-					return;
-				};
-				responses.add(DocumentMessage::UpdateDocumentTransform {
-					transform: network.node_graph_to_viewport,
-				});
+				responses.add(DocumentMessage::ResetTransform);
 				responses.add(NodeGraphMessage::SendGraph);
 				self.update_selected(document_network, selected_nodes, responses);
 			}
@@ -625,81 +568,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				let viewport_location = ipp.mouse.position;
-				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
-				if let Some(clicked_visibility) = NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter_map(|(path, node_metadata)| {
-							let mut path = path.clone();
-							let node_id = path.pop().expect("Path to node should not be empty");
-							if *path == self.network {
-								// TODO: There should be a way to do this without cloning
-								if let Some(visibility_click_target) = &node_metadata.visibility_click_target {
-									Some((node_id, visibility_click_target.clone()))
-								} else {
-									None
-								}
-							} else {
-								None
-							}
-						})
-						.collect::<HashMap<NodeId, ClickTarget>>(),
-					point,
-				) {
+				if let Some(clicked_visibility) = self.get_visibility_from_point(point) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
 					return;
 				}
-				let clicked_id = NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter_map(|(path, node_metadata)| {
-							let mut path = path.clone();
-							let node_id = path.pop().expect("Path to node should not be empty");
-							if *path == self.network {
-								// TODO: There should be a way to do this without cloning
-								Some((node_id, node_metadata.node_click_target.clone()))
-							} else {
-								None
-							}
-						})
-						.collect::<HashMap<NodeId, ClickTarget>>(),
-					point,
-				);
-				let clicked_input = NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-						.flat_map(|(path, node_metadata)| {
-							// TODO: There should be a way to do this without cloning
-							node_metadata
-								.input_click_targets
-								.iter()
-								.enumerate()
-								.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
-						})
-						.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-					point,
-				);
-				let clicked_output = NodeGraphMessageHandler::get_key_from_point(
-					&self
-						.node_metadata
-						.iter()
-						.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-						.flat_map(|(path, node_metadata)| {
-							// TODO: There should be a way to do this without cloning
-							node_metadata
-								.output_click_targets
-								.iter()
-								.enumerate()
-								.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
-						})
-						.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-					point,
-				);
+
+				let clicked_id = self.get_node_from_point(point);
+				let clicked_input = self.get_connector_from_point(point, |metadata| &metadata.input_click_targets);
+				let clicked_output = self.get_connector_from_point(point, |metadata| &metadata.output_click_targets);
 
 				// Create the add node popup on right click, then exit
 				if right_click {
@@ -716,11 +594,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
 					} else {
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
 					};
 
 					let context_menu_coordinates = ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32);
@@ -739,9 +617,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// If the user is clicking on the create nodes list or context menu, break here
 				if let Some(context_menu) = &self.context_menu {
-					let context_menu_viewport = network
-						.node_graph_to_viewport
-						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
+					let context_menu_viewport = node_graph_to_viewport.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
 					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
 						// Height and width for toggle layer menu
 						(173., 34.)
@@ -938,36 +814,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				let viewport_location = ipp.mouse.position;
-				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
-					if let Some((to_connector_node_position, is_layer, input_index)) = NodeGraphMessageHandler::get_key_from_point(
-						&self
-							.node_metadata
-							.iter()
-							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-							.flat_map(|(path, node_metadata)| {
-								// TODO: There should be a way to do this without cloning
-								node_metadata
-									.input_click_targets
-									.iter()
-									.enumerate()
-									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
+					if let Some((to_connector_node_position, is_layer, input_index)) =
+						self.get_connector_from_point(point, |metadata| &metadata.input_click_targets).and_then(|(node_id, input_index)| {
+							network.nodes.get(&node_id).map(|node| (node.metadata.position, node.is_layer, input_index)).or_else(|| {
+								if node_id == network.exports_metadata.0 {
+									Some((network.exports_metadata.1 + IVec2::new(0, 1), false, input_index))
+								} else if node_id == network.imports_metadata.0 {
+									Some((network.imports_metadata.1 + IVec2::new(0, 1), false, input_index))
+								} else {
+									None
+								}
 							})
-							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-						point,
-					)
-					.and_then(|(node_id, input_index)| {
-						network.nodes.get(&node_id).map(|node| (node.metadata.position, node.is_layer, input_index)).or_else(|| {
-							if node_id == network.exports_metadata.0 {
-								Some((network.exports_metadata.1 + IVec2::new(0, 1), false, input_index))
-							} else if node_id == network.imports_metadata.0 {
-								Some((network.imports_metadata.1 + IVec2::new(0, 1), false, input_index))
-							} else {
-								None
-							}
-						})
-					}) {
+						}) {
 						let to_connector_position = if is_layer {
 							if input_index == 0 {
 								DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. + 2. * 24. + 12.)
@@ -981,28 +842,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							)
 						};
 						self.wire_in_progress_to_connector = Some((to_connector_position, input_index == 0 && is_layer));
-					} else if let Some((to_connector_node_position, is_layer, output_index)) = NodeGraphMessageHandler::get_key_from_point(
-						&self
-							.node_metadata
-							.iter()
-							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-							.flat_map(|(path, node_metadata)| {
-								// TODO: There should be a way to do this without cloning
-								node_metadata
-									.output_click_targets
-									.iter()
-									.enumerate()
-									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
-							})
-							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-						point,
-					)
-					.and_then(|(node_id, output_index)| {
-						network
-							.nodes
-							.get(&node_id)
-							.map(|node| (node.metadata.position, node.is_layer, output_index + if node.has_primary_output { 0 } else { 1 }))
-					}) {
+					} else if let Some((to_connector_node_position, is_layer, output_index)) =
+						self.get_connector_from_point(point, |metadata| &metadata.output_click_targets).and_then(|(node_id, output_index)| {
+							network
+								.nodes
+								.get(&node_id)
+								.map(|node| (node.metadata.position, node.is_layer, output_index + if node.has_primary_output { 0 } else { 1 }))
+						}) {
 						let to_connector_position = if is_layer {
 							DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. - 12.)
 						} else {
@@ -1057,7 +903,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						drag_start.round_y = graph_delta.y;
 					}
 				} else if let Some(box_selection_start) = self.box_selection_start {
-					// TODO: Is this still an issue? The mouse button was released but we missed the pointer up event
+					// The mouse button was released but we missed the pointer up event
 					// if ((e.buttons & 1) === 0) {
 					// 	completeBoxSelection();
 					// 	boxSelection = undefined;
@@ -1073,7 +919,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						end_y: viewport_location.y.round().abs() as u32,
 					});
 
-					let graph_start = network.node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
+					let graph_start = node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
 
 					// TODO: Only loop through visible nodes
 					let shift = ipp.keyboard.get(shift as usize);
@@ -1084,11 +930,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						.map(|(node_id, _)| node_id)
 						.chain(vec![network.exports_metadata.0, network.imports_metadata.0].iter())
 					{
-						let mut node_id_path = self.network.clone();
-						node_id_path.push(*node_id);
 						if self
 							.node_metadata
-							.get(&node_id_path)
+							.get(&node_id)
 							.is_some_and(|node_metadata| node_metadata.node_click_target.intersect_rectangle(Quad::from_box([graph_start, point]), DAffine2::IDENTITY))
 						{
 							nodes.push(*node_id);
@@ -1105,42 +949,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				// Disconnect if the wire was previously connected to an input
 				let viewport_location = ipp.mouse.position;
-				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
-					let node_from = NodeGraphMessageHandler::get_key_from_point(
-						&self
-							.node_metadata
-							.iter()
-							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-							.flat_map(|(path, node_metadata)| {
-								// TODO: There should be a way to do this without cloning
-								node_metadata
-									.output_click_targets
-									.iter()
-									.enumerate()
-									.map(|(index, output_click_target)| ((*path.last().expect("Path should not be empty"), index), output_click_target.clone()))
-							})
-							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-						wire_in_progress_from_connector.0,
-					);
-					let node_to = NodeGraphMessageHandler::get_key_from_point(
-						&self
-							.node_metadata
-							.iter()
-							.filter(|(path, _)| path.starts_with(&self.network) && path.len() == self.network.len() + 1)
-							.flat_map(|(path, node_metadata)| {
-								// TODO: There should be a way to do this without cloning
-								node_metadata
-									.input_click_targets
-									.iter()
-									.enumerate()
-									.map(|(index, input_click_target)| ((*path.last().expect("Path should not be empty"), index), input_click_target.clone()))
-							})
-							.collect::<HashMap<(NodeId, usize), ClickTarget>>(),
-						wire_in_progress_to_connector.0,
-					);
+					let node_from = self.get_connector_from_point(wire_in_progress_from_connector.0, |metadata| &metadata.output_click_targets);
+					let node_to = self.get_connector_from_point(wire_in_progress_to_connector.0, |metadata| &metadata.input_click_targets);
 
 					if let (Some(node_from), Some(node_to)) = (node_from, node_to) {
 						responses.add(NodeGraphMessage::ConnectNodesByWire {
@@ -1157,7 +971,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network.node_graph_to_viewport.matrix2.x_axis.x;
+						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
@@ -1210,10 +1024,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							// Check if primary output is disconnected
 							if !has_primary_output_connection {
 								// TODO: Cache all wire locations. This will be difficult since there are many ways for an input to changes, and each change will have to update the cache
-								let mut node_id_path = self.network.clone();
-								node_id_path.push(selected_node_id);
-								let Some(bounding_box) = self.node_metadata.get(&node_id_path).and_then(|node_metadata| node_metadata.node_click_target.subpath.bounding_box()) else {
-									log::error!("Could not get bounding box for node: {node_id_path:?}");
+								let Some(bounding_box) = self
+									.node_metadata
+									.get(&selected_node_id)
+									.and_then(|node_metadata| node_metadata.node_click_target.subpath.bounding_box())
+								else {
+									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
 								let overlapping_wire = Self::collect_wires(network).into_iter().find(|frontend_wire| {
@@ -1780,10 +1596,8 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let mut node_id_path = network_path.clone();
-		node_id_path.push(node_id);
 		// Clear all click targets for the node
-		self.node_metadata.remove(&node_id_path);
+		self.node_metadata.remove(&node_id);
 
 		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
 
@@ -1916,7 +1730,7 @@ impl NodeGraphMessageHandler {
 				visibility_click_target,
 				layer_width,
 			};
-			self.node_metadata.insert(node_id_path.clone(), node_metadata);
+			self.node_metadata.insert(node_id, node_metadata);
 		} else if node_id == network.exports_metadata.0 {
 			let width = 5 * grid_size;
 			// 1 is added since the first row is reserved for the "Exports" name
@@ -1958,7 +1772,7 @@ impl NodeGraphMessageHandler {
 				layer_width: None,
 			};
 
-			self.node_metadata.insert(node_id_path.clone(), node_metadata);
+			self.node_metadata.insert(node_id, node_metadata);
 		}
 		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
 		else if node_id == network.imports_metadata.0 {
@@ -2010,50 +1824,28 @@ impl NodeGraphMessageHandler {
 					visibility_click_target,
 					layer_width: None,
 				};
-				self.node_metadata.insert(node_id_path.clone(), node_metadata);
+				self.node_metadata.insert(node_id, node_metadata);
 			}
 		}
 
 		// if node_click_target is outside the current bounding box, update the bounding box
-		if self.network_metadata.get(&network_path).map_or(true, |network_metadata| {
-			network_metadata.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
-				bounding_box.bounding_box().is_some_and(|bounding_box| {
-					self.node_metadata.get(&node_id_path).map_or(true, |node_metadata| {
-						node_metadata.node_click_target.subpath.bounding_box().is_some_and(|click_target| {
-							// Combine bounds and check if new vec is larger than current bounding box
-							let new_bounds = Quad::combine_bounds(click_target, bounding_box);
-							bounding_box != new_bounds
-						})
+		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
+			bounding_box.bounding_box().is_some_and(|bounding_box| {
+				self.node_metadata.get(&node_id).map_or(true, |node_metadata| {
+					node_metadata.node_click_target.subpath.bounding_box().is_some_and(|click_target| {
+						// Combine bounds and check if new vec is larger than current bounding box
+						let new_bounds = Quad::combine_bounds(click_target, bounding_box);
+						bounding_box != new_bounds
 					})
 				})
 			})
 		}) {
-			let node_id_path_len = node_id_path.len();
 			let bounds = self
 				.node_metadata
 				.iter()
-				.filter_map(|(node_path, node_metadata)| {
-					// Check if node is in same network as the updated node
-					if node_path.len() == node_id_path_len && node_path.starts_with(&network_path) {
-						node_metadata.node_click_target.subpath.bounding_box()
-					} else {
-						None
-					}
-				})
+				.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
 				.reduce(Quad::combine_bounds);
-
-			let bounds = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
-			if let Some(network_metadata) = self.network_metadata.get_mut(&network_path) {
-				network_metadata.bounding_box_subpath = bounds;
-			} else {
-				self.network_metadata.insert(
-					network_path,
-					NetworkMetadata {
-						bounding_box_subpath: bounds,
-						node_graph_to_viewport: DAffine2::IDENTITY,
-					},
-				);
-			}
+			self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
 		}
 	}
 
@@ -2073,23 +1865,41 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Gets the bounding box in viewport coordinates for each node in the node graph
-	pub fn graph_bounds_viewport_space(&self, document_network: &NodeNetwork) -> Option<[DVec2; 2]> {
-		self.network_metadata.get(&self.network).and_then(|network_metadata| {
-			network_metadata.bounding_box_subpath.as_ref().and_then(|bounding_box| {
-				document_network
-					.nested_network(&self.network)
-					.and_then(|network| bounding_box.bounding_box_with_transform(network.node_graph_to_viewport))
-			})
-		})
+	pub fn graph_bounds_viewport_space(&self, node_graph_to_viewport: DAffine2) -> Option<[DVec2; 2]> {
+		self.bounding_box_subpath
+			.as_ref()
+			.and_then(|bounding_box| bounding_box.bounding_box_with_transform(node_graph_to_viewport))
 	}
 
-	/// Get the clicked target from a mouse click
-	fn get_key_from_point<T: Clone>(hashmap: &HashMap<T, ClickTarget>, point: DVec2) -> Option<T> {
-		hashmap
+	fn get_node_from_point(&self, point: DVec2) -> Option<NodeId> {
+		self.node_metadata
 			.iter()
-			.filter(move |(_, target)| target.intersect_point(point, DAffine2::IDENTITY))
-			.map(|(data, _)| data.clone())
-			.next()
+			.map(|(node_id, node_metadata)| (node_id, &node_metadata.node_click_target))
+			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
+	}
+
+	fn get_connector_from_point<F>(&self, point: DVec2, click_target_selector: F) -> Option<(NodeId, usize)>
+	where
+		F: Fn(&NodeMetadata) -> &Vec<ClickTarget>,
+	{
+		self.node_metadata
+			.iter()
+			.map(|(node_id, node_metadata)| (node_id, click_target_selector(node_metadata)))
+			.find_map(|(node_id, click_targets)| {
+				for (index, click_target) in click_targets.iter().enumerate() {
+					if click_target.intersect_point(point, DAffine2::IDENTITY) {
+						return Some((node_id.clone(), index));
+					}
+				}
+				None
+			})
+	}
+
+	fn get_visibility_from_point(&self, point: DVec2) -> Option<NodeId> {
+		self.node_metadata
+			.iter()
+			.filter_map(|(node_id, node_metadata)| node_metadata.visibility_click_target.as_ref().map(|click_target| (node_id, click_target)))
+			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
 	}
 
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
@@ -2719,17 +2529,7 @@ impl NodeGraphMessageHandler {
 			let layer_widths = self
 				.node_metadata
 				.iter()
-				.filter_map(|(node_path, node_metadata)| {
-					if node_path.starts_with(&self.network) && node_path.len() == self.network.len() + 1 {
-						if let Some(layer_width) = node_metadata.layer_width {
-							Some((*node_path.last().unwrap(), layer_width))
-						} else {
-							None
-						}
-					} else {
-						None
-					}
-				})
+				.filter_map(|(node_id, node_metadata)| node_metadata.layer_width.map(|layer_width| (*node_id, layer_width)))
 				.collect::<HashMap<NodeId, u32>>();
 			responses.add(FrontendMessage::UpdateLayerWidths { layer_widths });
 		}
@@ -2973,7 +2773,7 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_to_connector: None,
 			context_menu: None,
 			node_metadata: HashMap::new(),
-			network_metadata: HashMap::new(),
+			bounding_box_subpath: None,
 		}
 	}
 }

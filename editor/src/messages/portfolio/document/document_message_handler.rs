@@ -31,8 +31,6 @@ use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2, IVec2};
 
-use std::vec;
-
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -74,9 +72,7 @@ pub struct DocumentMessageHandler {
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
-	pub navigation: PTZ,
-	/// The current pan, and zoom state of the viewport's view of the node graph.
-	node_graph_transform: PTZ,
+	pub document_ptz: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
@@ -119,6 +115,12 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
+	/// The current pan, and zoom state of the viewport's view of the node graph.
+	#[serde(skip)]
+	node_graph_ptz: HashMap<Vec<NodeId>, PTZ>,
+	/// Transform from node graph space to viewport space.
+	#[serde(skip)]
+	node_graph_to_viewport: HashMap<Vec<NodeId>, DAffine2>,
 }
 
 impl Default for DocumentMessageHandler {
@@ -139,8 +141,9 @@ impl Default for DocumentMessageHandler {
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			navigation: PTZ::default(),
-			node_graph_transform: PTZ::default(),
+			document_ptz: PTZ::default(),
+			node_graph_ptz: HashMap::new(),
+			node_graph_to_viewport: HashMap::new(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			overlays_visible: true,
@@ -181,10 +184,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					} else {
 						self.selected_visible_layers_bounding_box_viewport()
 					},
-					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
+					document_ptz: &mut self.document_ptz,
+					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
 					document_network: &self.network,
 					node_graph_handler: &self.node_graph_handler,
+					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -218,6 +223,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
+						node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 					},
 				);
 			}
@@ -735,16 +741,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
 
 				let ruler_origin = if !self.graph_view_overlay_open {
 					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
 				} else {
-					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-						log::error!("Nested network not found in UpdateDocumentTransform");
-						return;
-					};
-					network.node_graph_to_viewport.transform_point2(DVec2::ZERO)
+					self.node_graph_to_viewport
+						.get(&self.node_graph_handler.network)
+						.unwrap_or(&DAffine2::IDENTITY)
+						.transform_point2(DVec2::ZERO)
 				};
 				let log = document_transform_scale.log2();
 				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
@@ -758,7 +763,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -767,7 +772,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
-					self.node_graph_handler.graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
+					self.node_graph_to_viewport
+						.get(&self.node_graph_handler.network)
+						.and_then(|node_graph_to_viewport| self.node_graph_handler.graph_bounds_viewport_space(*node_graph_to_viewport))
+						.unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -1086,6 +1094,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ResetTransform => {
+				let transform = if self.graph_view_overlay_open {
+					*self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY)
+				} else {
+					self.metadata.document_to_viewport
+				};
+				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
+			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
@@ -1095,11 +1111,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					let Some(network) = self.network.nested_network_mut(&self.node_graph_handler.network) else {
-						log::error!("Nested network not found in UpdateDocumentTransform");
-						return;
-					};
-					network.node_graph_to_viewport = transform;
+					self.node_graph_to_viewport.insert(self.node_graph_handler.network.clone(), transform);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
@@ -1120,10 +1132,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.node_graph_handler
-						.network_metadata
-						.get(&self.node_graph_handler.network)
-						.and_then(|network_metadata| network_metadata.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
+					self.node_graph_handler.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box())
 				} else {
 					self.metadata().document_bounds_document_space(true)
 				};
@@ -1274,17 +1283,15 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_nodes(network)
 			.filter_map(|node| {
-				let mut node_path = self.node_graph_handler.network.clone();
-				node_path.push(*node);
-				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node_path) else {
+				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node) else {
 					log::debug!("Could not get click target for node {node}");
 					return None;
 				};
-				let Some(network_metadata) = self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network) else {
-					log::debug!("Could not get network_metadata in selected_nodes_bounding_box_viewport");
+				let Some(node_graph_to_viewport) = self.node_graph_to_viewport.get(&self.node_graph_handler.network) else {
+					log::debug!("Could not get node_graph_to_viewport for network: {:?}", self.node_graph_handler.network);
 					return None;
 				};
-				node_metadata.node_click_target.subpath.bounding_box_with_transform(network_metadata.node_graph_to_viewport)
+				node_metadata.node_click_target.subpath.bounding_box_with_transform(*node_graph_to_viewport)
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1889,7 +1896,7 @@ impl DocumentMessageHandler {
 				.tooltip("Reset Tilt and Zoom to 100%")
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-				.disabled(self.navigation.tilt.abs() < 1e-4 && (self.navigation.zoom - 1.).abs() < 1e-4)
+				.disabled(self.document_ptz.tilt.abs() < 1e-4 && (self.document_ptz.zoom - 1.).abs() < 1e-4)
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -1920,7 +1927,7 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.navigation.zoom) * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.document_ptz.zoom) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
@@ -1937,7 +1944,7 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 		];
 
-		let tilt_value = self.navigation_handler.snapped_tilt(self.navigation.tilt) / (std::f64::consts::PI / 180.);
+		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),
