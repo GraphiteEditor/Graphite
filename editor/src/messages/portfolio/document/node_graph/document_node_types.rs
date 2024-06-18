@@ -487,12 +487,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Rasterize Artwork",
 			category: "Structural",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				imports: vec![NodeId(2), NodeId(2), NodeId(0)],
-				exports: vec![NodeOutput::new(NodeId(2), 0)],
+				exports: vec![NodeInput::node(NodeId(2), 0)],
 				nodes: [
 					DocumentNode {
 						name: "Create Canvas".to_string(),
-						inputs: vec![NodeInput::Network(concrete!(WasmEditorApi))],
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 2)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 						skip_deduplication: true,
 						..Default::default()
@@ -506,7 +505,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Rasterize Vector".to_string(),
-						inputs: vec![NodeInput::Network(generic!(T)), NodeInput::Network(concrete!(Footprint)), NodeInput::node(NodeId(1), 0)],
+						inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeVectorNode<_, _>")),
 						..Default::default()
 					},
@@ -531,7 +530,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::Network(concrete!(WasmEditorApi)),
+					default: NodeInput::network(concrete!(WasmEditorApi), 2),
 				},
 			],
 			properties: node_properties::rasterize_properties,

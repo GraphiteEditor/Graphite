@@ -139,7 +139,7 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
-	let title = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::Boolean, false);
+	let title = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, false);
 	let mut top_row = vec![];
 	let mut bottom_row = vec![];
 	let mut resolution = vec![];
