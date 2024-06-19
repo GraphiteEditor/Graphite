@@ -366,6 +366,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if let DocumentNodeImplementation::Network(_) = node.implementation {
 					self.network.push(node_id);
+					self.node_metadata.clear();
 					self.update_all_click_targets(document_network, self.network.clone());
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
@@ -382,7 +383,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for _ in 0..steps_back {
 					self.network.pop();
 				}
-
+				self.node_metadata.clear();
 				self.update_all_click_targets(document_network, self.network.clone());
 				responses.add(DocumentMessage::ResetTransform);
 				responses.add(NodeGraphMessage::SendGraph);

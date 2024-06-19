@@ -133,6 +133,7 @@ impl BorrowTree {
 	/// Pushes new nodes into the tree and return orphaned nodes
 	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Vec<NodeId>, GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
+		// Problem: When an identity node is connected directly to an export the first input to identity node is not added to the proto network, while the second input is. This means the primary input does not have a type
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				self.push_node(id, node, typing_context).await?;

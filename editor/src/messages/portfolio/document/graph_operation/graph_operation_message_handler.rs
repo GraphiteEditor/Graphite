@@ -591,7 +591,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
 						node.alias = alias.clone();
 					}
-					modify_inputs.node_graph.update_click_target(id, &modify_inputs.document_network, Vec::new());
 
 					let shift = nodes
 						.get(&NodeId(0))
@@ -615,6 +614,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 						// Insert node into network
 						node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
+						node_graph.update_click_target(node_id, document_network, Vec::new());
 					}
 
 					if let Some(layer_node) = document_network.nodes.get_mut(&layer) {

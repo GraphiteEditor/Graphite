@@ -1506,19 +1506,30 @@ impl DocumentMessageHandler {
 	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(previous_network) = self.undo(responses) else { return };
 
+		let Some(previous_nested_network) = previous_network.nested_network(&self.node_graph_handler.network) else {
+			return;
+		};
 		// TODO: Maybe cache nodes that were changed for every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
-		for (node_id, current_node) in &self.network.nodes {
-			if let Some(previous_node) = previous_network.nodes.get(&node_id) {
-				if previous_node.alias != current_node.alias
-					|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
-					|| previous_node.is_layer != current_node.is_layer
-					|| previous_node.metadata.position != current_node.metadata.position
-				{
+		if let Some(network) = self.network.nested_network(&self.node_graph_handler.network) {
+			for (node_id, current_node) in &network.nodes {
+				if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+					if previous_node.alias != current_node.alias
+						|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+						|| previous_node.is_layer != current_node.is_layer
+						|| previous_node.metadata.position != current_node.metadata.position
+					{
+						self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+					}
+				} else {
 					self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 				}
-			} else {
-				self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 			}
+			self.node_graph_handler
+				.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+			self.node_graph_handler
+				.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+		} else {
+			log::error!("Could not get nested network in undo_with_history");
 		}
 
 		self.document_redo_history.push_back(previous_network);
@@ -1552,19 +1563,30 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		let Some(previous_network) = self.redo(responses) else { return };
 
+		let Some(previous_nested_network) = previous_network.nested_network(&self.node_graph_handler.network) else {
+			return;
+		};
 		// TODO: Maybe cache nodes that were changed for every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
-		for (node_id, current_node) in &self.network.nodes {
-			if let Some(previous_node) = previous_network.nodes.get(&node_id) {
-				if previous_node.alias != current_node.alias
-					|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
-					|| previous_node.is_layer != current_node.is_layer
-					|| previous_node.metadata.position != current_node.metadata.position
-				{
+		if let Some(network) = self.network.nested_network(&self.node_graph_handler.network) {
+			for (node_id, current_node) in &network.nodes {
+				if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+					if previous_node.alias != current_node.alias
+						|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+						|| previous_node.is_layer != current_node.is_layer
+						|| previous_node.metadata.position != current_node.metadata.position
+					{
+						self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+					}
+				} else {
 					self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 				}
-			} else {
-				self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 			}
+			self.node_graph_handler
+				.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+			self.node_graph_handler
+				.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+		} else {
+			log::error!("Could not get nested network in redo_with_history");
 		}
 
 		self.document_undo_history.push_back(previous_network);
