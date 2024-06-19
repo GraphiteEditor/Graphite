@@ -106,6 +106,8 @@ impl SnappingState {
 			},
 			SnapTarget::Board(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
+			SnapTarget::Alignment(_) => true,
+			SnapTarget::Distribution(_) => true,
 			_ => false,
 		}
 	}
@@ -294,6 +296,16 @@ pub enum GeometrySnapSource {
 	Intersection,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignmentSnapSource {
+	BoundsCorner,
+	BoundsCentre,
+	BoundsEdgeMidpoint,
+	BoardCorner,
+	BoardCentre,
+	Handle,
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapSource {
 	#[default]
@@ -301,6 +313,7 @@ pub enum SnapSource {
 	BoundingBox(BoundingBoxSnapSource),
 	Board(BoardSnapSource),
 	Geometry(GeometrySnapSource),
+	Alignment(AlignmentSnapSource),
 }
 
 impl SnapSource {
@@ -309,6 +322,15 @@ impl SnapSource {
 	}
 	pub fn bounding_box(&self) -> bool {
 		matches!(self, Self::BoundingBox(_) | Self::Board(_))
+	}
+	pub fn align(&self) -> bool {
+		matches!(self, Self::Alignment(_))
+	}
+	pub fn centre(&self) -> bool {
+		matches!(
+			self,
+			Self::Alignment(AlignmentSnapSource::BoardCentre | AlignmentSnapSource::BoundsCentre) | Self::Board(BoardSnapSource::Center) | Self::BoundingBox(BoundingBoxSnapSource::Center)
+		)
 	}
 }
 
@@ -370,6 +392,27 @@ pub enum GridSnapTarget {
 	Intersection,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignmentSnapTarget {
+	BoundsCorner,
+	BoundsCentre,
+	BoardCorner,
+	BoardCentre,
+	Handle,
+	Intersection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistributionSnapTarget {
+	X,
+	Y,
+	Right,
+	Left,
+	Up,
+	Down,
+	Xy,
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapTarget {
 	#[default]
@@ -378,6 +421,8 @@ pub enum SnapTarget {
 	Geometry(GeometrySnapTarget),
 	Board(BoardSnapTarget),
 	Grid(GridSnapTarget),
+	Alignment(AlignmentSnapTarget),
+	Distribution(DistributionSnapTarget),
 }
 
 impl SnapTarget {

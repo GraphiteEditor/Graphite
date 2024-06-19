@@ -309,17 +309,19 @@ pub struct SnapCandidatePoint {
 	pub source_index: usize,
 	pub quad: Option<Quad>,
 	pub neighbors: Vec<DVec2>,
+	pub alignment: bool,
 }
 impl SnapCandidatePoint {
 	pub fn new(document_point: DVec2, source: SnapSource, target: SnapTarget) -> Self {
-		Self::new_quad(document_point, source, target, None)
+		Self::new_quad(document_point, source, target, None, true)
 	}
-	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>) -> Self {
+	pub fn new_quad(document_point: DVec2, source: SnapSource, target: SnapTarget, quad: Option<Quad>, alignment: bool) -> Self {
 		Self {
 			document_point,
 			source,
 			target,
 			quad,
+			alignment,
 			..Default::default()
 		}
 	}
@@ -362,20 +364,38 @@ impl BBoxSnapValues {
 		center_source: SnapSource::Board(BoardSnapSource::Center),
 		center_target: SnapTarget::Board(BoardSnapTarget::Center),
 	};
+
+	pub const ALIGN_BOUNDING_BOX: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoundsCentre),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoundsCentre),
+	};
+
+	pub const ALIGN_ARTBOARD: Self = Self {
+		corner_source: SnapSource::Alignment(AlignmentSnapSource::BoardCorner),
+		corner_target: SnapTarget::Alignment(AlignmentSnapTarget::BoardCorner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Alignment(AlignmentSnapSource::BoardCentre),
+		center_target: SnapTarget::Alignment(AlignmentSnapTarget::BoardCentre),
+	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
 	for index in 0..4 {
 		let start = quad.0[index];
 		let end = quad.0[(index + 1) % 4];
 		if document.snapping_state.target_enabled(values.corner_target) {
-			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad(start, values.corner_source, values.corner_target, Some(quad), false));
 		}
 		if document.snapping_state.target_enabled(values.edge_target) {
-			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad)));
+			points.push(SnapCandidatePoint::new_quad((start + end) / 2., values.edge_source, values.edge_target, Some(quad), false));
 		}
 	}
 	if document.snapping_state.target_enabled(values.center_target) {
-		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad)));
+		points.push(SnapCandidatePoint::new_quad(quad.center(), values.center_source, values.center_target, Some(quad), false));
 	}
 }
 
