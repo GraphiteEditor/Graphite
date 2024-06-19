@@ -702,6 +702,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
 					node.alias = name;
+					if let Some(node_metadata) = node_graph.node_metadata.get_mut(&layer.to_node()) {
+						node_metadata.layer_width = Some(NodeGraphMessageHandler::layer_width_cells(node));
+					};
 					node_graph.update_click_target(layer.to_node(), document_network, Vec::new());
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);

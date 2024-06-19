@@ -382,7 +382,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for _ in 0..steps_back {
 					self.network.pop();
 				}
-				// TODO: Find a better way to update click targets when undoing/redoing
+
 				self.update_all_click_targets(document_network, self.network.clone());
 				responses.add(DocumentMessage::ResetTransform);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1385,6 +1385,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				if let Some(node) = network.nodes.get_mut(&node_id) {
 					node.alias = name;
+					if let Some(node_metadata) = self.node_metadata.get_mut(&node_id) {
+						if node.is_layer {
+							node_metadata.layer_width = Some(NodeGraphMessageHandler::layer_width_cells(node));
+						} else {
+							node_metadata.layer_width = None;
+						}
+					};
 					self.update_click_target(node_id, document_network, self.network.clone());
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
@@ -1574,6 +1581,18 @@ impl NodeGraphMessageHandler {
 
 		Some(text_width)
 	}
+	pub fn layer_width_cells(node: &DocumentNode) -> u32 {
+		let half_grid_cell_offset = 24. / 2.;
+		let thumbnail_width = 3. * 24.;
+		let gap_width = 8.;
+		let text_width = Self::get_text_width(node).unwrap_or_default();
+		let icon_width = 24.;
+		let icon_overhang_width = icon_width / 2.;
+
+		let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
+		let layer_width_pixels = text_right + gap_width + icon_width - icon_overhang_width;
+		((layer_width_pixels / 24.) as u32).max(8)
+	}
 
 	// Inserts a node into the network and updates the click target
 	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>) {
@@ -1596,24 +1615,16 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		// Clear all click targets for the node
-		self.node_metadata.remove(&node_id);
-
 		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
 
 		if let Some(node) = network.nodes.get(&node_id) {
 			let mut layer_width = None;
 			let width = if node.is_layer {
-				let half_grid_cell_offset = 24. / 2.;
-				let thumbnail_width = 3. * 24.;
-				let gap_width = 8.;
-				let text_width = Self::get_text_width(node).unwrap_or_default();
-				let icon_width = 24.;
-				let icon_overhang_width = icon_width / 2.;
-
-				let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
-				let layer_width_pixels = text_right + gap_width + icon_width - icon_overhang_width;
-				let layer_width_cells = (((layer_width_pixels) / 24.).ceil() as u32).max(8);
+				let layer_width_cells = self
+					.node_metadata
+					.get(&node_id)
+					.and_then(|node_metadata| node_metadata.layer_width)
+					.unwrap_or_else(|| Self::layer_width_cells(node));
 
 				layer_width = Some(layer_width_cells);
 
@@ -1826,8 +1837,9 @@ impl NodeGraphMessageHandler {
 				};
 				self.node_metadata.insert(node_id, node_metadata);
 			}
+		} else {
+			self.node_metadata.remove(&node_id);
 		}
-
 		// if node_click_target is outside the current bounding box, update the bounding box
 		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
 			bounding_box.bounding_box().is_some_and(|bounding_box| {
@@ -1857,7 +1869,7 @@ impl NodeGraphMessageHandler {
 		};
 		let export_id = network.exports_metadata.0;
 		let import_id = network.imports_metadata.0;
-		for node_id in network.nodes.clone().keys() {
+		for (node_id, _) in network.nodes.iter() {
 			self.update_click_target(*node_id, document_network, network_path.clone());
 		}
 		self.update_click_target(export_id, document_network, network_path.clone());

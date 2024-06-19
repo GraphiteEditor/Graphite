@@ -187,7 +187,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					document_ptz: &mut self.document_ptz,
 					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
-					document_network: &self.network,
 					node_graph_handler: &self.node_graph_handler,
 					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
@@ -384,7 +383,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
-				// TODO: Find a better way to update click targets when undoing/redoing
+				// TODO: Update click targets when node graph is closed so that this is not necessary
 				if self.graph_view_overlay_open {
 					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 				}
@@ -1507,13 +1506,24 @@ impl DocumentMessageHandler {
 	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(previous_network) = self.undo(responses) else { return };
 
+		// TODO: Maybe cache nodes that were changed for every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
+		for (node_id, current_node) in &self.network.nodes {
+			if let Some(previous_node) = previous_network.nodes.get(&node_id) {
+				if previous_node.alias != current_node.alias
+					|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					|| previous_node.is_layer != current_node.is_layer
+					|| previous_node.metadata.position != current_node.metadata.position
+				{
+					self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+				}
+			} else {
+				self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+			}
+		}
+
 		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
-		}
-		// TODO: Find a better way to update click targets when undoing/redoing
-		if self.graph_view_overlay_open {
-			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 		}
 	}
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
@@ -1542,13 +1552,24 @@ impl DocumentMessageHandler {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		let Some(previous_network) = self.redo(responses) else { return };
 
+		// TODO: Maybe cache nodes that were changed for every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
+		for (node_id, current_node) in &self.network.nodes {
+			if let Some(previous_node) = previous_network.nodes.get(&node_id) {
+				if previous_node.alias != current_node.alias
+					|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					|| previous_node.is_layer != current_node.is_layer
+					|| previous_node.metadata.position != current_node.metadata.position
+				{
+					self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+				}
+			} else {
+				self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+			}
+		}
+
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_undo_history.pop_front();
-		}
-		// TODO: Find a better way to update click targets when undoing/redoing
-		if self.graph_view_overlay_open {
-			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 		}
 	}
 

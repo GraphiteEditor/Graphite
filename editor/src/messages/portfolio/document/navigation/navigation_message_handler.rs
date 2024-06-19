@@ -21,7 +21,6 @@ pub struct NavigationMessageData<'a> {
 	pub document_ptz: &'a mut PTZ,
 	pub node_graph_ptz: &'a mut HashMap<Vec<NodeId>, PTZ>,
 	pub graph_view_overlay_open: bool,
-	pub document_network: &'a NodeNetwork,
 	pub node_graph_handler: &'a NodeGraphMessageHandler,
 	pub node_graph_to_viewport: &'a DAffine2,
 }
@@ -42,7 +41,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageData<'_>> for Navigation
 			document_ptz,
 			node_graph_ptz,
 			graph_view_overlay_open,
-			document_network,
 			node_graph_handler,
 			node_graph_to_viewport,
 		} = data;
