@@ -10,6 +10,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 
 use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
@@ -63,6 +64,7 @@ pub struct NodeGraphMessageHandler {
 	pub node_metadata: HashMap<NodeId, NodeMetadata>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
+	auto_panning: AutoPanning,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -814,6 +816,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
 				};
+
+				// Auto-panning
+				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
+				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
+
 				let viewport_location = ipp.mouse.position;
 				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
@@ -916,8 +923,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let box_selection = Some(BoxSelection {
 						start_x: box_selection_start.x,
 						start_y: box_selection_start.y,
-						end_x: viewport_location.x.round().abs() as u32,
-						end_y: viewport_location.y.round().abs() as u32,
+						end_x: viewport_location.x.max(0.) as u32,
+						end_y: viewport_location.y.max(0.) as u32,
 					});
 
 					let graph_start = node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
@@ -1095,7 +1102,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None })
 			}
-
+			NodeGraphMessage::PointerOutsideViewport { shift } => {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() {
+					let _ = self.auto_panning.shift_viewport(ipp, responses);
+				} else {
+					// Auto-panning
+					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
+					self.auto_panning.stop(&messages, responses);
+				}
+			}
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
 				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");
@@ -1841,25 +1856,12 @@ impl NodeGraphMessageHandler {
 		} else {
 			self.node_metadata.remove(&node_id);
 		}
-		// if node_click_target is outside the current bounding box, update the bounding box
-		if self.bounding_box_subpath.as_ref().map_or(true, |bounding_box| {
-			bounding_box.bounding_box().is_some_and(|bounding_box| {
-				self.node_metadata.get(&node_id).map_or(true, |node_metadata| {
-					node_metadata.node_click_target.subpath.bounding_box().is_some_and(|click_target| {
-						// Combine bounds and check if new vec is larger than current bounding box
-						let new_bounds = Quad::combine_bounds(click_target, bounding_box);
-						bounding_box != new_bounds
-					})
-				})
-			})
-		}) {
-			let bounds = self
-				.node_metadata
-				.iter()
-				.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
-				.reduce(Quad::combine_bounds);
-			self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
-		}
+		let bounds = self
+			.node_metadata
+			.iter()
+			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
+			.reduce(Quad::combine_bounds);
+		self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
 	}
 
 	// Updates all click targets in a certain network
@@ -2333,13 +2335,14 @@ impl NodeGraphMessageHandler {
 				} else {
 					(FrontendGraphDataType::General, None)
 				}
-			}
-			// If type should only be determined from resolved_types then remove this
-			else if let NodeInput::Value { tagged_value, .. } = export {
+			} else if let NodeInput::Value { tagged_value, .. } = export {
 				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
-			} else if let NodeInput::Network { import_type, .. } = export {
-				(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
-			} else {
+			}
+			// Get type from parent node input when #1762 is possible
+			// else if let NodeInput::Network { import_type, .. } = export {
+			// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
+			// }
+			else {
 				(FrontendGraphDataType::General, None)
 			};
 
@@ -2580,8 +2583,14 @@ impl NodeGraphMessageHandler {
 					resolved_types.outputs.get(&Source { node: current_path.clone(), index: 0 }).cloned()
 				} else if let NodeInput::Value { tagged_value, .. } = current_export {
 					Some(tagged_value.ty())
-				} else if let NodeInput::Network { import_type, .. } = current_export {
-					Some(import_type.clone())
+				} else if let NodeInput::Network { import_index, .. } = current_export {
+					resolved_types
+						.outputs
+						.get(&Source {
+							node: node_id_path.clone(),
+							index: *import_index,
+						})
+						.cloned()
 				} else {
 					None
 				};
@@ -2787,6 +2796,7 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			node_metadata: HashMap::new(),
 			bounding_box_subpath: None,
+			auto_panning: Default::default(),
 		}
 	}
 }
