@@ -559,11 +559,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 				// Artboards can only have `ROOT_PARENT` as the parent.
-				if selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent != LayerNodeIdentifier::ROOT_PARENT {
+				let any_artboards = selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer));
+				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
-				// Disallow inserting layers between artboards. Since only artboards can output to Output node, the layer parent cannot be the output.
-				if !selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer)) && parent == LayerNodeIdentifier::ROOT_PARENT {
+
+				// Non-artboards cannot be put at the top level if artboards also exist there
+				let selected_any_non_artboards = selected_layers.iter().any(|&layer| !self.metadata.is_artboard(layer));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT.children(self.metadata()).any(|layer| self.metadata.is_artboard(layer));
+				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
 					return;
 				}
 				let mut insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
@@ -2117,9 +2121,7 @@ impl DocumentMessageHandler {
 		let Some(pivot_layer) = first_or_last_selected_layer else {
 			return;
 		};
-		let Some(parent) = pivot_layer.parent(self.metadata()) else {
-			return;
-		};
+		let parent = pivot_layer.parent(self.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
 		let sibling_layer_paths: Vec<_> = parent.children(self.metadata()).collect();
 		let Some(pivot_index) = sibling_layer_paths.iter().position(|path| *path == pivot_layer) else {
