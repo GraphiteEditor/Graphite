@@ -1,10 +1,12 @@
 use base64::Engine;
 use dyn_any::StaticType;
+use glam::{DAffine2, DVec2};
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::{Footprint, TransformMut};
+use graphene_core::transform::{Footprint, Transform, TransformMut};
 use graphene_core::Color;
 use graphene_core::Node;
 #[cfg(feature = "wgpu")]
@@ -369,25 +371,31 @@ pub struct RasterizeVectorNode<Footprint, Surface> {
 }
 
 #[node_macro::node_fn(RasterizeVectorNode)]
-async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+async fn rasterize_vector<_T: GraphicElementRendered + TransformMut>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
-		log::debug!("Invalid footprint received for rasterization");
+		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrame::default();
 	}
 	let resolution = footprint.resolution;
-	// TODO: reenable once we switch to full node graph
-	let min = footprint.transform.transform_point2((0., 0.).into());
-	let max = footprint.transform.transform_point2((1., 1.).into());
+	let bounds = data.bounding_box(DAffine2::IDENTITY).unwrap();
+	let bbox = Bbox::from_transform(footprint.transform);
+	let aabb = bbox.to_axis_aligned_bbox();
+	let min = aabb.start;
+	let max = aabb.end;
+	let oversample_factor = footprint.resolution.as_dvec2() / (max - min);
+	render.transform = DAffine2::from_scale(oversample_factor);
+	// *data.transform_mut() = data.transform() * DAffine2::from_scale(oversample_factor);
 	let render_params = RenderParams {
-		// TODO: Use correct bounds
-		culling_bounds: Some([min, max]),
+		culling_bounds: None,
 		..Default::default()
 	};
 
+	let size = (bounds[1] - bounds[0]) * oversample_factor;
+	let start = bounds[0] * oversample_factor;
 	data.render_svg(&mut render, &render_params);
-	render.format_svg(min, max);
+	render.format_svg(start, start + size);
 	let svg_string = render.svg.to_svg_string();
 
 	let canvas = &surface_handle.surface;
@@ -405,7 +413,7 @@ async fn rasterize_vector<_T: GraphicElementRendered>(data: _T, footprint: Footp
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
 	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element(&image_data, 0., 0.).unwrap();
+	context.draw_image_with_html_image_element_and_dw_and_dh(&image_data, start.x, start.y, size.x, size.y).unwrap();
 
 	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 

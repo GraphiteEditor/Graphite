@@ -224,12 +224,12 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		);
 		resolution.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some(footprint.resolution.x as f64))
+			NumberInput::new(Some((footprint.resolution.as_dvec2() / scale).x as f64))
 				.label("res multiplier")
 				.unit("px/px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let resolution = (scale * x.value.unwrap_or(1.)).as_uvec2();
+						let resolution = (scale * x.value.unwrap_or(1.)).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
 
 						let footprint = Footprint { resolution, ..footprint };
 						TaggedValue::Footprint(footprint)

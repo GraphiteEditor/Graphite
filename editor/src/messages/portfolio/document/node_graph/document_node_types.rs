@@ -530,7 +530,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "In",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::network(concrete!(WasmEditorApi), 2),
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
 				},
 			],
 			properties: node_properties::rasterize_properties,
