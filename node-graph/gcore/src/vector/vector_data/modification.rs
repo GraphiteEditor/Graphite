@@ -164,9 +164,12 @@ impl SegmentModification {
 			}
 			let Some(start_position) = point_domain.position_from_id(start) else { continue };
 			let Some(end_position) = point_domain.position_from_id(end) else { continue };
-			let handles = match (handle_start.map(|handle| handle + start_position), handle_end.map(|handle| handle + end_position)) {
-				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
-				(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
+			let handles = match (handle_start, handle_end) {
+				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic {
+					handle_start: handle_start + start_position,
+					handle_end: handle_end + end_position,
+				},
+				(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle: handle + start_position },
 				(None, None) => BezierHandles::Linear,
 			};
 			if !handles.is_finite() {
@@ -191,6 +194,7 @@ impl SegmentModification {
 	}
 
 	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2], stroke: StrokeId) {
+		self.remove.remove(&id);
 		self.add.push(id);
 		self.start_point.insert(id, points[0]);
 		self.end_point.insert(id, points[1]);
@@ -290,11 +294,12 @@ impl VectorModification {
 		self.points.apply(&mut vector_data.point_domain, &mut vector_data.segment_domain);
 		self.segments.apply(&mut vector_data.segment_domain, &vector_data.point_domain);
 		self.regions.apply(&mut vector_data.region_domain);
+		let valid = |val: &[HandleId; 2]| vector_data.segment_domain.ids().contains(&val[0].segment) && vector_data.segment_domain.ids().contains(&val[1].segment);
 		vector_data
 			.colinear_manipulators
-			.retain(|val| !self.remove_g1_continous.contains(val) && !self.remove_g1_continous.contains(&[val[1], val[0]]));
+			.retain(|val| !self.remove_g1_continous.contains(val) && !self.remove_g1_continous.contains(&[val[1], val[0]]) && valid(val));
 		for handles in &self.add_g1_continous {
-			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) {
+			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
 				vector_data.colinear_manipulators.push(*handles);
 			}
 		}

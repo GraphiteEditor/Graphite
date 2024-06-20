@@ -231,10 +231,9 @@ impl PenToolData {
 	}
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
-	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) {
+	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2) {
 		self.g1_continous = true;
 		let document = snap_data.document;
-		let mouse = snap_data.input.mouse.position;
 		self.next_handle_start = self.next_point;
 
 		// Break the control
@@ -557,7 +556,7 @@ impl Fsm for PenToolFsmState {
 				if tool_data.handle_end.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
 				}
-				tool_data.bend_from_previous_point(SnapData::new(document, input), transform, responses);
+				tool_data.bend_from_previous_point(SnapData::new(document, input), transform);
 				PenToolFsmState::DraggingHandle
 			}
 			(PenToolFsmState::DraggingHandle, PenToolMessage::DragStop) => tool_data

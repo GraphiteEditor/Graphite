@@ -28,6 +28,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 		let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
 			continue;
 		};
+		info!("Vector {vector_data:#?}");
 		let transform = document.metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));

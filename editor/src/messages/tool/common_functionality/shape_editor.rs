@@ -480,6 +480,7 @@ impl ShapeState {
 			return;
 		};
 		let handles = vector_data.segment_domain.all_connected(point_id).take(2).collect::<Vec<_>>();
+		info!("Converting handles {handles:?}");
 
 		// Grab the next and previous manipulator groups by simply looking at the next / previous index
 		let points = handles.iter().map(|handle| vector_data.segment_domain.other_point(handle.segment, point_id));
@@ -640,9 +641,7 @@ impl ShapeState {
 				let modification_type = handle.set_relative_position(handle_position - anchor_position);
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-				let pair = vector_data.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle));
-				let other = pair.and_then(|pair| pair.iter().copied().find(|&val| val != handle));
-				let Some(other) = other else { continue };
+				let Some(other) = vector_data.other_colinear_handle(handle) else { continue };
 				if state.is_selected(other.to_manipulator_point()) {
 					continue;
 				}
@@ -706,7 +705,7 @@ impl ShapeState {
 			.collect::<HashMap<_, _>>()
 	}
 
-	fn disolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) {
+	fn disolve_anchor(anchor: PointId, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector_data: &VectorData) -> Option<[(HandleId, PointId); 2]> {
 		// Delete point
 		let modification_type = VectorModificationType::RemovePoint { id: anchor };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -715,43 +714,38 @@ impl ShapeState {
 		for HandleId { segment, .. } in vector_data.segment_domain.all_connected(anchor) {
 			let modification_type = VectorModificationType::RemoveSegment { id: segment };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			for &handles in vector_data.colinear_manipulators.iter().filter(|handles| handles.iter().any(|handle| handle.segment == segment)) {
+				let modification_type = VectorModificationType::SetG1Continous { handles, enabled: false };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			}
 		}
 
 		// Add in new segment if possible
-		if let Some(handles) = ManipulatorPointId::Anchor(anchor).get_handle_pair(vector_data) {
-			let opposites = handles.map(|handle| handle.opposite());
-			let [Some(start), Some(end)] = opposites.map(|opposite| opposite.to_manipulator_point().get_anchor(vector_data)) else {
-				return;
-			};
-			let [Some(handle_start), Some(handle_end)] = opposites.map(|handle| {
-				let handle_position = handle.to_manipulator_point().get_position(vector_data);
-				let relative_position = handle
-					.to_manipulator_point()
-					.get_anchor(vector_data)
-					.and_then(|anchor| vector_data.point_domain.position_from_id(anchor));
-				Some(handle_position? - relative_position?)
-			}) else {
-				return;
-			};
-			let modification_type = VectorModificationType::InsertSegment {
-				id: opposites[0].segment,
-				points: [start, end],
-				handles: [Some(handle_start), Some(handle_end)],
-			};
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-		}
+		let mut handles = ManipulatorPointId::Anchor(anchor).get_handle_pair(vector_data)?;
+		handles.reverse();
+		let opposites = handles.map(|handle| handle.opposite());
+		let [Some(start), Some(end)] = opposites.map(|opposite| opposite.to_manipulator_point().get_anchor(vector_data)) else {
+			return None;
+		};
+		return Some([(handles[0], start), (handles[1], end)]);
 	}
 
 	/// Dissolve the selected points.
 	pub fn delete_selected_points(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
+			let mut missing_anchors = HashMap::new();
 			let Some(vector_data) = document.metadata.compute_modified_vector(layer, &document.network) else {
 				continue;
 			};
 			for &point in &state.selected_points {
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
-						Self::disolve_anchor(anchor, responses, layer, &vector_data);
+						if let Some(handles) = Self::disolve_anchor(anchor, responses, layer, &vector_data) {
+							missing_anchors.insert(anchor, handles);
+							info!("Handles {handles:?}");
+						} else {
+							info!("No handles");
+						}
 					}
 
 					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
@@ -769,6 +763,59 @@ impl ShapeState {
 							}
 						}
 					}
+				}
+			}
+			let mut visited = Vec::new();
+			while let Some((anchor, handles)) = missing_anchors.keys().next().copied().and_then(|id| missing_anchors.remove_entry(&id)) {
+				let mut handles = handles.map(Some);
+				visited.push(anchor);
+				for handle in &mut handles {
+					while let Some((point, connected)) = handle.clone().and_then(|(_, point)| missing_anchors.remove_entry(&point)) {
+						visited.push(point);
+
+						*handle = connected.into_iter().find(|(_, point)| !visited.contains(point));
+					}
+				}
+				let [Some(start), Some(end)] = handles else { continue };
+				info!("Start {start:?} end {end:?} original {anchor:?}");
+				let [handle_start, handle_end] = [start, end].map(|(handle, _)| {
+					let handle = handle.opposite();
+					let handle_position = handle.to_manipulator_point().get_position(&vector_data);
+					let relative_position = handle
+						.to_manipulator_point()
+						.get_anchor(&vector_data)
+						.and_then(|anchor| vector_data.point_domain.position_from_id(anchor));
+					info!("Handle {handle_position:?} relative {relative_position:?}");
+					handle_position.and_then(|handle| relative_position.map(|relative| handle - relative)).unwrap_or_default()
+				});
+				let segment = start.0.segment;
+				let modification_type = VectorModificationType::InsertSegment {
+					id: segment,
+					points: [start.1, end.1],
+					handles: [Some(handle_start), Some(handle_end)],
+				};
+				info!("Creating segment {modification_type:#?}");
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				for &handles in vector_data.colinear_manipulators.iter() {
+					info!("HAndles {handles:?} start op {:?} end op {:?}", start.0.opposite(), end.0.opposite());
+					if !handles.iter().any(|&handle| handle == start.0.opposite() || handle == end.0.opposite()) {
+						continue;
+					}
+					let Some(anchor) = handles[0].to_manipulator_point().get_anchor(&vector_data) else { continue };
+					let Some(other) = handles.iter().find(|&&handle| handle != start.0.opposite() && handle != end.0.opposite()) else {
+						continue;
+					};
+					let handle_ty = if anchor == start.1 {
+						HandleId::primary(segment)
+					} else if anchor == end.1 {
+						HandleId::end(segment)
+					} else {
+						continue;
+					};
+					let handles = [*other, handle_ty];
+					let modification_type = VectorModificationType::SetG1Continous { handles, enabled: true };
+					info!("Set condinous {handles:?}");
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}

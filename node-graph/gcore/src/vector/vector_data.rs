@@ -186,6 +186,16 @@ impl VectorData {
 			ManipulatorPointId::EndHandle(segment) => has_handle(HandleId::end(segment)),
 		}
 	}
+
+	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId> {
+		let pair = self.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle))?;
+		let other = pair.iter().copied().find(|&val| val != handle)?;
+		if handle.to_manipulator_point().get_anchor(self) == other.to_manipulator_point().get_anchor(self) {
+			Some(other)
+		} else {
+			None
+		}
+	}
 }
 
 impl Default for VectorData {

@@ -92,7 +92,7 @@ impl OriginalTransforms {
 							let anchor = id.to_manipulator_point().get_anchor(&vector_data)?;
 							let initial = id.to_manipulator_point().get_position(&vector_data)?;
 							let relative = vector_data.point_domain.position_from_id(anchor)?;
-							let other_handle = id.to_manipulator_point().get_handle_pair(&vector_data).map(|[_, other]| other);
+							let other_handle = vector_data.other_colinear_handle(id);
 							let other_handle = other_handle.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
 							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector_data)?)));
 
