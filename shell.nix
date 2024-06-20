@@ -42,6 +42,7 @@ in
       pkgs.cargo
       pkgs.cargo-watch
       pkgs.wasm-pack
+      pkgs.wasm-bindgen-cli
 
       pkgs.openssl
       pkgs.glib

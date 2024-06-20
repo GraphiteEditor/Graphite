@@ -1,9 +1,13 @@
 mod quad;
 
+use core::ops::Deref;
+
+use crate::raster::bbox::Bbox;
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
 use crate::uuid::generate_uuid;
 use crate::vector::PointId;
+use crate::SurfaceFrame;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
 
@@ -479,6 +483,41 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 }
 
+impl GraphicElementRendered for SurfaceFrame {
+	fn render_svg(&self, render: &mut SvgRender, _render_params: &RenderParams) {
+		let transform = self.transform;
+		let (width, height) = (transform.transform_vector2(DVec2::new(1., 0.)).length(), transform.transform_vector2(DVec2::new(0., 1.)).length());
+		let matrix = (transform * DAffine2::from_scale((width, height).into()).inverse())
+			.to_cols_array()
+			.iter()
+			.enumerate()
+			.fold(String::new(), |val, (i, entry)| val + &(entry.to_string() + if i == 5 { "" } else { "," }));
+
+		let canvas = format!(
+			r#"
+					<foreignObject width="{}" height="{}" transform="matrix({})"><div data-canvas-placeholder="canvas{}"></div></foreignObject>
+			"#,
+			width.abs(),
+			height.abs(),
+			matrix,
+			self.surface_id
+		);
+		render.svg.push(canvas.into())
+	}
+
+	fn bounding_box(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		let bbox = Bbox::from_transform(transform);
+		let aabb = bbox.to_axis_aligned_bbox();
+		Some([aabb.start, aabb.end])
+	}
+
+	fn add_click_targets(&self, _click_targets: &mut Vec<ClickTarget>) {}
+
+	fn contains_artboard(&self) -> bool {
+		false
+	}
+}
+
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);
@@ -551,6 +590,7 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(_) => todo!("Render a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.render_svg(render, render_params),
 			GraphicElement::Artboard(artboard) => artboard.render_svg(render, render_params),
+			GraphicElement::Surface(surface) => surface.render_svg(render, render_params),
 		}
 	}
 
@@ -561,6 +601,7 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(_) => todo!("Bounds of a text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.bounding_box(transform),
 			GraphicElement::Artboard(artboard) => artboard.bounding_box(transform),
+			GraphicElement::Surface(surface) => surface.bounding_box(transform),
 		}
 	}
 
@@ -571,6 +612,7 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(_) => todo!("click target for text GraphicElement"),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.add_click_targets(click_targets),
 			GraphicElement::Artboard(artboard) => artboard.add_click_targets(click_targets),
+			GraphicElement::Surface(surface) => surface.add_click_targets(click_targets),
 		}
 	}
 
@@ -581,6 +623,7 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(text) => text.to_usvg_node(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.to_usvg_node(),
 			GraphicElement::Artboard(artboard) => artboard.to_usvg_node(),
+			GraphicElement::Surface(surface) => surface.to_usvg_node(),
 		}
 	}
 
@@ -591,6 +634,7 @@ impl GraphicElementRendered for GraphicElement {
 			GraphicElement::Text(text) => text.contains_artboard(),
 			GraphicElement::GraphicGroup(graphic_group) => graphic_group.contains_artboard(),
 			GraphicElement::Artboard(artboard) => artboard.contains_artboard(),
+			GraphicElement::Surface(surface) => surface.contains_artboard(),
 		}
 	}
 }

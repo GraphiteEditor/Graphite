@@ -1558,8 +1558,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Render Texture".to_string(),
 						inputs: vec![
 							NodeInput::network(concrete!(ShaderInputFrame<WgpuExecutor>), 0),
-							NodeInput::network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>), 0),
-							NodeInput::node(NodeId(0), 0),
+							NodeInput::network(concrete!(Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>), 0),
+							NodeInput::node(NodeId(0), 1),
 						],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("gpu_executor::RenderTextureNode<_, _>")),
 						..Default::default()
@@ -1617,7 +1617,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						name: "Cache".to_string(),
 						manual_composition: Some(concrete!(())),
 						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoizeImpureNode<_, _, _>")),
 						..Default::default()
 					},
 				]

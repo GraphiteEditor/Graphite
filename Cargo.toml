@@ -32,7 +32,7 @@ specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
 ] }
 rustc-hash = "1.1.0"
 # wasm-bindgen upgrades may break various things so we pin the version
-wasm-bindgen = "=0.2.91"
+wasm-bindgen = "=0.2.92"
 dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }

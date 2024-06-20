@@ -384,10 +384,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(gpu_executor::ReadOutputBufferNode<_, _>, input: Arc<ShaderInput<WgpuExecutor>>, output: Vec<u8>, params: [&WgpuExecutor, ()]),
 		#[cfg(feature = "gpu")]
-		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, params: []),
-		// todo!(gpu) get this to compie without saying that one type is more general than the other
-		// #[cfg(feature = "gpu")]
-		// async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface<'_>>>, &WgpuExecutor]),
+		async_node!(gpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, params: []),
+		#[cfg(feature = "gpu")]
+		async_node!(gpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame<WgpuExecutor>, output: SurfaceFrame, params: [Arc<SurfaceHandle<<WgpuExecutor as GpuExecutor>::Surface>>, &WgpuExecutor]),
 		#[cfg(feature = "gpu")]
 		async_node!(
 			gpu_executor::UploadTextureNode<_>,
@@ -675,6 +674,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: RenderOutput, params: [RenderOutput]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: GraphicGroup, fn_params: [Footprint => GraphicGroup]),
 		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::ImpureMemoNode<_, _, _>, input: Footprint, output: ShaderInputFrame<WgpuExecutor>, fn_params: [Footprint => ShaderInputFrame<WgpuExecutor>]),
 		register_node!(graphene_core::structural::ConsNode<_, _>, input: Image<Color>, params: [&str]),
 		register_node!(graphene_std::raster::ImageFrameNode<_, _>, input: Image<Color>, params: [DAffine2]),
 		register_node!(graphene_std::raster::NoisePatternNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _>, input: (), params: [UVec2, u32, f64, NoiseType, DomainWarpType, f64, FractalType, u32, f64, f64, f64, f64, CellularDistanceFunction, CellularReturnType, f64]),
@@ -811,6 +812,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicElementNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: GraphicGroup, params: []),
 		register_node!(graphene_core::ToGraphicElementNode, input: Artboard, params: []),
+		register_node!(graphene_core::ToGraphicElementNode, input: SurfaceFrame, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: graphene_core::vector::VectorData, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),

@@ -111,7 +111,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	type TextureHandle = Texture;
 	type TextureView = TextureView;
 	type CommandBuffer = CommandBufferWrapper;
-	type Surface<'window> = wgpu::Surface<'window>;
+	type Surface = wgpu::Surface<'static>;
 	#[cfg(target_arch = "wasm32")]
 	type Window = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
@@ -296,7 +296,9 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 			log::warn!("No surface formats available");
 			// return Ok(());
 		}
+		log::debug!("foo");
 		let Some(config) = self.surface_config.take() else { return Ok(()) };
+		log::debug!("config: {:?}", config);
 		let new_config = config.clone();
 		self.surface_config.replace(Some(config));
 		let output = match result {
@@ -373,6 +375,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		#[cfg(feature = "profiling")]
 		nvtx::range_pop!();
 		log::trace!("Submitted render pass");
+		log::debug!("Submitted render pass. Presenting surface");
 		output.present();
 
 		Ok(())
@@ -432,7 +435,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<wgpu::Surface>> {
+	fn create_surface(&self, canvas: graphene_core::WasmSurfaceHandle) -> Result<SurfaceHandle<Self::Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
@@ -454,7 +457,7 @@ impl gpu_executor::GpuExecutor for WgpuExecutor {
 		})
 	}
 	#[cfg(not(target_arch = "wasm32"))]
-	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<wgpu::Surface>> {
+	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface>> {
 		let size = window.surface.inner_size();
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;
 
