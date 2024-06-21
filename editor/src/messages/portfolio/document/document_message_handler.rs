@@ -142,8 +142,6 @@ impl Default for DocumentMessageHandler {
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
-			node_graph_ptz: HashMap::new(),
-			node_graph_to_viewport: HashMap::new(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			overlays_visible: true,
@@ -160,6 +158,8 @@ impl Default for DocumentMessageHandler {
 			undo_in_progress: false,
 			layer_range_selection_reference: None,
 			metadata: Default::default(),
+			node_graph_ptz: HashMap::new(),
+			node_graph_to_viewport: HashMap::new(),
 		}
 	}
 }
@@ -1525,7 +1525,7 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
 		let Some(previous_network) = self.redo(responses) else { return };
 
 		self.update_modified_click_targets(&previous_network);
@@ -1535,6 +1535,7 @@ impl DocumentMessageHandler {
 			self.document_undo_history.pop_front();
 		}
 	}
+
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -1552,27 +1553,30 @@ impl DocumentMessageHandler {
 		let Some(previous_nested_network) = previous_network.nested_network(&self.node_graph_handler.network) else {
 			return;
 		};
-		if let Some(network) = self.network.nested_network(&self.node_graph_handler.network) {
-			for (node_id, current_node) in &network.nodes {
-				if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
-					if previous_node.alias != current_node.alias
-						|| previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() != current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
-						|| previous_node.is_layer != current_node.is_layer
-						|| previous_node.metadata.position != current_node.metadata.position
-					{
-						self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
-					}
-				} else {
-					self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
+
+		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+			log::error!("Could not get nested network in redo_with_history");
+			return;
+		};
+
+		for (node_id, current_node) in &network.nodes {
+			if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+				if previous_node.alias == current_node.alias
+					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					&& previous_node.is_layer == current_node.is_layer
+					&& previous_node.metadata.position == current_node.metadata.position
+				{
+					continue;
 				}
 			}
-			self.node_graph_handler
-				.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
-			self.node_graph_handler
-				.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
-		} else {
-			log::error!("Could not get nested network in redo_with_history");
+
+			self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 		}
+
+		self.node_graph_handler
+			.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+		self.node_graph_handler
+			.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {

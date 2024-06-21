@@ -18,7 +18,6 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, 
 use graph_craft::proto::GraphErrors;
 use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::*;
-
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -46,21 +45,21 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	drag_start: Option<DragStart>,
-	// Used to add a transaction for the first node move when dragging
+	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
-	// Stored in pixel coordinates
+	/// Stored in pixel coordinates.
 	box_selection_start: Option<UVec2>,
 	disconnecting: Option<(NodeId, usize)>,
 	initial_disconnecting: bool,
-	// Node to select on pointer up if multiple nodes are selected and they were not dragged
+	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	select_if_not_dragged: Option<NodeId>,
-	// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
+	/// The start of the dragged line that cannot be moved. The bool represents if it is a vertical output.
 	wire_in_progress_from_connector: Option<(DVec2, bool)>,
-	// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
+	/// The end point of the dragged line that can be moved. The bool represents if it is a vertical input.
 	wire_in_progress_to_connector: Option<(DVec2, bool)>,
-	// State for the context menu popups
+	/// State for the context menu popups.
 	context_menu: Option<ContextMenuInformation>,
-	/// Click targets for every node in the network by using the path to that node
+	/// Click targets for every node in the network by using the path to that node.
 	pub node_metadata: HashMap<NodeId, NodeMetadata>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
@@ -348,28 +347,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
-				let Some(network) = document_network.nested_network_mut(&self.network) else {
-					return;
-				};
+				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
+
 				let viewport_location = ipp.mouse.position;
 				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
-				let Some(node_id) = self.get_node_from_point(point) else {
-					return;
-				};
+				let Some(node_id) = self.get_node_from_point(point) else { return };
+
 				if self.get_visibility_from_point(point).is_some() {
 					return;
 				};
 				if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
 					return;
 				}
-				let Some(node) = network.nodes.get_mut(&node_id) else {
-					return;
-				};
 
+				let Some(node) = network.nodes.get_mut(&node_id) else { return };
 				if let DocumentNodeImplementation::Network(_) = node.implementation {
 					self.network.push(node_id);
 					self.node_metadata.clear();
+
 					self.update_all_click_targets(document_network, self.network.clone());
+
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 
@@ -2338,7 +2335,7 @@ impl NodeGraphMessageHandler {
 			} else if let NodeInput::Value { tagged_value, .. } = export {
 				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
 			}
-			// Get type from parent node input when #1762 is possible
+			// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
 			// else if let NodeInput::Network { import_type, .. } = export {
 			// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
 			// }

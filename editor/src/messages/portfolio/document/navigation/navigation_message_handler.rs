@@ -11,8 +11,9 @@ use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
-use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
+
+use glam::{DAffine2, DVec2};
 
 pub struct NavigationMessageData<'a> {
 	pub metadata: &'a DocumentMetadata,
