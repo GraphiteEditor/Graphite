@@ -5,7 +5,7 @@ use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::{DAffine2, IVec2};
+use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -665,9 +665,6 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
-	/// Transform from node graph space to viewport space.
-	#[serde(default)]
-	pub node_graph_to_viewport: DAffine2,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -690,7 +687,6 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
-			node_graph_to_viewport: DAffine2::default(),
 		}
 	}
 }

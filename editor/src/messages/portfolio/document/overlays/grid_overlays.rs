@@ -12,7 +12,7 @@ use graphene_std::vector::style::FillChoice;
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color: Color = document.snapping_state.grid.grid_color;
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document.metadata().document_to_viewport;
@@ -55,7 +55,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = document.snapping_state.grid.grid_color;
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document.metadata().document_to_viewport;
@@ -98,7 +98,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.document_ptz) else {
 		return;
 	};
 	let isometric_spacing = spacing * spacing_multiplier;
@@ -150,7 +150,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.document_ptz) else {
 		return;
 	};
 	let isometric_spacing = spacing * spacing_multiplier;
