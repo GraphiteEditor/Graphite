@@ -38,7 +38,7 @@ impl Resize {
 			log::error!("Resize layer cannot be ROOT_PARENT");
 		}
 
-		if !document.network().nodes.contains_key(&layer.to_node()) {
+		if !document.document_network().nodes.contains_key(&layer.to_node()) {
 			self.layer.take();
 			return None;
 		}

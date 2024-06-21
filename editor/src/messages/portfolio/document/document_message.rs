@@ -100,7 +100,6 @@ pub enum DocumentMessage {
 	},
 	RenderRulers,
 	RenderScrollbars,
-	ResetTransform,
 	SaveDocument,
 	SelectAllLayers,
 	SelectedLayersLower,

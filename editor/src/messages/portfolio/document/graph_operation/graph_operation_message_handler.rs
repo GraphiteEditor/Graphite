@@ -2,6 +2,7 @@ use super::transform_utils::{self, LayerBounds};
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -17,7 +18,7 @@ use graphene_std::vector::style::GradientStops;
 use glam::{DAffine2, DVec2, IVec2};
 
 pub struct GraphOperationMessageData<'a> {
-	pub document_network: &'a mut NodeNetwork,
+	pub network_interface: &'a mut NodeNetworkInterface,
 	pub document_metadata: &'a mut DocumentMetadata,
 	pub selected_nodes: &'a mut SelectedNodes,
 	pub collapsed: &'a mut CollapsedLayers,
@@ -32,7 +33,7 @@ pub struct GraphOperationMessageHandler {}
 impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for GraphOperationMessageHandler {
 	fn process_message(&mut self, message: GraphOperationMessage, responses: &mut VecDeque<Message>, data: GraphOperationMessageData) {
 		let GraphOperationMessageData {
-			document_network,
+			network_interface,
 			document_metadata,
 			selected_nodes,
 			collapsed,
@@ -191,7 +192,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run FillSet on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.fill_set(fill);
 				}
 			}
@@ -391,7 +392,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run OpacitySet on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
@@ -400,7 +401,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run BlendModeSet on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
@@ -409,7 +410,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run UpdateBounds on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
@@ -418,7 +419,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run StrokeSet on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
 			}
@@ -434,7 +435,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 			}
@@ -452,7 +453,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				let current_transform = Some(document_metadata.transform_to_viewport(layer));
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 			}
@@ -462,7 +463,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				}
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
@@ -471,7 +472,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run Vector on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					let previous_layer = modify_inputs.vector_modify(modification);
 					if let Some(layer) = previous_layer {
 						responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true })
@@ -483,7 +484,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run Brush on ROOT_PARENT");
 					return;
 				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
@@ -571,7 +572,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
 				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					ModifyInputsContext::insert_image_data(node_graph, document_network, image_frame, layer, responses);
 				}
@@ -583,12 +584,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				insert_index,
 				alias,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
 
 				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
-					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
+					if let Some(node) = modify_inputs.network_interface.nodes.get_mut(&id) {
 						node.alias = alias.clone();
 					}
 
@@ -596,7 +597,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						.get(&NodeId(0))
 						.and_then(|node| {
 							modify_inputs
-								.document_network
+								.network_interface
 								.nodes
 								.get(&layer)
 								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
@@ -631,7 +632,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
 				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					modify_inputs.insert_vector_data(subpaths, layer);
 				}
@@ -645,14 +646,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
 				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
 					modify_inputs.insert_text(text, font, size, layer);
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, node_graph, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
@@ -680,7 +681,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						return;
 					}
 				};
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, node_graph, responses);
+				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
 				load_network_structure(document_network, document_metadata, collapsed);
@@ -717,7 +718,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {
-				ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), node_id, shift, shift_self);
+				network_interface.shift_upstream(node_id, shift, shift_self);
 			}
 			GraphOperationMessage::ToggleSelectedVisibility => {
 				responses.add(DocumentMessage::StartTransaction);

@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_metadata::{NetworkMetadata, NodeNetworkInterface};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -26,19 +27,18 @@ use web_sys::window;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
-	pub document_network: &'a mut NodeNetwork,
+	pub network_interface: &'a mut NodeNetworkInterface,
 	pub document_metadata: &'a mut DocumentMetadata,
 	pub selected_nodes: &'a mut SelectedNodes,
 	pub document_id: DocumentId,
-	pub document_name: &'a str,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
-	pub node_graph_to_viewport: &'a DAffine2,
 }
 
 #[derive(Debug, Clone)]
 pub struct NodeGraphMessageHandler {
+	//TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	pub node_graph_errors: GraphErrors,
@@ -59,10 +59,6 @@ pub struct NodeGraphMessageHandler {
 	wire_in_progress_to_connector: Option<(DVec2, bool)>,
 	/// State for the context menu popups.
 	context_menu: Option<ContextMenuInformation>,
-	/// Click targets for every node in the network by using the path to that node.
-	pub node_metadata: HashMap<NodeId, NodeMetadata>,
-	/// Cache for the bounding box around all nodes in node graph space.
-	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
 	auto_panning: AutoPanning,
 }
 
@@ -70,15 +66,13 @@ pub struct NodeGraphMessageHandler {
 impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGraphMessageHandler {
 	fn process_message(&mut self, message: NodeGraphMessage, responses: &mut VecDeque<Message>, data: NodeGraphHandlerData<'a>) {
 		let NodeGraphHandlerData {
-			document_network,
+			network_interface,
 			document_metadata,
 			selected_nodes,
 			document_id,
 			collapsed,
 			graph_view_overlay_open,
 			ipp,
-			node_graph_to_viewport,
-			..
 		} = data;
 
 		match message {
@@ -248,11 +242,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				ModifyInputsContext::delete_nodes(self, document_network, selected_nodes, node_ids, reconnect, responses, self.network.clone());
+				ModifyInputsContext::delete_nodes(self, network_interface, selected_nodes, node_ids, reconnect, responses, self.network.clone());
 
 				// Load structure if the selected network is the document network
 				if self.network.is_empty() {
-					load_network_structure(document_network, document_metadata, collapsed);
+					load_network_structure(network_interface.document_network(), document_metadata, collapsed);
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -350,9 +344,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(network) = document_network.nested_network_mut(&self.network) else { return };
 
 				let viewport_location = ipp.mouse.position;
-				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
-				let Some(node_id) = self.get_node_from_point(point) else { return };
-
+				let point = network_interface.navigation_metadata().node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let Some(node_id) = self.get_node_from_point(point) else {
+					return;
+				};
 				if self.get_visibility_from_point(point).is_some() {
 					return;
 				};
@@ -363,14 +358,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let Some(node) = network.nodes.get_mut(&node_id) else { return };
 				if let DocumentNodeImplementation::Network(_) = node.implementation {
 					self.network.push(node_id);
-					self.node_metadata.clear();
-
-					self.update_all_click_targets(document_network, self.network.clone());
-
 					responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				}
 
-				responses.add(DocumentMessage::ResetTransform);
 				responses.add(NodeGraphMessage::SendGraph);
 
 				self.update_selected(document_network, selected_nodes, responses);
@@ -382,9 +372,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for _ in 0..steps_back {
 					self.network.pop();
 				}
-				self.node_metadata.clear();
-				self.update_all_click_targets(document_network, self.network.clone());
-				responses.add(DocumentMessage::ResetTransform);
 				responses.add(NodeGraphMessage::SendGraph);
 				self.update_selected(document_network, selected_nodes, responses);
 			}
@@ -568,7 +555,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				let viewport_location = ipp.mouse.position;
-				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = network_interface.navigation_metadata().node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if let Some(clicked_visibility) = self.get_visibility_from_point(point) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
@@ -594,11 +581,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode) {
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata().node_graph_to_viewport.matrix2.x_axis.x
 					} else {
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x
+						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata().node_graph_to_viewport.matrix2.x_axis.x
 					};
 
 					let context_menu_coordinates = ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32);
@@ -617,7 +604,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// If the user is clicking on the create nodes list or context menu, break here
 				if let Some(context_menu) = &self.context_menu {
-					let context_menu_viewport = node_graph_to_viewport.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
+					let context_menu_viewport = network_interface
+						.navigation_metadata()
+						.node_graph_to_viewport
+						.transform_point2(DVec2::new(context_menu.context_menu_coordinates.0 as f64, context_menu.context_menu_coordinates.1 as f64));
 					let (width, height) = if matches!(context_menu.context_menu_data, ContextMenuData::ToggleLayer { .. }) {
 						// Height and width for toggle layer menu
 						(173., 34.)
@@ -819,7 +809,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
 
 				let viewport_location = ipp.mouse.position;
-				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = network_interface.navigation_metadata().node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					if let Some((to_connector_node_position, is_layer, input_index)) =
@@ -924,7 +914,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						end_y: viewport_location.y.max(0.) as u32,
 					});
 
-					let graph_start = node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
+					let graph_start = network_interface.navigation_metadata().node_graph_to_viewport.inverse().transform_point2(box_selection_start.into());
 
 					// TODO: Only loop through visible nodes
 					let shift = ipp.keyboard.get(shift as usize);
@@ -954,7 +944,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 				// Disconnect if the wire was previously connected to an input
 				let viewport_location = ipp.mouse.position;
-				let point = node_graph_to_viewport.inverse().transform_point2(viewport_location);
+				let point = network_interface.navigation_metadata().node_graph_to_viewport.inverse().transform_point2(viewport_location);
 
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
@@ -976,7 +966,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 						let appear_right_of_mouse = if viewport_location.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
 						let appear_above_mouse = if viewport_location.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
-						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x;
+						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_interface.navigation_metadata().node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
@@ -1190,14 +1180,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetQualifiedInputValue { node_id, input_index, value } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
+				let network_path = if selected_nodes.any(|node_id| document_network.nodes.contains_key(&node_id)) {
+					&Vec::new()
+				} else {
+					&self.network
+				};
+				let Some(network) = document_network.nested_network(&network_path) else {
 					return;
 				};
-
-				if let Some(node) = network.nodes.get_mut(&node_id) {
+				if let Some(node) = network.nodes.get(&node_id) {
 					// Extend number of inputs if not already large enough
 					if input_index >= node.inputs.len() {
-						node.inputs.extend(((node.inputs.len() - 1)..input_index).map(|_| NodeInput::network(generic!(T), 0)));
+						let network_metadata = network_metadata.entry(network_path).or_insert(NetworkMetadata::new(&document_network, network_path));
+						for input in ((node.inputs.len() - 1)..input_index).map(|_| NodeInput::network(generic!(T), 0)) {
+							network_metadata.add_node_input()
+						}
 					}
 					node.inputs[input_index] = NodeInput::Value { tagged_value: value, exposed: false };
 					if network.connected_to_output(node_id) {
@@ -1213,7 +1210,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 				debug_assert!(network.is_acyclic(), "Not acyclic. Network: {network:#?}");
-				let outwards_wires = network.collect_outwards_wires();
+
+				let outward_wires = network_interface.network_metadata(false).outward_wires;
 				let required_shift = |left: NodeId, right: NodeId, document_network: &NodeNetwork| {
 					let Some(network) = document_network.nested_network(&network_path) else {
 						return 0;
@@ -1253,12 +1251,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Shift nodes connected to the output port of the specified node
-				for &descendant in outwards_wires.get(&node_id).unwrap_or(&Vec::new()) {
+				for &descendant in outward_wires.get(&node_id).unwrap_or(&Vec::new()) {
 					let shift = required_shift(node_id, descendant, document_network);
 					let mut stack = vec![descendant];
 					while let Some(id) = stack.pop() {
 						shift_node(id, shift, document_network);
-						stack.extend(outwards_wires.get(&id).unwrap_or(&Vec::new()).iter().copied())
+						stack.extend(outward_wires.get(&id).unwrap_or(&Vec::new()).iter().copied())
 					}
 				}
 
@@ -1548,372 +1546,6 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
-	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		let document = window().unwrap().document().unwrap();
-		let div = match document.create_element("div") {
-			Ok(div) => div,
-			Err(err) => {
-				log::error!("Error creating div: {:?}", err);
-				return None;
-			}
-		};
-
-		// Set the div's style to make it offscreen and single line
-		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
-			Err(err) => {
-				log::error!("Error setting attribute: {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// From NodeGraphMessageHandler::untitled_layer_label(node)
-		let name = (node.alias != "")
-			.then_some(node.alias.to_string())
-			.unwrap_or(if node.is_layer && node.name == "Merge" { "Untitled Layer".to_string() } else { node.name.clone() });
-
-		div.set_text_content(Some(&name));
-
-		// Append the div to the document body
-		match document.body().unwrap().append_child(&div) {
-			Err(err) => {
-				log::error!("Error setting adding child to document {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// Measure the width
-		let text_width = div.get_bounding_client_rect().width();
-
-		// Remove the div from the document
-		match document.body().unwrap().remove_child(&div) {
-			Err(_) => log::error!("Could not remove child when rendering text"),
-			_ => {}
-		};
-
-		Some(text_width)
-	}
-	pub fn layer_width_cells(node: &DocumentNode) -> u32 {
-		let half_grid_cell_offset = 24. / 2.;
-		let thumbnail_width = 3. * 24.;
-		let gap_width = 8.;
-		let text_width = Self::get_text_width(node).unwrap_or_default();
-		let icon_width = 24.;
-		let icon_overhang_width = icon_width / 2.;
-
-		let text_right = half_grid_cell_offset + thumbnail_width + gap_width + text_width;
-		let layer_width_pixels = text_right + gap_width + icon_width - icon_overhang_width;
-		((layer_width_pixels / 24.) as u32).max(8)
-	}
-
-	// Inserts a node into the network and updates the click target
-	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>) {
-		let Some(network) = document_network.nested_network_mut(network_path) else {
-			log::error!("Network not found in update_click_target");
-			return;
-		};
-		assert!(
-			node_id != network.imports_metadata.0 && node_id != network.exports_metadata.0,
-			"Cannot insert import/export node into network.nodes"
-		);
-		network.nodes.insert(node_id, node);
-		self.update_click_target(node_id, document_network, network_path.clone());
-	}
-
-	/// Update the click targets when a DocumentNode's click target changes. network_path is the path to the encapsulating network
-	pub fn update_click_target(&mut self, node_id: NodeId, document_network: &NodeNetwork, network_path: Vec<NodeId>) {
-		let Some(network) = document_network.nested_network(&network_path) else {
-			log::error!("Network not found in update_click_target");
-			return;
-		};
-
-		let grid_size = 24; // Number of pixels per grid unit at 100% zoom
-
-		if let Some(node) = network.nodes.get(&node_id) {
-			let mut layer_width = None;
-			let width = if node.is_layer {
-				let layer_width_cells = self
-					.node_metadata
-					.get(&node_id)
-					.and_then(|node_metadata| node_metadata.layer_width)
-					.unwrap_or_else(|| Self::layer_width_cells(node));
-
-				layer_width = Some(layer_width_cells);
-
-				layer_width_cells * grid_size
-			} else {
-				5 * grid_size
-			};
-			let height = if node.is_layer {
-				2 * grid_size
-			} else {
-				let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
-				let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-					network.exports.len()
-				} else {
-					1
-				};
-				std::cmp::max(inputs_count, outputs_count) as u32 * grid_size
-			};
-			let mut corner1 = DVec2::new((node.metadata.position.x * grid_size as i32) as f64, (node.metadata.position.y * grid_size as i32) as f64);
-			let radius = if !node.is_layer {
-				corner1 += DVec2::new(0., (grid_size / 2) as f64);
-				3.
-			} else {
-				10.
-			};
-
-			let corner2 = corner1 + DVec2::new(width as f64, height as f64);
-			let mut click_target_corner_1 = corner1;
-			if node.is_layer && node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-				click_target_corner_1 -= DVec2::new(24., 0.)
-			}
-
-			let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
-
-			// Create input/output click targets
-			let mut input_click_targets = Vec::new();
-			let mut output_click_targets = Vec::new();
-			let mut visibility_click_target = None;
-
-			if !node.is_layer {
-				let mut node_top_right: DVec2 = corner1 + DVec2::new(5. * 24., 0.);
-
-				let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
-				let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-					network.exports.len()
-				} else {
-					1
-				};
-
-				if !node.has_primary_output {
-					node_top_right.y += 24.;
-				}
-
-				let input_top_left = DVec2::new(-8., 4.);
-				let input_bottom_right = DVec2::new(8., 20.);
-
-				for node_row_index in 0..number_of_inputs {
-					let stroke_width = 1.;
-					let subpath = Subpath::new_ellipse(
-						input_top_left + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
-						input_bottom_right + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
-					);
-					let input_click_target = ClickTarget { subpath, stroke_width };
-					input_click_targets.push(input_click_target);
-				}
-
-				for node_row_index in 0..number_of_outputs {
-					let stroke_width = 1.;
-					let subpath = Subpath::new_ellipse(
-						input_top_left + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
-						input_bottom_right + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
-					);
-					let output_click_target = ClickTarget { subpath, stroke_width };
-					output_click_targets.push(output_click_target);
-				}
-			} else {
-				let input_top_left = DVec2::new(-8., -8.);
-				let input_bottom_right = DVec2::new(8., 8.);
-				let layer_input_offset = corner1 + DVec2::new(2. * 24., 2. * 24. + 8.);
-
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-				let layer_input_click_target = ClickTarget { subpath, stroke_width };
-				input_click_targets.push(layer_input_click_target);
-
-				if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-					let layer_input_offset = corner1 + DVec2::new(0., 24.);
-					let stroke_width = 1.;
-					let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
-					let input_click_target = ClickTarget { subpath, stroke_width };
-					input_click_targets.push(input_click_target);
-				}
-
-				// Output
-				let layer_output_offset = corner1 + DVec2::new(2. * 24., -8.);
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
-				let layer_output_click_target = ClickTarget { subpath, stroke_width };
-				output_click_targets.push(layer_output_click_target);
-
-				// Update visibility button click target
-				let visibility_offset = corner1 + DVec2::new(width as f64, 24.);
-				let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
-				let stroke_width = 1.;
-				let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
-				visibility_click_target = Some(layer_visibility_click_target);
-			}
-			let node_metadata = NodeMetadata {
-				node_click_target,
-				input_click_targets,
-				output_click_targets,
-				visibility_click_target,
-				layer_width,
-			};
-			self.node_metadata.insert(node_id, node_metadata);
-		} else if node_id == network.exports_metadata.0 {
-			let width = 5 * grid_size;
-			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (network.exports.len() as u32 + 1) * grid_size;
-
-			let corner1 = IVec2::new(network.exports_metadata.1.x * grid_size as i32, network.exports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
-			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
-			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
-
-			let node_top_left = network.exports_metadata.1 * grid_size as i32;
-			let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
-			// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
-			node_top_left.y += 36.;
-			let input_top_left = DVec2::new(-8., 4.);
-			let input_bottom_right = DVec2::new(8., 20.);
-
-			// Create input/output click targets
-			let mut input_click_targets = Vec::new();
-			let output_click_targets = Vec::new();
-			let visibility_click_target = None;
-
-			for _ in 0..network.exports.len() {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
-				let top_left_input = ClickTarget { subpath, stroke_width };
-				input_click_targets.push(top_left_input);
-
-				node_top_left += 24.;
-			}
-
-			let node_metadata = NodeMetadata {
-				node_click_target,
-				input_click_targets,
-				output_click_targets,
-				visibility_click_target,
-				layer_width: None,
-			};
-
-			self.node_metadata.insert(node_id, node_metadata);
-		}
-		// The number of imports is from the parent node, which is passed as a parameter. The number of exports is available from self.
-		else if node_id == network.imports_metadata.0 {
-			let mut encapsulating_path = self.network.clone();
-			// Import count is based on the number of inputs to the encapsulating node. If the current network is the document network, there is no import node
-			if let Some(encapsulating_node) = encapsulating_path.pop() {
-				let parent_node = document_network
-					.nested_network(&encapsulating_path)
-					.expect("Encapsulating path should always exist")
-					.nodes
-					.get(&encapsulating_node)
-					.expect("Last path node should always exist in encapsulating network");
-				let import_count = parent_node.inputs.len();
-
-				let width = 5 * grid_size;
-				// 1 is added since the first row is reserved for the "Exports" name
-				let height = (import_count + 1) as u32 * grid_size;
-
-				let corner1 = IVec2::new(network.imports_metadata.1.x * grid_size as i32, network.imports_metadata.1.y * grid_size as i32 + grid_size as i32 / 2);
-				let corner2 = corner1 + IVec2::new(width as i32, height as i32);
-				let radius = 3.;
-				let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-				let stroke_width = 1.;
-				let node_click_target = ClickTarget { subpath, stroke_width };
-
-				let node_top_right = network.imports_metadata.1 * grid_size as i32;
-				let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
-				// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
-				node_top_right.y += 36.;
-				let input_top_left = DVec2::new(-8., 4.);
-				let input_bottom_right = DVec2::new(8., 20.);
-
-				// Create input/output click targets
-				let input_click_targets = Vec::new();
-				let mut output_click_targets = Vec::new();
-				let visibility_click_target = None;
-				for _ in 0..import_count {
-					let stroke_width = 1.;
-					let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
-					let top_left_input = ClickTarget { subpath, stroke_width };
-					output_click_targets.push(top_left_input);
-
-					node_top_right.y += 24.;
-				}
-				let node_metadata = NodeMetadata {
-					node_click_target,
-					input_click_targets,
-					output_click_targets,
-					visibility_click_target,
-					layer_width: None,
-				};
-				self.node_metadata.insert(node_id, node_metadata);
-			}
-		} else {
-			self.node_metadata.remove(&node_id);
-		}
-		let bounds = self
-			.node_metadata
-			.iter()
-			.filter_map(|(_, node_metadata)| node_metadata.node_click_target.subpath.bounding_box())
-			.reduce(Quad::combine_bounds);
-		self.bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
-	}
-
-	// Updates all click targets in a certain network
-	pub fn update_all_click_targets(&mut self, document_network: &NodeNetwork, network_path: Vec<NodeId>) {
-		let Some(network) = document_network.nested_network(&network_path) else {
-			log::error!("Network not found in update_all_click_targets");
-			return;
-		};
-		let export_id = network.exports_metadata.0;
-		let import_id = network.imports_metadata.0;
-		for (node_id, _) in network.nodes.iter() {
-			self.update_click_target(*node_id, document_network, network_path.clone());
-		}
-		self.update_click_target(export_id, document_network, network_path.clone());
-		self.update_click_target(import_id, document_network, network_path.clone())
-	}
-
-	/// Gets the bounding box in viewport coordinates for each node in the node graph
-	pub fn graph_bounds_viewport_space(&self, node_graph_to_viewport: DAffine2) -> Option<[DVec2; 2]> {
-		self.bounding_box_subpath
-			.as_ref()
-			.and_then(|bounding_box| bounding_box.bounding_box_with_transform(node_graph_to_viewport))
-	}
-
-	fn get_node_from_point(&self, point: DVec2) -> Option<NodeId> {
-		self.node_metadata
-			.iter()
-			.map(|(node_id, node_metadata)| (node_id, &node_metadata.node_click_target))
-			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
-	}
-
-	fn get_connector_from_point<F>(&self, point: DVec2, click_target_selector: F) -> Option<(NodeId, usize)>
-	where
-		F: Fn(&NodeMetadata) -> &Vec<ClickTarget>,
-	{
-		self.node_metadata
-			.iter()
-			.map(|(node_id, node_metadata)| (node_id, click_target_selector(node_metadata)))
-			.find_map(|(node_id, click_targets)| {
-				for (index, click_target) in click_targets.iter().enumerate() {
-					if click_target.intersect_point(point, DAffine2::IDENTITY) {
-						return Some((node_id.clone(), index));
-					}
-				}
-				None
-			})
-	}
-
-	fn get_visibility_from_point(&self, point: DVec2) -> Option<NodeId> {
-		self.node_metadata
-			.iter()
-			.filter_map(|(node_id, node_metadata)| node_metadata.visibility_click_target.as_ref().map(|click_target| (node_id, click_target)))
-			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
-	}
-
 	/// Send the cached layout to the frontend for the options bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
@@ -1989,7 +1621,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Collate the properties panel sections for a node graph
-	pub fn collate_properties(&self, context: &mut NodePropertiesContext, selected_nodes: &SelectedNodes) -> Vec<LayoutGroup> {
+	pub fn collate_properties(context: &mut NodePropertiesContext, selected_nodes: &SelectedNodes) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(network) = context
 			.document_network
@@ -2791,8 +2423,6 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			context_menu: None,
-			node_metadata: HashMap::new(),
-			bounding_box_subpath: None,
 			auto_panning: Default::default(),
 		}
 	}

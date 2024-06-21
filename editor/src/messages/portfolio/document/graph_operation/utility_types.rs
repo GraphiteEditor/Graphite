@@ -1,6 +1,7 @@
 use super::transform_utils::{self, LayerBounds};
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
@@ -45,122 +46,67 @@ pub enum VectorDataModification {
 	UpdateSubpaths { subpaths: Vec<Subpath<ManipulatorGroupId>> },
 }
 
-// TODO: This is helpful to prevent passing the same arguments to multiple functions, but is currently inefficient due to the collect_outwards_wires. Move it into a function and use only when needed.
-/// NodeGraphMessage or GraphOperationMessage cannot be added in ModifyInputsContext, since the functions are called by both messages handlers
+// This is helpful to prevent passing the same arguments to multiple functions
+// TODO: Should only be used by GraphOperationMessage. Any functions that should work on other methods should be moved to network_metadata.rs
 pub struct ModifyInputsContext<'a> {
+	pub network_interface: &'a mut NodeNetworkInterface,
 	pub document_metadata: &'a mut DocumentMetadata,
-	pub document_network: &'a mut NodeNetwork,
-	pub node_graph: &'a mut NodeGraphMessageHandler,
 	pub responses: &'a mut VecDeque<Message>,
-	pub outwards_wires: HashMap<NodeId, Vec<NodeId>>,
 	pub layer_node: Option<NodeId>,
 }
 
 impl<'a> ModifyInputsContext<'a> {
 	/// Get the node network from the document
-	pub fn new(document_network: &'a mut NodeNetwork, document_metadata: &'a mut DocumentMetadata, node_graph: &'a mut NodeGraphMessageHandler, responses: &'a mut VecDeque<Message>) -> Self {
+	pub fn new(network_interface: &'a mut NodeNetwork, document_metadata: &'a mut DocumentMetadata, responses: &'a mut VecDeque<Message>) -> Self {
 		Self {
-			outwards_wires: document_network.collect_outwards_wires(),
-			document_network,
-			node_graph,
+			network_interface,
+			document_metadata,
 			responses,
 			layer_node: None,
-			document_metadata,
 		}
 	}
 
-	pub fn new_with_layer(
-		id: NodeId,
-		document_network: &'a mut NodeNetwork,
-		document_metadata: &'a mut DocumentMetadata,
-		node_graph: &'a mut NodeGraphMessageHandler,
-		responses: &'a mut VecDeque<Message>,
-	) -> Option<Self> {
-		let mut document = Self::new(document_network, document_metadata, node_graph, responses);
-
-		let mut id = id;
-		while !document.document_network.nodes.get(&id)?.is_layer {
-			id = document.outwards_wires.get(&id)?.first().copied()?;
-		}
-
-		document.layer_node = Some(id);
+	pub fn new_with_layer(id: NodeId, network_interface: &'a mut NodeNetworkInterface, document_metadata: &'a mut DocumentMetadata, responses: &'a mut VecDeque<Message>) -> Option<Self> {
+		let mut document = Self::new(network_interface, document_metadata, responses);
+		document.layer_node = network_interface.downstream_layer(&id);
 		Some(document)
 	}
 
 	/// Updates the input of an existing node
+	// TODO: Remove and use network_interface API to update the inputs
 	pub fn modify_existing_node_inputs(&mut self, node_id: NodeId, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
-		let document_node = self.document_network.nodes.get_mut(&node_id).unwrap();
+		let document_node: &mut DocumentNode = self.network_interface.document_network().nodes.get_mut(&node_id).unwrap();
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
-	pub fn insert_between(
-		node_graph: &mut NodeGraphMessageHandler,
-		document_network: &mut NodeNetwork,
-		id: NodeId,
-		mut new_node: DocumentNode,
-		new_node_input: NodeInput,
-		new_node_input_index: usize,
-		post_node_id: NodeId,
-		post_node_input: NodeInput,
-		post_node_input_index: usize,
-		shift_upstream: IVec2,
-	) -> Option<NodeId> {
-		assert!(!document_network.nodes.contains_key(&id), "Creating already existing node");
-		let pre_node = document_network.nodes.get_mut(&new_node_input.as_node().expect("Input should reference a node"))?;
-		new_node.metadata.position = pre_node.metadata.position;
+	/// Inserts a node as an export. If there is already a root node connected to the export, that node will be connected to the new node
+	pub fn insert_layer_as_primary_export(&self, id: NodeId, mut new_node: DocumentNode) -> Option<NodeId> {
+		assert!(!self.network_interface.document_network().nodes.contains_key(&id), "Creating already existing node");
 
-		let post_node = document_network.nodes.get_mut(&post_node_id)?;
-		new_node.inputs[new_node_input_index] = new_node_input;
-		post_node.inputs[post_node_input_index] = post_node_input;
+		let previous_root_node = self.network_interface.document_network().get_root_node();
 
-		node_graph.insert_node(id, new_node, document_network, &Vec::new());
+		self.network_interface.disconnect_node(self.network_interface.document_network().exports_metadata.0, 0);
 
-		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, shift_upstream, false);
+		// Add the new node as the first child of the exports
+		self.network_interface.add_layer_to_stack(id, self.network_interface.document_network().exports_metadata.0, 0, new_node);
+		self.network_interface.set_export(id, 0);
 
-		Some(id)
-	}
+		// If a node was previous connected to the exports
+		if let Some(root_node) = previous_root_node {
+			let previous_root_node = self.network_interface.document_network().nodes.get(&root_node.id).expect("Root node should always exist");
 
-	pub fn insert_node_before(
-		node_graph: &mut NodeGraphMessageHandler,
-		document_network: &mut NodeNetwork,
-		new_id: NodeId,
-		node_id: NodeId,
-		input_index: usize,
-		mut document_node: DocumentNode,
-		offset: IVec2,
-	) -> Option<NodeId> {
-		assert!(!document_network.nodes.contains_key(&new_id), "Creating already existing node");
-
-		let post_node = document_network.nodes.get_mut(&node_id)?;
-		post_node.inputs[input_index] = NodeInput::node(new_id, 0);
-		document_node.metadata.position = post_node.metadata.position + offset;
-		node_graph.insert_node(new_id, document_node, document_network, &Vec::new());
-
-		Some(new_id)
-	}
-
-	/// Inserts a node as an export. If there is already a root node connected to the export, that node will be connected to the new node at node_input_index
-	pub fn insert_node_as_primary_export(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, id: NodeId, mut new_node: DocumentNode) -> Option<NodeId> {
-		assert!(!document_network.nodes.contains_key(&id), "Creating already existing node");
-
-		if let Some(root_node) = document_network.get_root_node() {
-			let previous_root_node = document_network.nodes.get_mut(&root_node.id).expect("Root node should always exist");
-
-			// Insert whatever non artboard node previously fed into export as a child of the new node
-			let node_input_index = if new_node.is_artboard() && !previous_root_node.is_artboard() { 1 } else { 0 };
-			new_node.inputs[node_input_index] = NodeInput::node(root_node.id, root_node.output_index);
-			ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), root_node.id, IVec2::new(8, 0), true);
+			// Always move non layer nodes to the chain of the new export layer
+			if !previous_root_node.is_layer {
+				self.network_interface.move_node_to_chain(root_node.id, id)
+			}
+			// If the new layer is an artboard and the previous export is not an artboard, move it to be a child
+			if new_node.is_artboard() && !previous_root_node.is_artboard() {
+				// If that node is a layer, move it to be a child of the artboard.
+				if previous_root_node.is_layer {
+					self.network_interface.move_node_to_child(root_node.id, id)
+				}
+			}
 		}
-
-		let Some(export) = document_network.exports.get_mut(0) else {
-			log::error!("Could not get primary export when adding node");
-			return None;
-		};
-		*export = NodeInput::node(id, 0);
-
-		node_graph.insert_node(id, new_node, document_network, &Vec::new());
-
-		ModifyInputsContext::shift_upstream(node_graph, document_network, &Vec::new(), id, IVec2::new(-8, 3), false);
 
 		Some(id)
 	}
@@ -255,44 +201,46 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_layer(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) -> Option<NodeId> {
 		let skip_layer_nodes = if insert_index < 0 { (-1 - insert_index) as usize } else { insert_index as usize };
 
-		assert!(!self.document_network.nodes.contains_key(&new_id), "Creating already existing layer");
+		assert!(!self.network_interface.nodes.contains_key(&new_id), "Creating already existing layer");
 		// TODO: Smarter placement of layers into artboards https://github.com/GraphiteEditor/Graphite/issues/1507
 
 		let mut parent = parent;
 		if parent == LayerNodeIdentifier::ROOT_PARENT {
-			if let Some(root_node) = self.document_network.get_root_node() {
+			if let Some(root_node) = self.network_interface.get_root_node() {
 				// If the current root node is the artboard, then the new layer should be a child of the artboard
-				let current_root_node = self.document_network.nodes.get(&root_node.id).expect("Root node should always exist");
+				let current_root_node = self.network_interface.nodes.get(&root_node.id).expect("Root node should always exist");
 				if current_root_node.is_artboard() && current_root_node.is_layer {
-					parent = LayerNodeIdentifier::new(root_node.id, &self.document_network);
+					parent = LayerNodeIdentifier::new(root_node.id, &self.network_interface);
 				}
 			}
 		}
 
 		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
-		let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(self.document_network, parent, skip_layer_nodes);
+		let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(self.network_interface, parent, skip_layer_nodes);
 
 		if let Some(post_node_id) = post_node_id {
-			if let Some(pre_node_id) = pre_node_id {
-				ModifyInputsContext::insert_between(
-					self.node_graph,
-					self.document_network,
-					new_id,
-					new_layer_node,
-					NodeInput::node(pre_node_id, 0),
-					0, // pre_node is a sibling so it connects to the first input
-					post_node_id,
-					NodeInput::node(new_id, 0),
-					post_node_input_index,
-					IVec2::new(0, 3),
-				);
-			} else {
-				let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
-				ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, new_id, post_node_id, post_node_input_index, new_layer_node, offset);
-			};
+			self.network_interface.add_layer_to_stack(new_id, post_node_id, 0, new_layer_node);
+
+		// if let Some(pre_node_id) = pre_node_id {
+		// 	self.network_interface.insert_between(
+		// 		self.node_graph,
+		// 		self.network_interface,
+		// 		new_id,
+		// 		new_layer_node,
+		// 		NodeInput::node(pre_node_id, 0),
+		// 		0, // pre_node is a sibling so it connects to the first input
+		// 		post_node_id,
+		// 		NodeInput::node(new_id, 0),
+		// 		post_node_input_index,
+		// 		IVec2::new(0, 3),
+		// 	);
+		// } else {
+		// 	let offset = if post_node_input_index == 1 { IVec2::new(-8, 3) } else { IVec2::new(0, 3) };
+		// 	self.network_interface.add_node_to_stack(new_id, post_node_id, post_node_input_index, new_layer_node, offset);
+		// };
 		} else {
 			// If post_node does not exist, then network is empty
-			ModifyInputsContext::insert_node_as_primary_export(self.node_graph, self.document_network, new_id, new_layer_node);
+			ModifyInputsContext::insert_layer_as_primary_export(self.node_graph, self.network_interface, new_id, new_layer_node);
 		}
 
 		Some(new_id)
@@ -312,7 +260,7 @@ impl<'a> ModifyInputsContext<'a> {
 			Default::default(),
 		);
 
-		ModifyInputsContext::insert_node_as_primary_export(node_graph, document_network, new_id, artboard_node)
+		ModifyInputsContext::insert_layer_as_primary_export(node_graph, document_network, new_id, artboard_node)
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
@@ -324,13 +272,13 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-7, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, stroke);
 		let fill_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, fill);
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, transform);
 		let shape_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, shape_id, transform_id, 0, shape, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, shape);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -349,17 +297,17 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
 
 		let stroke_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, stroke_id, layer, 1, stroke, IVec2::new(-7, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, stroke);
 		let fill_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, fill_id, stroke_id, 0, fill, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, fill);
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, transform_id, fill_id, 0, transform, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(stroke_id, layer, transform);
 		let text_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(self.node_graph, self.document_network, text_id, transform_id, 0, text, IVec2::new(-6, 0));
+		self.network_interface.add_node_to_chain(text_id, layer, text);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn insert_image_data(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, image_frame: ImageFrame<Color>, layer: NodeId, responses: &mut VecDeque<Message>) {
+	pub fn insert_image_data(&self, image_frame: ImageFrame<Color>, layer: NodeId, responses: &mut VecDeque<Message>) {
 		let image = {
 			let node_type = resolve_document_node_type("Image").expect("Image node does not exist");
 			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))], Default::default())
@@ -367,48 +315,18 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
 
 		let transform_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(node_graph, document_network, transform_id, layer, 1, transform, IVec2::new(-6, 0));
-
+		self.network_interface.add_node_to_chain(transform_id, layer, transform);
 		let image_id = NodeId(generate_uuid());
-		ModifyInputsContext::insert_node_before(node_graph, document_network, image_id, transform_id, 0, image, IVec2::new(-5, 0));
-
+		self.network_interface.add_node_to_chain(image_id, layer, transform);
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn shift_upstream(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, shift: IVec2, shift_self: bool) {
-		let Some(network) = document_network.nested_network(network_path) else {
-			log::error!("Could not get nested network for shift_upstream");
-			return;
-		};
-
-		let mut shift_nodes = HashSet::new();
-		if shift_self {
-			shift_nodes.insert(node_id);
-		}
-
-		let mut stack = vec![node_id];
-		while let Some(node_id) = stack.pop() {
-			let Some(node) = network.nodes.get(&node_id) else { continue };
-			for input in &node.inputs {
-				let NodeInput::Node { node_id, .. } = input else { continue };
-				if shift_nodes.insert(*node_id) {
-					stack.push(*node_id);
-				}
-			}
-		}
-
-		for node_id in shift_nodes {
-			if let Some(node) = document_network.nodes.get_mut(&node_id) {
-				node.metadata.position += shift;
-				node_graph.update_click_target(node_id, document_network, network_path.clone());
-			}
-		}
-	}
+	pub fn shift_upstream(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, shift: IVec2, shift_self: bool) {}
 
 	/// Inserts a new node and modifies the inputs
 	pub fn modify_new_node(&mut self, name: &'static str, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let output_node_id = self.layer_node.or_else(|| {
-			if let Some(NodeInput::Node { node_id, .. }) = self.document_network.exports.get(0) {
+			if let Some(NodeInput::Node { node_id, .. }) = self.network_interface.exports.get(0) {
 				Some(*node_id)
 			} else {
 				log::error!("Could not modify new node with empty network");
@@ -420,7 +338,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 
-		let Some(output_node) = self.document_network.nodes.get_mut(&output_node_id) else {
+		let Some(output_node) = self.network_interface.nodes.get_mut(&output_node_id) else {
 			warn!("Output node doesn't exist");
 			return;
 		};
@@ -438,28 +356,28 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 		let mut new_document_node = node_type.to_document_node_default_inputs([new_input], metadata);
 		update_input(&mut new_document_node.inputs, node_id, self.document_metadata);
-		self.node_graph.insert_node(node_id, new_document_node, self.document_network, &Vec::new());
+		self.node_graph.insert_node(node_id, new_document_node, self.network_interface, &Vec::new());
 
 		let upstream_nodes = self
-			.document_network
+			.network_interface
 			.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow)
 			.map(|(_, id)| id)
 			.collect::<Vec<_>>();
 		for node_id in upstream_nodes {
-			let Some(node) = self.document_network.nodes.get_mut(&node_id) else { continue };
+			let Some(node) = self.network_interface.nodes.get_mut(&node_id) else { continue };
 			node.metadata.position.x -= 8;
-			self.node_graph.update_click_target(node_id, self.document_network, Vec::new());
+			self.node_graph.update_click_target(node_id, self.network_interface, Vec::new());
 		}
 	}
 
 	/// Changes the inputs of a specific node
 	pub fn modify_inputs(&mut self, name: &'static str, skip_rerender: bool, update_input: impl FnOnce(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let existing_node_id = self
-			.document_network
+			.network_interface
 			.upstream_flow_back_from_nodes(
 				self.layer_node.map_or_else(
 					|| {
-						self.document_network
+						self.network_interface
 							.exports
 							.iter()
 							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(*node_id) } else { None })
@@ -487,11 +405,11 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Changes the inputs of a all of the existing instances of a node name
 	pub fn modify_all_node_inputs(&mut self, name: &'static str, skip_rerender: bool, mut update_input: impl FnMut(&mut Vec<NodeInput>, NodeId, &DocumentMetadata)) {
 		let existing_nodes: Vec<_> = self
-			.document_network
+			.network_interface
 			.upstream_flow_back_from_nodes(
 				self.layer_node.map_or_else(
 					|| {
-						self.document_network
+						self.network_interface
 							.exports
 							.iter()
 							.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id.clone()) } else { None })
@@ -725,7 +643,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.update_bounds([old_bounds_min, old_bounds_max], [new_bounds_min, new_bounds_max]);
 
 		if empty {
-			self.layer_node.map(|layer_id| LayerNodeIdentifier::new(layer_id, &self.document_network))
+			self.layer_node.map(|layer_id| LayerNodeIdentifier::new(layer_id, &self.network_interface))
 		} else {
 			None
 		}
@@ -759,14 +677,14 @@ impl<'a> ModifyInputsContext<'a> {
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
 	pub fn delete_nodes(
 		node_graph: &mut NodeGraphMessageHandler,
-		document_network: &mut NodeNetwork,
+		network_interface: &mut NodeNetworkInterface,
 		selected_nodes: &mut SelectedNodes,
 		node_ids: Vec<NodeId>,
 		reconnect: bool,
 		responses: &mut VecDeque<Message>,
 		network_path: Vec<NodeId>,
 	) {
-		let Some(network) = document_network.nested_network_for_selected_nodes(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
+		let Some(network) = network_interface.nested_network_for_selected_nodes(&network_path, selected_nodes.selected_nodes_ref().iter()) else {
 			return;
 		};
 		let mut delete_nodes = HashSet::new();
@@ -785,7 +703,7 @@ impl<'a> ModifyInputsContext<'a> {
 				continue;
 			};
 
-			let outward_wires = network.collect_outwards_wires();
+			let outward_wires = network_interface.network_metadata(false).outward_wires;
 
 			for (_, upstream_id) in network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.

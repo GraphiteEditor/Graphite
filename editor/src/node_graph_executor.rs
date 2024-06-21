@@ -457,7 +457,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
 		// Get the node graph layer
-		let network = document.network().clone();
+		let network = document.document_network().clone();
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
@@ -484,7 +484,7 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.network().clone();
+		let network = document.document_network().clone();
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {

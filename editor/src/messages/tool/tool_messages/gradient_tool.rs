@@ -250,7 +250,7 @@ impl Fsm for GradientToolFsmState {
 				let selected = tool_data.selected_gradient.as_ref();
 
 				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
-					let Some(gradient) = get_gradient(layer, &document.network) else { continue };
+					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
 						.filter(|selected| selected.layer.map_or(false, |selected_layer| selected_layer == layer))
@@ -325,7 +325,7 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::InsertStop) => {
 				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
-					let Some(mut gradient) = get_gradient(layer, &document.network) else { continue };
+					let Some(mut gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
 					let mouse = input.mouse.position;
@@ -364,7 +364,7 @@ impl Fsm for GradientToolFsmState {
 
 				let mut dragging = false;
 				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
-					let Some(gradient) = get_gradient(layer, &document.network) else { continue };
+					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
 					// Check for dragging step
@@ -399,7 +399,7 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input.mouse.position, &document.network);
+					let selected_layer = document.click(input.mouse.position, &document.document_network());
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
@@ -412,7 +412,7 @@ impl Fsm for GradientToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 
 						// Use the already existing gradient if it exists
-						let gradient = if let Some(gradient) = get_gradient(layer, &document.network) {
+						let gradient = if let Some(gradient) = get_gradient(layer, &document.document_network()) {
 							gradient.clone()
 						} else {
 							// Generate a new gradient

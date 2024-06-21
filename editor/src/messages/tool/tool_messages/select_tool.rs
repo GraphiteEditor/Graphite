@@ -346,22 +346,27 @@ impl SelectToolData {
 			let node = layer.to_node();
 			copy_ids.insert(node, NodeId(0 as u64));
 			if let Some(input_node) = document
-				.network()
+				.document_network()
 				.nodes
 				.get(&node)
 				.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
 				.and_then(|input| input.as_node())
 			{
 				document
-					.network()
+					.document_network()
 					.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
 					.enumerate()
 					.for_each(|(index, (_, node_id))| {
 						copy_ids.insert(node_id, NodeId((index + 1) as u64));
 					});
 			};
-			let nodes: HashMap<NodeId, DocumentNode> =
-				NodeGraphMessageHandler::copy_nodes(document.network(), &document.node_graph_handler.network, &document.node_graph_handler.resolved_types, &copy_ids).collect();
+			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(
+				document.document_network(),
+				&document.node_graph_handler.network,
+				&document.node_graph_handler.resolved_types,
+				&copy_ids,
+			)
+			.collect();
 
 			let insert_index = DocumentMessageHandler::get_calculated_insert_index(&document.metadata, &document.selected_nodes, parent);
 
@@ -478,7 +483,7 @@ impl Fsm for SelectToolFsmState {
 					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
 
 					// Draw outline visualizations on the layers to be selected
-					for layer in document.intersect_quad(quad, &document.network) {
+					for layer in document.intersect_quad(quad, &document.document_network()) {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
 					}
 
@@ -486,7 +491,7 @@ impl Fsm for SelectToolFsmState {
 					overlay_context.quad(quad);
 				} else {
 					// Get the layer the user is hovering over
-					let click = document.click(input.mouse.position, &document.network);
+					let click = document.click(input.mouse.position, &document.document_network());
 					let not_selected_click = click.filter(|&hovered_layer| !document.selected_nodes.selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
 						overlay_context.outline(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer));
@@ -497,10 +502,10 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::EditLayer) => {
 				// Edit the clicked layer
-				if let Some(intersect) = document.click(input.mouse.position, &document.network) {
+				if let Some(intersect) = document.click(input.mouse.position, &document.document_network()) {
 					match tool_data.nested_selection_behavior {
 						NestedSelectionBehavior::Shallowest => edit_layer_shallowest_manipulation(document, intersect, responses),
-						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.network, responses),
+						NestedSelectionBehavior::Deepest => edit_layer_deepest_manipulation(intersect, &document.document_network(), responses),
 					}
 				}
 
@@ -529,8 +534,8 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection_list = document.click_list(input.mouse.position, &document.network);
-				let intersection = document.find_deepest(&intersection_list, &document.network);
+				let intersection_list = document.click_list(input.mouse.position, &document.document_network());
+				let intersection = document.find_deepest(&intersection_list, &document.document_network());
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -559,7 +564,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -571,7 +576,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&tool_data.layers_dragging,
 							responses,
-							&document.network,
+							&document.document_network(),
 							&document.metadata,
 							None,
 							&ToolType::Select,
@@ -589,7 +594,7 @@ impl Fsm for SelectToolFsmState {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -600,7 +605,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&selected,
 							responses,
-							&document.network,
+							&document.document_network(),
 							&document.metadata,
 							None,
 							&ToolType::Select,
@@ -753,7 +758,7 @@ impl Fsm for SelectToolFsmState {
 
 						tool_data.layers_dragging.retain(|layer| {
 							if *layer != LayerNodeIdentifier::ROOT_PARENT {
-								document.network.nodes.contains_key(&layer.to_node())
+								document.document_network().nodes.contains_key(&layer.to_node())
 							} else {
 								log::error!("ROOT_PARENT should not be part of layers_dragging");
 								false
@@ -765,7 +770,7 @@ impl Fsm for SelectToolFsmState {
 							&mut pivot,
 							selected,
 							responses,
-							&document.network,
+							&document.document_network(),
 							&document.metadata,
 							None,
 							&ToolType::Select,
@@ -803,7 +808,7 @@ impl Fsm for SelectToolFsmState {
 
 					tool_data.layers_dragging.retain(|layer| {
 						if *layer != LayerNodeIdentifier::ROOT_PARENT {
-							document.network().nodes.contains_key(&layer.to_node())
+							document.document_network().nodes.contains_key(&layer.to_node())
 						} else {
 							log::error!("ROOT_PARENT should not be part of replacement_selected_layers");
 							false
@@ -814,7 +819,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounds.center_of_transformation,
 						&tool_data.layers_dragging,
 						responses,
-						&document.network,
+						&document.document_network(),
 						&document.metadata,
 						None,
 						&ToolType::Select,
@@ -931,7 +936,7 @@ impl Fsm for SelectToolFsmState {
 				// Deselect layer if not snap dragging
 				if !tool_data.has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					let quad = tool_data.selection_quad();
-					let intersection = document.intersect_quad(quad, &document.network);
+					let intersection = document.intersect_quad(quad, &document.document_network());
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
@@ -1023,7 +1028,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DrawingBox { .. }, SelectToolMessage::DragStop { .. } | SelectToolMessage::Enter) => {
 				let quad = tool_data.selection_quad();
-				let new_selected: HashSet<_> = document.intersect_quad(quad, &document.network).collect();
+				let new_selected: HashSet<_> = document.intersect_quad(quad, &document.document_network()).collect();
 				let current_selected: HashSet<_> = document.selected_nodes.selected_layers(document.metadata()).collect();
 				if new_selected != current_selected {
 					tool_data.layers_dragging = new_selected.into_iter().collect();
@@ -1053,7 +1058,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.document_network(), "Text") {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1073,7 +1078,7 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Abort) => {
 				tool_data.layers_dragging.retain(|layer| {
 					if *layer != LayerNodeIdentifier::ROOT_PARENT {
-						document.network().nodes.contains_key(&layer.to_node())
+						document.document_network().nodes.contains_key(&layer.to_node())
 					} else {
 						false
 					}
@@ -1084,7 +1089,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounding_box_overlays.opposite_pivot,
 						&tool_data.layers_dragging,
 						responses,
-						&document.network,
+						&document.document_network(),
 						&document.metadata,
 						None,
 						&ToolType::Select,
@@ -1218,9 +1223,9 @@ fn drag_shallowest_manipulation(responses: &mut VecDeque<Message>, selected: Vec
 fn drag_deepest_manipulation(responses: &mut VecDeque<Message>, selected: Vec<LayerNodeIdentifier>, tool_data: &mut SelectToolData, document: &DocumentMessageHandler) {
 	tool_data
 		.layers_dragging
-		.append(&mut vec![document.find_deepest(&selected, &document.network).unwrap_or(LayerNodeIdentifier::new(
-			document.network.get_root_node().expect("Root node should exist when dragging layers").id,
-			&document.network,
+		.append(&mut vec![document.find_deepest(&selected, &document.document_network()).unwrap_or(LayerNodeIdentifier::new(
+			document.document_network().get_root_node().expect("Root node should exist when dragging layers").id,
+			&document.document_network(),
 		))]);
 	responses.add(NodeGraphMessage::SelectedNodesSet {
 		nodes: tool_data

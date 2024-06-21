@@ -192,19 +192,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
-						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
+						let previous_alias = active_document.document_network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
 
 						let mut copy_ids = HashMap::new();
 						copy_ids.insert(layer_node_id, NodeId(0 as u64));
 						if let Some(input_node) = active_document
-							.network()
+							.document_network()
 							.nodes
 							.get(&layer_node_id)
 							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
 							.and_then(|input| input.as_node())
 						{
 							active_document
-								.network()
+								.document_network()
 								.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
 								.enumerate()
 								.for_each(|(index, (_, node_id))| {
@@ -214,7 +214,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						buffer.push(CopyBufferEntry {
 							nodes: NodeGraphMessageHandler::copy_nodes(
-								active_document.network(),
+								active_document.document_network(),
 								&active_document.node_graph_handler.network,
 								&active_document.node_graph_handler.resolved_types,
 								&copy_ids,
@@ -624,9 +624,7 @@ impl PortfolioMessageHandler {
 		let mut new_document = new_document;
 		self.document_ids.push(document_id);
 		new_document.update_layers_panel_options_bar_widgets(responses);
-
-		new_document.node_graph_handler.update_all_click_targets(&mut new_document.network, Vec::new());
-
+		
 		self.documents.insert(document_id, new_document);
 
 		if self.active_document().is_some() {

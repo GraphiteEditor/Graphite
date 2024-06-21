@@ -655,9 +655,12 @@ pub struct NodeNetwork {
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub exports: Vec<NodeInput>,
+	/// TODO: Instead of storing import types in each NodeInput::Network connection, store them here
+	//pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
+	/// TODO: Move into NetworkMetadata
 	#[serde(default)]
 	pub previewing: Previewing,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
@@ -817,15 +820,16 @@ impl NodeNetwork {
 
 	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network = Some(self);
+		// let mut network = Some(self);
 
-		for segment in nested_path {
-			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
-		}
+		// for segment in nested_path {
+		// 	network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
+		// }
 		network
 	}
 
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
+	//TODO: remove
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
@@ -835,12 +839,15 @@ impl NodeNetwork {
 	}
 
 	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
+	//TODO: Remove
 	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
-		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
-			Some(self)
-		} else {
-			self.nested_network_mut(nested_path)
-		}
+		panic!("No mutable references should be created");
+		None
+		// if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
+		// 	Some(self)
+		// } else {
+		// 	self.nested_network_mut(nested_path)
+		// }
 	}
 
 	/// Check if the specified node id is connected to the output
@@ -1010,17 +1017,17 @@ impl NodeNetwork {
 	}
 
 	/// Collect a hashmap of nodes with a list of the nodes that use it as input
-	pub fn collect_outwards_wires(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut outwards_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+	pub fn collect_outward_wires(&self) -> HashMap<NodeId, Vec<NodeId>> {
+		let mut outward_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (current_node_id, node) in &self.nodes {
 			for input in &node.inputs {
 				if let NodeInput::Node { node_id, .. } = input {
-					let outward_wires_entry = outwards_wires.entry(*node_id).or_default();
+					let outward_wires_entry = outward_wires.entry(*node_id).or_default();
 					outward_wires_entry.push(*current_node_id);
 				}
 			}
 		}
-		outwards_wires
+		outward_wires
 	}
 
 	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.

@@ -58,7 +58,7 @@ impl Pivot {
 
 		// If just one layer is selected we can use its inner transform (as it accounts for rotation)
 		if selected_layers_count == 1 {
-			let normalized_pivot = graph_modification_utils::get_pivot(first, &document.network).unwrap_or(DVec2::splat(0.5));
+			let normalized_pivot = graph_modification_utils::get_pivot(first, &document.document_network()).unwrap_or(DVec2::splat(0.5));
 			self.normalized_pivot = normalized_pivot;
 			self.transform_from_normalized = Self::get_layer_pivot_transform(first, document);
 			self.pivot = Some(self.transform_from_normalized.transform_point2(normalized_pivot));
@@ -67,7 +67,7 @@ impl Pivot {
 			let xy_summation = document
 				.selected_nodes
 				.selected_visible_and_unlocked_layers(document.metadata())
-				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.network, &document.metadata))
+				.map(|layer| graph_modification_utils::get_viewport_pivot(layer, &document.document_network(), &document.metadata))
 				.reduce(|a, b| a + b)
 				.unwrap_or_default();
 

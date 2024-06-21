@@ -10,12 +10,12 @@ pub struct PropertiesPanelMessageHandler {}
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {
-			node_graph_message_handler,
-			executor,
-			document_network: network,
+			document_network,
 			document_metadata: metadata,
-			selected_nodes,
 			document_name,
+			network_path,
+			selected_nodes,
+			executor,
 		} = data;
 
 		match message {
@@ -39,7 +39,7 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 					metadata,
 				};
 
-				let properties_sections = node_graph_message_handler.collate_properties(&mut context, selected_nodes);
+				let properties_sections = NodeGraphMessageHandler::collate_properties(&mut context, selected_nodes);
 
 				let options_bar = vec![LayoutGroup::Row {
 					widgets: vec![
