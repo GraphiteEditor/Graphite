@@ -101,7 +101,7 @@ impl Fsm for ImaginateToolFsmState {
 			(ImaginateToolFsmState::Ready, ImaginateToolMessage::DragStart) => {
 				shape_data.start(document, input);
 				responses.add(DocumentMessage::StartTransaction);
-				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.network()));
+				shape_data.layer = Some(LayerNodeIdentifier::new(NodeId(generate_uuid()), document.document_network()));
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				// // Utility function to offset the position of each consecutive node

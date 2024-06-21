@@ -265,7 +265,7 @@ impl ShapeState {
 		let mut offset = mouse_delta;
 		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
 		for (layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(*layer, &document.network) else { continue };
+			let Some(subpaths) = get_subpaths(*layer, &document.document_network()) else { continue };
 
 			let to_document = document.metadata.transform_to_document(*layer);
 

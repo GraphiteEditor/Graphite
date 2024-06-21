@@ -2,6 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
+use super::utility_types::network_metadata::{NetworkMetadata, NodeNetworkInterface};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -58,9 +59,8 @@ pub struct DocumentMessageHandler {
 	// Fields that are saved in the document format
 	// ============================================
 	//
-	/// The node graph that generates this document's artwork.
-	/// It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
-	pub network: NodeNetwork,
+	// Contains the NodeNetwork and acts an an interface to manipulate the NodeNetwork with custom setters in order to keep NetworkMetadata in sync
+	pub network_interface: NodeNetworkInterface,
 	/// List of the [`NodeId`]s that are currently selected by the user.
 	pub selected_nodes: SelectedNodes,
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
@@ -115,12 +115,6 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
-	/// The current pan, and zoom state of the viewport's view of the node graph.
-	#[serde(skip)]
-	node_graph_ptz: HashMap<Vec<NodeId>, PTZ>,
-	/// Transform from node graph space to viewport space.
-	#[serde(skip)]
-	node_graph_to_viewport: HashMap<Vec<NodeId>, DAffine2>,
 }
 
 impl Default for DocumentMessageHandler {
@@ -136,7 +130,7 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
-			network: root_network(),
+			network_interface: Default::default(),
 			selected_nodes: SelectedNodes::default(),
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
@@ -177,18 +171,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
 				let data = NavigationMessageData {
+					network_interface: &mut self.network_interface,
 					metadata: &self.metadata,
 					ipp,
 					selection_bounds: if self.graph_view_overlay_open {
-						self.selected_nodes_bounding_box_viewport()
+						self.network_interface.selected_nodes_bounding_box_viewport(&self.selected_nodes)
 					} else {
 						self.selected_visible_layers_bounding_box_viewport()
 					},
 					document_ptz: &mut self.document_ptz,
-					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
-					node_graph_handler: &self.node_graph_handler,
-					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -199,12 +191,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
-					node_graph_message_handler: &self.node_graph_handler,
-					executor,
-					document_name: self.name.as_str(),
-					document_network: &self.network,
+					document_network: &self.document_network(),
 					document_metadata: &mut self.metadata,
+					document_name: self.name.as_str(),
+					network_path: &self.network_interface.network_path(),
 					selected_nodes: &self.selected_nodes,
+					executor,
 				};
 				self.properties_panel_message_handler
 					.process_message(message, responses, (persistent_data, properties_panel_message_handler_data));
@@ -214,21 +206,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					message,
 					responses,
 					NodeGraphHandlerData {
-						document_network: &mut self.network,
+						network_interface: &mut self.network_interface,
 						document_metadata: &mut self.metadata,
 						selected_nodes: &mut self.selected_nodes,
 						document_id,
-						document_name: self.name.as_str(),
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
-						node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 					},
 				);
 			}
 			DocumentMessage::GraphOperation(message) => {
 				let data = GraphOperationMessageData {
-					document_network: &mut self.network,
+					network_interface: &mut self.network_interface,
 					document_metadata: &mut self.metadata,
 					selected_nodes: &mut self.selected_nodes,
 					collapsed: &mut self.collapsed,
@@ -321,7 +311,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			DocumentMessage::DebugPrintDocument => {
-				info!("{:#?}", self.network);
+				info!("{:#?}", self.network_interface);
 			}
 			DocumentMessage::DeleteLayer { layer } => {
 				responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true });
@@ -345,7 +335,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DocumentStructureChanged => {
 				self.update_layers_panel_options_bar_widgets(responses);
 
-				self.metadata.load_structure(&self.network);
+				self.metadata.load_structure(&self.document_network());
 				let data_buffer: RawBuffer = self.serialize_root();
 				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 			}
@@ -382,11 +372,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
-
-				// TODO: Update click targets when node graph is closed so that this is not necessary
-				if self.graph_view_overlay_open {
-					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
-				}
 
 				responses.add(FrontendMessage::TriggerGraphViewOverlay { open });
 				responses.add(FrontendMessage::TriggerRefreshBoundsOfViewports);
@@ -466,22 +451,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Move disconnected node to folder
 					let folder_position = self
-						.network
+						.document_network()
 						.nodes
 						.get(&first_unselected_parent_folder.to_node())
 						.expect("Current folder should always exist")
 						.metadata
 						.position;
 
+					// TODO: Node layout system - Moving the disconnected layer should make space when being inserted in the parent stack
 					responses.add(GraphOperationMessage::SetNodePosition {
 						node_id: layer.to_node(),
 						position: folder_position,
 					});
 
 					// Insert node right above the folder
-					// TODO: downstream node can be none if it is the root node
 					let (folder_downstream_node_id, folder_downstream_input_index) =
-						DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, first_unselected_parent_folder).unwrap_or((self.network.exports_metadata.0, 0));
+						DocumentMessageHandler::get_downstream_node(&self.document_network(), &self.metadata, first_unselected_parent_folder)
+							.unwrap_or((self.document_network().exports_metadata.0, 0));
 
 					responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: folder_downstream_node_id,
@@ -745,10 +731,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let ruler_origin = if !self.graph_view_overlay_open {
 					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
 				} else {
-					self.node_graph_to_viewport
-						.get(&self.node_graph_handler.network)
-						.unwrap_or(&DAffine2::IDENTITY)
-						.transform_point2(DVec2::ZERO)
+					self.network_interface.navigation_metadata().node_graph_to_viewport.transform_point2(DVec2::ZERO)
 				};
 				let log = document_transform_scale.log2();
 				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
@@ -771,10 +754,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
-					self.node_graph_to_viewport
-						.get(&self.node_graph_handler.network)
-						.and_then(|node_graph_to_viewport| self.node_graph_handler.graph_bounds_viewport_space(*node_graph_to_viewport))
-						.unwrap_or([viewport_mid; 2])
+					self.network_interface.graph_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -829,7 +809,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.selected_layers_reorder(relative_index_offset, responses);
 			}
 			DocumentMessage::SelectLayer { id, ctrl, shift } => {
-				let layer = LayerNodeIdentifier::new(id, self.network());
+				let layer = LayerNodeIdentifier::new(id, self.document_network());
 
 				let mut nodes = vec![];
 
@@ -969,7 +949,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::StartTransaction => self.backup(responses),
 			DocumentMessage::ToggleLayerExpansion { id } => {
-				let layer = LayerNodeIdentifier::new(id, self.network());
+				let layer = LayerNodeIdentifier::new(id, self.document_network());
 				if self.collapsed.0.contains(&layer) {
 					self.collapsed.0.retain(|&collapsed_layer| collapsed_layer != layer);
 				} else {
@@ -1012,7 +992,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					// Cannot ungroup artboard
-					let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
+					let folder_node = self.document_network().nodes.get(&folder.to_node()).expect("Folder node should always exist");
 					if folder_node.is_artboard() {
 						return;
 					}
@@ -1024,7 +1004,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					};
 
 					// Move child_layer stack x position to folder stack
-					let child_layer_node = self.network.nodes.get(&child_layer.to_node()).expect("Child node should always exist for layer");
+					let child_layer_node = self.document_network().nodes.get(&child_layer.to_node()).expect("Child node should always exist for layer");
 					let offset = folder_node.metadata.position - child_layer_node.metadata.position;
 					responses.add(GraphOperationMessage::ShiftUpstream {
 						node_id: child_layer.to_node(),
@@ -1034,7 +1014,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Set the primary input for the node downstream of folder to the first layer node
 					// TODO: downstream node can be none if it is the root node. A layer group connected directly to the export cannot be ungrouped
-					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.network, &self.metadata, folder) else {
+					let Some((downstream_node_id, downstream_input_index)) = DocumentMessageHandler::get_downstream_node(&self.document_network(), &self.metadata, folder) else {
 						log::error!("Downstream node should always exist when moving layer");
 						continue;
 					};
@@ -1048,13 +1028,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
-					if let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
+					if let Some(NodeInput::Node { node_id, .. }) = self.document_network().nodes.get(&folder.to_node()).expect("Folder should always exist").inputs.get(0) {
 						let upstream_sibling_id = *node_id;
 
 						// Get the node at the bottom of the first layer node stack
 						let mut last_child_node_id = child_layer.to_node();
 						loop {
-							let Some(NodeInput::Node { node_id, .. }) = self.network.nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
+							let Some(NodeInput::Node { node_id, .. }) = self.document_network().nodes.get(&last_child_node_id).expect("Child node should always exist").inputs.get(0) else {
 								break;
 							};
 							last_child_node_id = *node_id;
@@ -1069,12 +1049,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						});
 
 						// Shift upstream_sibling down by the height of the child layer stack
-						let top_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Child layer should always exist for child layer id");
-						let bottom_of_stack = self.network.nodes.get(&child_layer.to_node()).expect("Last child layer should always exist for last child layer id");
+						let top_of_stack = self.document_network().nodes.get(&child_layer.to_node()).expect("Child layer should always exist for child layer id");
+						let bottom_of_stack = self
+							.document_network()
+							.nodes
+							.get(&child_layer.to_node())
+							.expect("Last child layer should always exist for last child layer id");
 						let target_distance = bottom_of_stack.metadata.position.y - top_of_stack.metadata.position.y;
 
-						let folder_node = self.network.nodes.get(&folder.to_node()).expect("Folder node should always exist");
-						let upstream_sibling_node = self.network.nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
+						let folder_node = self.document_network().nodes.get(&folder.to_node()).expect("Folder node should always exist");
+						let upstream_sibling_node = self.document_network().nodes.get(&upstream_sibling_id).expect("Upstream sibling node should always exist");
 						let current_distance = upstream_sibling_node.metadata.position.y - folder_node.metadata.position.y;
 
 						let y_offset = target_distance - current_distance + 3;
@@ -1093,14 +1077,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ResetTransform => {
-				let transform = if self.graph_view_overlay_open {
-					*self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY)
-				} else {
-					self.metadata.document_to_viewport
-				};
-				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
-			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
@@ -1110,7 +1086,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					self.node_graph_to_viewport.insert(self.node_graph_handler.network.clone(), transform);
+					*self.network_interface.navigation_metadata_mut().node_graph_to_viewport = transform;
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
@@ -1272,29 +1248,6 @@ impl DocumentMessageHandler {
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
-	/// Get the combined bounding box of the click targets of the selected nodes in the node graph in viewport space
-	pub fn selected_nodes_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-			log::error!("Could not get nested network in selected_nodes_bounding_box_viewport");
-			return None;
-		};
-
-		self.selected_nodes
-			.selected_nodes(network)
-			.filter_map(|node| {
-				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node) else {
-					log::debug!("Could not get click target for node {node}");
-					return None;
-				};
-				let Some(node_graph_to_viewport) = self.node_graph_to_viewport.get(&self.node_graph_handler.network) else {
-					log::debug!("Could not get node_graph_to_viewport for network: {:?}", self.node_graph_handler.network);
-					return None;
-				};
-				node_metadata.node_click_target.subpath.bounding_box_with_transform(*node_graph_to_viewport)
-			})
-			.reduce(graphene_core::renderer::Quad::combine_bounds)
-	}
-
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
 			.selected_visible_and_unlocked_layers(self.metadata())
@@ -1302,8 +1255,8 @@ impl DocumentMessageHandler {
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
-	pub fn network(&self) -> &NodeNetwork {
-		&self.network
+	pub fn document_network(&self) -> &NodeNetwork {
+		&self.network_interface.document_network()
 	}
 
 	pub fn metadata(&self) -> &DocumentMetadata {
@@ -1321,7 +1274,7 @@ impl DocumentMessageHandler {
 
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
-				for (_, node) in &mut document.network.nodes {
+				for (_, node) in &mut document.network_interface.nodes {
 					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
 					if node.name == "Fill" && node.inputs.len() == 8 {
@@ -1489,24 +1442,19 @@ impl DocumentMessageHandler {
 
 	/// Copies the entire document into the history system
 	pub fn backup(&mut self, responses: &mut VecDeque<Message>) {
-		self.backup_with_document(self.network.clone(), responses);
+		self.backup_with_document(self.document_network().clone(), responses);
 	}
 
 	// TODO: Is this now redundant?
 	/// Push a message backing up the document in its current state
 	pub fn backup_nonmut(&self, responses: &mut VecDeque<Message>) {
-		responses.add(DocumentMessage::BackupDocument { network: self.network.clone() });
-	}
-
-	/// Replace the document with a new document save, returning the document save.
-	pub fn replace_document(&mut self, network: NodeNetwork) -> NodeNetwork {
-		std::mem::replace(&mut self.network, network)
+		responses.add(DocumentMessage::BackupDocument {
+			network: self.document_network().clone(),
+		});
 	}
 
 	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(previous_network) = self.undo(responses) else { return };
-
-		self.update_modified_click_targets(&previous_network);
 
 		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
@@ -1521,14 +1469,12 @@ impl DocumentMessageHandler {
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let previous_network = std::mem::replace(&mut self.network, network);
+		let previous_network = self.network_interface.replace(network);
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
 		let Some(previous_network) = self.redo(responses) else { return };
-
-		self.update_modified_click_targets(&previous_network);
 
 		self.document_undo_history.push_back(previous_network);
 		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
@@ -1544,39 +1490,8 @@ impl DocumentMessageHandler {
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
-		let previous_network = std::mem::replace(&mut self.network, network);
+		let previous_network = self.network_interface.replace(network);
 		Some(previous_network)
-	}
-
-	pub fn update_modified_click_targets(&mut self, previous_network: &NodeNetwork) {
-		// TODO: Cache nodes that were changed alongside every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
-		let Some(previous_nested_network) = previous_network.nested_network(&self.node_graph_handler.network) else {
-			return;
-		};
-
-		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-			log::error!("Could not get nested network in redo_with_history");
-			return;
-		};
-
-		for (node_id, current_node) in &network.nodes {
-			if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
-				if previous_node.alias == current_node.alias
-					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
-					&& previous_node.is_layer == current_node.is_layer
-					&& previous_node.metadata.position == current_node.metadata.position
-				{
-					continue;
-				}
-			}
-
-			self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
-		}
-
-		self.node_graph_handler
-			.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
-		self.node_graph_handler
-			.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
@@ -1611,6 +1526,7 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	// TODO: Simplify and move into NodeNetworkInterface where the outward links can be used
 	pub fn get_downstream_node(network: &NodeNetwork, metadata: &DocumentMetadata, layer_to_move: LayerNodeIdentifier) -> Option<(NodeId, usize)> {
 		let mut downstream_layer = None;
 		if let Some(previous_sibling) = layer_to_move.previous_sibling(metadata) {
@@ -1682,7 +1598,7 @@ impl DocumentMessageHandler {
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
 	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts = HashSet::new();
-		for (_node_id, node) in self.network.recursive_nodes() {
+		for (_node_id, node) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
 				if let NodeInput::Value {
 					tagged_value: TaggedValue::Font(font),
@@ -2027,7 +1943,12 @@ impl DocumentMessageHandler {
 		let selected_layers_except_artboards = self.selected_nodes.selected_layers_except_artboards(self.metadata());
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
-		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| (get_opacity(layer, &self.network).unwrap_or(100.), get_blend_mode(layer, &self.network).unwrap_or_default()));
+		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
+			(
+				get_opacity(layer, &self.document_network()).unwrap_or(100.),
+				get_blend_mode(layer, &self.document_network()).unwrap_or_default(),
+			)
+		});
 		let first_opacity_and_blend_mode = opacity_and_blend_mode.next();
 		let result_opacity_and_blend_mode = opacity_and_blend_mode;
 

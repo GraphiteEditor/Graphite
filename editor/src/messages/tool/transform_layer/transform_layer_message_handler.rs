@@ -56,7 +56,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			&mut self.pivot,
 			&selected_layers,
 			responses,
-			&document.network,
+			&document.document_network(),
 			&document.metadata,
 			Some(shape_editor),
 			&tool_data.active_tool_type,
@@ -69,7 +69,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.network)) {
+				if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.document_network())) {
 					*selected.original_transforms = OriginalTransforms::default();
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 

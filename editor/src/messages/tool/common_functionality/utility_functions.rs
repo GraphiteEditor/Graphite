@@ -11,7 +11,7 @@ pub fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f
 	for layer in document.selected_nodes.selected_layers(document.metadata()) {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 
-		let subpaths = get_subpaths(layer, &document.network)?;
+		let subpaths = get_subpaths(layer, &document.document_network())?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			if subpath.closed() {
 				continue;

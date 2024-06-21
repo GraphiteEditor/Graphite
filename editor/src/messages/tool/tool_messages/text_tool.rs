@@ -214,7 +214,7 @@ impl TextToolData {
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// TODO: Should always set visibility for document network, but `node_id` is not a layer so it crashes
-		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.network) {
+		if let Some(node_id) = graph_modification_utils::get_fill_id(self.layer, &document.document_network()) {
 			responses.add(GraphOperationMessage::SetVisibility { node_id, visible: !editable });
 		}
 
@@ -234,8 +234,8 @@ impl TextToolData {
 
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
 		let transform = document.metadata().transform_to_viewport(self.layer);
-		let color = graph_modification_utils::get_fill_color(self.layer, &document.network).unwrap_or(Color::BLACK);
-		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.network)?;
+		let color = graph_modification_utils::get_fill_color(self.layer, &document.document_network()).unwrap_or(Color::BLACK);
+		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.document_network())?;
 		self.editing_text = Some(EditingText {
 			text: text.clone(),
 			font: font.clone(),
@@ -269,8 +269,8 @@ impl TextToolData {
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
 		if let Some(clicked_text_layer_path) = document
-			.click(mouse, document.network())
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network, "Text"))
+			.click(mouse, document.document_network())
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_network(), "Text"))
 		{
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
 
@@ -343,7 +343,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network, "Text") {
+	if !is_layer_fed_by_node_of_name(layer, &document.document_network(), "Text") {
 		return None;
 	}
 
@@ -384,7 +384,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
 				for layer in document.selected_nodes.selected_layers(document.metadata()) {
-					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.network) else {
+					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.document_network()) else {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
@@ -431,7 +431,7 @@ impl Fsm for TextToolFsmState {
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text }) => {
 				tool_data.fix_text_bounds(&new_text, document, font_cache, responses);
 				responses.add(NodeGraphMessage::SetQualifiedInputValue {
-					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.network).unwrap(),
+					node_id: graph_modification_utils::get_text_id(tool_data.layer, &document.document_network()).unwrap(),
 					input_index: 1,
 					value: TaggedValue::String(new_text),
 				});

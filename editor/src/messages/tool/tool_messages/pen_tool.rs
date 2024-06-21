@@ -212,7 +212,7 @@ impl PenToolData {
 		self.from_start = from_start;
 		self.subpath_index = subpath_index;
 
-		let Some(subpaths) = get_subpaths(layer, &document.network) else { return };
+		let Some(subpaths) = get_subpaths(layer, &document.document_network()) else { return };
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
 		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
 		let Some(last_handle) = first_or_last else { return };
@@ -268,7 +268,7 @@ impl PenToolData {
 		(|| -> Option<()> {
 			// Get subpath
 			let layer = self.layer?;
-			let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
+			let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
 
 			// Get the last manipulator group and the one previous to that
 			let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -318,7 +318,7 @@ impl PenToolData {
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -392,7 +392,7 @@ impl PenToolData {
 	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.document_network())?[self.subpath_index];
 
 		// Get the last manipulator group
 		let manipulator_groups = subpath.manipulator_groups();
@@ -445,7 +445,7 @@ impl PenToolData {
 		let document = snap_data.document;
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.network)?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -550,7 +550,7 @@ impl PenToolData {
 
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.network)?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.document_network())?[self.subpath_index];
 
 		// Abort if only one manipulator group has been placed
 		if fsm == PenToolFsmState::PlacingAnchor && subpath.len() < 3 {
