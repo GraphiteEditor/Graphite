@@ -363,7 +363,7 @@ impl SelectToolData {
 			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(
 				document.document_network(),
 				&document.node_graph_handler.network,
-				&document.node_graph_handler.resolved_types,
+				&document.network_interface.resolved_types,
 				&copy_ids,
 			)
 			.collect();

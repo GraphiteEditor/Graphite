@@ -40,7 +40,6 @@ pub struct NodeGraphHandlerData<'a> {
 pub struct NodeGraphMessageHandler {
 	//TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
-	pub resolved_types: ResolvedDocumentNodeTypes,
 	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
@@ -179,7 +178,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				// Collect the selected nodes
 				let new_ids = &selected_nodes.selected_nodes(network).copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
-				let copied_nodes = Self::copy_nodes(document_network, &network_path, &self.resolved_types, new_ids).collect::<Vec<_>>();
+				let copied_nodes = Self::copy_nodes(document_network, &network_path, &network_interface.resolved_types, new_ids).collect::<Vec<_>>();
 
 				// Prefix to show that this is nodes
 				let mut copy_text = String::from("graphite/nodes: ");
@@ -242,14 +241,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
 			}
 			NodeGraphMessage::DeleteNodes { node_ids, reconnect } => {
-				ModifyInputsContext::delete_nodes(self, network_interface, selected_nodes, node_ids, reconnect, responses, self.network.clone());
-
-				// Load structure if the selected network is the document network
-				if self.network.is_empty() {
-					load_network_structure(network_interface.document_network(), document_metadata, collapsed);
-				}
-
-				responses.add(NodeGraphMessage::RunDocumentGraph);
+				network_interface.delete_nodes(node_ids, reconnect, selected_nodes, responses);
 			}
 			// Deletes selected_nodes. If `reconnect` is true, then all children nodes (secondary input) of the selected nodes are deleted and the siblings (primary input/output) are reconnected.
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
@@ -280,7 +272,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, &self.network, node_id, &self.resolved_types, input_index));
+				let tagged_value = TaggedValue::from_type(&network_interface.get_input_type(node_id, input_index, false));
 
 				let mut input = NodeInput::value(tagged_value, true);
 				if let NodeInput::Value { exposed, .. } = &mut input {
@@ -313,7 +305,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(BroadcastEvent::SelectionChanged);
 
 					// Copy the selected nodes
-					let copied_nodes = Self::copy_nodes(document_network, &self.network, &self.resolved_types, new_ids).collect::<Vec<_>>();
+					let copied_nodes = Self::copy_nodes(document_network, &self.network, &network_interface.resolved_types, new_ids).collect::<Vec<_>>();
 
 					// Select the new nodes
 					selected_nodes.retain_selected_nodes(|selected_node| network.nodes.contains_key(selected_node));
@@ -534,7 +526,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
-					let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &self.network, node_id, &self.resolved_types, &document_node);
+					let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &self.network, node_id, &network_interface.resolved_types, &document_node);
 					document_node = document_node.map_ids(default_inputs, &new_ids);
 
 					// Insert node into network
@@ -1505,7 +1497,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_selected(document_network, selected_nodes, responses);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				self.resolved_types = resolved_types;
+				network_interface.resolved_types = resolved_types;
 				self.node_graph_errors = node_graph_errors;
 			}
 		}
@@ -1762,7 +1754,7 @@ impl NodeGraphMessageHandler {
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
 				// TODO: Only display input type if potential inputs in node_registry are all the same type
-				let input_type = self.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
+				let input_type = network_interface.resolved_types.inputs.get(&Source { node: node_id_path.clone(), index }).cloned();
 
 				// TODO: Should display the color of the "most commonly relevant" (we'd need some sort of precedence) data type it allows given the current generic form that's constrained by the other present connections.
 				let frontend_data_type = if let Some(ref input_type) = input_type {
@@ -1783,11 +1775,7 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
-				let input_name = definition_name.unwrap_or(
-					ModifyInputsContext::get_input_type(document_network, &self.network, node_id, &self.resolved_types, index)
-						.nested_type()
-						.to_string(),
-				);
+				let input_name = definition_name.unwrap_or(network_interface.get_input_type(node_id, index, false).nested_type().to_string());
 
 				FrontendGraphInput {
 					data_type: frontend_data_type,
@@ -1822,7 +1810,7 @@ impl NodeGraphMessageHandler {
 				.map(|(_, input_type)| input_type)
 				.collect();
 
-			let output_types = Self::get_output_types(node, &self.resolved_types, &node_id_path);
+			let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
 			let primary_output_type = output_types.get(0).expect("Primary output should always exist");
 			let frontend_data_type = if let Some(output_type) = primary_output_type {
 				FrontendGraphDataType::with_type(&output_type)
@@ -1957,7 +1945,7 @@ impl NodeGraphMessageHandler {
 			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
 				let node = network.nodes.get(node_id).expect("Node should always exist");
 				let node_id_path = &[&self.network[..], &[*node_id]].concat();
-				let output_types = Self::get_output_types(node, &self.resolved_types, &node_id_path);
+				let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
 
 				if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
 					(FrontendGraphDataType::with_type(&output_type), Some(output_type.clone()))
@@ -2032,7 +2020,7 @@ impl NodeGraphMessageHandler {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
 				// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 				// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
-				let input_type = self.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
+				let input_type = network_interface.resolved_types.inputs.get(&Source { node: self.network.clone(), index }).cloned();
 
 				let frontend_data_type = if let Some(input_type) = input_type.clone() {
 					FrontendGraphDataType::with_type(&input_type)
@@ -2262,7 +2250,7 @@ impl NodeGraphMessageHandler {
 		let mut default_inputs = Vec::new();
 
 		for (input_index, input) in node.inputs.iter().enumerate() {
-			let tagged_value = TaggedValue::from_type(&ModifyInputsContext::get_input_type(document_network, network_path, node_id, resolved_types, input_index));
+			let tagged_value = TaggedValue::from_type(network_interface.get_input_type(node_id, input_index, false));
 			let mut exposed = true;
 
 			if let NodeInput::Value { exposed: input_exposed, .. } = input {
@@ -2410,7 +2398,6 @@ impl Default for NodeGraphMessageHandler {
 
 		Self {
 			network: Vec::new(),
-			resolved_types: ResolvedDocumentNodeTypes::default(),
 			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: right_side_widgets }],
@@ -2431,7 +2418,6 @@ impl Default for NodeGraphMessageHandler {
 impl PartialEq for NodeGraphMessageHandler {
 	fn eq(&self, other: &Self) -> bool {
 		self.network == other.network
-			&& self.resolved_types == other.resolved_types
 			&& self.node_graph_errors == other.node_graph_errors
 			&& self.has_selection == other.has_selection
 			&& self.widgets == other.widgets

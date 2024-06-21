@@ -664,8 +664,19 @@ pub struct NodeNetwork {
 	#[serde(default)]
 	pub previewing: Previewing,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
+	// TODO: Move to NodeNetworkInterface
+	// TODO: Replace NodeId with with OutputConnector::Export
+	// pub enum OutputConnector {
+	// 	Node((NodeId, usize)),
+	// 	Import(usize),
+	// }
 	#[serde(default = "default_import_metadata")]
 	pub imports_metadata: (NodeId, IVec2),
+	// TODO: Replace NodeId with InputConnector::Import
+	// pub enum InputConnector {
+	// 	Node(NodeId, usize),
+	// 	Export(usize),
+	// }
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 }

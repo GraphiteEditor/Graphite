@@ -66,6 +66,7 @@ pub enum GraphOperationMessage {
 		pre_node_id: NodeId,
 		pre_node_output_index: usize,
 	},
+	LoadStructure,
 	MoveSelectedSiblingsToChild {
 		new_parent: LayerNodeIdentifier,
 	},
@@ -172,8 +173,7 @@ pub enum GraphOperationMessage {
 		name: String,
 	},
 	SetNodeInput {
-		node_id: NodeId,
-		input_index: usize,
+		input_connector: InputConnector,
 		input: NodeInput,
 	},
 	ToggleSelectedVisibility,
