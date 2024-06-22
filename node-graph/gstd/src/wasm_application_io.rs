@@ -364,13 +364,13 @@ fn render_canvas(
 	RenderOutput::CanvasFrame(frame.into())
 }
 
-pub struct RasterizeVectorNode<Footprint, Surface> {
+pub struct RasterizeNode<Footprint, Surface> {
 	footprint: Footprint,
 	surface_handle: Surface,
 }
 
-#[node_macro::node_fn(RasterizeVectorNode)]
-async fn rasterize_vector<_T: GraphicElementRendered + TransformMut>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+#[node_macro::node_fn(RasterizeNode)]
+async fn rasterize<_T: GraphicElementRendered + TransformMut>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
