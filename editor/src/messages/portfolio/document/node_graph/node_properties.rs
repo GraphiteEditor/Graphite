@@ -139,99 +139,102 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 }
 
 fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
-	let title = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, false);
-	let mut top_row = vec![];
-	let mut bottom_row = vec![];
-	let mut resolution = vec![];
+	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
+	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	let mut scale_widgets = vec![TextLabel::new("").widget_holder()];
+	add_blank_assist(&mut scale_widgets);
+	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::Footprint(footprint),
 		exposed: false,
 	} = &document_node.inputs[index]
 	{
-		let offset = footprint.offset();
-		let scale = footprint.scale();
-		let top_left = footprint.transform.transform_point2((0., 0.).into());
-		let offset = top_left;
 		let footprint = *footprint;
+		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
+		let bounds = footprint.scale();
 
-		fn modify_values(widgets: &mut Vec<WidgetHolder>, txl: f64, pos: &str, diff_fn: impl Fn(f64) -> (DVec2, DVec2) + Sync + Send + 'static, footprint: Footprint, node_id: NodeId, index: usize) {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(txl))
-					.label(pos)
-					.unit(" px")
-					.on_update(update_value(
-						move |x: &NumberInput| {
-							let (offset, scale) = diff_fn(x.value.unwrap_or_default());
-
-							let footprint = Footprint {
-								transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
-								..footprint
-							};
-
-							TaggedValue::Footprint(footprint)
-						},
-						node_id,
-						index,
-					))
-					.on_commit(commit_value)
-					.widget_holder(),
-			])
-		}
-
-		modify_values(
-			&mut top_row,
-			top_left.x,
-			"o x",
-			move |x: f64| -> (DVec2, DVec2) {
-				let diff = DVec2::new(top_left.x - x, 0.);
-				(offset - diff, scale)
-			},
-			footprint,
-			node_id,
-			index,
-		);
-		modify_values(
-			&mut top_row,
-			top_left.y,
-			"o y",
-			move |y: f64| -> (DVec2, DVec2) {
-				let diff = DVec2::new(0., top_left.y - y);
-				(offset - diff, scale)
-			},
-			footprint,
-			node_id,
-			index,
-		);
-		modify_values(
-			&mut bottom_row,
-			scale.x,
-			"s x",
-			move |x: f64| -> (DVec2, DVec2) { (offset, DVec2::new(x, scale.y)) },
-			footprint,
-			node_id,
-			index,
-		);
-		modify_values(
-			&mut bottom_row,
-			scale.y,
-			"s y",
-			move |y: f64| -> (DVec2, DVec2) { (offset, DVec2::new(scale.x, y)) },
-			footprint,
-			node_id,
-			index,
-		);
-		resolution.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some((footprint.resolution.as_dvec2() / scale).x as f64))
-				.label("res multiplier")
-				.unit("px/px")
+		location_widgets.extend_from_slice(&[
+			NumberInput::new(Some(top_left.x))
+				.label("X")
+				.unit(" px")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let resolution = (scale * x.value.unwrap_or(1.)).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
+						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) {
+							let diff = DVec2::new(top_left.x - x, 0.);
+							(top_left - diff, bounds)
+						})(x.value.unwrap_or_default());
 
-						let footprint = Footprint { resolution, ..footprint };
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(top_left.y))
+				.label("Y")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) {
+							let diff = DVec2::new(0., top_left.y - y);
+							(top_left - diff, bounds)
+						})(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]);
+
+		scale_widgets.extend_from_slice(&[
+			NumberInput::new(Some(bounds.x))
+				.label("W")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(x, bounds.y)) })(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(bounds.y))
+				.label("H")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(bounds.x, y)) })(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							..footprint
+						};
+
 						TaggedValue::Footprint(footprint)
 					},
 					node_id,
@@ -241,12 +244,8 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.widget_holder(),
 		]);
 	}
-	vec![
-		LayoutGroup::Row { widgets: title },
-		LayoutGroup::Row { widgets: top_row },
-		LayoutGroup::Row { widgets: bottom_row },
-		LayoutGroup::Row { widgets: resolution },
-	]
+
+	vec![LayoutGroup::Row { widgets: location_widgets }, LayoutGroup::Row { widgets: scale_widgets }]
 }
 
 fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {

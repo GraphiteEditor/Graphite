@@ -1,12 +1,11 @@
 use base64::Engine;
 use dyn_any::StaticType;
-use glam::{DAffine2, DVec2};
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::{Footprint, Transform, TransformMut};
+use graphene_core::transform::{Footprint, TransformMut};
 use graphene_core::Color;
 use graphene_core::Node;
 #[cfg(feature = "wgpu")]
@@ -371,53 +370,43 @@ pub struct RasterizeVectorNode<Footprint, Surface> {
 }
 
 #[node_macro::node_fn(RasterizeVectorNode)]
-async fn rasterize_vector<_T: GraphicElementRendered + TransformMut>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+async fn rasterize_vector<_T: GraphicElementRendered + TransformMut>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");
 		return ImageFrame::default();
 	}
-	let resolution = footprint.resolution;
-	let bounds = data.bounding_box(DAffine2::IDENTITY).unwrap();
-	let bbox = Bbox::from_transform(footprint.transform);
-	let aabb = bbox.to_axis_aligned_bbox();
-	let min = aabb.start;
-	let max = aabb.end;
-	let oversample_factor = footprint.resolution.as_dvec2() / (max - min);
-	render.transform = DAffine2::from_scale(oversample_factor);
-	// *data.transform_mut() = data.transform() * DAffine2::from_scale(oversample_factor);
+	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
+	let bounds = aabb.size();
 	let render_params = RenderParams {
 		culling_bounds: None,
 		..Default::default()
 	};
 
-	let size = (bounds[1] - bounds[0]) * oversample_factor;
-	let start = bounds[0] * oversample_factor;
 	data.render_svg(&mut render, &render_params);
-	render.format_svg(start, start + size);
-	let svg_string = render.svg.to_svg_string();
+	render.format_svg(glam::DVec2::ZERO, bounds);
+	let svg_string = render.svg.to_svg_string().as_bytes();
 
 	let canvas = &surface_handle.surface;
-	canvas.set_width(resolution.x);
-	canvas.set_height(resolution.y);
+	canvas.set_width(bounds.x as u32);
+	canvas.set_height(bounds.y as u32);
 
-	let array = svg_string.as_bytes();
 	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 
 	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + array.len() * 4);
+	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);
 	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(array, &mut base64_string);
+	base64::engine::general_purpose::STANDARD.encode_string(svg_string, &mut base64_string);
 
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
 	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element_and_dw_and_dh(&image_data, start.x, start.y, size.x, size.y).unwrap();
+	context.draw_image_with_html_image_element(&image_data, -aabb.start.x, -aabb.start.y).unwrap();
 
-	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+	let rasterized = context.get_image_data(0., 0., bounds.x, bounds.y).unwrap();
 
-	let image = Image::from_image_data(&rasterized.data().0, resolution.x, resolution.y);
+	let image = Image::from_image_data(&rasterized.data().0, bounds.x as u32, bounds.y as u32);
 	ImageFrame {
 		image,
 		transform: footprint.transform,
