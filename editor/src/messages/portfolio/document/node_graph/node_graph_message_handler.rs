@@ -1408,7 +1408,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					self.update_click_target(node_id, document_network, self.network.clone());
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
 			NodeGraphMessage::StartPreviewingWithoutRestore { node_id } => {

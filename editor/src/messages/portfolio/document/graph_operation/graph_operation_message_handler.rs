@@ -709,6 +709,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
 			GraphOperationMessage::SetNodeInput { node_id, input_index, input } => {

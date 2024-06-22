@@ -89,10 +89,10 @@ macro_rules! async_node {
 			ProtoNodeIdentifier::new(stringify!($path)),
 			|mut args| {
 				Box::pin(async move {
-				args.reverse();
-				let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
-				Box::new(any) as TypeErasedBox
+					args.reverse();
+					let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+					let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				})
 			},
 			{
@@ -104,7 +104,7 @@ macro_rules! async_node {
 				let params = vec![$(fn_type!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
-				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io.input = concrete!(<$input as StaticType>::Static); // Why are there 2 of them?
 				node_io.output = concrete!(<$output as StaticType>::Static);
 				node_io
 			},
@@ -811,7 +811,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: Artboard, params: []),
-		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
+		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => String, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();

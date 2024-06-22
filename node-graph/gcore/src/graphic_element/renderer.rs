@@ -396,7 +396,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push("Artboard".into());
+					render.svg.push(self.label.to_string().into());
 				},
 			);
 		}
@@ -475,6 +475,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 		self.artboards.len() > 0
 	}
 }
+
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);
