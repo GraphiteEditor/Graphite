@@ -16,6 +16,11 @@ impl Quad {
 		Self([bbox[0], bbox[0] + size * DVec2::X, bbox[1], bbox[0] + size * DVec2::Y])
 	}
 
+	/// Create a quad from the centre and offset (distance from centre to middle of an edge)
+	pub fn from_square(centre: DVec2, offset: f64) -> Self {
+		Self::from_box([centre - offset, centre + offset])
+	}
+
 	/// Get all the edges in the quad.
 	pub fn edges(&self) -> [[DVec2; 2]; 4] {
 		[[self.0[0], self.0[1]], [self.0[1], self.0[2]], [self.0[2], self.0[3]], [self.0[3], self.0[0]]]

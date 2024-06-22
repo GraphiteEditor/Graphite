@@ -14,6 +14,7 @@ use crate::messages::prelude::*;
 use bezier_rs::{Subpath, TValue};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
+use graphene_std::renderer::Rect;
 
 use glam::{DAffine2, DVec2};
 use std::cmp::Ordering;
@@ -294,10 +295,10 @@ impl SnapManager {
 		}
 	}
 
-	fn find_candidates(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>) {
+	fn find_candidates(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Rect>) {
 		let document = snap_data.document;
 		let offset = snap_tolerance(document);
-		let quad = bbox.map_or_else(|| Quad::from_box([point.document_point - offset, point.document_point + offset]), |quad| quad.inflate(offset));
+		let quad = bbox.map_or_else(|| Quad::from_square(point.document_point, offset), |quad| Quad::from_box(quad.0).inflate(offset));
 
 		self.candidates = None;
 		self.alignment_candidates = None;
@@ -313,7 +314,7 @@ impl SnapManager {
 		}
 	}
 
-	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Quad>, to_paths: bool) -> SnappedPoint {
+	pub fn free_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, bbox: Option<Rect>, to_paths: bool) -> SnappedPoint {
 		if !point.document_point.is_finite() {
 			warn!("Snapping non-finite position");
 			return SnappedPoint::infinite_snap(DVec2::ZERO);
@@ -334,12 +335,12 @@ impl SnapManager {
 		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results);
-		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, bbox);
 
 		Self::find_best_snap(&mut snap_data, point, snap_results, false, false, to_paths)
 	}
 
-	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Quad>) -> SnappedPoint {
+	pub fn constrained_snap(&mut self, snap_data: &SnapData, point: &SnapCandidatePoint, constraint: SnapConstraint, bbox: Option<Rect>) -> SnappedPoint {
 		if !point.document_point.is_finite() {
 			warn!("Snapping non-finite position");
 			return SnappedPoint::infinite_snap(DVec2::ZERO);
@@ -360,7 +361,7 @@ impl SnapManager {
 		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 		self.grid_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
-		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, bbox);
 
 		Self::find_best_snap(&mut snap_data, point, snap_results, true, false, false)
 	}
