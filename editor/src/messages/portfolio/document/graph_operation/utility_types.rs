@@ -304,7 +304,6 @@ impl<'a> ModifyInputsContext<'a> {
 			[
 				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
-				Some(NodeInput::value(TaggedValue::String(artboard.label), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
 				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
@@ -315,6 +314,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		ModifyInputsContext::insert_node_as_primary_export(node_graph, document_network, new_id, artboard_node)
 	}
+
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: NodeId) {
 		let shape = {
 			let node_type: &crate::messages::portfolio::document::node_graph::document_node_types::DocumentNodeDefinition = resolve_document_node_type("Shape").expect("Shape node does not exist");
@@ -752,8 +752,8 @@ impl<'a> ModifyInputsContext<'a> {
 				location.y -= dimensions.y;
 			}
 
-			inputs[3] = NodeInput::value(TaggedValue::IVec2(location), false);
-			inputs[4] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
+			inputs[2] = NodeInput::value(TaggedValue::IVec2(location), false);
+			inputs[3] = NodeInput::value(TaggedValue::IVec2(dimensions), false);
 		});
 	}
 

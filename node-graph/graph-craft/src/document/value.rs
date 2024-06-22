@@ -245,7 +245,7 @@ impl<'a> TaggedValue {
 			TaggedValue::U64(x) => x.to_string(),
 			TaggedValue::F64(x) => x.to_string(),
 			TaggedValue::Bool(x) => x.to_string(),
-			_ => panic!("Cannot convert to primitive string"),
+			_ => panic!("Cannot convert to string"),
 		}
 	}
 
