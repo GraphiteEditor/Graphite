@@ -5,7 +5,7 @@ use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::{DAffine2, IVec2};
+use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -615,9 +615,6 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
-	/// Transform from node graph space to viewport space.
-	#[serde(default)]
-	pub node_graph_to_viewport: DAffine2,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -640,7 +637,6 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
-			node_graph_to_viewport: DAffine2::default(),
 		}
 	}
 }
@@ -1064,14 +1060,14 @@ impl NodeNetwork {
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_fns(node, merge_ids, || NodeId(generate_uuid()))
+	pub fn flatten(&mut self, node_id: NodeId) {
+		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
-			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
+	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
+		let Some((id, mut node)) = self.nodes.remove_entry(&node_id) else {
+			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
 
@@ -1120,6 +1116,7 @@ impl NodeNetwork {
 					}
 				}
 			}
+
 			// Replace value inputs with value nodes, added to flattened network
 			for input in node.inputs.iter_mut() {
 				let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
@@ -1155,8 +1152,16 @@ impl NodeNetwork {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
+
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
+				if nested_node.name == "To Artboard" {
+					let label_index = 1;
+					let label = if !node.alias.is_empty() { node.alias.clone() } else { node.name.clone() };
+					let label_input = NodeInput::value(TaggedValue::String(label), false);
+					nested_node.inputs[label_index] = label_input;
+				}
+
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
 						let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");

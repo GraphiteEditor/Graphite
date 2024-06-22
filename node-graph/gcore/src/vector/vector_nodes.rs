@@ -76,7 +76,9 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, angle: f64, ins
 	// Repeat the vector data
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
+	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
+		return vector_data;
+	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
@@ -108,7 +110,9 @@ fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radiu
 
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
+	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
+		return vector_data;
+	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	let base_transform = DVec2::new(0., radius) - center;
@@ -128,11 +132,8 @@ pub struct BoundingBoxNode;
 
 #[node_macro::node_fn(BoundingBoxNode)]
 fn generate_bounding_box(vector_data: VectorData) -> VectorData {
-	let bounding_box = vector_data.bounding_box().unwrap();
-	VectorData::from_subpath(Subpath::new_rect(
-		vector_data.transform.transform_point2(bounding_box[0]),
-		vector_data.transform.transform_point2(bounding_box[1]),
-	))
+	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
+	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -654,6 +655,16 @@ mod test {
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
+
+		// test a VectorData with non-zero rotation
+		let mut square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
+		square.transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		let bounding_box = BoundingBoxNode.eval(square);
+		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
+		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
+		let sqrt2 = core::f64::consts::SQRT_2;
+		let sqrt2_bounding_box = [DVec2::new(-sqrt2, -sqrt2), DVec2::new(sqrt2, -sqrt2), DVec2::new(sqrt2, sqrt2), DVec2::new(-sqrt2, sqrt2)];
+		assert!(subpath.anchors()[..4].iter().zip(sqrt2_bounding_box).all(|(p1, p2)| p1.abs_diff_eq(p2, f64::EPSILON)));
 	}
 	#[tokio::test]
 	async fn copy_to_points() {

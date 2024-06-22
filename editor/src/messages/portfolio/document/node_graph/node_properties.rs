@@ -2448,8 +2448,10 @@ pub fn artboard_properties(document_node: &DocumentNode, node_id: NodeId, _conte
 	let dimensions = vec2_widget(document_node, node_id, 3, "Dimensions", "W", "H", " px", None, add_blank_assist);
 	let background = color_widget(document_node, node_id, 4, "Background", ColorButton::default().allow_none(false), true);
 	let clip = bool_widget(document_node, node_id, 5, "Clip", true);
-	let clip = LayoutGroup::Row { widgets: clip };
-	vec![location, dimensions, background, clip]
+
+	let clip_row = LayoutGroup::Row { widgets: clip };
+
+	vec![location, dimensions, background, clip_row]
 }
 
 pub fn color_fill_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

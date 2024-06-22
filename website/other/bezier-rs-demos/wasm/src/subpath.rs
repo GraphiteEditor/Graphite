@@ -76,13 +76,13 @@ impl WasmSubpath {
 		subpath_svg
 	}
 
-	pub fn fit(&self, max_segments: f64, tollerance: f64) -> String {
+	pub fn fit(&self, max_segments: f64, tolerance: f64) -> String {
 		let mut result = String::new();
 
-		let mut subpath = self.0.clone();
+		let subpath = self.0.clone();
 		let points = subpath.manipulator_groups().iter().map(|group| group.anchor).collect::<Vec<_>>();
 
-		let tolerance_sq = 0.02 * tollerance * tollerance * (0.2 * tollerance - 2.).exp();
+		let tolerance_sq = 0.02 * tolerance * tolerance * (0.2 * tolerance - 2.).exp();
 		if let Some(subpath) = Subpath::<EmptyId>::fit_cubic(&points, (max_segments as usize).max(1), DVec2::ZERO, tolerance_sq) {
 			subpath.to_svg(
 				&mut result,

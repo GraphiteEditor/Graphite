@@ -26,7 +26,7 @@ macro_rules! tagged_value {
 			SurfaceFrame(graphene_core::SurfaceFrame),
 		}
 
-		// We must manually implement hashing because some values are floats and so do not reproducably hash (see FakeHash bellow)
+		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
 		#[allow(clippy::derived_hash_with_manual_eq)]
 		impl Hash for TaggedValue {
 			fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -174,6 +174,16 @@ tagged_value! {
 }
 
 impl<'a> TaggedValue {
+	pub fn to_string(&self) -> String {
+		match self {
+			TaggedValue::String(x) => x.to_string(),
+			TaggedValue::U32(x) => x.to_string(),
+			TaggedValue::U64(x) => x.to_string(),
+			TaggedValue::F64(x) => x.to_string(),
+			TaggedValue::Bool(x) => x.to_string(),
+			_ => panic!("Cannot convert to string"),
+		}
+	}
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -213,7 +223,7 @@ pub enum RenderOutput {
 	Image(Vec<u8>),
 }
 
-/// We hash the floats and soforth despite it not being reproducable because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)
+/// We hash the floats and so-forth despite it not being reproducible because all inputs to the node graph must be hashed otherwise the graph execution breaks (so sorry about this hack)
 trait FakeHash {
 	fn hash<H: core::hash::Hasher>(&self, state: &mut H);
 }
