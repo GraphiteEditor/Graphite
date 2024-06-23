@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::{InputConnector, NetworkMetadata, NodeNetworkInterface, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_metadata::{Connector, InputConnector, NetworkMetadata, NodeNetworkInterface, OutputConnector, Port};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -155,16 +155,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 
 				if let Some(wire_in_progress) = self.wire_in_progress_from_connector {
-					let Some(output_connector) = network_interface
-						.network_metadata(false)
-						.get_connector_from_point(wire_in_progress.0, |metadata| &metadata.output_click_targets)
-					else {
-						log::error!("Could not get output form connector start");
+					let Some(output_connector) = network_interface.network_metadata(false).get_connector_from_point(wire_in_progress.0) else {
+						log::error!("Could not get output from connector start");
 						return;
 					};
 					responses.add(NodeGraphMessage::CreateWire {
 						output_connector,
-						input_connector: InputConnector::Node(from_node, output_index),
+						input_connector: Connector::Node {
+							node_id,
+							port: Port::Output(output_index),
+						},
 					});
 					self.wire_in_progress_from_connector = None;
 					self.wire_in_progress_to_connector = None;
