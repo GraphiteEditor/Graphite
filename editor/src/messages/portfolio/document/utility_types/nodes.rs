@@ -112,6 +112,10 @@ impl SelectedNodes {
 		&self.0
 	}
 
+	pub fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool {
+		self.0.iter().any(|node_id| network.nodes.contains_key(node_id) || *node_id == network.imports_metadata.0 || *node_id == network.exports_metadata.0)
+	}
+
 	pub fn has_selected_nodes(&self) -> bool {
 		!self.0.is_empty()
 	}

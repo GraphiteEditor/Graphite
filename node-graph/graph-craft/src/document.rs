@@ -40,14 +40,25 @@ fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 
 #[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Metadata about the node including its position in the graph UI
+pub enum Position {
+	// For nodes that are not in a chain or stack, their position is stored independently.
+	Absolute(IVec2),
+	// For nodes in a horizontal chain, their position is calculated based on their parent layer.
+	Chain,
+	// For layers in a stack, their x position is based on the parent of that stack, and their y position is stored.
+	Stack(u32),
+}
+
+#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// TODO: Eventually should store all editor only metadata about the node, such as its position, alias, is_layer, and locked
 pub struct DocumentNodeMetadata {
-	pub position: IVec2,
+	pub position: Position,
 }
 
 impl DocumentNodeMetadata {
-	pub fn position(position: impl Into<IVec2>) -> Self {
-		Self { position: position.into() }
+	pub fn absolute(position: impl Into<IVec2>) -> Self {
+		Position::Absolute(position.into())
 	}
 }
 
@@ -240,7 +251,7 @@ pub struct DocumentNode {
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Metadata about the node including its position in the graph UI. Ensure the click target in the encapsulating network is updated when the node moves by using network.update_click_target(node_id).
+	/// TODO: Eventually should store all editor only metadata about the node, such as its position, alias, is_layer, and locked
 	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
@@ -665,18 +676,8 @@ pub struct NodeNetwork {
 	pub previewing: Previewing,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
 	// TODO: Move to NodeNetworkInterface
-	// TODO: Replace NodeId with with OutputConnector::Export
-	// pub enum OutputConnector {
-	// 	Node((NodeId, usize)),
-	// 	Import(usize),
-	// }
 	#[serde(default = "default_import_metadata")]
 	pub imports_metadata: (NodeId, IVec2),
-	// TODO: Replace NodeId with InputConnector::Import
-	// pub enum InputConnector {
-	// 	Node(NodeId, usize),
-	// 	Export(usize),
-	// }
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
 }

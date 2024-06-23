@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::{NetworkMetadata, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_metadata::{InputConnector, NetworkMetadata, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -81,7 +81,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					on: BroadcastEvent::SelectionChanged,
 					send: Box::new(NodeGraphMessage::SelectedNodesUpdated.into()),
 				});
-				load_network_structure(document_network, document_metadata, collapsed);
+				load_network_structure(network_interface.document_network(), document_metadata, collapsed);
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				self.update_selected(document_network, selected_nodes, responses);
@@ -93,89 +93,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			NodeGraphMessage::ConnectNodesByWire {
-				output_node,
-				output_node_connector_index,
-				input_node,
-				input_node_connector_index,
-			} => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&output_node)) else {
+			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
+				network_interface.create_wire(output_connector, input_connector, false);
+
+				let Some(network) = network_interface.nested_network() else {
 					return;
 				};
-				// If `output_node_id` is None, then it is the UI-only "Import" node
-				let output_node_id = if network.imports_metadata.0 == output_node { None } else { Some(output_node) };
-				// If `input_node_id` is None, then it is the UI-only "Export" node
-				let input_node_id = if network.exports_metadata.0 == input_node { None } else { Some(input_node) };
-
-				let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
-				responses.add(DocumentMessage::StartTransaction);
-
-				match (output_node_id, input_node_id) {
-					// Connecting 2 document nodes
-					(Some(output_node_id), Some(input_node_id)) => {
-						let input = NodeInput::node(output_node_id, output_node_connector_index);
-						responses.add(NodeGraphMessage::SetNodeInput {
-							node_id: input_node_id,
-							input_index,
-							input,
-						});
-						if network.connected_to_output(input_node_id) {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
-					}
-					// Connecting a document node output to the Export node input
-					(Some(output_node_id), None) => {
-						let input = NodeInput::node(output_node_id, output_node_connector_index);
-						responses.add(NodeGraphMessage::SetNodeInput {
-							node_id: network.exports_metadata.0,
-							input_index,
-							input,
-						});
+				if let InputConnector::Node(node_id, _) = input_connector {
+					if network.connected_to_output(node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-					// Connecting a document node input to the Import node output
-					(None, Some(input_node_id)) => {
-						let input = NodeInput::network(generic!(T), output_node_connector_index);
-						responses.add(NodeGraphMessage::SetNodeInput {
-							node_id: input_node_id,
-							input_index,
-							input,
-						});
-						if network.connected_to_output(input_node_id) {
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-						}
-					}
-					// Connecting a Export node input to the Import node output
-					(None, None) => {
-						// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
-						responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) })
-						// let input = NodeInput::network(generic!(T), output_node_connector_index);
-						// responses.add(NodeGraphMessage::SetNodeInput {
-						// 	node_id: network.exports_metadata.0,
-						// 	input_index,
-						// 	input,
-						// });
-						// responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
 				}
-				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::Copy => {
 				// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-				let network_path = if selected_nodes
-					.selected_nodes_ref()
-					.iter()
-					.any(|node_id| document_network.nodes.contains_key(node_id) || document_network.exports_metadata.0 == *node_id || document_network.imports_metadata.0 == *node_id)
-				{
-					Vec::new()
-				} else {
-					self.network.clone()
-				};
-				let Some(network) = document_network.nested_network(&network_path) else {
+				let use_document_network = selected_nodes.network_has_selected_nodes(network_interface.document_network());
+
+				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
 					warn!("No network in NodeGraphMessage::Copy ");
 					return;
 				};
 
+				let network_path = if use_document_network { Vec::new() } else { network_interface.network_path().clone() };
 				// Collect the selected nodes
 				let new_ids = &selected_nodes.selected_nodes(network).copied().enumerate().map(|(new, old)| (old, NodeId(new as u64))).collect();
 				let copied_nodes = Self::copy_nodes(document_network, &network_path, &network_interface.resolved_types, new_ids).collect::<Vec<_>>();
@@ -208,7 +147,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let document_node = document_node_type.to_document_node(
 					document_node_type.inputs.iter().map(|input| input.default.clone()),
-					graph_craft::document::DocumentNodeMetadata::position((x / 24, y / 24)),
+					graph_craft::document::DocumentNodeMetadata::absolute((x / 24, y / 24)),
 				);
 				self.context_menu = None;
 
@@ -216,15 +155,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::InsertNode { node_id, document_node });
 
 				if let Some(wire_in_progress) = self.wire_in_progress_from_connector {
-					let Some((from_node, output_index)) = self.get_connector_from_point(wire_in_progress.0, |metadata| &metadata.output_click_targets) else {
+					let Some(output_connector) = network_interface
+						.network_metadata(false)
+						.get_connector_from_point(wire_in_progress.0, |metadata| &metadata.output_click_targets)
+					else {
 						log::error!("Could not get output form connector start");
 						return;
 					};
-					responses.add(NodeGraphMessage::ConnectNodesByWire {
-						output_node: from_node,
-						output_node_connector_index: output_index,
-						input_node: node_id,
-						input_node_connector_index: 0,
+					responses.add(NodeGraphMessage::CreateWire {
+						output_connector,
+						input_connector: InputConnector::Node(from_node, output_index),
 					});
 					self.wire_in_progress_from_connector = None;
 					self.wire_in_progress_to_connector = None;
@@ -394,8 +334,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::InsertNode { node_id, document_node } => {
-				let network_path = if document_network.nodes.contains_key(&node_id) { Vec::new() } else { self.network.clone() };
-				self.insert_node(node_id, document_node, document_network, &network_path);
+				network_interface.insert_node(node_id, document_node, false);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				post_node_id,
@@ -492,11 +431,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
-					warn!("No network");
-					return;
-				};
-
 				let data = match serde_json::from_str::<Vec<(NodeId, DocumentNode)>>(&serialized_nodes) {
 					Ok(d) => d,
 					Err(e) => {
@@ -509,20 +443,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 
 				// Shift nodes until it is not in the same position as another node
-				let mut shift = IVec2::ZERO;
-				while data
-					.iter()
-					.all(|(_, node)| network.nodes.values().any(|existing_node| node.metadata.position + shift == existing_node.metadata.position))
-				{
-					shift += IVec2::splat(2);
-				}
+				// let mut shift = IVec2::ZERO;
+				// while data
+				// 	.iter()
+				// 	.all(|(_, node)| network.nodes.values().any(|existing_node| node.metadata.position + shift == existing_node.metadata.position))
+				// {
+				// 	shift += IVec2::splat(2);
+				// }
 
 				responses.add(DocumentMessage::StartTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, NodeId(generate_uuid()))).collect();
 				for (old_id, mut document_node) in data {
 					// Shift copied node
-					document_node.metadata.position += shift;
+					// document_node.metadata.position += shift;
 
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
@@ -940,16 +874,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
 					// Check if dragged connector is reconnected to another input
-					let node_from = self.get_connector_from_point(wire_in_progress_from_connector.0, |metadata| &metadata.output_click_targets);
-					let node_to = self.get_connector_from_point(wire_in_progress_to_connector.0, |metadata| &metadata.input_click_targets);
+					let output_connector = self.get_connector_from_point(wire_in_progress_from_connector.0, |metadata| &metadata.output_click_targets);
+					let input_connector = self.get_connector_from_point(wire_in_progress_to_connector.0, |metadata| &metadata.input_click_targets);
 
 					if let (Some(node_from), Some(node_to)) = (node_from, node_to) {
-						responses.add(NodeGraphMessage::ConnectNodesByWire {
-							output_node: node_from.0,
-							output_node_connector_index: node_from.1,
-							input_node: node_to.0,
-							input_node_connector_index: node_to.1,
-						})
+						responses.add(NodeGraphMessage::CreateWire { input_connector, output_connector });
 					} else if node_from.is_some() && node_to.is_none() && !self.initial_disconnecting {
 						// If the add node menu is already open, we don't want to open it again
 						if self.context_menu.is_some() {
@@ -1183,7 +1112,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if let Some(node) = network.nodes.get(&node_id) {
 					// Extend number of inputs if not already large enough
 					if input_index >= node.inputs.len() {
-						let network_metadata = network_metadata.entry(network_path).or_insert(NetworkMetadata::new(&document_network, network_path));
 						for input in ((node.inputs.len() - 1)..input_index).map(|_| NodeInput::network(generic!(T), 0)) {
 							network_metadata.add_node_input()
 						}

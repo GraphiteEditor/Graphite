@@ -1,24 +1,38 @@
-use std::{collections::HashMap, hash::DefaultHasher};
+use std::{
+	collections::{HashMap, HashSet},
+	hash::DefaultHasher,
+};
 
 use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
-use graph_craft::{concrete, document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, Previewing}, Type};
+use graph_craft::{
+	concrete,
+	document::{value::TaggedValue, DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, Position, Previewing},
+	Type,
+};
 use graphene_std::{
 	renderer::{ClickTarget, Quad},
 	uuid::ManipulatorGroupId,
 };
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
+use usvg::filter::Input;
 
-use crate::messages::prelude::{BroadcastEvent, GraphOperationMessage, NodeGraphMessage, NodeGraphMessageHandler};
+use crate::messages::{
+	portfolio::document::node_graph,
+	prelude::{BroadcastEvent, GraphOperationMessage, NodeGraphMessage, NodeGraphMessageHandler},
+};
 
 use super::{document_metadata::LayerNodeIdentifier, misc::PTZ, nodes::SelectedNodes};
 
+/// Network modification interface. All network modifications should be done through this API
 #[derive(Debug, Clone, Default)]
 #[serde(default)]
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
 	network: NodeNetwork,
+	// TODO: Create a EditorNetwork struct that mirrors the NodeNetwork and is used to store DocumentNodeMetadata
+	// editor_network_data: EditorNetworkData,
 	// Path to the current nested network
 	network_path: Vec<NodeId>,
 	/// Stores all editor information for a NodeNetwork. For the network this includes viewport transforms, outward links, and bounding boxes. For nodes this includes click target, position, and alias
@@ -50,11 +64,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	// Do not make this public
-	fn nested_network_mut(&self, use_document_network: bool) -> Option<&mut NodeNetwork> {
-		&mut self.network.nested_network_mut(if use_document_network { &Vec::new() } else { &self.network_path })
-	}
-
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes in the document network when a sub network is open
 	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&NodeNetwork> {
 		if selected_nodes.any(|node_id| self.network.nodes.contains_key(node_id) || self.network.exports_metadata.0 == *node_id || self.network.imports_metadata.0 == *node_id) {
@@ -62,6 +71,11 @@ impl NodeNetworkInterface {
 		} else {
 			self.network.nested_network(nested_path)
 		}
+	}
+
+	// Do not make this public
+	fn nested_network_mut(&self, use_document_network: bool) -> Option<&mut NodeNetwork> {
+		&mut self.network.nested_network_mut(if use_document_network { &Vec::new() } else { &self.network_path })
 	}
 
 	pub fn network_path(&self) -> &Vec<NodeId> {
@@ -151,7 +165,8 @@ impl NodeNetworkInterface {
 				let mut parent_path = network_path.clone();
 				parent_path.pop();
 
-				let parent_node = self.document_network()
+				let parent_node = self
+					.document_network()
 					.nested_network(&parent_path)
 					.expect("Parent path should always exist")
 					.nodes
@@ -240,17 +255,78 @@ impl NodeNetworkInterface {
 		self.network_metadata.clear();
 	}
 
-	//TODO: Remove and replace with passing NodeConnector
-	pub fn set_export(&mut self, node_id: NodeId, output_index: usize, use_document_network: bool) {
-		self.network.exports[0] = NodeInput::node(id, 0);
-		// Ensure correct stack positioning
+	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, use_document_network: bool) {}
+
+	pub fn create_wire(&mut self, output_connector: OutputConnector, input_connector: InputConnector, use_document_network: bool) {
+
+		//let input_index = NodeGraphMessageHandler::get_input_index(network, input_node, input_node_connector_index);
+
+		// match (output_node_id, input_node_id) {
+		// 	// Connecting 2 document nodes
+		// 	(Some(output_node_id), Some(input_node_id)) => {
+		// 		let input = NodeInput::node(output_node_id, output_node_connector_index);
+		// 		responses.add(NodeGraphMessage::SetNodeInput {
+		// 			node_id: input_node_id,
+		// 			input_index,
+		// 			input,
+		// 		});
+		// 		if network.connected_to_output(input_node_id) {
+		// 			responses.add(NodeGraphMessage::RunDocumentGraph);
+		// 		}
+		// 	}
+		// 	// Connecting a document node output to the Export node input
+		// 	(Some(output_node_id), None) => {
+		// 		let input = NodeInput::node(output_node_id, output_node_connector_index);
+		// 		responses.add(NodeGraphMessage::SetNodeInput {
+		// 			node_id: network.exports_metadata.0,
+		// 			input_index,
+		// 			input,
+		// 		});
+		// 		responses.add(NodeGraphMessage::RunDocumentGraph);
+		// 	}
+		// 	// Connecting a document node input to the Import node output
+		// 	(None, Some(input_node_id)) => {
+		// 		let input = NodeInput::network(generic!(T), output_node_connector_index);
+		// 		responses.add(NodeGraphMessage::SetNodeInput {
+		// 			node_id: input_node_id,
+		// 			input_index,
+		// 			input,
+		// 		});
+
+		// 	}
+		// 	// Connecting a Export node input to the Import node output
+		// 	(None, None) => {
+		// 		// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+		// 		responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) })
+		// 		// let input = NodeInput::network(generic!(T), output_node_connector_index);
+		// 		// responses.add(NodeGraphMessage::SetNodeInput {
+		// 		// 	node_id: network.exports_metadata.0,
+		// 		// 	input_index,
+		// 		// 	input,
+		// 		// });
+		// 		// responses.add(NodeGraphMessage::RunDocumentGraph);
+		// 	}
+		// }
 	}
 
-	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool, use_document_network: bool) {}
+	/// Inserts a node into the document network and updates the click target
+	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode, use_document_network: bool) {
+		// Ensure there is space for the new node
+		// let Some(network) = document_network.nested_network_mut(network_path) else {
+		// 	log::error!("Network not found in update_click_target");
+		// 	return;
+		// };
+		// assert!(
+		// 	node_id != network.imports_metadata.0 && node_id != network.exports_metadata.0,
+		// 	"Cannot insert import/export node into network.nodes"
+		// );
+		// network.nodes.insert(node_id, node);
+		// self.update_click_target(node_id, document_network, network_path.clone());
+	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
 	/// The various side effects to external data (network metadata, selected nodes, rendering document) are added through responses
-	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, reconnect: bool, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
+	pub fn delete_nodes(&mut self, nodes_to_delete: Vec<NodeId>, reconnect: bool, selected_nodes: &mut SelectedNodes, responses: &mut VecDeque<Message>) {
 		//TODO: Pass as parameter
 		let use_document_network = selected_nodes
 			.selected_nodes_ref()
@@ -331,6 +407,7 @@ impl NodeNetworkInterface {
 			//node_graph.update_click_target(node_id, document_network, network_path.clone());
 		}
 		// Updates the selected nodes, and rerender the document
+		selected_nodes.retain_selected_nodes(|node_id| !delete_nodes.contains(node_id));
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(GraphOperationMessage::LoadStructure);
 	}
@@ -402,8 +479,7 @@ impl NodeNetworkInterface {
 
 		let Some(network) = self.document_or_nested_network(use_document_network) else { return false };
 
-		if let Some(Previewing::Yes { root_node_to_restore }) = network.previewing
-		{
+		if let Some(Previewing::Yes { root_node_to_restore }) = network.previewing {
 			if let Some(root_node_to_restore) = root_node_to_restore {
 				if root_node_to_restore.id == deleting_node_id {
 					self.nested_network_mut(use_document_network).unwrap().start_previewing_without_restore();
@@ -516,34 +592,122 @@ impl NodeNetworkInterface {
 	pub fn move_node_to_chain(&mut self, node_id: NodeId, parent: NodeId) {}
 }
 
+/// The connector enums are used to represent where a wire should be connected.
+#[derive(Debug, Clone)]
+pub enum Connector {
+	Node(NodeId, Port),
+	Import(Port),
+	Export(Port),
+}
+
+impl Connector {
+	pub fn intersects_point(&self, point: DVec2) -> bool {
+		match self {
+			Connector::Node(_, port) | Connector::Import(port) | Connector::Export(port) => port.intersects_point(point),
+		}
+	}
+}
+
+/// The port stores the click target and its index. The type represents how the connection to that port (and eventually the port itself) should be displayed
+#[derive(Debug, Clone)]
+pub enum Port {
+	NodeInput(usize, ClickTarget),
+	NodeOutput(usize, ClickTarget),
+	PrimaryLayerInput(ClickTarget),
+	SecondaryLayerInput(ClickTarget),
+	LayerOutput(ClickTarget),
+}
+
+impl Port {
+	/// Creates a circular click target with radius 8 at a center point
+	pub fn create_port_click_target(center: DVec2) -> ClickTarget {
+		let subpath = Subpath::new_ellipse(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
+		ClickTarget { subpath, stroke_width: 1. }
+	}
+
+	pub fn node_input(input_index: usize, row_index: usize, node_top_left: DVec2) -> Port {
+		// The center of the click target 12px down from the top left corner of the node, which is 12px down from the grid coordinate position
+		let y_position = 24. + 24. * row_index as f64;
+		let center = node_top_left + DVec2::new(0, 24. + 24. * row_index as f64);
+		Port::NodeInput(input_index, Self::create_port_click_target(center))
+	}
+
+	pub fn node_output(output_index: usize, row_index: usize, node_top_left: DVec2) -> Port {
+		// The center of the click target 12px down from the top left corner of the node, which is 12px down from the grid coordinate position
+		let y_position = 24. + 24. * row_index as f64;
+		let center = node_top_left + DVec2::new(24. * 5, 24. + 24. * row_index as f64);
+		Port::NodeOutput(output_index, Self::create_port_click_target(center))
+	}
+
+	pub fn intersects_point(&self, point: DVec2) -> bool {
+		match self {
+			Port::NodeInput(_, click_target) | Port::NodeOutput(_, click_target) => click_target.intersect_point(point, DAffine2::IDENTITY),
+			Port::PrimaryLayerInput(click_target) | Port::SecondaryLayerInput(click_target) | Port::LayerOutput(click_target) => click_target.intersect_point(point, DAffine2::IDENTITY),
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct NetworkMetadata {
 	/// Stores the callers of a node by storing all nodes that use it as an input
-	pub outward_wires: HashMap<NodeId, Vec<NodeId>>,
+	outward_wires: HashMap<NodeId, Vec<NodeId>>,
 	/// Cache for the bounding box around all nodes in node graph space.
-	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
+	bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
 	/// Click targets for every node in the network by using the path to that node
-	pub node_metadata: HashMap<NodeId, NodeMetadata>,
+	node_metadata: HashMap<NodeId, NodeMetadata>,
+	/// All connectors in the network
+	connector_metadata: HashSet<Connector>,
 }
 
-/// Network modification interface. All network modifications should be done through this API
 impl NetworkMetadata {
+	// Create NetworkMetadata from a NodeNetwork
 	pub fn new(document_network: &NodeNetwork, network_path: &Vec<NodeId>) -> NetworkMetadata {
-		let network = document_network.nested_network(nested_path).expect("Could not get nested network when creating NetworkMetadata");
+		let network: &NodeNetwork = document_network.nested_network(nested_path).expect("Could not get nested network when creating NetworkMetadata");
 
 		// Collect all outward_wires
 		let outward_wires = network.collect_outward_wires();
 
 		// Create all node metadata
+		// TODO: Instead of iterating over all nodes randomly which then have to iterate in order to get each nodes postion, iterate from the exports node downstream to get the position of all the nodes with Chain and Stack position
+		let connector_metadata: HashSet<Connector> = HashSet::new();
 		let mut node_metadata = network
 			.nodes
 			.iter()
-			.map(|(node_id, node)| (node_id, NodeMetadata::new(node)))
+			.map(|(node_id, node)| {
+				let (node_metadata, connectors) = NodeMetadata::new(network, &outward_wires, node_id, node);
+				connector_metadata.extend(connectors);
+				(node_id, node_metadata)
+			})
 			.collect::<HashMap<NodeId, NodeMetadata>>();
+
+		/// Eventually the import/export nodes will be removed here
 		if let Some(imports_node) = NodeMetadata::new_imports_node(document_network, network_path) {
 			node_metadata.insert(network.imports_metadata.0, imports_node)
 		}
 		node_metadata.insert(network.exports_metadata.0, NodeMetadata::new_exports_node(document_network, network_path));
+
+		let import_top_left = network.imports_metadata.1.as_dvec2() * 24.;
+		// Skip first row since the first row is reserved for the "Exports" name
+		let mut output_row_count = 1;
+		let mut import_connectors = HashSet::new();
+		for output_index in 0..network.exports.len() {
+			let port = Port::node_input(output_index, output_row_count, import_top_left);
+			import_connectors.insert(Connector::Import(port));
+			output_row_count += 1;
+		}
+
+		let export_top_left = network.exports_metadata.1.as_dvec2() * 24.;
+		// Skip first row since the first row is reserved for the "Exports" name
+		let mut input_row_count = 1;
+		let mut export_connectors = HashSet::new();
+		for output_index in 0..network.exports.len() {
+			let port = Port::node_input(output_index, input_row_count, export_top_left);
+			export_connectors.insert(Connector::Export(port));
+			input_row_count += 1;
+		}
+
+		connector_metadata.extend(import_connectors);
+		connector_metadata.extend(export_connectors);
 
 		// Get bounding box around all nodes
 		let bounds = node_metadata
@@ -553,204 +717,164 @@ impl NetworkMetadata {
 		let bounding_box_subpath = bounds.map(|bounds| bezier_rs::Subpath::new_rect(bounds[0], bounds[1]));
 
 		NetworkMetadata {
-			outward_wires: outward_wires,
+			outward_wires,
 			bounding_box_subpath,
 			node_metadata,
+			connector_metadata,
 		}
 	}
-	/// Inserts a node into the network and updates the click target
-	pub fn insert_node(&mut self, node_id: NodeId, node: DocumentNode, document_network: &mut NodeNetwork, network_path: &Vec<NodeId>) {
-		let Some(network) = document_network.nested_network_mut(network_path) else {
-			log::error!("Network not found in update_click_target");
-			return;
-		};
-		assert!(
-			node_id != network.imports_metadata.0 && node_id != network.exports_metadata.0,
-			"Cannot insert import/export node into network.nodes"
-		);
-		network.nodes.insert(node_id, node);
-		self.update_click_target(node_id, document_network, network_path.clone());
-	}
-}
 
-/// Getter methods
-impl NetworkMetadata {
+	/// Click target getter methods
 	fn get_node_from_point(&self, point: DVec2) -> Option<NodeId> {
-		self.node_metadata
-			.iter()
-			.map(|(node_id, node_metadata)| (node_id, &node_metadata.node_click_target))
-			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
-	}
-
-	fn get_connector_from_point<F>(&self, point: DVec2, click_target_selector: F) -> Option<(NodeId, usize)>
-	where
-		F: Fn(&NodeMetadata) -> &Vec<ClickTarget>,
-	{
-		self.node_metadata
-			.iter()
-			.map(|(node_id, node_metadata)| (node_id, click_target_selector(node_metadata)))
-			.find_map(|(node_id, click_targets)| {
-				for (index, click_target) in click_targets.iter().enumerate() {
-					if click_target.intersect_point(point, DAffine2::IDENTITY) {
-						return Some((node_id.clone(), index));
-					}
-				}
-				None
-			})
+		self.node_metadata.iter().find_map(|(node_id, node_metadata)| node_metadata.clicked_node(point).then(|| *node_id))
 	}
 
 	fn get_visibility_from_point(&self, point: DVec2) -> Option<NodeId> {
-		self.node_metadata
-			.iter()
-			.filter_map(|(node_id, node_metadata)| node_metadata.visibility_click_target.as_ref().map(|click_target| (node_id, click_target)))
-			.find_map(|(node_id, click_target)| if click_target.intersect_point(point, DAffine2::IDENTITY) { Some(*node_id) } else { None })
+		self.node_metadata.iter().find_map(|(node_id, node_metadata)| node_metadata.clicked_visibility(point).then(|| *node_id))
+	}
+
+	pub fn get_connector_from_point(&self, point: DVec2) -> Option<Connector> {
+		self.connector_metadata.iter().find(|connector| connector.intersects_point(point))
 	}
 }
 
-#[derive(Debug, Clone)]
-struct NodeMetadata {
-	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
-	pub node_click_target: ClickTarget,
-	/// Cache for all node inputs. Should be automatically updated when update_click_target is called
-	pub input_click_targets: Vec<ClickTarget>,
-	/// Cache for all node outputs. Should be automatically updated when update_click_target is called
-	pub output_click_targets: Vec<ClickTarget>,
+pub struct LayerMetadata {
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
-	pub visibility_click_target: Option<ClickTarget>,
-	// Position
-	// alias
+	visibility_click_target: ClickTarget,
+	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
+	// preview_click_target: Option<ClickTarget>,
 	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
-	pub layer_width: Option<u32>,
+	layer_width: u32,
+	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
+	chain_width: u32,
+}
+
+/// All fields in NodeMetadata should automatically be updated by using the network interface API
+#[derive(Debug, Clone)]
+pub struct NodeMetadata {
+	/// Cache for all node click targets in node graph space. Ensure update_click_target is called when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
+	node_click_target: ClickTarget,
+	/// Stores layer node specific metadata
+	layer_metadata: Option<LayerMetadata>,
 }
 
 impl NodeMetadata {
 	const GRID_SIZE: u32 = 24;
-	/// Create a new NodeMetadata from a `DocumentNode`. layer_width is cached in NodeMetadata
-	pub fn new(node: &DocumentNode) -> NodeMetadata {
-		let mut layer_width = None;
-		let width = if node.is_layer {
-			let layer_width_cells = Self::layer_width_cells(node);
-			layer_width = Some(layer_width_cells);
-			layer_width_cells * Self::GRID_SIZE
-		} else {
-			5 * Self::GRID_SIZE
-		};
-
-		let height = if node.is_layer {
-			2 * Self::GRID_SIZE
-		} else {
-			let inputs_count = node.inputs.iter().filter(|input| input.is_exposed()).count();
-			let outputs_count = if let DocumentNodeImplementation::Network(network) = &node.implementation {
-				network.exports.len()
-			} else {
-				1
-			};
-			std::cmp::max(inputs_count, outputs_count) as u32 * Self::GRID_SIZE
-		};
-		let mut corner1 = DVec2::new(
-			(node.metadata.position.x * Self::GRID_SIZE as i32) as f64,
-			(node.metadata.position.y * Self::GRID_SIZE as i32 + if !node.is_layer { (Self::GRID_SIZE / 2) } else { 0 }) as f64,
-		);
-		let radius = if !node.is_layer { 3. } else { 10. };
-
-		let corner2 = corner1 + DVec2::new(width as f64, height as f64);
-		let mut click_target_corner_1 = corner1;
-		if node.is_layer && node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-			click_target_corner_1 -= DVec2::new(24., 0.)
-		}
-
-		let subpath = bezier_rs::Subpath::new_rounded_rect(click_target_corner_1, corner2, [radius; 4]);
-		let stroke_width = 1.;
-		let node_click_target = ClickTarget { subpath, stroke_width };
+	/// Create a new NodeMetadata from a `DocumentNode`. Also returns the port click target
+	pub fn new(network: &NodeNetwork, outward_links: HashMap<NodeId, Vec<NodeId>>, node_id: &NodeId, node: &DocumentNode) -> (NodeMetadata, HashSet<Connector>) {
+		let node_top_left = NodeMetadata::get_position(network, outward_links, node_id).as_dvec2() * 24.;
 
 		// Create input/output click targets
-		let mut input_click_targets = Vec::new();
-		let mut output_click_targets = Vec::new();
-		let mut visibility_click_target = None;
+		let mut port_click_targets = HashSet::new();
+		let mut layer_metadata = None;
 
-		if !node.is_layer {
-			let mut node_top_right = corner1 + DVec2::new(5. * 24., 0.);
+		let node_click_target = if !node.is_layer {
+			let input_row_count = 0;
+			for (input_index, input) in node.inputs.iter().enumerate() {
+				// Primary input row is always displayed, even if the input is not exposed
+				if input.is_exposed() {
+					port_click_targets.insert(Port::node_input(input_index, input_row_count, node_top_left));
+				}
+				if input_index == 0 || input.is_exposed() {
+					input_row_count += 1;
+				}
+			}
 
-			let number_of_inputs = node.inputs.iter().filter(|input| input.is_exposed()).count();
 			let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
 				network.exports.len()
 			} else {
 				1
 			};
-
-			if !node.has_primary_output {
-				node_top_right.y += 24.;
+			// If the node does not have a primary output, shift all ports down a row
+			let mut output_row_count = if !node.has_primary_output { 1 } else { 0 };
+			for output_index in 0..number_of_outputs {
+				port_click_targets.insert(Port::node_output(output_index, output_row_count, node_top_left));
+				output_row_count += 1;
 			}
 
-			let input_top_left = DVec2::new(-8., 4.);
-			let input_bottom_right = DVec2::new(8., 20.);
+			let height = std::cmp::max(input_row_count, output_row_count) as u32 * Self::GRID_SIZE;
+			let width = 5 * Self::GRID_SIZE;
+			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 
-			for node_row_index in 0..number_of_inputs {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(
-					input_top_left + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
-					input_bottom_right + corner1 + DVec2::new(0., node_row_index as f64 * 24.),
-				);
-				let input_click_target = ClickTarget { subpath, stroke_width };
-				input_click_targets.push(input_click_target);
-			}
-
-			for node_row_index in 0..number_of_outputs {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(
-					input_top_left + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
-					input_bottom_right + node_top_right + DVec2::new(0., node_row_index as f64 * 24.),
-				);
-				let output_click_target = ClickTarget { subpath, stroke_width };
-				output_click_targets.push(output_click_target);
-			}
+			let radius = 3.;
+			let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
+			ClickTarget { subpath, stroke_width: 1. }
 		} else {
+			// Inputs
 			let input_top_left = DVec2::new(-8., -8.);
 			let input_bottom_right = DVec2::new(8., 8.);
-			let layer_input_offset = corner1 + DVec2::new(2. * 24., 2. * 24. + 8.);
+			let layer_input_offset = node_top_left + DVec2::new(2. * 24., 2. * 24. + 8.);
 
 			let stroke_width = 1.;
 			let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
 			let layer_input_click_target = ClickTarget { subpath, stroke_width };
-			input_click_targets.push(layer_input_click_target);
+			port_click_targets.insert(Port::PrimaryLayerInput(layer_input_click_target));
 
 			if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
-				let layer_input_offset = corner1 + DVec2::new(0., 24.);
+				let layer_input_offset = node_top_left + DVec2::new(0., 24.);
 				let stroke_width = 1.;
 				let subpath = Subpath::new_ellipse(input_top_left + layer_input_offset, input_bottom_right + layer_input_offset);
 				let input_click_target = ClickTarget { subpath, stroke_width };
-				input_click_targets.push(input_click_target);
+				port_click_targets.insert(Port::SecondaryLayerInput(input_click_target));
 			}
 
 			// Output
-			let layer_output_offset = corner1 + DVec2::new(2. * 24., -8.);
+			let layer_output_offset = node_top_left + DVec2::new(2. * 24., -8.);
 			let stroke_width = 1.;
 			let subpath = Subpath::new_ellipse(input_top_left + layer_output_offset, input_bottom_right + layer_output_offset);
 			let layer_output_click_target = ClickTarget { subpath, stroke_width };
-			output_click_targets.push(layer_output_click_target);
+			port_click_targets.insert(layer_output_click_target);
+
+			let layer_width_grid_spaces = Self::layer_width_grid_spaces(node);
+			let width = layer_width_grid_spaces * Self::GRID_SIZE;
+			let height = 2 * Self::GRID_SIZE;
 
 			// Update visibility button click target
-			let visibility_offset = corner1 + DVec2::new(width as f64, 24.);
+			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
 			let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 			let stroke_width = 1.;
-			let layer_visibility_click_target = ClickTarget { subpath, stroke_width };
-			visibility_click_target = Some(layer_visibility_click_target);
-		}
-		NodeMetadata {
-			node_click_target,
-			input_click_targets,
-			output_click_targets,
-			visibility_click_target,
-			layer_width,
-		}
+			let visibility_click_target = ClickTarget { subpath, stroke_width };
+
+			// Create layer click target, which is contains the layer and the chain background
+			let chain_width_grid_spaces = if node.inputs.len() > 1 {
+				let mut last_chain_node_distance = 0u32;
+				// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
+				for (index, (node, _)) in network.upstream_flow_back_from_nodes(vec![current_node], graph_craft::document::FlowType::HorizontalFlow).enumerate() {
+					if Position::Chain = node.metadata.position {
+						last_chain_node_distance = index;
+					}
+				}
+				last_chain_node_distance
+			} else {
+				// Layer with no inputs has no chain
+				0
+			};
+
+			layer_metadata = Some(LayerMetadata {
+				visibility_click_target,
+				layer_width: layer_width_grid_spaces,
+				chain_width: chain_width_grid_spaces,
+			});
+
+			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
+			let chain_top_left = node_top_left - DVec2::new(chain_width_grid_spaces * Self::GRID_SIZE, 0);
+			let radius = 10.;
+			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
+			ClickTarget { subpath, stroke_width: 1. }
+		};
+
+		let connectors: HashSet<Connector> = port_click_targets.into_iter().map(|port| Connector::Node(*node_id, port)).collect();
+
+		(NodeMetadata { node_click_target, layer_metadata }, connectors)
 	}
 
 	/// Returns none if network_path is empty, since the document network does not have an Imports node.
 	pub fn new_imports_node(document_network: &NodeNetwork, network_path: &Vec<NodeId>) -> Option<NodeMetadata> {
-		let network = document_network.nested_network(nested_path).expect("Could not get nested network when creating NetworkMetadata");
+		let network = document_network.nested_network(network_path).expect("Could not get nested network when creating NetworkMetadata");
 
 		let mut encapsulating_path = network_path.clone();
 		// Import count is based on the number of inputs to the encapsulating node. If the current network is the document network, there is no import node
+		// TODO: Use length of import_types in NodeNetwork
 		encapsulating_path.pop().map(|encapsulating_node| {
 			let parent_node = document_network
 				.nested_network(&encapsulating_path)
@@ -760,94 +884,102 @@ impl NodeMetadata {
 				.expect("Last path node should always exist in encapsulating network");
 			let import_count = parent_node.inputs.len();
 
+			let node_top_left = network.imports_metadata.1.as_dvec2() * 24.;
+
+			// Skip first row since the first row is reserved for the "Exports" name
+			let mut output_row_count = import_count + 1;
 			let width = 5 * Self::GRID_SIZE;
-			// 1 is added since the first row is reserved for the "Exports" name
-			let height = (import_count + 1) as u32 * Self::GRID_SIZE;
-
-			let corner1 = IVec2::new(
-				network.imports_metadata.1.x * Self::GRID_SIZE as i32,
-				network.imports_metadata.1.y * Self::GRID_SIZE as i32 + Self::GRID_SIZE as i32 / 2,
-			);
-			let corner2 = corner1 + IVec2::new(width as i32, height as i32);
+			let height = output_row_count as u32 * Self::GRID_SIZE;
+			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-			let stroke_width = 1.;
-			let node_click_target = ClickTarget { subpath, stroke_width };
+			let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
+			let node_click_target = ClickTarget { subpath, stroke_width: 1. };
 
-			let node_top_right = network.imports_metadata.1 * Self::GRID_SIZE as i32;
-			let mut node_top_right = DVec2::new(node_top_right.x as f64 + width as f64, node_top_right.y as f64);
-			// Offset 12px due to nodes being centered, and another 24px since the first import is on the second line
-			node_top_right.y += 36.;
-			let input_top_left = DVec2::new(-8., 4.);
-			let input_bottom_right = DVec2::new(8., 20.);
-
-			// Create input/output click targets
-			let input_click_targets = Vec::new();
-			let mut output_click_targets = Vec::new();
-			let visibility_click_target = None;
-			for _ in 0..import_count {
-				let stroke_width = 1.;
-				let subpath = Subpath::new_ellipse(input_top_left + node_top_right, input_bottom_right + node_top_right);
-				let top_left_input = ClickTarget { subpath, stroke_width };
-				output_click_targets.push(top_left_input);
-
-				node_top_right.y += 24.;
-			}
 			NodeMetadata {
 				node_click_target,
-				input_click_targets,
-				output_click_targets,
-				visibility_click_target,
-				layer_width: None,
+				layer_metadata: None,
 			}
 		})
 	}
+
 	pub fn new_exports_node(document_network: &NodeNetwork, network_path: &Vec<NodeId>) -> NodeMetadata {
-		let network = document_network.nested_network(nested_path).expect("Could not get nested network when creating NetworkMetadata");
+		let network = document_network.nested_network(network_path).expect("Could not get nested network when creating NetworkMetadata");
 
+		let node_top_left = network.exports_metadata.1.as_dvec2() * 24.;
+		let input_row_count = network.exports.len() + 1;
 		let width = 5 * Self::GRID_SIZE;
-		// 1 is added since the first row is reserved for the "Exports" name
-		let height = (network.exports.len() as u32 + 1) * Self::GRID_SIZE;
-
-		let corner1 = IVec2::new(
-			network.exports_metadata.1.x * Self::GRID_SIZE as i32,
-			network.exports_metadata.1.y * Self::GRID_SIZE as i32 + Self::GRID_SIZE as i32 / 2,
-		);
-		let corner2 = corner1 + IVec2::new(width as i32, height as i32);
+		let height = input_row_count as u32 * Self::GRID_SIZE;
+		let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 		let radius = 3.;
-		let subpath = bezier_rs::Subpath::new_rounded_rect(corner1.into(), corner2.into(), [radius; 4]);
-		let stroke_width = 1.;
-		let node_click_target = ClickTarget { subpath, stroke_width };
-
-		let node_top_left = network.exports_metadata.1 * Self::GRID_SIZE as i32;
-		let mut node_top_left = DVec2::new(node_top_left.x as f64, node_top_left.y as f64);
-		// Offset 12px due to nodes being centered, and another 24px since the first export is on the second line
-		node_top_left.y += 36.;
-		let input_top_left = DVec2::new(-8., 4.);
-		let input_bottom_right = DVec2::new(8., 20.);
-
-		// Create input/output click targets
-		let mut input_click_targets = Vec::new();
-		let output_click_targets = Vec::new();
-		let visibility_click_target = None;
-
-		for _ in 0..network.exports.len() {
-			let stroke_width = 1.;
-			let subpath = Subpath::new_ellipse(input_top_left + node_top_left, input_bottom_right + node_top_left);
-			let top_left_input = ClickTarget { subpath, stroke_width };
-			input_click_targets.push(top_left_input);
-
-			node_top_left += 24.;
-		}
+		let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
+		let node_click_target = ClickTarget { subpath, stroke_width: 1. };
 
 		NodeMetadata {
 			node_click_target,
-			input_click_targets,
-			output_click_targets,
-			visibility_click_target,
-			layer_width: None,
+			layer_metadata: None,
 		}
 	}
+
+	/// Get the top left position and width for any node in the network by recursively iterating downstream
+	pub fn get_position(network: &NodeNetwork, outward_links: HashMap<NodeId, Vec<NodeId>>, node_id: &NodeId) -> IVec2 {
+		let node = network.nodes.get(node_id).expect("Node not found in get_position");
+		match node.metadata.position {
+			Position::Absolute(position) => (position),
+			Position::Chain => {
+				// Iterate through primary flow to find the first Layer
+				let mut current_node_id = node_id;
+				let mut node_distance_from_layer = 1;
+				while let downstream_node_id = outward_links
+					.get(current_node_id)
+					.and_then(|nodes| nodes.get(0))
+					.expect("Downstream layer not found for node with Position::Chain")
+				{
+					let downstream_node = network.nodes.get(downstream_node_id).expect("Downstream node not found for node with Position::Chain");
+					if downstream_node.is_layer {
+						// Get the position of the layer
+						let layer_position = NodeMetadata::get_position(network, outward_links, downstream_node_id);
+						return layer_position + IVec2::new(0, node_distance_from_layer * 8);
+					}
+					node_distance_from_layer += 1;
+					current_node_id = downstream_node_id;
+				}
+			}
+			Position::Stack(y_position) => {
+				// Iterate through primary flow to find the first non layer node layer node where the stack feeds into input index 1, or the exports node
+				let mut current_node_id = node_id;
+				while let Some(downstream_node_id) = outward_links.get(current_node_id).and_then(|nodes| nodes.get(0)) {
+					let downstream_node = network.nodes.get(downstream_node_id).expect("Downstream node not found for node with Position::Chain");
+					// The stack feeds into a non layer node
+					if !downstream_node.is_layer {
+						let downstream_node_position = NodeMetadata::get_position(network, outward_links, downstream_node_id);
+						// The stack output should be 1 coordinate left of the node
+						return downstream_node_position + IVec2::new(-3, y_position);
+					}
+					// The stack feeds into the side input of a layer node
+					else if let Some(NodeInput::Node { node_id, .. }) = downstream_node.inputs.get(1) {
+						if node_id == current_node_id {
+							let downstream_node_position = NodeMetadata::get_position(network, outward_links, downstream_node_id);
+							// The stack output should be 2 coordinates left of the layer node since there is 1 space of padding
+							return downstream_node_position + IVec2::new(-4, y_position);
+						}
+					}
+					current_node_id = downstream_node_id;
+				}
+				// The stack feeds into the exports node
+				network.exports_metadata.1 + IVec2::new(-5, y_position)
+			}
+		}
+	}
+
+	fn clicked_node(&self, point: DVec2) -> bool {
+		self.node_click_target.intersect_point(point, DAffine2::IDENTITY)
+	}
+
+	pub fn clicked_visibility(&self, point: DVec2) -> bool {
+		self.layer_metadata
+			.is_some_and(|layer_metadata| layer_metadata.visibility_click_target.intersect_point(point, DAffine2::IDENTITY))
+	}
+
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
 		let document = window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {

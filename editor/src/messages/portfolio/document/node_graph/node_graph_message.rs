@@ -1,4 +1,5 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::utility_types::network_metadata::{InputConnector, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -12,12 +13,6 @@ pub enum NodeGraphMessage {
 	// Messages
 	Init,
 	SelectedNodesUpdated,
-	ConnectNodesByWire {
-		output_node: NodeId,
-		output_node_connector_index: usize,
-		input_node: NodeId,
-		input_node_connector_index: usize,
-	},
 	Copy,
 	CloseCreateNodeMenu,
 	CreateNode {
@@ -25,6 +20,10 @@ pub enum NodeGraphMessage {
 		node_type: String,
 		x: i32,
 		y: i32,
+	},
+	CreateWire {
+		output_connector: OutputConnector,
+		input_connector: InputConnector,
 	},
 	Cut,
 	DeleteNodes {
@@ -102,8 +101,7 @@ pub enum NodeGraphMessage {
 		value: TaggedValue,
 	},
 	SetNodeInput {
-		node_id: NodeId,
-		input_index: usize,
+		input_connector: InputConnector,
 		input: NodeInput,
 	},
 	SetQualifiedInputValue {
