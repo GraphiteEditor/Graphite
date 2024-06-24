@@ -64,8 +64,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
-					let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &Vec::new(), node_id, &network_interface.resolved_types, &document_node);
-					document_node = document_node.map_ids(default_inputs, &new_ids);
+					document_node = network_interface.map_ids(document_node, &new_ids, true);
 
 					// Insert node into network
 					node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
@@ -133,56 +132,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				node_graph.insert_node(node_id, new_boolean_operation_node, document_network, &Vec::new());
 			}
-			GraphOperationMessage::DeleteLayer { layer, reconnect } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot delete ROOT_PARENT");
-					return;
-				}
-				network_interface.delete_nodes(vec![layer.to_node()], reconnect, selected_nodes, responses);
-			}
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
 				if document_network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
 					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses);
 				}
 			}
-			// Make sure to also update NodeGraphMessage::DisconnectInput when changing this
-			GraphOperationMessage::DisconnectInput { node_id, input_index } => {
-				let Some(existing_input) = document_network
-					.nodes
-					.get(&node_id)
-					.map_or_else(|| document_network.exports.get(input_index), |node| node.inputs.get(input_index))
-				else {
-					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
-					return;
-				};
-
-				let tagged_value = TaggedValue::from_type(&network_interface.get_input_type(node_id, input_index, true));
-
-				let mut input = NodeInput::value(tagged_value, true);
-				if let NodeInput::Value { exposed, .. } = &mut input {
-					*exposed = existing_input.is_exposed();
-				}
-				if node_id == document_network.exports_metadata.0 {
-					// Since it is only possible to drag the solid line, there must be a root_node_to_restore
-					if let Previewing::Yes { .. } = document_network.previewing {
-						responses.add(GraphOperationMessage::StartPreviewingWithoutRestore);
-					}
-					// If there is no preview, then disconnect
-					else {
-						responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
-					}
-				} else {
-					responses.add(GraphOperationMessage::SetNodeInput { node_id, input_index, input });
-				}
-				if document_network.connected_to_output(node_id) {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-				responses.add(NodeGraphMessage::SendGraph);
-			}
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
 				network_interface.remove_references_from_network( node_id, reconnect_to_sibling, true);
-				responses.add(GraphOperationMessage::DisconnectInput { node_id, input_index: 0 });
+				responses.add(NodeGraphMessage::DisconnectInput { input: InputConnector::node(node_id, 0), use_document_network: true });
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
@@ -322,7 +280,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 
 					// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
-					responses.add(GraphOperationMessage::DeleteLayer { layer: lower_layer, reconnect: true });
+					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![lower_layer.to_node()], reconnect: true, use_document_network: true });
 				}
 
 				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
@@ -555,7 +513,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let Some(most_upstream_sibling) = selected_siblings.last() else {
 					return;
 				};
-				responses.add(GraphOperationMessage::DisconnectInput {
+				responses.add(NodeGraphMessage::DisconnectInput {
 					node_id: *most_upstream_sibling,
 					input_index: 0,
 				});
@@ -611,8 +569,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 						// Get the new, non-conflicting id
 						let node_id = *new_ids.get(&old_id).unwrap();
-						let default_inputs = NodeGraphMessageHandler::get_default_inputs(document_network, &Vec::new(), node_id, &network_interface.resolved_types, &document_node);
-						document_node = document_node.map_ids(default_inputs, &new_ids);
+						document_node = network_interface.map_ids(document_node, &new_ids, true);
 
 						// Insert node into network
 						node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
@@ -660,7 +617,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::ClearArtboards => {
 				for &artboard in document_metadata.all_artboards() {
-					responses.add(GraphOperationMessage::DeleteLayer { layer: artboard, reconnect: true });
+					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![artboard.to_node()], reconnect: true, use_document_network: true });
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
 			}

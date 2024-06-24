@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::portfolio::document::utility_types::network_metadata::{InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_metadata::{Connector, InputConnector, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -24,18 +24,20 @@ pub enum NodeGraphMessage {
 	CreateWire {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
+		use_document_network: bool,
 	},
 	Cut,
 	DeleteNodes {
 		node_ids: Vec<NodeId>,
 		reconnect: bool,
+		use_document_network: bool,
 	},
 	DeleteSelectedNodes {
 		reconnect: bool,
 	},
 	DisconnectInput {
-		node_id: NodeId,
-		input_index: usize,
+		input: InputConnector,
+		use_document_network: bool,
 	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
@@ -103,6 +105,7 @@ pub enum NodeGraphMessage {
 	SetNodeInput {
 		input_connector: InputConnector,
 		input: NodeInput,
+		use_document_network: bool,
 	},
 	SetQualifiedInputValue {
 		node_id: NodeId,
@@ -132,9 +135,6 @@ pub enum NodeGraphMessage {
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
-	},
-	StartPreviewingWithoutRestore {
-		node_id: NodeId,
 	},
 	TogglePreview {
 		node_id: NodeId,

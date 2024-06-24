@@ -191,10 +191,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::PropertiesPanel(message) => {
 				let properties_panel_message_handler_data = PropertiesPanelMessageHandlerData {
-					document_network: &self.document_network(),
+					network_interface: &self.network_interface,
 					document_metadata: &mut self.metadata,
 					document_name: self.name.as_str(),
-					network_path: &self.network_interface.network_path(),
 					selected_nodes: &self.selected_nodes,
 					executor,
 				};
@@ -313,17 +312,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::DebugPrintDocument => {
 				info!("{:#?}", self.network_interface);
 			}
-			DocumentMessage::DeleteLayer { layer } => {
-				responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true });
-				responses.add_front(BroadcastEvent::ToolAbort);
-			}
 			DocumentMessage::DeleteSelectedLayers => {
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
 					// `path` will never include `ROOT_PARENT`, so this is safe
-					responses.add_front(DocumentMessage::DeleteLayer { layer: *path.last().unwrap() });
+					responses.add_front(NodeGraphMessage::DeleteNodes { node_ids: vec![layer.to_node()], reconnect: true, use_document_network: true });
+					responses.add_front(BroadcastEvent::ToolAbort);
 				}
 			}
 			DocumentMessage::DeselectAllLayers => {
@@ -1070,7 +1066,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Delete folder and all horizontal inputs, also deletes node in metadata
-					responses.add(GraphOperationMessage::DeleteLayer { layer: folder, reconnect: true });
+					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![folder.to_node()], reconnect: true, use_document_network: true });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);

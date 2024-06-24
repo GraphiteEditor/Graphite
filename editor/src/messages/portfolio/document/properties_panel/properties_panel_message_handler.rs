@@ -10,10 +10,9 @@ pub struct PropertiesPanelMessageHandler {}
 impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPanelMessageHandlerData<'a>)> for PropertiesPanelMessageHandler {
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, (persistent_data, data): (&PersistentData, PropertiesPanelMessageHandlerData)) {
 		let PropertiesPanelMessageHandlerData {
-			document_network,
+			network_interface,
 			document_metadata: metadata,
 			document_name,
-			network_path,
 			selected_nodes,
 			executor,
 		} = data;
@@ -33,9 +32,8 @@ impl<'a> MessageHandler<PropertiesPanelMessage, (&PersistentData, PropertiesPane
 				let mut context = NodePropertiesContext {
 					persistent_data,
 					responses,
-					nested_path: &node_graph_message_handler.network,
 					executor,
-					document_network: network,
+					network_interface,
 					metadata,
 				};
 

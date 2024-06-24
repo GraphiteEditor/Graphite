@@ -101,11 +101,11 @@ impl SelectedNodes {
 		self.selected_layers(metadata).any(|selected| selected == layer)
 	}
 
-	// All selected nodes must be in the same network
+	// Ensures all selected nodes must be in the same network
 	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
 		self.0
 			.iter()
-			.filter(|node_id| network.nodes.contains_key(*node_id) || **node_id == network.imports_metadata.0 || **node_id == network.exports_metadata.0)
+			.filter(|node_id| network.nodes.contains_key(*node_id))
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {

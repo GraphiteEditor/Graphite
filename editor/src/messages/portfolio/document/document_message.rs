@@ -44,9 +44,6 @@ pub enum DocumentMessage {
 	CommitTransaction,
 	CreateEmptyFolder,
 	DebugPrintDocument,
-	DeleteLayer {
-		layer: LayerNodeIdentifier,
-	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
 	DocumentHistoryBackward,

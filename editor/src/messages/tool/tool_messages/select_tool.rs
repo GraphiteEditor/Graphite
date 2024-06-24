@@ -361,10 +361,9 @@ impl SelectToolData {
 					});
 			};
 			let nodes: HashMap<NodeId, DocumentNode> = NodeGraphMessageHandler::copy_nodes(
-				document.document_network(),
-				&document.node_graph_handler.network,
-				&document.network_interface.resolved_types,
+				&document.network_interface,
 				&copy_ids,
+				true,
 			)
 			.collect();
 

@@ -28,16 +28,8 @@ pub enum GraphOperationMessage {
 		node_id: NodeId,
 		operation: BooleanOperation,
 	},
-	DeleteLayer {
-		layer: LayerNodeIdentifier,
-		reconnect: bool,
-	},
 	// TODO: Eventually remove this (probably starting late 2024)
 	DeleteLegacyOutputNode,
-	DisconnectInput {
-		node_id: NodeId,
-		input_index: usize,
-	},
 	DisconnectNodeFromStack {
 		node_id: NodeId,
 		reconnect_to_sibling: bool,

@@ -404,29 +404,7 @@ impl DocumentNode {
 			world_state_hash: self.world_state_hash,
 		}
 	}
-
-	/// Converts all node id inputs to a new id based on a HashMap.
-	///
-	/// If the node is not in the hashmap then a default input is found based on the compiled network
-	pub fn map_ids(mut self, default_inputs: Vec<NodeInput>, new_ids: &HashMap<NodeId, NodeId>) -> Self {
-		for (input_index, input) in self.inputs.iter_mut().enumerate() {
-			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
-				if let Some(&new_id) = new_ids.get(&id) {
-					*input = NodeInput::Node {
-						node_id: new_id,
-						output_index,
-						lambda,
-					};
-				} else {
-					*input = default_inputs[input_index].clone();
-				}
-			} else if let &mut NodeInput::Network { .. } = input {
-				*input = default_inputs[input_index].clone();
-			}
-		}
-		self
-	}
-
+	
 	pub fn is_artboard(&self) -> bool {
 		// TODO: Use something more robust than checking against a string.
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
@@ -507,6 +485,15 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network { .. } => true,
+			NodeInput::Inline(_) => false,
+		}
+	}
+	// Network node inputs in the document network are not displayed, but still exist in the compiled network
+	pub fn is_exposed_to_frontend(&self, is_document_network: bool) -> bool {
+		match self {
+			NodeInput::Node { .. } => true,
+			NodeInput::Value { exposed, .. } => *exposed,
+			NodeInput::Network { .. } => !is_document_network,
 			NodeInput::Inline(_) => false,
 		}
 	}
@@ -832,34 +819,12 @@ impl NodeNetwork {
 
 	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		// let mut network = Some(self);
+		let mut network = Some(self);
 
-		// for segment in nested_path {
-		// 	network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
-		// }
-		network
-	}
-
-	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
-	//TODO: remove
-	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
-		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
-			Some(self)
-		} else {
-			self.nested_network(nested_path)
+		for segment in nested_path {
+			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
 		}
-	}
-
-	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
-	//TODO: Remove
-	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
-		panic!("No mutable references should be created");
-		None
-		// if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
-		// 	Some(self)
-		// } else {
-		// 	self.nested_network_mut(nested_path)
-		// }
+		network
 	}
 
 	/// Check if the specified node id is connected to the output

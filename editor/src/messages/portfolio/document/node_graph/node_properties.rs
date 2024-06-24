@@ -1655,7 +1655,7 @@ pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context
 }
 
 pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let imaginate_node = [context.nested_path, &[node_id]].concat();
+	let imaginate_node = [context.network_interface.network_path().clone(), &[node_id]].concat();
 
 	let resolve_input = |name: &str| IMAGINATE_NODE.inputs.iter().position(|input| input.name == name).unwrap_or_else(|| panic!("Input {name} not found"));
 	let seed_index = resolve_input("Seed");
@@ -1865,7 +1865,7 @@ pub fn imaginate_properties(document_node: &DocumentNode, node_id: NodeId, conte
 	let image_size = context
 		.executor
 		.introspect_node_in_network(
-			context.document_network,
+			context.network_interface.document_network()
 			&imaginate_node,
 			|network| {
 				network

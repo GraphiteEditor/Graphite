@@ -214,10 +214,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 						buffer.push(CopyBufferEntry {
 							nodes: NodeGraphMessageHandler::copy_nodes(
-								active_document.document_network(),
-								&active_document.node_graph_handler.network,
-								&active_document.network_interface.resolved_types,
+								&active_document.network_interface,
 								&copy_ids,
+								true
 							)
 							.collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
