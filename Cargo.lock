@@ -1004,6 +1004,7 @@ dependencies = [
  "graphene-core",
  "reqwest",
  "serde_json",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -2193,6 +2194,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -3078,6 +3080,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "serde",
+ "wgpu",
  "wgpu-executor",
 ]
 
@@ -7341,6 +7344,7 @@ dependencies = [
  "graph-craft",
  "graphene-core",
  "log",
+ "node-macro",
  "num-traits",
  "nvtx",
  "serde",

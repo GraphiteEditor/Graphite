@@ -1,3 +1,4 @@
+use crate::application_io::{SurfaceHandle, SurfaceHandleFrame};
 use crate::raster::{BlendMode, ImageFrame};
 use crate::renderer::GraphicElementRendered;
 use crate::transform::Footprint;
@@ -7,6 +8,7 @@ use crate::{Color, Node, SurfaceFrame};
 use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
 use node_macro::node_fn;
+use web_sys::HtmlCanvasElement;
 
 use core::future::Future;
 use core::ops::{Deref, DerefMut};
@@ -255,6 +257,20 @@ impl From<Artboard> for GraphicElement {
 impl From<SurfaceFrame> for GraphicElement {
 	fn from(surface: SurfaceFrame) -> Self {
 		GraphicElement::Surface(surface)
+	}
+}
+impl From<alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>> for GraphicElement {
+	fn from(surface: alloc::sync::Arc<SurfaceHandleFrame<HtmlCanvasElement>>) -> Self {
+		let surface_id = surface.surface_handle.surface_id;
+		let transform = surface.transform;
+		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
+	}
+}
+impl From<SurfaceHandleFrame<HtmlCanvasElement>> for GraphicElement {
+	fn from(surface: SurfaceHandleFrame<HtmlCanvasElement>) -> Self {
+		let surface_id = surface.surface_handle.surface_id;
+		let transform = surface.transform;
+		GraphicElement::Surface(SurfaceFrame { surface_id, transform })
 	}
 }
 

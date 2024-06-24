@@ -1,6 +1,6 @@
 use gpu_compiler_bin_wrapper::CompileRequest;
-use gpu_executor::ShaderIO;
 use graph_craft::{proto::ProtoNetwork, Type};
+use wgpu_executor::ShaderIO;
 
 pub async fn compile(networks: Vec<ProtoNetwork>, inputs: Vec<Type>, outputs: Vec<Type>, io: ShaderIO) -> Result<Shader, reqwest::Error> {
 	let client = reqwest::Client::new();

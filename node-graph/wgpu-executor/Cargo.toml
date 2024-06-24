@@ -13,12 +13,13 @@ passthrough = []
 
 [dependencies]
 graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
+node-macro = { workspace = true }
 graph-craft = { workspace = true }
 gpu-executor = { path = "../gpu-executor" }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 num-traits = { workspace = true }
 log = { workspace = true }
-serde = { workspace = true, optional = true }
+serde = { workspace = true }
 glam = { workspace = true }
 base64 = { workspace = true }
 bytemuck = { workspace = true }
