@@ -10,7 +10,7 @@ use graph_craft::document::{generate_uuid, DocumentNodeImplementation, NodeId, N
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::proto::GraphErrors;
-use graphene_core::application_io::{NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_core::application_io::{AnimationConfig, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_core::memo::IORecord;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::{ClickTarget, GraphicElementRendered, ImageRenderMode, RenderParams, SvgRender};
@@ -193,6 +193,8 @@ impl NodeRuntime {
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
+		// Temporarily hash the time so we force re-insert the nodes each frame
+		editor_api.render_config.animation_config.time.to_bits().hash(&mut graph_input_hash);
 		let font_hash_code = graph_input_hash.finish();
 		graph.hash(&mut graph_input_hash);
 		let hash_code = graph_input_hash.finish();
@@ -219,14 +221,17 @@ impl NodeRuntime {
 			};
 
 			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
+			info!("Beginning to update executor");
 			if let Err(e) = self.executor.update(proto_network).await {
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);
 			}
+			info!("Finished updating exector - during this point secondary non-async inputs have been already evaluated");
 			self.resolved_types = self.executor.document_node_types();
 		}
 
+		info!("Running graph input {:?}", self.executor.input_type());
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
@@ -456,6 +461,10 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph, computing the entire graph
 	pub fn submit_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2) -> Result<(), String> {
+		self.submit_node_graph_evaluation_with_animation(document, viewport_resolution, Default::default())
+	}
+
+	pub fn submit_node_graph_evaluation_with_animation(&mut self, document: &mut DocumentMessageHandler, viewport_resolution: UVec2, animation_config: AnimationConfig) -> Result<(), String> {
 		// Get the node graph layer
 		let network = document.network().clone();
 
@@ -469,6 +478,7 @@ impl NodeGraphExecutor {
 			export_format: graphene_core::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_core::application_io::ExportFormat::Svg,
+			animation_config,
 			view_mode: document.view_mode,
 			hide_artboards: false,
 			for_export: false,
@@ -503,6 +513,7 @@ impl NodeGraphExecutor {
 				..Default::default()
 			},
 			export_format: graphene_core::application_io::ExportFormat::Svg,
+			animation_config: Default::default(),
 			view_mode: document.view_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
@@ -519,7 +530,7 @@ impl NodeGraphExecutor {
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(graphene_std::wasm_application_io::RenderOutput::Svg(svg)) = node_graph_output else {
-			return Err("Incorrect render type for exportign (expected RenderOutput::Svg)".to_string());
+			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
 		};
 
 		let ExportConfig {

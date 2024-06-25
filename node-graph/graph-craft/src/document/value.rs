@@ -3,6 +3,7 @@ use crate::graphene_compiler::Any;
 pub use crate::imaginate_input::{ImaginateCache, ImaginateController, ImaginateMaskStartingFill, ImaginateSamplingMethod};
 use crate::proto::{Any as DAny, FutureAny};
 
+use graphene_core::animation::keyframe::KeyframesF64;
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
 use graphene_core::{Color, Node, Type};
@@ -29,6 +30,7 @@ pub enum TaggedValue {
 	DVec2(DVec2),
 	OptionalDVec2(Option<DVec2>),
 	DAffine2(DAffine2),
+	AnimationF64(KeyframesF64),
 	Image(graphene_core::raster::Image<Color>),
 	ImaginateCache(ImaginateCache),
 	ImageFrame(graphene_core::raster::ImageFrame<Color>),
@@ -104,6 +106,7 @@ impl Hash for TaggedValue {
 				Self::DVec2(*x).hash(state)
 			}
 			Self::DAffine2(x) => x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state)),
+			Self::AnimationF64(x) => x.keyframes.iter().for_each(|keyframe| (Self::F64(keyframe.time), Self::F64(keyframe.value)).hash(state)),
 			Self::Image(x) => x.hash(state),
 			Self::ImaginateCache(x) => x.hash(state),
 			Self::Color(x) => x.hash(state),
@@ -184,6 +187,7 @@ impl<'a> TaggedValue {
 			TaggedValue::DVec2(x) => Box::new(x),
 			TaggedValue::OptionalDVec2(x) => Box::new(x),
 			TaggedValue::DAffine2(x) => Box::new(x),
+			TaggedValue::AnimationF64(x) => Box::new(x),
 			TaggedValue::Image(x) => Box::new(x),
 			TaggedValue::ImaginateCache(x) => Box::new(x),
 			TaggedValue::ImageFrame(x) => Box::new(x),
@@ -275,6 +279,7 @@ impl<'a> TaggedValue {
 			TaggedValue::IVec2(_) => concrete!(IVec2),
 			TaggedValue::DVec2(_) => concrete!(DVec2),
 			TaggedValue::OptionalDVec2(_) => concrete!(Option<DVec2>),
+			TaggedValue::AnimationF64(_) => concrete!(KeyframesF64),
 			TaggedValue::Image(_) => concrete!(graphene_core::raster::Image<Color>),
 			TaggedValue::ImaginateCache(_) => concrete!(ImaginateCache),
 			TaggedValue::ImageFrame(_) => concrete!(graphene_core::raster::ImageFrame<Color>),

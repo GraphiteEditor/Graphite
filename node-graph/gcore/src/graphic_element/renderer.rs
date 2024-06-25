@@ -642,6 +642,10 @@ impl<T: Primitive> GraphicElementRendered for T {
 			flattened: None,
 		}))
 	}
+
+	fn contains_artboard(&self) -> bool {
+		true
+	}
 }
 
 impl GraphicElementRendered for Option<Color> {

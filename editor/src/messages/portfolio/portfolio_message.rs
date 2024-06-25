@@ -13,6 +13,8 @@ pub enum PortfolioMessage {
 	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
+	#[child]
+	Animation(AnimationMessage),
 
 	// Messages
 	DocumentPassMessage {

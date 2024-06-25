@@ -6,6 +6,7 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+use animation::keyframe::KeyframesF64;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
@@ -125,6 +126,22 @@ fn monitor_node() -> DocumentNode {
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 fn static_nodes() -> Vec<DocumentNodeDefinition> {
 	vec![
+		DocumentNodeDefinition {
+			name: "Animatable Number",
+			category: "Animation",
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::animation::AnimationF64Node<_>")),
+			inputs: vec![
+				DocumentInputType {
+					name: "Editor API",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
+				},
+				DocumentInputType::value("Keyframes", TaggedValue::AnimationF64(KeyframesF64::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Number)],
+			properties: node_properties::animatable_number_properties,
+			..Default::default()
+		},
 		DocumentNodeDefinition {
 			name: "Boolean",
 			category: "Inputs",

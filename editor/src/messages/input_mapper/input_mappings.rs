@@ -51,6 +51,13 @@ pub fn input_mappings() -> Mapping {
 		//
 		// Hack to prevent LMB + CTRL (OPTION) + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, Lmb], action_dispatch=DocumentMessage::Noop),
+		//
+		// AnimationMessage
+		entry!(KeyDown(F6); action_dispatch=AnimationMessage::NextFrame),
+		entry!(KeyDown(F4); action_dispatch=AnimationMessage::Restart),
+		entry!(KeyDown(F7); action_dispatch=AnimationMessage::Play),
+		entry!(KeyDown(F9); action_dispatch=AnimationMessage::Pause),
+		//
 		// NodeGraphMessage
 		entry!(KeyDown(Lmb); action_dispatch=NodeGraphMessage::PointerDown {shift_click: false, control_click: false, alt_click: false, right_click: false}),
 		entry!(KeyDown(Lmb); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown {shift_click: true, control_click: false, alt_click: false, right_click: false}),

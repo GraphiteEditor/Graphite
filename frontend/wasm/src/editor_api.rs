@@ -140,27 +140,45 @@ impl EditorHandle {
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
-			*g.borrow_mut() = Some(Closure::new(move |timestamp| {
-				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+			let window = web_sys::window().unwrap();
+			if let Some(perf) = window.performance() {
+				let mut then = perf.now();
 
-				editor_and_handle(|editor, handle| {
-					let micros: f64 = timestamp * 1000.;
-					let timestamp = Duration::from_micros(micros.round() as u64);
+				*g.borrow_mut() = Some(Closure::new(move |timestamp| {
+					wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
-					for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
-						handle.send_frontend_message_to_js(message);
-					}
+					editor_and_handle(|editor, handle| {
+						let micros: f64 = timestamp * 1000.;
+						let timestamp = Duration::from_micros(micros.round() as u64);
 
-					for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-						handle.send_frontend_message_to_js(message);
-					}
-				});
+						for message in editor.handle_message(InputPreprocessorMessage::FrameTimeAdvance { timestamp }) {
+							handle.send_frontend_message_to_js(message);
+						}
 
-				// Schedule ourself for another requestAnimationFrame callback
-				request_animation_frame(f.borrow().as_ref().unwrap());
-			}));
+						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
+							handle.send_frontend_message_to_js(message);
+						}
 
-			request_animation_frame(g.borrow().as_ref().unwrap());
+						if let Some(handler) = editor.dispatcher.message_handlers.portfolio_message_handler.active_animation_handler() {
+							let frame_delay = 1000. / handler.animation_config.frame_rate as f64;
+							let now = perf.now();
+							let time_delta = now - then;
+
+							if time_delta > frame_delay {
+								then = now - (time_delta % frame_delay);
+								for message in editor.handle_message(AnimationMessage::NextFrame) {
+									handle.send_frontend_message_to_js(message);
+								}
+							}
+						}
+					});
+
+					// Schedule ourself for another requestAnimationFrame callback
+					request_animation_frame(f.borrow().as_ref().unwrap());
+				}));
+
+				request_animation_frame(g.borrow().as_ref().unwrap());
+			}
 		}
 
 		// Auto save all documents on `setTimeout`

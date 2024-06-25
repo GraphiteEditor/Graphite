@@ -1,6 +1,7 @@
 mod portfolio_message;
 mod portfolio_message_handler;
 
+pub mod animation;
 pub mod document;
 pub mod menu_bar;
 pub mod utility_types;

@@ -12,6 +12,7 @@ pub enum FrontendGraphDataType {
 	Number,
 	Graphic,
 	Artboard,
+	AnimatableNumber,
 }
 
 impl FrontendGraphDataType {
@@ -31,6 +32,7 @@ impl FrontendGraphDataType {
 			| TaggedValue::VecDVec2(_) => Self::Number,
 			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Graphic,
 			TaggedValue::ArtboardGroup(_) => Self::Artboard,
+			TaggedValue::AnimationF64(_) => Self::AnimatableNumber,
 			_ => Self::General,
 		}
 	}

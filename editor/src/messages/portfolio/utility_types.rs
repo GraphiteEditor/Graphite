@@ -1,9 +1,10 @@
-use graphene_std::{imaginate::ImaginatePersistentData, text::FontCache};
+use graphene_std::{application_io::AnimationConfig, imaginate::ImaginatePersistentData, text::FontCache};
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub imaginate: ImaginatePersistentData,
+	pub animation: AnimationConfig,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
