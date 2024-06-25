@@ -381,7 +381,6 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
 	let resolution = footprint.resolution;
-	let oversample = footprint.resolution.as_dvec2() / size;
 	let render_params = RenderParams {
 		culling_bounds: None,
 		..Default::default()
