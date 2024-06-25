@@ -57,6 +57,7 @@ in
     ];
 
     # Hacky way to run cago through Mold
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl];
     shellHook = ''
     alias cargo='mold --run cargo'
     '';

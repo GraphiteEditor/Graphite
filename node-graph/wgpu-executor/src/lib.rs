@@ -212,6 +212,7 @@ impl WgpuExecutor {
 			wgpu::util::TextureDataOrder::LayerMajor,
 			bytes.as_ref(),
 		);
+		log::debug!("{buffer:?}");
 		match options {
 			TextureBufferOptions::Storage => Ok(ShaderInput::StorageTextureBuffer(buffer, T::ty())),
 			TextureBufferOptions::Texture => Ok(ShaderInput::TextureBuffer(buffer, T::ty())),
@@ -337,7 +338,7 @@ impl WgpuExecutor {
 			Ok(surface) => surface,
 		};
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-			format: Some(wgpu::TextureFormat::Bgra8Unorm),
+			// format: Some(wgpu::TextureFormat::Bgra8Unorm),
 			..Default::default()
 		});
 		let output_texture_bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -452,6 +453,7 @@ impl WgpuExecutor {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
+		log::debug!("caps: {surface_caps:?}");
 		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -459,7 +461,7 @@ impl WgpuExecutor {
 			width: 1920,
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
-			alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
 			desired_maximum_frame_latency: 2,
 		};
