@@ -1,5 +1,6 @@
 use base64::Engine;
 use dyn_any::StaticType;
+use glam::{DAffine2, DVec2};
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
@@ -370,7 +371,7 @@ pub struct RasterizeNode<Footprint, Surface> {
 }
 
 #[node_macro::node_fn(RasterizeNode)]
-async fn rasterize<_T: GraphicElementRendered + TransformMut>(data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
 	let mut render = SvgRender::new();
 
 	if footprint.transform.matrix2.determinant() == 0. {
@@ -378,19 +379,20 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(data: _T, footprin
 		return ImageFrame::default();
 	}
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
-	let bounds = aabb.size();
+	let size = aabb.size();
 	let render_params = RenderParams {
 		culling_bounds: None,
 		..Default::default()
 	};
 
+	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
 	data.render_svg(&mut render, &render_params);
-	render.format_svg(glam::DVec2::ZERO, bounds);
-	let svg_string = render.svg.to_svg_string().as_bytes();
+	render.format_svg(glam::DVec2::ZERO, size);
+	let svg_string = render.svg.to_svg_string();
 
 	let canvas = &surface_handle.surface;
-	canvas.set_width(bounds.x as u32);
-	canvas.set_height(bounds.y as u32);
+	canvas.set_width(size.x as u32);
+	canvas.set_height(size.y as u32);
 
 	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 
@@ -402,11 +404,11 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(data: _T, footprin
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
 	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element(&image_data, -aabb.start.x, -aabb.start.y).unwrap();
+	context.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., size.x, size.y).unwrap();
 
-	let rasterized = context.get_image_data(0., 0., bounds.x, bounds.y).unwrap();
+	let rasterized = context.get_image_data(0., 0., size.x, size.y).unwrap();
 
-	let image = Image::from_image_data(&rasterized.data().0, bounds.x as u32, bounds.y as u32);
+	let image = Image::from_image_data(&rasterized.data().0, size.x as u32, size.y as u32);
 	ImageFrame {
 		image,
 		transform: footprint.transform,
