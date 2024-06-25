@@ -404,7 +404,7 @@ impl DocumentNode {
 			world_state_hash: self.world_state_hash,
 		}
 	}
-	
+
 	pub fn is_artboard(&self) -> bool {
 		// TODO: Use something more robust than checking against a string.
 		// TODO: Or, more fundamentally separate the concept of a layer from a node.
@@ -993,14 +993,14 @@ impl NodeNetwork {
 			.collect();
 	}
 
-	/// Collect a hashmap of nodes with a list of the nodes that use it as input
-	pub fn collect_outward_wires(&self) -> HashMap<NodeId, Vec<NodeId>> {
+	/// Collect a hashmap of nodes with a list of the nodes and input indices that use it as input
+	pub fn collect_outward_wires(&self) -> HashMap<NodeId, Vec<(NodeId, usize)>> {
 		let mut outward_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (current_node_id, node) in &self.nodes {
-			for input in &node.inputs {
+			for (input_index, input) in node.inputs.iter().enumerate() {
 				if let NodeInput::Node { node_id, .. } = input {
 					let outward_wires_entry = outward_wires.entry(*node_id).or_default();
-					outward_wires_entry.push(*current_node_id);
+					outward_wires_entry.push((*current_node_id, input_index));
 				}
 			}
 		}

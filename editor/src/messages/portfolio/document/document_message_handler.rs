@@ -318,7 +318,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add_front(BroadcastEvent::SelectionChanged);
 				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
 					// `path` will never include `ROOT_PARENT`, so this is safe
-					responses.add_front(NodeGraphMessage::DeleteNodes { node_ids: vec![layer.to_node()], reconnect: true, use_document_network: true });
+					responses.add_front(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![layer.to_node()],
+						reconnect: true,
+						use_document_network: true,
+					});
 					responses.add_front(BroadcastEvent::ToolAbort);
 				}
 			}
@@ -1066,7 +1070,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Delete folder and all horizontal inputs, also deletes node in metadata
-					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![folder.to_node()], reconnect: true, use_document_network: true });
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![folder.to_node()],
+						reconnect: true,
+						use_document_network: true,
+					});
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1188,7 +1196,7 @@ impl DocumentMessageHandler {
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
 			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
-			.filter(move |(layer, target)| target.iter().any(|target: &ClickTarget| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
+			.filter(move |(layer, target)| target.iter().any(|target: &d| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 

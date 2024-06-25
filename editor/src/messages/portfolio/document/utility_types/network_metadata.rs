@@ -25,23 +25,20 @@ use crate::messages::{
 use super::{document_metadata::LayerNodeIdentifier, misc::PTZ, nodes::SelectedNodes};
 
 /// Network modification interface. All network modifications should be done through this API
-#[derive(Debug, Clone, Default)]
-#[serde(default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
 	network: NodeNetwork,
-	// TODO: Create a EditorNetwork struct that mirrors the NodeNetwork and is used to store DocumentNodeMetadata
 	// editor_network_data: EditorNetworkData,
 	// Path to the current nested network
 	network_path: Vec<NodeId>,
 	/// Stores all editor information for a NodeNetwork. For the network this includes viewport transforms, outward links, and bounding boxes. For nodes this includes click target, position, and alias
 	/// network_metadata will initialize it if it does not exist, so it cannot be public. If NetworkMetadata exists, then it must be correct. If it is possible for NetworkMetadata to become stale, it should be removed.
-	#[serde(skip)]
 	network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
-	// These fields have no side effects are are not related to the network state, although they are stored for every network. Maybe this field should be moved to DocumentMessageHandler?
-	#[serde(skip)]
+	// These fields have no side effects are are not related to the network state, although they are stored for every network. Probably should be moved to DocumentMessageHandler, but this is a convenient place to store it.
 	navigation_metadata: HashMap<Vec<NodeId>, NavigationMetadata>,
+	/// All input/output types based on the compiled network.
 	#[serde(skip)]
 	pub resolved_types: ResolvedDocumentNodeTypes,
 }
@@ -88,7 +85,16 @@ impl NodeNetworkInterface {
 
 	/// Returns network_metadata for the current or document network, and creates a default if it does not exist
 	pub fn network_metadata(&self, use_document_network: bool) -> &NetworkMetadata {
+		// TODO: ensure that network metadata fields are not None
 		&self
+			.network_metadata
+			.entry(if use_document_network { Vec::new() } else { self.network_path.clone() })
+			.or_insert_with(|| NetworkMetadata::new(&self.network, &self.network_path))
+	}
+
+	// Do not make this public
+	fn network_metadata_mut(&mut self, use_document_network: bool) -> &mut NetworkMetadata {
+		self
 			.network_metadata
 			.entry(if use_document_network { Vec::new() } else { self.network_path.clone() })
 			.or_insert_with(|| NetworkMetadata::new(&self.network, &self.network_path))
@@ -276,7 +282,7 @@ impl NodeNetworkInterface {
 	}
 }
 
-// Setter methods for changes in the document network not directly to position
+// Setter methods for changes to a network not directly to position
 // TODO: assert!(!self.network_interface.document_network().nodes.contains_key(&id), "Creating already existing node");
 impl NodeNetworkInterface {
 	/// Replaces the current network with another, and returns the old network. Since changes can be made to various sub networks, all network_metadata is reset.
@@ -582,11 +588,20 @@ impl NodeNetworkInterface {
 		self.network_path.pop();
 	}
 
+	pub fn exit_all_nested_networks(&mut self) {
+		self.network_path.clear();
+	}
+
 	pub fn start_previewing_without_restore(&mut self) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
 		// self.network.start_previewing_without_restore();
 	}
 
+	pub fn set_to_node_or_layer(&mut self, node_id: NodeId, is_layer: bool) {
+		let use_document_network = self.selected_nodes_in_document_network(std::iter::once(&node_id));
+		let network_metadata = self.network_metadata_mut(use_document_network);
+		network_metadata.set_to_node_or_layer(node_id, is_layer);
+	}
 }
 
 // Layout setter methods for handling position and bounding boxes
@@ -636,7 +651,8 @@ impl NodeNetworkInterface {
 }
 
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
-#[derive(Debug, Clone)]
+// TODO: Should this be moved to document.rs? Every network needs a way to represent input connectors.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub enum InputConnector {
 	Node {node_id: NodeId, input_port: InputPort},
 	Export(InputPort),
@@ -655,7 +671,8 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+// TODO: Should this be moved to document.rs? Every network needs a way to represent output connectors.
 pub enum OutputConnector {
 	Node {node_id: NodeId, output_port: OutputPort},
 	Import(OutputPort),
@@ -673,7 +690,8 @@ impl OutputConnector {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
+// TODO: Probably not necessary to store this an a struct, but is helpful to ensure that the input/output indices aren't mixed up.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct InputPort(usize);
 
 impl InputPort {
@@ -682,7 +700,8 @@ impl InputPort {
 	}
 }
 
-#[derive(Debug, Clone, Copy)]
+// TODO: Probably not necessary to store this an a struct, but is helpful to ensure that the input/output indices aren't mixed up.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct OutputPort(usize);
 
 impl OutputPort {
@@ -756,26 +775,31 @@ impl Ports {
 	}
 }
 
-/// All fields in NetworkMetadata should automatically be updated by using the network interface API
-#[derive(Debug, Clone)]
+/// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkMetadata {
 	/// Stores the callers of a node by storing all nodes that use it as an input
-	outward_wires: HashMap<NodeId, Vec<NodeId>>,
+	#[serde(skip)]
+	outward_wires: Option<HashMap<NodeId, Vec<InputConnector>>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
-	/// Click targets and layer widths for every layer in the network
-	layer_metadata: HashMap<NodeId, LayerMetadata>,
-	/// Click targets for every non layer node in the network 
-	node_metadata: HashMap<NodeId, NodeMetadata>,
+	/// TODO: Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
+	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
+	/// Node metadata for every document node in the network 
+	node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
 	/// Import node click targets, which may not exist, such as in the document network
 	/// TODO: Delete this and replace with inputs placed on edges of the graph UI
+	#[serde(skip)]
 	import_node_click_target: Option<(NodeId, ClickTarget)>,
 	/// Import node click targets
 	/// TODO: Delete this and replace with outputs placed on edges of the graph UI
+	#[serde(skip)]
 	export_node_click_target: (NodeId, ClickTarget),
 	/// All import connector click targets
+	#[serde(skip)]
 	import_ports: Ports,
 	/// All export connector click targets
+	#[serde(skip)]
 	export_ports: Ports,
 }
 
@@ -787,7 +811,12 @@ impl NetworkMetadata {
 		let network = document_network.nested_network(nested_path).expect("Could not get nested network when creating NetworkMetadata");
 
 		// Collect all outward_wires
-		let outward_wires = network.collect_outward_wires();
+		let outward_wires = network.collect_outward_wires().iter().map(|(node_id, downstream_inputs)| {
+			let input_connectors = downstream_inputs.into_iter().map(|(node_id, input_index)| {
+				InputConnector::node(node_id, input_index)
+			}).collect::<Vec<InputConnector>>();
+			(node_id, input_connectors)
+		}).collect::<HashMap<NodeId, Vec<InputConnector>>>();
 
 		// Create all node metadata
 		// TODO: Instead of iterating over all nodes randomly which then have to iterate downstream in order to get each nodes position, iterate a single time from the exports node upstream to get the position of all the nodes with Chain and Stack position
@@ -887,23 +916,51 @@ impl NetworkMetadata {
 	}
 }
 
+// Setter methods, only can be called through the network interface API
+impl NetworkMetadata {
+	pub fn set_to_node_or_layer(&mut self, node_id: NodeId, is_layer:bool) {
+		// Break stack if layer node is toggled to node, create stack if node is toggled to layer
+		// Update click target
+	}
+}
+
+/// A [`DocumentNode`] can either be a layer or a non layer node
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum DocumentNodeMetadata {
+	Layer(LayerMetadata),
+	Node(NodeMetadata),
+}
+
+/// A layer can either be position as Absolute or in a Stack
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum LayerPosition {
+	Absolute(DVec2),
+	// A layer is in a Stack when it feeds into the secondary input of a layer input. The Y position stores the vertical distance between the layer and its parent.
+	Stack(u32),
+}
+
 /// All fields in LayerMetadata should automatically be updated by using the network interface API
-/// If performance is a concern then also cache the absolute position for each node
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LayerMetadata {
 	/// Ensure layer_click_target is kept in sync when modifying a node property that changes its size. Currently this is the alias or any changes to the upstream chain
+	#[serde(skip)]
 	layer_click_target: ClickTarget,
 	/// Stores all port click targets in node graph space in order of the port index
+	#[serde(skip)]
 	port_click_targets: Ports,
 	/// Cache for all visibility buttons. Should be automatically updated when update_click_target is called
+	#[serde(skip)]
 	visibility_click_target: ClickTarget,
 	// TODO: Store click target for the preview button, which will appear when the node is a selected/(hovered?) layer node
 	// preview_click_target: Option<ClickTarget>,
-	
+	/// Stores the position of a layer node, which can either be Absolute or Stack
+	/// If performance is a concern then also cache the absolute position for each node
+	position: LayerPosition,
+	alias: String,
+	locked: bool,
 	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
 	/// This is necessary since calculating the layer width through web_sys is very slow
 	layer_width: u32,
-
 	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
 	/// Should not be a performance concern to calculate when needed with get_chain_width.
 	// chain_width: u32,
@@ -969,14 +1026,28 @@ impl LayerMetadata {
 	}
 }
 
+/// A node can either be position as Absolute or in a Chain
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum NodePosition {
+	Absolute(DVec2),
+	// In a chain the position is based on the number of nodes to the first layer node
+	Chain,
+}
+
 /// All fields in NodeMetadata should automatically be updated by using the network interface API
 /// If performance is a concern then also cache the absolute position for each node
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeMetadata {
 	/// Ensure node_click_target is kept in sync when modifying a node property that changes its size. Currently this is alias, inputs, is_layer, and metadata
+	#[serde(skip)]
 	node_click_target: ClickTarget,
 	/// Stores all port click targets in node graph space.
+	#[serde(skip)]
 	port_click_targets: Ports,
+	/// Stores the position of a non layer node, which can either be Absolute or Chain
+	position: NodePosition,
+	alias: String,
+	has_primary_output: bool,
 }
 
 impl NodeMetadata {

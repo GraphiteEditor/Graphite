@@ -278,7 +278,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let copied_nodes = Self::copy_nodes(network_interface, new_ids, use_document_network).collect::<Vec<_>>();
 
 				// Select the new nodes. Duplicated nodes are always pasted into the current network
-				selected_nodes.set_selected_nodes(copied_nodes.iter().map(|(node_id, _)| *node_id).collect(), &document_network, network_interface.network_path());
+				responses.add(NodeGraphMessage::SelectedNodesSet {nodes: copied_nodes.iter().map(|(node_id, _)| *node_id).collect()});
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				for (node_id, mut document_node) in copied_nodes {
@@ -292,11 +292,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.update_selected(network_interface, selected_nodes, responses);
 			}
 			NodeGraphMessage::EnforceLayerHasNoMultiParams { node_id } => {
-				let Some(network) = network_interface.nested_network_for_selected_nodes(std::iter::once(&node_id)) else {
-					return;
-				};
-
-				if !self.eligible_to_be_layer(network, node_id) {
+				if !self.eligible_to_be_layer(network_interface, node_id) {
 					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
 				}
 			}
@@ -403,7 +399,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						return;
 					};
 					let wires = Self::collect_wires(network);
-					let nodes = self.collect_nodes(document_network, network, &wires);
+					let nodes = self.collect_nodes(network_interface, &wires);
 					responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
@@ -1021,7 +1017,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 												responses.add(NodeGraphMessage::RunDocumentGraph);
 											}
 											responses.add(NodeGraphMessage::SendGraph);
-											//TODO: Shift nodes if node is inserted between a node with Position:Absolute
 										}
 									}
 								}
@@ -1048,7 +1043,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
+				let Some(network) = network_interface.nested_network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");
 					return;
 				};
@@ -1093,7 +1088,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PortfolioMessage::SubmitGraphRender { document_id });
 			}
 			NodeGraphMessage::SelectedNodesAdd { nodes } => {
-				selected_nodes.add_selected_nodes(nodes, document_network, &self.network);
+				selected_nodes.add_selected_nodes(nodes, network_interface);
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesRemove { nodes } => {
@@ -1101,15 +1096,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(BroadcastEvent::SelectionChanged);
 			}
 			NodeGraphMessage::SelectedNodesSet { nodes } => {
-				selected_nodes.set_selected_nodes(nodes, document_network, &self.network);
+				selected_nodes.set_selected_nodes(nodes, network_interface);
 				responses.add(BroadcastEvent::SelectionChanged);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			NodeGraphMessage::SendGraph => {
-				self.send_graph(document_network, document_metadata, collapsed, graph_view_overlay_open, responses);
+				self.send_graph(network_interface, document_metadata, collapsed, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
+				let Some(network) = network_interface.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
 				if let Some(node) = network.nodes.get(&node_id) {
@@ -1290,15 +1285,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
-				let Some(network) = document_network.nested_network_for_selected_nodes(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
+				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
+				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
 					return;
 				};
 
 				for node_id in selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>() {
-					let Some(network_mut) = document_network.nested_network_for_selected_nodes_mut(&self.network, selected_nodes.selected_nodes_ref().iter()) else {
-						return;
-					};
-					let Some(node) = network_mut.nodes.get_mut(&node_id) else { continue };
+
+					let Some(node) = network.nodes.get(&node_id) else { continue };
 
 					if node.has_primary_output {
 						responses.add(NodeGraphMessage::SetToNodeOrLayer {
@@ -1313,19 +1307,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
-				let Some(network) = document_network.nested_network_for_selected_nodes_mut(&self.network, std::iter::once(&node_id)) else {
-					return;
-				};
 
-				if is_layer && !self.eligible_to_be_layer(network, node_id) {
-					log::error!("Could not set node {node_id} to layer");
+				if is_layer && !self.eligible_to_be_layer(&network_interface, node_id) {
 					return;
 				}
 
-				if let Some(node) = network.nodes.get_mut(&node_id) {
-					node.is_layer = is_layer;
-				}
-				self.update_click_target(node_id, document_network, self.network.clone());
+				network_interface.set_to_node_or_layer(node_id, is_layer, responses);
 
 				self.context_menu = None;
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
@@ -1677,7 +1664,11 @@ impl NodeGraphMessageHandler {
 		wires
 	}
 
-	fn collect_nodes(&self, document_network: &NodeNetwork, network: &NodeNetwork, wires: &[FrontendNodeWire]) -> Vec<FrontendNode> {
+	fn collect_nodes(&self, network_interface: &NodeNetworkInterface, wires: &[FrontendNodeWire]) -> Vec<FrontendNode> {
+		let Some(network) = network_interface.nested_network() else {
+			log::error!("Could not get nested network when collecting nodes");
+			return Vec::new();
+		};
 		let connected_node_to_output_lookup = wires
 			.iter()
 			.map(|wire| ((wire.wire_start, wire.wire_start_output_index), (wire.wire_end, wire.wire_end_input_index)))
@@ -1693,7 +1684,7 @@ impl NodeGraphMessageHandler {
 
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
-			let node_id_path = &[&self.network[..], &[node_id]].concat();
+			let node_id_path = &[network_interface.network_path().clone(), &[node_id]].concat();
 			let node_definition = document_node_types::resolve_document_node_type(&node.name);
 
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
@@ -1743,7 +1734,7 @@ impl NodeGraphMessageHandler {
 				.next()
 				.filter(|(input, _)| {
 					// Don't show EditorApi input to nodes like "Text" in the document network
-					if document_network == network && matches!(input, NodeInput::Network { .. }) {
+					if network_interface.is_document_network() && matches!(input, NodeInput::Network { .. }) {
 						false
 					} else {
 						input.is_exposed()
@@ -1751,7 +1742,7 @@ impl NodeGraphMessageHandler {
 				})
 				.map(|(_, input_type)| input_type);
 			let exposed_inputs = inputs
-				.filter(|(input, _)| input.is_exposed() && !(matches!(input, NodeInput::Network { .. }) && document_network == network))
+				.filter(|(input, _)| input.is_exposed() && !(matches!(input, NodeInput::Network { .. }) && network_interface.is_document_network()))
 				.map(|(_, input_type)| input_type)
 				.collect();
 
@@ -1844,7 +1835,7 @@ impl NodeGraphMessageHandler {
 
 		let mut encapsulating_path = self.network.clone();
 		if let Some(encapsulating_node) = encapsulating_path.pop() {
-			let parent_node = document_network
+			let parent_node = network_interface.document_network()
 				.nested_network(&encapsulating_path)
 				.expect("Encapsulating path should always exist")
 				.nodes
@@ -1959,7 +1950,7 @@ impl NodeGraphMessageHandler {
 		});
 
 		// Add "Import" UI-only node
-		if document_network != network {
+		if !network_interface.is_document_network() {
 			let mut import_node_outputs = Vec::new();
 			for (index, definition_name) in import_names.into_iter().enumerate() {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
@@ -2006,27 +1997,29 @@ impl NodeGraphMessageHandler {
 		nodes
 	}
 
-	fn collect_subgraph_names(subgraph_path: &mut Vec<NodeId>, network: &NodeNetwork) -> Option<Vec<String>> {
-		let mut current_network = network;
-		let mut subraph_names = Vec::new();
+	fn collect_subgraph_names(network_interface: &mut NodeNetworkInterface) -> Option<Vec<String>> {
+		let mut current_network = network_interface.document_network();
+		let mut subgraph_names = Vec::new();
 		for node_id in subgraph_path.iter() {
-			let Some(node) = current_network.nodes.get(node_id) else {
+			if let Some(node) = current_network.nodes.get(node_id){
+				if let Some(network) = node.implementation.get_network() {
+					current_network = network;
+				}
+
+				// TODO: Maybe replace with alias and default to name if it does not exist
+				subgraph_names.push(node.name.clone());
+			} else {
 				// If node cannot be found and we are in a nested network, set subgraph_path to document network and return None, which runs send_graph again on the document network
 				if !subgraph_path.is_empty() {
-					subgraph_path.clear();
+					network_interface.exit_all_nested_networks();
 					return None;
 				} else {
 					return Some(Vec::new());
 				}
 			};
-			if let Some(network) = node.implementation.get_network() {
-				current_network = network;
-			}
-
-			// TODO: Maybe replace with alias and default to name if it does not exist
-			subraph_names.push(node.name.clone());
+			
 		}
-		Some(subraph_names)
+		Some(subgraph_names)
 	}
 
 	fn update_layer_panel(document_network: &NodeNetwork, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
@@ -2078,14 +2071,14 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn send_graph(&mut self, document_network: &NodeNetwork, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
+	fn send_graph(&mut self, network_interface: &mut NodeNetworkInterface, metadata: &mut DocumentMetadata, collapsed: &CollapsedLayers, graph_open: bool, responses: &mut VecDeque<Message>) {
 		// If a node cannot be found in collect_subgraph_names, for example when the nested node is deleted while it is entered, and we are in a nested network, set self.network to empty (document network), and call send_graph again to send the document network
-		let Some(nested_path) = Self::collect_subgraph_names(&mut self.network, document_network) else {
-			self.send_graph(document_network, metadata, collapsed, graph_open, responses);
+		let Some(nested_path) = Self::collect_subgraph_names(network_interface) else {
+			self.send_graph(network_interface, metadata, collapsed, graph_open, responses);
 			return;
 		};
 
-		let Some(network) = document_network.nested_network(&self.network) else {
+		let Some(network) = network_interface.nested_network() else {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
 		};
@@ -2100,7 +2093,7 @@ impl NodeGraphMessageHandler {
 
 		if graph_open {
 			let wires = Self::collect_wires(network);
-			let nodes = self.collect_nodes(document_network, network, &wires);
+			let nodes = self.collect_nodes(network_interface, &wires);
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });
 			responses.add(FrontendMessage::UpdateSubgraphPath { subgraph_path: nested_path });
@@ -2184,12 +2177,17 @@ impl NodeGraphMessageHandler {
 			.map(move |(new, node_id, node)| (new, network_interface.map_ids(node, new_ids, use_document_network)))
 	}
 
-	pub fn eligible_to_be_layer(&self, document_network: &NodeNetwork, node_id: NodeId) -> bool {
-		if document_network.imports_metadata.0 == node_id || document_network.exports_metadata.0 == node_id {
+	pub fn eligible_to_be_layer(&self, network_interface: &NodeNetworkInterface, node_id: NodeId) -> bool {
+		let Some(network) = network_interface.nested_network_for_selected_nodes(std::iter::once(&node_id)) else {
+			log::error!("Could not get network in eligible_to_be_layer");
+			return false;
+		};
+		
+		if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
 			return false;
 		}
 
-		let Some(node) = document_network.nodes.get(&node_id) else { return false };
+		let Some(node) = network.nodes.get(&node_id) else { return false };
 
 		let exposed_value_count = node.inputs.iter().filter(|input| if let NodeInput::Value { exposed, .. } = input { *exposed } else { false }).count();
 		let node_input_count = node
