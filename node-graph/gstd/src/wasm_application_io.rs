@@ -380,6 +380,8 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 	}
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let size = aabb.size();
+	let resolution = footprint.resolution;
+	let oversample = footprint.resolution.as_dvec2() / size;
 	let render_params = RenderParams {
 		culling_bounds: None,
 		..Default::default()
@@ -391,8 +393,8 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 	let svg_string = render.svg.to_svg_string();
 
 	let canvas = &surface_handle.surface;
-	canvas.set_width(size.x as u32);
-	canvas.set_height(size.y as u32);
+	canvas.set_width(resolution.x);
+	canvas.set_height(resolution.y);
 
 	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
 
@@ -404,11 +406,13 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 	let image_data = web_sys::HtmlImageElement::new().unwrap();
 	image_data.set_src(base64_string.as_str());
 	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., size.x, size.y).unwrap();
+	context
+		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
+		.unwrap();
 
-	let rasterized = context.get_image_data(0., 0., size.x, size.y).unwrap();
+	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
 
-	let image = Image::from_image_data(&rasterized.data().0, size.x as u32, size.y as u32);
+	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	ImageFrame {
 		image,
 		transform: footprint.transform,

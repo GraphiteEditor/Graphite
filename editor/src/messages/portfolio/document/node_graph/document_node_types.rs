@@ -525,7 +525,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType {
 					name: "Footprint",
 					data_type: FrontendGraphDataType::General,
-					default: NodeInput::value(TaggedValue::Footprint(Footprint::default()), true),
+					default: NodeInput::value(TaggedValue::Footprint(Footprint::default()), false),
 				},
 				DocumentInputType {
 					name: "In",
