@@ -1590,25 +1590,7 @@ pub fn logic_operator_properties(document_node: &DocumentNode, node_id: NodeId, 
 }
 
 pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let translation_assist = |widgets: &mut Vec<WidgetHolder>| {
-		let pivot_index = 5;
-		if let NodeInput::Value {
-			tagged_value: TaggedValue::DVec2(pivot),
-			exposed: false,
-		} = document_node.inputs[pivot_index]
-		{
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
-			widgets.push(
-				PivotInput::new(pivot.into())
-					.on_update(update_value(|pivot: &PivotInput| TaggedValue::DVec2(Into::<Option<DVec2>>::into(pivot.position).unwrap()), node_id, 5))
-					.on_commit(commit_value)
-					.widget_holder(),
-			);
-		} else {
-			add_blank_assist(widgets);
-		}
-	};
-	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, translation_assist);
+	let translation = vec2_widget(document_node, node_id, 1, "Translation", "X", "Y", " px", None, add_blank_assist);
 
 	let rotation = {
 		let index = 2;
