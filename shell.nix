@@ -33,30 +33,33 @@ let
     # wasm-pack needs this
     extensions = [ "rust-src" "rust-analyzer" "clippy" ];
   };
+
+  packages = with pkgs; [
+      rustc-wasm
+      nodejs
+      cargo
+      cargo-watch
+      wasm-pack
+
+      openssl
+      glib
+      gtk3
+      libsoup
+      webkitgtk
+
+      pkg-config
+
+      # Use Mold as a Linke
+      mold
+  ];
 in
   # Make a shell with the dependencies we need
   pkgs.mkShell {
-    packages = [
-      rustc-wasm
-      pkgs.nodejs
-      pkgs.cargo
-      pkgs.cargo-watch
-      pkgs.wasm-pack
-
-      pkgs.openssl
-      pkgs.glib
-      pkgs.gtk3
-      pkgs.libsoup
-      pkgs.webkitgtk
-
-      pkgs.pkg-config
-
-      # Use Mold as a Linke
-      pkgs.mold
-    ];
+    packages = packages;
 
     # Hacky way to run cago through Mold
     shellHook = ''
+    export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath packages}:$LD_LIBRARY_PATH
     alias cargo='mold --run cargo'
     '';
   }
