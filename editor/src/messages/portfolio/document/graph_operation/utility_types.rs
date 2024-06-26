@@ -1,5 +1,5 @@
 use super::transform_utils::{self, LayerBounds};
-use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -176,15 +176,16 @@ impl<'a> ModifyInputsContext<'a> {
 			}
 		}
 
-		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node").default_document_node();
+		let new_layer_node = resolve_document_node_type("Merge").expect("Merge node");
 
-		self.insert_layer_to_stack(new_id, new_layer_node, parent, 0);
+		self.insert_layer_to_stack(new_id, new_layer_node_definition, parent, 0);
 		LayerNodeIdentifier::new(new_id, &self.network_interface.document_network())
 	}
 
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
-		let artboard_node = resolve_document_node_type("Artboard").expect("Node").to_document_node_default_inputs(
+		let mut artboard_node_definition = resolve_document_node_type("Artboard").expect("Node");
+		artboard_node_definition.override_definition_inputs(
 			[
 				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
 				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
@@ -193,19 +194,19 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
 				Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
 			],
-			Default::default(),
 		);
 
-		self.insert_layer_to_stack(new_id, artboard_node, LayerNodeIdentifier::ROOT_PARENT, 0);
+		self.insert_layer_to_stack(new_id, artboard_node_definition, LayerNodeIdentifier::ROOT_PARENT, 0);
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: LayerNodeIdentifier) {
 		let shape = {
-			let node_type: &crate::messages::portfolio::document::node_graph::document_node_types::DocumentNodeDefinition = resolve_document_node_type("Shape").expect("Shape node does not exist");
-			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))], Default::default())
+			let mut node_type: &crate::messages::portfolio::document::node_graph::document_node_types::DocumentNodeDefinition = resolve_document_node_type("Shape").expect("Shape node does not exist");
+			node_type.override_definition_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))])
+			node_type
 		};
-		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
-		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
-		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
+		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
+		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
 
 		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(stroke_id, layer, stroke);
@@ -219,18 +220,19 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {
-		let text = resolve_document_node_type("Text").expect("Text node does not exist").to_document_node(
+		let mut text = resolve_document_node_type("Text").expect("Text node does not exist");
+		text.override_definition_inputs(
 			[
 				NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
 				NodeInput::value(TaggedValue::String(text), false),
 				NodeInput::value(TaggedValue::Font(font), false),
 				NodeInput::value(TaggedValue::F64(size), false),
 			],
-			Default::default(),
 		);
-		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
-		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_document_node();
-		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_document_node();
+
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
+		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist");
+		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist");
 
 		let stroke_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(stroke_id, layer, stroke);
@@ -245,10 +247,11 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_image_data(&self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 		let image = {
-			let node_type = resolve_document_node_type("Image").expect("Image node does not exist");
-			node_type.to_document_node_default_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))], Default::default())
+			let mut node_type = resolve_document_node_type("Image").expect("Image node does not exist");
+			node_type.override_definition_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))])
+			node_type
 		};
-		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_document_node();
+		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist");
 
 		let transform_id = NodeId(generate_uuid());
 		self.insert_node_to_chain(transform_id, layer, transform);
@@ -287,9 +290,7 @@ impl<'a> ModifyInputsContext<'a> {
 				self.insert_node_to_chain(
 					new_node_id,
 					output_layer,
-					resolve_document_node_type(name)
-						.expect("Node type \"{name}\" doesn't exist when inserting node by name")
-						.default_document_node(),
+					resolve_document_node_type(name).expect("Node type \"{name}\" doesn't exist when inserting node by name"),
 				);
 				new_node_id
 			});
@@ -590,7 +591,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Inserts a node at the end of the horizontal node chain from a layer node. The position will be `Position::Chain`
-	pub fn insert_node_to_chain(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, mut document_node: DocumentNode) {
+	pub fn insert_node_to_chain(&mut self, new_id: NodeId, parent: LayerNodeIdentifier, mut document_node: DocumentNodeDefinition) {
 		assert!(
 			self.network_interface.document_network().nodes.contains_key(&node_id),
 			"add_node_to_chain only works in the document network"
@@ -599,7 +600,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Inserts a node as a child of a layer at a certain stack index. The position will be `Position::Stack(calculated y position)`
-	pub fn insert_layer_to_stack(&mut self, new_id: NodeId, mut document_node: DocumentNode, parent: LayerNodeIdentifier, insert_index: usize) {
+	pub fn insert_layer_to_stack(&mut self, new_id: NodeId, mut document_node: DocumentNodeDefinition, parent: LayerNodeIdentifier, insert_index: usize) {
 		assert!(
 			self.network_interface.document_network().nodes.contains_key(&node_id),
 			"add_node_to_stack only works in the document network"

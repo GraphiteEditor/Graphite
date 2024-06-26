@@ -38,30 +38,6 @@ fn merge_ids(a: NodeId, b: NodeId) -> NodeId {
 	NodeId(hasher.finish())
 }
 
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Position {
-	// For nodes that are not in a chain or stack, their position is stored independently.
-	Absolute(IVec2),
-	// For nodes in a horizontal chain, their position is calculated based on their parent layer.
-	Chain,
-	// For layers in a stack, their x position is based on the parent of that stack, and their y position is stored.
-	Stack(u32),
-}
-
-#[derive(Clone, Debug, PartialEq, Default, specta::Type, Hash, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// TODO: Eventually should store all editor only metadata about the node, such as its position, alias, is_layer, and locked
-pub struct DocumentNodeMetadata {
-	pub position: Position,
-}
-
-impl DocumentNodeMetadata {
-	pub fn absolute(position: impl Into<IVec2>) -> Self {
-		Position::Absolute(position.into())
-	}
-}
-
 /// Utility function for providing a default boolean value to serde.
 #[inline(always)]
 fn return_true() -> bool {
@@ -135,14 +111,6 @@ where
 #[derive(Clone, Debug, PartialEq, Hash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentNode {
-	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the node definition's name is displayed to the user in italics.
-	///  Ensure the click target in the encapsulating network is updated when this is modified by using network.update_click_target(node_id).
-	#[serde(default)]
-	pub alias: String,
-	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
-	#[serde(deserialize_with = "migrate_layer_to_merge")]
-	pub name: String,
 	/// The inputs to a node, which are either:
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
@@ -235,24 +203,11 @@ pub struct DocumentNode {
 	/// Now, the call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
 	/// in the event of a cache miss or just return the cached data in the event of a cache hit.
 	pub manual_composition: Option<Type>,
-	// TODO: Remove once this references its definition instead (see above TODO).
-	/// Indicates to the UI if a primary output should be drawn for this node.
-	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
-	#[serde(default = "return_true")]
-	pub has_primary_output: bool,
 	// A nested document network or a proto-node identifier.
 	pub implementation: DocumentNodeImplementation,
-	/// User chosen state for displaying this as a left-to-right node or bottom-to-top layer. Ensure the click target in the encapsulating network is updated when the node changes to a layer by using network.update_click_target(node_id).
-	#[serde(default)]
-	pub is_layer: bool,
 	/// Represents the eye icon for hiding/showing the node in the graph UI. When hidden, a node gets replaced with an identity node during the graph flattening step.
 	#[serde(default = "return_true")]
 	pub visible: bool,
-	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
-	#[serde(default)]
-	pub locked: bool,
-	/// TODO: Eventually should store all editor only metadata about the node, such as its position, alias, is_layer, and locked
-	pub metadata: DocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`crate::proto::ProtoNetwork::generate_stable_node_ids`] for details.
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
@@ -657,10 +612,6 @@ pub struct NodeNetwork {
 	//pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
-	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
-	/// TODO: Move into NetworkMetadata
-	#[serde(default)]
-	pub previewing: Previewing,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
 	// TODO: Move to NodeNetworkInterface
 	#[serde(default = "default_import_metadata")]
@@ -991,20 +942,6 @@ impl NodeNetwork {
 				(f(id), node)
 			})
 			.collect();
-	}
-
-	/// Collect a hashmap of nodes with a list of the nodes and input indices that use it as input
-	pub fn collect_outward_wires(&self) -> HashMap<NodeId, Vec<(NodeId, usize)>> {
-		let mut outward_wires: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-		for (current_node_id, node) in &self.nodes {
-			for (input_index, input) in node.inputs.iter().enumerate() {
-				if let NodeInput::Node { node_id, .. } = input {
-					let outward_wires_entry = outward_wires.entry(*node_id).or_default();
-					outward_wires_entry.push((*current_node_id, input_index));
-				}
-			}
-		}
-		outward_wires
 	}
 
 	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.

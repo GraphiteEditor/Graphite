@@ -87,7 +87,8 @@ pub struct DocumentMessageHandler {
 	graph_view_overlay_open: bool,
 	/// The current user choices for snapping behavior, including whether snapping is enabled at all.
 	pub snapping_state: SnappingState,
-
+	// These fields have no side effects are are not related to the network state, although they are stored for every network. Probably should be moved to DocumentMessageHandler, but this is a convenient place to store it.
+	navigation_metadata: HashMap<Vec<NodeId>, NavigationMetadata>,
 	// =============================================
 	// Fields omitted from the saved document format
 	// =============================================
@@ -1278,14 +1279,13 @@ impl DocumentMessageHandler {
 
 		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
 			Ok(mut document) => {
-				for (_, node) in &mut document.network_interface.nodes {
+				for (_, node) in &mut document.network_interface.document_network().nodes {
 					// Upgrade Fill nodes to the format change in #1778
 					// TODO: Eventually remove this (probably starting late 2024)
 					if node.name == "Fill" && node.inputs.len() == 8 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-						let default_definition_node = node_definition.default_document_node();
 
-						node.implementation = default_definition_node.implementation.clone();
+						node.implementation = node_definition.implementation.clone();
 						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
 
 						node.inputs[0] = old_inputs[0].clone();

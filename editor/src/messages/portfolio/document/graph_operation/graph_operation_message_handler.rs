@@ -120,17 +120,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::CreateBooleanOperationNode { node_id, operation } => {
 				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation")
-					.expect("Failed to create a Boolean Operation node")
-					.to_document_node_default_inputs(
-						[
-							Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-							Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-							Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-						],
-						Default::default(),
-					);
+					.expect("Failed to create a Boolean Operation node");
+				new_boolean_operation_node.override_definition_inputs(
+					[
+						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+					],
+				);
 
-				node_graph.insert_node(node_id, new_boolean_operation_node, document_network, &Vec::new());
+				network_interface.insert_node(node_id, new_boolean_operation_node, document_network, &Vec::new());
 			}
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {

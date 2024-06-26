@@ -36,14 +36,14 @@ pub struct DocumentInputType {
 }
 
 impl DocumentInputType {
-	pub fn new(name: &'static str, data_type: FrontendGraphDataType, default: NodeInput) -> Self {
-		Self { name, data_type, default }
+	pub fn new(name: &'static str, default: NodeInput) -> Self {
+		Self { name, default }
 	}
 
 	pub fn value(name: &'static str, tagged_value: TaggedValue, exposed: bool) -> Self {
-		let data_type = FrontendGraphDataType::with_type(&tagged_value.ty());
+		let data_type: FrontendGraphDataType = FrontendGraphDataType::with_type(&tagged_value.ty());
 		let default = NodeInput::value(tagged_value, exposed);
-		Self { name, data_type, default }
+		Self { name, default }
 	}
 
 	pub const fn none() -> Self {
@@ -83,7 +83,7 @@ pub struct DocumentNodeDefinition {
 	pub is_layer: bool,
 	pub implementation: DocumentNodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
-	pub outputs: Vec<DocumentOutputType>,
+	pub outputs: Vec<&'static str>,
 	pub has_primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 	pub manual_composition: Option<graphene_core::Type>,
@@ -2793,7 +2793,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 
 impl DocumentNodeDefinition {
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata
-	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>, metadata: DocumentNodeMetadata) -> DocumentNode {
+	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>) -> DocumentNodeData {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 
@@ -2811,24 +2811,25 @@ impl DocumentNodeDefinition {
 
 	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn to_document_node_default_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>, metadata: DocumentNodeMetadata) -> DocumentNode {
+	pub fn override_definition_inputs(&mut self, input_override: impl IntoIterator<Item = Option<NodeInput>>) {
 		let mut input_override = input_override.into_iter();
-		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
-		self.to_document_node(inputs, metadata)
-	}
-
-	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], completely default.
-	pub fn default_document_node(&self) -> DocumentNode {
-		self.to_document_node(self.inputs.iter().map(|input| input.default.clone()), DocumentNodeMetadata::default())
+		self.inputs
+			.iter_mut()
+			.for_each(|default| *default.default = input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
 	}
 }
 
+/// Contains all network metadata and the Document node
+pub struct DocumentNodeData {
+	pub node_metadata: DocumentNodeMetadata,
+	pub node: DocumentNode,
+}
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")
-		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::absolute((-12, -3)));
+		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)]);
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
@@ -2891,7 +2892,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		render_node,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::absolute((2, -3))),
+			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)]),
 	];
 
 	NodeNetwork {

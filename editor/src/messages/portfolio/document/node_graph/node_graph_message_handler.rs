@@ -141,7 +141,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 				let document_node = document_node_type.to_document_node(
 					document_node_type.inputs.iter().map(|input| input.default.clone()),
-					graph_craft::document::DocumentNodeMetadata::absolute((x / 24, y / 24)),
 				);
 				self.context_menu = None;
 
