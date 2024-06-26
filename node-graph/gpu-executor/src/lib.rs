@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use graph_craft::proto::ProtoNetwork;
+use graphene_core::raster::color::RGBA16F;
 use graphene_core::*;
 
 use anyhow::Result;
@@ -122,9 +123,16 @@ impl TextureFormat for SRGBA8 {
 		TextureBufferType::Rgba8Srgb
 	}
 }
+impl TextureFormat for RGBA16F {
+	fn format() -> TextureBufferType {
+		TextureBufferType::Rgba16Float
+	}
+}
 
+// TODO use wgpu type
 pub enum TextureBufferType {
 	Rgba32Float,
+	Rgba16Float,
 	Rgba8Srgb,
 }
 

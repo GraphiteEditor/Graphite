@@ -31,3 +31,4 @@ futures-intrusive = "0.5.0"
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 winit = { workspace = true }
 nvtx = { version = "1.2", optional = true }
+half = "2.4.1"

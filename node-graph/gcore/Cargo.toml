@@ -26,6 +26,7 @@ serde = [
 	"glam/serde",
 	"bezier-rs/serde",
 	"bezier-rs/serde",
+	"half/serde",
 	"base64",
 ]
 gpu = ["spirv-std", "glam/bytemuck", "dyn-any", "glam/libm"]
@@ -62,6 +63,7 @@ web-sys = { workspace = true, optional = true, features = [
 ] }
 usvg = { workspace = true }
 rand = { workspace = true, default-features = false, features = ["std_rng"] }
+half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

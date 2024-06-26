@@ -12,7 +12,8 @@ use graph_craft::Type;
 use anyhow::{bail, Result};
 use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
-use graphene_core::raster::ImageFrame;
+use graphene_core::raster::color::RGBA16F;
+use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
 use graphene_core::{Color, Cow, Node, SurfaceFrame, WasmSurfaceHandle};
 
 use std::cell::Cell;
@@ -48,6 +49,7 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &
 }
 
 pub type WgpuSurface = Arc<SurfaceHandle<Surface>>;
+pub type WgpuWindow = Arc<SurfaceHandle<WindowHandle>>;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -111,9 +113,9 @@ pub type BufferHandle = Buffer;
 pub type TextureHandle = Texture;
 pub struct Surface(wgpu::Surface<'static>);
 #[cfg(target_arch = "wasm32")]
-type Window = HtmlCanvasElement;
+pub type Window = HtmlCanvasElement;
 #[cfg(not(target_arch = "wasm32"))]
-type Window = Arc<winit::window::Window>;
+pub type Window = winit::window::Window;
 
 unsafe impl StaticType for Surface {
 	type Static = Surface;
@@ -190,6 +192,7 @@ impl WgpuExecutor {
 		};
 		let format = match T::format() {
 			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
+			TextureBufferType::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
 			TextureBufferType::Rgba8Srgb => wgpu::TextureFormat::Bgra8UnormSrgb,
 		};
 
@@ -300,7 +303,10 @@ impl WgpuExecutor {
 
 	pub fn create_render_pass(&self, texture: Arc<WgpuShaderInput>, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
 		let texture = texture.texture().expect("Expected texture input");
-		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
+			format: Some(wgpu::TextureFormat::Rgba16Float),
+			..Default::default()
+		});
 		let result = canvas.as_ref().surface.0.get_current_texture();
 
 		let surface = &canvas.as_ref().surface;
@@ -338,7 +344,7 @@ impl WgpuExecutor {
 			Ok(surface) => surface,
 		};
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-			// format: Some(wgpu::TextureFormat::Bgra8Unorm),
+			format: Some(wgpu::TextureFormat::Bgra8Unorm),
 			..Default::default()
 		});
 		let output_texture_bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -861,13 +867,10 @@ async fn read_output_buffer_node<'a: 'input>(buffer: Arc<WgpuShaderInput>, execu
 
 pub struct CreateGpuSurfaceNode {}
 
-#[cfg(target_arch = "wasm32")]
-type WindowHandle = web_sys::HtmlCanvasElement;
-#[cfg(not(target_arch = "wasm32"))]
-type WindowHandle = Window;
+pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = WindowHandle>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<Surface>> {
+async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window>>(editor_api: EditorApi<'a, Io>) -> WgpuSurface {
 	let canvas = editor_api.application_io.create_surface();
 	let executor = editor_api.application_io.gpu_executor().unwrap();
 	Arc::new(executor.create_surface(canvas).unwrap())
@@ -904,7 +907,16 @@ pub struct UploadTextureNode<Executor> {
 
 #[node_macro::node_fn(UploadTextureNode)]
 async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> ShaderInputFrame {
-	let shader_input = executor.create_texture_buffer(input.image, TextureBufferOptions::Texture).unwrap();
+	use half::f16;
+	let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
+	let new_image = Image {
+		width: input.image.width,
+		height: input.image.height,
+		data: new_data,
+		base64_string: None,
+	};
+
+	let shader_input = executor.create_texture_buffer(new_image, TextureBufferOptions::Texture).unwrap();
 
 	ShaderInputFrame {
 		shader_input: Arc::new(shader_input),

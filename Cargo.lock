@@ -2288,6 +2288,7 @@ dependencies = [
  "bytemuck",
  "dyn-any",
  "glam",
+ "half",
  "image 0.24.9",
  "js-sys",
  "kurbo 0.11.0 (git+https://github.com/linebender/kurbo.git)",
@@ -2522,8 +2523,10 @@ version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dd08c532ae367adf81c312a4580bc67f1d0fe8bc9c460520283f4c0ff277888"
 dependencies = [
+ "bytemuck",
  "cfg-if",
  "crunchy",
+ "serde",
 ]
 
 [[package]]
@@ -7343,6 +7346,7 @@ dependencies = [
  "gpu-executor",
  "graph-craft",
  "graphene-core",
+ "half",
  "log",
  "node-macro",
  "num-traits",

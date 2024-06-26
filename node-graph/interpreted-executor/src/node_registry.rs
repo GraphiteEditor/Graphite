@@ -22,9 +22,9 @@ use graphene_std::raster::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
 use wgpu_executor::WgpuExecutor;
-use wgpu_executor::WgpuShaderInput;
+use wgpu_executor::WindowHandle;
 #[cfg(feature = "gpu")]
-use wgpu_executor::{CommandBuffer, GpuExecutor, ShaderHandle, ShaderInput, ShaderInputFrame};
+use wgpu_executor::{CommandBuffer, GpuExecutor, ShaderHandle, ShaderInput, ShaderInputFrame, WgpuShaderInput};
 
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2, UVec2};
@@ -352,6 +352,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
 		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
 		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>, params: []),
+		#[cfg(target_arch = "wasm32")]
 		async_node!(
 			graphene_std::wasm_application_io::DrawImageFrameNode<_>,
 			input: ImageFrame<SRGBA8>,
@@ -667,6 +668,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Vec<DVec2>, params: [Vec<DVec2>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<WasmSurfaceHandle>, params: [Arc<WasmSurfaceHandle>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: WindowHandle, params: [WindowHandle]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ShaderInputFrame, params: [ShaderInputFrame]),
 		#[cfg(feature = "gpu")]

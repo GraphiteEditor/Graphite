@@ -39,8 +39,8 @@ pub struct WasmApplicationIo {
 	ids: RefCell<u64>,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
-	#[cfg(not(target_arch = "wasm32"))]
-	windows: RefCell<Vec<Arc<winit::window::Window>>>,
+	// #[cfg(not(target_arch = "wasm32"))]
+	// windows: RefCell<Vec<Arc<winit::window::Window>>>,
 	pub resources: HashMap<String, Arc<[u8]>>,
 }
 
@@ -68,8 +68,8 @@ impl WasmApplicationIo {
 			ids: RefCell::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
-			#[cfg(not(target_arch = "wasm32"))]
-			windows: RefCell::new(Vec::new()),
+			// #[cfg(not(target_arch = "wasm32"))]
+			// windows: RefCell::new(Vec::new()),
 			resources: HashMap::new(),
 		};
 		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
@@ -99,7 +99,7 @@ impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
 	type Surface = HtmlCanvasElement;
 	#[cfg(not(target_arch = "wasm32"))]
-	type Surface = Arc<winit::window::Window>;
+	type Surface = winit::window::Window;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
@@ -153,8 +153,7 @@ impl ApplicationIo for WasmApplicationIo {
 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
 			.build(&event_loop)
 			.unwrap();
-		let window = Arc::new(window);
-		self.windows.borrow_mut().push(window.clone());
+		// self.windows.borrow_mut().push(window.clone());
 		SurfaceHandle {
 			surface_id: SurfaceId(window.id().into()),
 			surface: window,
@@ -228,7 +227,7 @@ impl ApplicationIo for WasmApplicationIo {
 	}
 }
 
-pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
+pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
 
 pub struct CreateSurfaceNode {}
@@ -322,7 +321,7 @@ fn render_canvas(
 	render_params: RenderParams,
 	footprint: Footprint,
 	editor: WasmEditorApi<'_>,
-	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
+	surface_handle: wgpu_executor::WindowHandle,
 ) -> RenderOutput {
 	let resolution = footprint.resolution;
 	data.render_svg(&mut render, &render_params);
@@ -426,7 +425,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, Footprint, Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
@@ -455,7 +454,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, (), Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = wgpu_executor::WindowHandle>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]
