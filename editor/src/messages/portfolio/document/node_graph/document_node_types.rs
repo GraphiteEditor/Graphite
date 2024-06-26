@@ -2,7 +2,7 @@ use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_metadata::{DocumentNodeMetadata, NodeNetworkInterface, NodeNetworkInterfaceBuilder};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -31,7 +31,6 @@ use std::collections::VecDeque;
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct DocumentInputType {
 	pub name: &'static str,
-	pub data_type: FrontendGraphDataType,
 	pub default: NodeInput,
 }
 
@@ -78,15 +77,17 @@ pub struct NodePropertiesContext<'a> {
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
 #[derive(Clone)]
 pub struct DocumentNodeDefinition {
-	pub name: &'static str,
+	/// Used by the reference field in [`DocumentNodeMetadata`] to prevent storing a copy of the implementation, if it is unchanged from the definition.
+	pub identifier: &'static str,
+
+	/// All data required to construct a [`NodeNetworkInterface`], which contains information for the node in the definition.
+	pub network_interface_builder: NodeNetworkInterfaceBuilder,
+
+	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
-	pub is_layer: bool,
-	pub implementation: DocumentNodeImplementation,
 	pub inputs: Vec<DocumentInputType>,
 	pub outputs: Vec<&'static str>,
-	pub has_primary_output: bool,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
-	pub manual_composition: Option<graphene_core::Type>,
 }
 
 impl Default for DocumentNodeDefinition {

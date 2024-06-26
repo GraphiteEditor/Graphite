@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::network_metadata::{NetworkMetadata, NodeNetworkInterface};
+use super::utility_types::network_metadata::{NodeNetworkInterface, NodeNetworkMetadata};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};

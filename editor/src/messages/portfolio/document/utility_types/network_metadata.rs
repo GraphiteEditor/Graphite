@@ -21,6 +21,7 @@ use crate::messages::{
 	portfolio::document::node_graph::{self, document_node_types::DocumentNodeDefinition},
 	prelude::{BroadcastEvent, GraphOperationMessage, NodeGraphMessage, NodeGraphMessageHandler},
 };
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 
 use super::{document_metadata::LayerNodeIdentifier, misc::PTZ, nodes::SelectedNodes};
 
@@ -30,11 +31,10 @@ pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
 	network: NodeNetwork,
-	// Path to the current nested network
-	network_path: Vec<NodeId>,
 	/// Stores all editor information for a NodeNetwork. For the network this includes viewport transforms, outward links, and bounding boxes. For nodes this includes click target, position, and alias
-	/// network_metadata will initialize it if it does not exist, so it cannot be public. If NetworkMetadata exists, then it must be correct. If it is possible for NetworkMetadata to become stale, it should be removed.
-	network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
+	network_metadata: NodeNetworkMetadata,
+	// Path to the current nested network. Used by the editor to keep track of what network is currently open.
+	network_path: Vec<NodeId>,
 	/// All input/output types based on the compiled network.
 	#[serde(skip)]
 	pub resolved_types: ResolvedDocumentNodeTypes,
@@ -81,12 +81,12 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns an immutable reference to network_metadata for the current or document network, and creates a default if it does not exist
-	pub fn network_metadata(&self, use_document_network: bool) -> &NetworkMetadata {
+	pub fn network_metadata(&self, use_document_network: bool) -> &NodeNetworkMetadata {
 		self.network_metadata_mut(use_document_network)
 	}
 
 	// Do not make this public
-	fn network_metadata_mut(&mut self, use_document_network: bool) -> &mut NetworkMetadata {
+	fn network_metadata_mut(&mut self, use_document_network: bool) -> &mut NodeNetworkMetadata {
 		// TODO: ensure that network metadata fields are not None
 		let network_path = if use_document_network { Vec::new() } else { self.network_path.clone() };
 		let network_metadata = self
@@ -95,7 +95,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Creates a new NetworkMetadata for the current network, with everything set to default values. This should never be called
-	fn new_network_metadata(&self, use_document_network: bool) -> NetworkMetadata {
+	fn new_network_metadata(&self, use_document_network: bool) -> NodeNetworkMetadata {
 		
 		// let network = self.document_or_nested_network(use_document_network).expect("Could not get nested network when creating NetworkMetadata");
 		
@@ -157,7 +157,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns network_metadata for the selected nodes, and creates a default if it does not exist
-	pub fn network_metadata_for_selected_nodes(&self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> &NetworkMetadata {
+	pub fn network_metadata_for_selected_nodes(&self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> &NodeNetworkMetadata {
 		if selected_nodes.any(|node_id| self.network.nodes.contains_key(node_id) || self.network.exports_metadata.0 == *node_id || self.network.imports_metadata.0 == *node_id) {
 			self.network_metadata(true)
 		} else {
@@ -848,7 +848,7 @@ impl Ports {
 
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct NetworkMetadata {
+pub struct NodeNetworkMetadata {
 	/// TODO: Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Node metadata must exist for every document node in the network 
@@ -858,8 +858,8 @@ pub struct NetworkMetadata {
 	previewing: Previewing,
 	/// Cache for the bounding box around all nodes in node graph space.
 	/// TODO: Is this too slow to compute on every frame?
-	#[serde(skip)]
-	all_nodes_bounding_box: Option<Subpath<ManipulatorGroupId>>,
+	//#[serde(skip)]
+	//all_nodes_bounding_box: Option<Subpath<ManipulatorGroupId>>,
 	/// Import node click targets, which may not exist, such as in the document network
 	/// TODO: Delete this and replace with inputs placed on edges of the graph UI
 	#[serde(skip)]
@@ -876,7 +876,7 @@ pub struct NetworkMetadata {
 	export_ports: Ports,
 }
 
-impl NetworkMetadata {
+impl NodeNetworkMetadata {
 	pub const GRID_SIZE: u32 = 24;
 
 	/// Click target getter methods
@@ -938,6 +938,8 @@ fn return_true() -> bool {
 /// A [`DocumentNode`] can either be a layer or a non layer node
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodeMetadata {
+	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
+	nested_network: Option<NodeNetworkMetadata>,
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no alias is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
 	reference: Option<&'static str>,
@@ -1008,8 +1010,8 @@ impl LayerMetadata {
 		port_click_targets.insert_layer_output(node_top_left);
 
 		let layer_width_grid_spaces = Self::layer_width_grid_spaces(node);
-		let width = layer_width_grid_spaces * NetworkMetadata::GRID_SIZE;
-		let height = 2 * NetworkMetadata::GRID_SIZE;
+		let width = layer_width_grid_spaces * NodeNetworkMetadata::GRID_SIZE;
+		let height = 2 * NodeNetworkMetadata::GRID_SIZE;
 
 		// Update visibility button click target
 		let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
@@ -1021,7 +1023,7 @@ impl LayerMetadata {
 		let chain_width_grid_spaces = get_chain_width(network, node_id);
 
 		let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
-		let chain_top_left = node_top_left - DVec2::new(chain_width_grid_spaces * NetworkMetadata::GRID_SIZE, 0);
+		let chain_top_left = node_top_left - DVec2::new(chain_width_grid_spaces * NodeNetworkMetadata::GRID_SIZE, 0);
 		let radius = 10.;
 		let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
 		let layer_click_target = ClickTarget { subpath, stroke_width: 1. };
@@ -1100,8 +1102,8 @@ impl NodeMetadata {
 			output_row_count += 1;
 		}
 
-		let height = std::cmp::max(input_row_count, output_row_count) as u32 * NetworkMetadata::GRID_SIZE;
-		let width = 5 * NetworkMetadata::GRID_SIZE;
+		let height = std::cmp::max(input_row_count, output_row_count) as u32 * NodeNetworkMetadata::GRID_SIZE;
+		let width = 5 * NodeNetworkMetadata::GRID_SIZE;
 		let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 
 		let radius = 3.;
@@ -1131,8 +1133,8 @@ impl NodeMetadata {
 
 			// Skip first row since the first row is reserved for the "Exports" name
 			let mut output_row_count = import_count + 1;
-			let width = 5 * NetworkMetadata::GRID_SIZE;
-			let height = output_row_count as u32 * NetworkMetadata::GRID_SIZE;
+			let width = 5 * NodeNetworkMetadata::GRID_SIZE;
+			let height = output_row_count as u32 * NodeNetworkMetadata::GRID_SIZE;
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let radius = 3.;
 			let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
@@ -1145,8 +1147,8 @@ impl NodeMetadata {
 
 		let node_top_left = network.exports_metadata.1.as_dvec2() * 24.;
 		let input_row_count = network.exports.len() + 1;
-		let width = 5 * NetworkMetadata::GRID_SIZE;
-		let height = input_row_count as u32 * NetworkMetadata::GRID_SIZE;
+		let width = 5 * NodeNetworkMetadata::GRID_SIZE;
+		let height = input_row_count as u32 * NodeNetworkMetadata::GRID_SIZE;
 		let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 		let radius = 3.;
 		let subpath = bezier_rs::Subpath::new_rounded_rect(node_top_left, node_bottom_right, [radius; 4]);
@@ -1288,4 +1290,37 @@ pub impl Default for NavigationMetadata {
 			node_graph_to_viewport: DAffine2::IDENTITY,
 		}
 	}
+}
+
+/// All editor and Graphene data for a network, used to serialize, deserialze, and handle all node information. 
+/// The Builder contains all fields necessary to create a NodeNetworkInterface, which can then be added to the network, copy/pasted, etc.
+pub struct NodeNetworkInterfaceBuilder {
+	pub network: NodeNetwork,
+	pub network_metadata: NodeNetworkMetadataBuilder,
+}
+
+pub struct NodeNetworkMetadataBuilder {
+	pub node_metadata: HashMap<NodeId, DocumentNodeMetadataBuilder>,
+}
+
+pub struct DocumentNodeMetadataBuilder {
+	pub nested_network: Option<NodeNetworkMetadataBuilder>,
+	pub reference: Option<&'static str>,
+	pub alias: Option<String>,
+	pub has_primary_output: bool,
+	pub node_type_metadata: NodeTypeMetadataBuilder,
+}
+
+pub enum NodeTypeMetadataBuilder {
+	Layer(LayerMetadataBuilder),
+	Node(NodeMetadataBuilder),
+}
+
+pub struct LayerMetadataBuilder {
+	pub position: LayerPosition,
+	pub locked: bool,
+}
+
+pub struct NodeMetadataBuilder {
+	pub position: NodePosition,
 }

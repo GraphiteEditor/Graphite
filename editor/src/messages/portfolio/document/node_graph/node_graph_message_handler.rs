@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::{self, Connector, InputConnector, InputPort, NetworkMetadata, NodeNetworkInterface, OutputConnector, Port};
+use crate::messages::portfolio::document::utility_types::network_metadata::{self, Connector, InputConnector, InputPort, NodeNetworkInterface, NodeNetworkMetadata, OutputConnector, Port};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -139,9 +139,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let document_node = document_node_type.to_document_node(
-					document_node_type.inputs.iter().map(|input| input.default.clone()),
-				);
+				let document_node = document_node_type.to_document_node(document_node_type.inputs.iter().map(|input| input.default.clone()));
 				self.context_menu = None;
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -277,7 +275,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let copied_nodes = Self::copy_nodes(network_interface, new_ids, use_document_network).collect::<Vec<_>>();
 
 				// Select the new nodes. Duplicated nodes are always pasted into the current network
-				responses.add(NodeGraphMessage::SelectedNodesSet {nodes: copied_nodes.iter().map(|(node_id, _)| *node_id).collect()});
+				responses.add(NodeGraphMessage::SelectedNodesSet {
+					nodes: copied_nodes.iter().map(|(node_id, _)| *node_id).collect(),
+				});
 				responses.add(BroadcastEvent::SelectionChanged);
 
 				for (node_id, mut document_node) in copied_nodes {
@@ -1290,7 +1290,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				for node_id in selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>() {
-
 					let Some(node) = network.nodes.get(&node_id) else { continue };
 
 					if node.has_primary_output {
@@ -1306,7 +1305,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
-
 				if is_layer && !self.eligible_to_be_layer(&network_interface, node_id) {
 					return;
 				}
@@ -1834,7 +1832,8 @@ impl NodeGraphMessageHandler {
 
 		let mut encapsulating_path = self.network.clone();
 		if let Some(encapsulating_node) = encapsulating_path.pop() {
-			let parent_node = network_interface.document_network()
+			let parent_node = network_interface
+				.document_network()
 				.nested_network(&encapsulating_path)
 				.expect("Encapsulating path should always exist")
 				.nodes
@@ -2000,7 +1999,7 @@ impl NodeGraphMessageHandler {
 		let mut current_network = network_interface.document_network();
 		let mut subgraph_names = Vec::new();
 		for node_id in subgraph_path.iter() {
-			if let Some(node) = current_network.nodes.get(node_id){
+			if let Some(node) = current_network.nodes.get(node_id) {
 				if let Some(network) = node.implementation.get_network() {
 					current_network = network;
 				}
@@ -2016,7 +2015,6 @@ impl NodeGraphMessageHandler {
 					return Some(Vec::new());
 				}
 			};
-			
 		}
 		Some(subgraph_names)
 	}
@@ -2181,7 +2179,7 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not get network in eligible_to_be_layer");
 			return false;
 		};
-		
+
 		if network.imports_metadata.0 == node_id || network.exports_metadata.0 == node_id {
 			return false;
 		}
