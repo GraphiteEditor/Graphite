@@ -141,12 +141,14 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
 	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
 	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 	let mut scale_widgets = vec![TextLabel::new("").widget_holder()];
 	add_blank_assist(&mut scale_widgets);
 	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
 	let mut resolution_widgets = vec![TextLabel::new("").widget_holder()];
 	add_blank_assist(&mut resolution_widgets);
-	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+	resolution_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 
 	if let NodeInput::Value {
 		tagged_value: TaggedValue::Footprint(footprint),
@@ -246,14 +248,14 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				.on_commit(commit_value)
 				.widget_holder(),
 		]);
-		resolution_widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x as f64))
-				.label("res multiplier")
-				.unit("px/px")
+
+		resolution_widgets.push(
+			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x as f64 * 100.))
+				.label("Resolution")
+				.unit("%")
 				.on_update(update_value(
 					move |x: &NumberInput| {
-						let resolution = (bounds * x.value.unwrap_or(1.)).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
+						let resolution = (bounds * x.value.unwrap_or(100.) / 100.).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
 
 						let footprint = Footprint { resolution, ..footprint };
 						TaggedValue::Footprint(footprint)
@@ -263,7 +265,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 				))
 				.on_commit(commit_value)
 				.widget_holder(),
-		]);
+		);
 	}
 
 	vec![

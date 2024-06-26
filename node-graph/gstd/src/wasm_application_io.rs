@@ -1,6 +1,4 @@
-use base64::Engine;
 use dyn_any::StaticType;
-use glam::{DAffine2, DVec2};
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
 use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
@@ -11,6 +9,9 @@ use graphene_core::Color;
 use graphene_core::Node;
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
+
+use base64::Engine;
+use glam::DAffine2;
 
 use core::future::Future;
 #[cfg(target_arch = "wasm32")]
