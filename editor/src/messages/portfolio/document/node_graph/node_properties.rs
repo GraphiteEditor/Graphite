@@ -158,6 +158,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 		let footprint = *footprint;
 		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
 		let bounds = footprint.scale();
+		let oversample = footprint.resolution.as_dvec2() / bounds;
 
 		location_widgets.extend_from_slice(&[
 			NumberInput::new(Some(top_left.x))
@@ -172,6 +173,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
 
@@ -195,6 +197,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
 
@@ -217,6 +220,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
 
@@ -237,6 +241,7 @@ fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize)
 
 						let footprint = Footprint {
 							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
 							..footprint
 						};
 
