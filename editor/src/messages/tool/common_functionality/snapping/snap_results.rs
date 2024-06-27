@@ -18,13 +18,20 @@ pub struct SnappedPoint {
 	pub target: SnapTarget,
 	pub at_intersection: bool,
 	pub constrained: bool, // Found when looking for constrained
+	pub fully_constrained: bool,
 	pub target_bounds: Option<Quad>,
 	pub source_bounds: Option<Quad>,
 	pub curves: [Option<Bezier>; 2],
 	pub distance: f64,
 	pub tolerance: f64,
+	pub distance_to_align_target: f64, // If aligning so that the top is aligned but the X pos is 200 from the target, this is 200.
+	pub alignment_target: Option<DVec2>,
+	pub alignment_target_intersect: Option<DVec2>,
 }
 impl SnappedPoint {
+	pub fn align(&self) -> bool {
+		self.alignment_target.is_some()
+	}
 	pub fn infinite_snap(snapped_point_document: DVec2) -> Self {
 		Self {
 			snapped_point_document,
@@ -60,12 +67,16 @@ impl SnappedPoint {
 		let other_more_constrained = other.constrained && !self.constrained;
 		let self_more_constrained = self.constrained && !other.constrained;
 
+		let both_align = other.align() && self.align();
+		let other_better_align = !other.align() && self.align() || (both_align && !self.source.centre() && other.source.centre());
+		let self_better_align = !self.align() && other.align() || (both_align && !other.source.centre() && self.source.centre());
+
 		// Prefer nodes to intersections if both are at the same position
 		let constrained_at_same_pos = other.constrained && self.constrained && self.snapped_point_document.abs_diff_eq(other.snapped_point_document, 1.);
 		let other_better_constraint = constrained_at_same_pos && self.at_intersection && !other.at_intersection;
 		let self_better_constraint = constrained_at_same_pos && other.at_intersection && !self.at_intersection;
 
-		(other_closer || other_more_constrained || other_better_constraint) && !self_more_constrained && !self_better_constraint
+		(other_closer || other_more_constrained || other_better_align || other_better_constraint) && !self_more_constrained && !self_better_align && !self_better_constraint
 	}
 	pub fn is_snapped(&self) -> bool {
 		self.distance.is_finite()

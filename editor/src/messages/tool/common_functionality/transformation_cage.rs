@@ -7,6 +7,7 @@ use crate::messages::prelude::*;
 use graphene_core::renderer::Quad;
 
 use glam::{DAffine2, DVec2};
+use graphene_std::renderer::Rect;
 
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 
@@ -123,6 +124,7 @@ impl SelectedEdges {
 			let mut best_snap = SnappedPoint::infinite_snap(pivot);
 			let mut best_scale_factor = DVec2::ONE;
 			let tolerance = snapping::snap_tolerance(snap_data.document);
+			let bbox = Rect::point_iter(points.iter().map(|candidate| candidate.document_point));
 			for point in points {
 				let old_position = point.document_point;
 				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
@@ -134,16 +136,16 @@ impl SelectedEdges {
 						origin: point.document_point,
 						direction: (point.document_point - bounds_to_doc.transform_point2(pivot)).normalize_or_zero(),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, None)
+					manager.constrained_snap(&snap_data, point, constraint, bbox)
 				} else if !(self.top || self.bottom) || !(self.left || self.right) {
 					let axis = if !(self.top || self.bottom) { DVec2::X } else { DVec2::Y };
 					let constraint = SnapConstraint::Line {
 						origin: point.document_point,
 						direction: bounds_to_doc.transform_vector2(axis),
 					};
-					manager.constrained_snap(&snap_data, point, constraint, None)
+					manager.constrained_snap(&snap_data, point, constraint, bbox)
 				} else {
-					manager.free_snap(&snap_data, point, None, false)
+					manager.free_snap(&snap_data, point, bbox, false)
 				};
 				point.document_point = old_position;
 
@@ -214,6 +216,39 @@ pub fn axis_align_drag(axis_align: bool, position: DVec2, start: DVec2) -> DVec2
 	} else {
 		position
 	}
+}
+
+/// Snaps a dragging event from the artboard or select tool
+pub fn snap_drag(start: DVec2, current: DVec2, axis_align: bool, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &mut Vec<SnapCandidatePoint>) -> DVec2 {
+	let mouse_position = axis_align_drag(axis_align, snap_data.input.mouse.position, start);
+	let document = snap_data.document;
+	let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - start);
+	let mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - current);
+	let mut offset = mouse_delta_document;
+	let mut best_snap = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(mouse_position));
+
+	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point));
+
+	for point in candidates {
+		point.document_point += total_mouse_delta_document;
+		let snapped = if axis_align {
+			let constraint = SnapConstraint::Line {
+				origin: point.document_point,
+				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
+			};
+			snap_manager.constrained_snap(&snap_data, point, constraint, bbox)
+		} else {
+			snap_manager.free_snap(&snap_data, point, bbox, false)
+		};
+		if best_snap.other_snap_better(&snapped) {
+			offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
+			best_snap = snapped;
+		}
+		point.document_point -= total_mouse_delta_document;
+	}
+	snap_manager.update_indicator(best_snap);
+
+	document.metadata.document_to_viewport.transform_vector2(offset)
 }
 
 /// Contains info on the overlays for the bounding box and transform handles

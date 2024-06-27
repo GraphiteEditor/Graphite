@@ -1,4 +1,5 @@
 mod quad;
+mod rect;
 
 use crate::raster::{BlendMode, Image, ImageFrame};
 use crate::transform::Transform;
@@ -6,6 +7,7 @@ use crate::uuid::generate_uuid;
 use crate::vector::PointId;
 use crate::{vector::VectorData, Artboard, Color, GraphicElement, GraphicGroup};
 pub use quad::Quad;
+pub use rect::Rect;
 
 use bezier_rs::Subpath;
 
