@@ -4,7 +4,7 @@ mod executor;
 pub use context::Context;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 pub use executor::GpuExecutor;
-use glam::DAffine2;
+use glam::{DAffine2, UVec2};
 use gpu_executor::{ComputePassDimensions, GPUConstant, StorageBufferOptions, TextureBufferOptions, TextureBufferType, ToStorageBuffer, ToUniformBuffer};
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::Type;
@@ -14,6 +14,7 @@ use futures::Future;
 use graphene_core::application_io::{ApplicationIo, EditorApi, SurfaceHandle};
 use graphene_core::raster::color::RGBA16F;
 use graphene_core::raster::{Image, ImageFrame, Pixel, SRGBA8};
+use graphene_core::transform::{Footprint, Transform};
 use graphene_core::{Color, Cow, Node, SurfaceFrame, WasmSurfaceHandle};
 
 use std::cell::Cell;
@@ -190,6 +191,7 @@ impl WgpuExecutor {
 			TextureBufferOptions::Texture => wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
 			TextureBufferOptions::Surface => wgpu::TextureUsages::RENDER_ATTACHMENT,
 		};
+
 		let format = match T::format() {
 			TextureBufferType::Rgba32Float => wgpu::TextureFormat::Rgba32Float,
 			TextureBufferType::Rgba16Float => wgpu::TextureFormat::Rgba16Float,
@@ -215,7 +217,6 @@ impl WgpuExecutor {
 			wgpu::util::TextureDataOrder::LayerMajor,
 			bytes.as_ref(),
 		);
-		log::debug!("{buffer:?}");
 		match options {
 			TextureBufferOptions::Storage => Ok(ShaderInput::StorageTextureBuffer(buffer, T::ty())),
 			TextureBufferOptions::Texture => Ok(ShaderInput::TextureBuffer(buffer, T::ty())),
@@ -245,6 +246,7 @@ impl WgpuExecutor {
 			layout: None,
 			module: &layout.shader.0,
 			entry_point: layout.entry_point.as_str(),
+			compilation_options: Default::default(),
 		});
 		let bind_group_layout = compute_pipeline.get_bind_group_layout(0);
 
@@ -301,24 +303,39 @@ impl WgpuExecutor {
 		Ok(CommandBuffer(encoder.finish()))
 	}
 
-	pub fn create_render_pass(&self, texture: Arc<WgpuShaderInput>, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
+	pub fn create_render_pass(&self, footprint: Footprint, texture: ShaderInputFrame, canvas: Arc<SurfaceHandle<Surface>>) -> Result<()> {
+		let transform = texture.transform;
+		let texture = texture.shader_input;
 		let texture = texture.texture().expect("Expected texture input");
 		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
 			format: Some(wgpu::TextureFormat::Rgba16Float),
 			..Default::default()
 		});
-		let result = canvas.as_ref().surface.0.get_current_texture();
 
-		let surface = &canvas.as_ref().surface;
-		let surface_caps = surface.0.get_capabilities(&self.context.adapter);
+		let surface = &canvas.as_ref().surface.0;
+		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		println!("{surface_caps:?}");
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
 			// return Ok(());
 		}
-		log::debug!("foo");
+		// TODO:
+		let resolution = transform.decompose_scale().as_uvec2();
+		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+		let config = wgpu::SurfaceConfiguration {
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+			format: surface_format,
+			width: resolution.x,
+			height: resolution.y,
+			present_mode: surface_caps.present_modes[0],
+			alpha_mode: surface_caps.alpha_modes[0],
+			view_formats: vec![],
+			desired_maximum_frame_latency: 2,
+		};
+		surface.configure(&self.context.device, &config);
+		let result = surface.get_current_texture();
+
 		let Some(config) = self.surface_config.take() else { return Ok(()) };
-		log::debug!("config: {:?}", config);
 		let new_config = config.clone();
 		self.surface_config.replace(Some(config));
 		let output = match result {
@@ -329,7 +346,7 @@ impl WgpuExecutor {
 			Err(SurfaceError::Lost) => {
 				log::warn!("Surface lost");
 
-				surface.0.configure(&self.context.device, &new_config);
+				surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Err(SurfaceError::OutOfMemory) => {
@@ -338,7 +355,7 @@ impl WgpuExecutor {
 			}
 			Err(SurfaceError::Outdated) => {
 				log::warn!("Surface outdated");
-				surface.0.configure(&self.context.device, &new_config);
+				surface.configure(&self.context.device, &new_config);
 				return Ok(());
 			}
 			Ok(surface) => surface,
@@ -395,7 +412,6 @@ impl WgpuExecutor {
 		#[cfg(feature = "profiling")]
 		nvtx::range_pop!();
 		log::trace!("Submitted render pass");
-		log::debug!("Submitted render pass. Presenting surface");
 		output.present();
 
 		Ok(())
@@ -460,7 +476,7 @@ impl WgpuExecutor {
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		log::debug!("caps: {surface_caps:?}");
-		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+		let surface_format = wgpu::TextureFormat::Rgba16Float;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
@@ -468,10 +484,10 @@ impl WgpuExecutor {
 			height: 1080,
 			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
-			view_formats: vec![wgpu::TextureFormat::Bgra8UnormSrgb],
+			view_formats: vec![],
 			desired_maximum_frame_latency: 2,
 		};
-		surface.configure(&self.context.device, &config);
+		// surface.configure(&self.context.device, &config);
 		self.surface_config.set(Some(config));
 		Ok(SurfaceHandle {
 			surface_id: canvas.surface_id,
@@ -485,7 +501,7 @@ impl WgpuExecutor {
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
 		println!("{surface_caps:?}");
-		let surface_format = wgpu::TextureFormat::Bgra8Unorm;
+		let surface_format = wgpu::TextureFormat::Rgba16Float;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
@@ -496,7 +512,7 @@ impl WgpuExecutor {
 			view_formats: vec![],
 			desired_maximum_frame_latency: 2,
 		};
-		surface.configure(&self.context.device, &config);
+		// surface.configure(&self.context.device, &config);
 		self.surface_config.set(Some(config));
 
 		let surface_id = window.surface_id;
@@ -562,6 +578,7 @@ impl WgpuExecutor {
 				module: &shader,
 				entry_point: "vs_main",
 				buffers: &[Vertex::desc()],
+				compilation_options: Default::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,
@@ -574,6 +591,7 @@ impl WgpuExecutor {
 					}),
 					write_mask: wgpu::ColorWrites::ALL,
 				})],
+				compilation_options: Default::default(),
 			}),
 			primitive: wgpu::PrimitiveState {
 				topology: wgpu::PrimitiveTopology::TriangleList,
@@ -876,7 +894,8 @@ async fn create_gpu_surface<'a: 'input, Io: ApplicationIo<Executor = WgpuExecuto
 	Arc::new(executor.create_surface(canvas).unwrap())
 }
 
-pub struct RenderTextureNode<Surface, EditorApi> {
+pub struct RenderTextureNode<Image, Surface, EditorApi> {
+	image: Image,
 	surface: Surface,
 	executor: EditorApi,
 }
@@ -888,17 +907,19 @@ pub struct ShaderInputFrame {
 }
 
 #[node_macro::node_fn(RenderTextureNode)]
-async fn render_texture_node<'a: 'input>(image: ShaderInputFrame, surface: WgpuSurface, executor: &'a WgpuExecutor) -> SurfaceFrame {
+async fn render_texture_node<'a: 'input, InFut: Future<Output = ShaderInputFrame>>(
+	footprint: Footprint,
+	image: impl Node<Footprint, Output = InFut>,
+	surface: WgpuSurface,
+	executor: &'a WgpuExecutor,
+) -> SurfaceFrame {
 	let surface_id = surface.surface_id;
-	log::trace!("rendering to surface {surface_id:?}");
-	log::debug!("image: {image:?}");
+	let image = self.image.eval(footprint).await;
+	let transform = image.transform.clone();
 
-	executor.create_render_pass(image.shader_input, surface).unwrap();
+	executor.create_render_pass(footprint, image, surface).unwrap();
 
-	SurfaceFrame {
-		surface_id,
-		transform: image.transform,
-	}
+	SurfaceFrame { surface_id, transform: transform }
 }
 
 pub struct UploadTextureNode<Executor> {
@@ -907,7 +928,6 @@ pub struct UploadTextureNode<Executor> {
 
 #[node_macro::node_fn(UploadTextureNode)]
 async fn upload_texture<'a: 'input>(input: ImageFrame<Color>, executor: &'a WgpuExecutor) -> ShaderInputFrame {
-	use half::f16;
 	let new_data: Vec<RGBA16F> = input.image.data.into_iter().map(|c| c.into()).collect();
 	let new_image = Image {
 		width: input.image.width,

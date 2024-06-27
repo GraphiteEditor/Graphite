@@ -388,7 +388,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(wgpu_executor::CreateGpuSurfaceNode, input: WasmEditorApi, output: wgpu_executor::WgpuSurface, params: []),
 		#[cfg(feature = "gpu")]
-		async_node!(wgpu_executor::RenderTextureNode<_, _>, input: ShaderInputFrame, output: SurfaceFrame, params: [wgpu_executor::WgpuSurface, &WgpuExecutor]),
+		async_node!(wgpu_executor::RenderTextureNode<_, _, _>, input: Footprint, output: SurfaceFrame, fn_params: [Footprint => ShaderInputFrame, () => wgpu_executor::WgpuSurface,  () =>&WgpuExecutor]),
 		#[cfg(feature = "gpu")]
 		async_node!(
 			wgpu_executor::UploadTextureNode<_>,
@@ -705,7 +705,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [String, Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [Option<Color>, Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [Vec<Color>, Arc<WasmSurfaceHandle>]),
+		#[cfg(target_arch = "wasm32")]
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: VectorData, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
+		#[cfg(target_arch = "wasm32")]
 		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: GraphicGroup, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: WasmSurfaceHandleFrame, fn_params: [Footprint => WasmSurfaceHandleFrame, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),

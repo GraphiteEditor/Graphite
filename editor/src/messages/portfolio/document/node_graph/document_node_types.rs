@@ -1558,12 +1558,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					},
 					DocumentNode {
 						name: "Render Texture".to_string(),
+						manual_composition: Some(concrete!(Footprint)),
 						inputs: vec![
 							NodeInput::network(concrete!(ShaderInputFrame), 0),
 							NodeInput::network(concrete!(Arc<wgpu_executor::Surface>), 1),
-							NodeInput::node(NodeId(0), 1),
+							NodeInput::node(NodeId(0), 0),
 						],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::RenderTextureNode<_, _>")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("wgpu_executor::RenderTextureNode<_, _, _>")),
 						..Default::default()
 					},
 				]
