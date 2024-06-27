@@ -2,7 +2,10 @@ use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::network_metadata::{DocumentNodeMetadata, NodeNetworkInterface, NodeNetworkInterfaceBuilder};
+use crate::messages::portfolio::document::utility_types::network_metadata::{
+	DocumentNodeMetadata, DocumentNodeMetadataTemplate, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkInterfaceTemplate, NodeNetworkMetadata, NodeNetworkMetadataTemplate,
+	NodeNetworkPersistentMetadata, NodeTemplate,
+};
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -10,6 +13,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
+
 use graph_craft::imaginate_input::ImaginateSamplingMethod;
 use graph_craft::ProtoNodeIdentifier;
 use graphene_core::raster::brush_cache::BrushCache;
@@ -28,11 +32,11 @@ use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executo
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
-pub struct DocumentInputType {
-	pub name: &'static str,
-	pub default: NodeInput,
-}
+// #[derive(Debug, Clone, PartialEq, Hash)]
+// pub struct DocumentInputType {
+// 	pub name: &'static str,
+// 	pub default: NodeInput,
+// }
 
 impl DocumentInputType {
 	pub fn new(name: &'static str, default: NodeInput) -> Self {
@@ -80,13 +84,13 @@ pub struct DocumentNodeDefinition {
 	/// Used by the reference field in [`DocumentNodeMetadata`] to prevent storing a copy of the implementation, if it is unchanged from the definition.
 	pub identifier: &'static str,
 
-	/// All data required to construct a [`NodeNetworkInterface`], which contains information for the node in the definition.
-	pub network_interface_builder: NodeNetworkInterfaceBuilder,
+	/// All data required to construct a [`DocumentNode`] and [`DocumentNodeMetadata`]
+	pub node_template: NodeTemplate,
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
-	pub inputs: Vec<DocumentInputType>,
-	pub outputs: Vec<&'static str>,
+	pub input_names: Vec<&'static str>,
+	pub output_names: Vec<&'static str>,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
@@ -112,7 +116,6 @@ static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<Vec<DocumentNodeDefinition>> =
 
 fn monitor_node() -> DocumentNode {
 	DocumentNode {
-		name: "Monitor".to_string(),
 		inputs: Vec::new(),
 		implementation: DocumentNodeImplementation::proto("graphene_core::memo::MonitorNode<_, _, _>"),
 		manual_composition: Some(generic!(T)),
@@ -2334,45 +2337,80 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Transform",
-			category: "Transform",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0)],
-				nodes: [
-					DocumentNode {
-						inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
-						..monitor_node()
-					},
-					DocumentNode {
-						name: "Transform".to_string(),
-						inputs: vec![
-							NodeInput::node(NodeId(0), 0),
-							NodeInput::network(concrete!(DVec2), 1),
-							NodeInput::network(concrete!(f64), 2),
-							NodeInput::network(concrete!(DVec2), 3),
-							NodeInput::network(concrete!(DVec2), 4),
-							NodeInput::network(concrete!(DVec2), 5),
-						],
-						manual_composition: Some(concrete!(Footprint)),
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>")),
+			identifier: "Transform",
+			node_template: NodeTemplate {
+				document_node: DocumentNode {
+					inputs: vec![
+						NodeInput::value(TaggedValue::VectorData(VectorData::empty()), true),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::F64(0.), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						NodeInput::value(TaggedValue::DVec2(DVec2::splat(0.5)), false),
+					],
+					implementation: DocumentNodeImplementation::Network(NodeNetwork {
+						exports: vec![NodeInput::node(NodeId(1), 0)],
+						nodes: [
+							DocumentNode {
+								inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+								..monitor_node()
+							},
+							DocumentNode {
+								inputs: vec![
+									NodeInput::node(NodeId(0), 0),
+									NodeInput::network(concrete!(DVec2), 1),
+									NodeInput::network(concrete!(f64), 2),
+									NodeInput::network(concrete!(DVec2), 3),
+									NodeInput::network(concrete!(DVec2), 4),
+									NodeInput::network(concrete!(DVec2), 5),
+								],
+								manual_composition: Some(concrete!(Footprint)),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::transform::TransformNode<_, _, _, _, _, _>")),
+								..Default::default()
+							},
+						]
+						.into_iter()
+						.enumerate()
+						.map(|(id, node)| (NodeId(id as u64), node))
+						.collect(),
 						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-				..Default::default()
-			}),
-			inputs: vec![
-				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
-				DocumentInputType::value("Translation", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Rotation", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Scale", TaggedValue::DVec2(DVec2::ONE), false),
-				DocumentInputType::value("Skew", TaggedValue::DVec2(DVec2::ZERO), false),
-				DocumentInputType::value("Pivot", TaggedValue::DVec2(DVec2::splat(0.5)), false),
-			],
-			outputs: vec![DocumentOutputType::new("Data", FrontendGraphDataType::VectorData)],
+					}),
+					..Default::default()
+				},
+				persistent_node_metadata: DocumentNodePersistentMetadata {
+					network_metadata: Some(NodeNetworkMetadata {
+						persistent_metadata: NodeNetworkPersistentMetadata {
+							node_metadata: [
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										alias: Some("Monitor"),
+										..Default::default()
+									},
+									..Default::default()
+								},
+								DocumentNodeMetadata {
+									persistent_metadata: DocumentNodePersistentMetadata {
+										alias: Some("Transform"),
+										..Default::default()
+									},
+									..Default::default()
+								},
+							]
+							.into_iter()
+							.enumerate()
+							.map(|(id, node)| (NodeId(id as u64), node))
+							.collect(),
+							..Default::default()
+						},
+						..Default::default()
+					}),
+					reference: "Transform",
+					..Default::default()
+				},
+			},
+			category: "Transform",
+			input_names: vec!["Vector Data", "Translation", "Rotation", "Scale", "Skew", "Pivot"],
+			output_names: vec!["Data"],
 			properties: node_properties::transform_properties,
 			..Default::default()
 		},
@@ -2793,8 +2831,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 }
 
 impl DocumentNodeDefinition {
-	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], based on the inputs from the graph (which must be the correct length) and the metadata
-	pub fn to_document_node(&self, inputs: impl IntoIterator<Item = NodeInput>) -> DocumentNodeData {
+	fn to_node_template(&self, inputs: impl IntoIterator<Item = NodeInput>) -> NodeTemplate {
 		let inputs: Vec<_> = inputs.into_iter().collect();
 		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
 
@@ -2810,27 +2847,26 @@ impl DocumentNodeDefinition {
 		}
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [DocumentNode], using the provided `input_override` and falling back to the default inputs.
+	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn override_definition_inputs(&mut self, input_override: impl IntoIterator<Item = Option<NodeInput>>) {
+	pub fn node_template_override_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
 		let mut input_override = input_override.into_iter();
-		self.inputs
-			.iter_mut()
-			.for_each(|default| *default.default = input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
+		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
+		self.to_node_template(inputs)
+	}
+
+	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
+	pub fn default_node_template(&self) -> NodeTemplate {
+		self.to_node_template(self.inputs.iter().map(|input| input.default.clone()))
 	}
 }
 
-/// Contains all network metadata and the Document node
-pub struct DocumentNodeData {
-	pub node_metadata: DocumentNodeMetadata,
-	pub node: DocumentNode,
-}
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let mut begin_scope = resolve_document_node_type("Begin Scope")
 		.expect("Begin Scope node type not found")
-		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)]);
+		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::position((-12, -3)));
 	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
 		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
 			node.world_state_hash = hash;
@@ -2893,7 +2929,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		render_node,
 		resolve_document_node_type("End Scope")
 			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)]),
+			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::position((2, -3))),
 	];
 
 	NodeNetwork {

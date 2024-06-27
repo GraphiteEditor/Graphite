@@ -119,9 +119,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::CreateBooleanOperationNode { node_id, operation } => {
-				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation")
-					.expect("Failed to create a Boolean Operation node");
-				new_boolean_operation_node.override_definition_inputs(
+				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation").clone()
+					.expect("Failed to create a Boolean Operation node").node_template_override_inputs(
 					[
 						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
 						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),

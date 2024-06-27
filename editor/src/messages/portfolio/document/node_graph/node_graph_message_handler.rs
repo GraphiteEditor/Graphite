@@ -104,7 +104,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::Copy => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
 				// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+				let Some(network) = network_interface.network(use_document_network) else {
 					warn!("No network in NodeGraphMessage::Copy ");
 					return;
 				};
@@ -139,7 +139,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let document_node = document_node_type.to_document_node(document_node_type.inputs.iter().map(|input| input.default.clone()));
+				let node_template = document_node_type.default_node_template();
 				self.context_menu = None;
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -162,7 +162,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							input_connector: InputConnector::node(node_id, InputPort(input_index)),
 							use_document_network: false,
 						});
-						let Some(network) = network_interface.nested_network() else {
+						let Some(network) = network_interface.network(false) else {
 							return;
 						};
 						if let OutputConnector::Node(node_id, _) = output_connector {
@@ -201,7 +201,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			// If `reconnect` is false, then only the selected nodes are deleted and not reconnected.
 			NodeGraphMessage::DeleteSelectedNodes { reconnect } => {
 				let is_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
-				let Some(network) = network_interface.document_or_nested_network(is_document_network) else {
+				let Some(network) = network_interface.network(is_document_network) else {
 					warn!("No network");
 					return;
 				};
@@ -214,7 +214,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::DisconnectInput { input, use_document_network } => {
-				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+				let Some(network) = network_interface.network(use_document_network) else {
 					return;
 				};
 
@@ -263,7 +263,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
 				// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+				let Some(network) = network_interface.network(use_document_network) else {
 					warn!("No network in NodeGraphMessage::Copy ");
 					return;
 				};
@@ -304,7 +304,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if network_interface.network_metadata(false).get_visibility_from_point(point).is_some() {
 					return;
 				};
-				let Some(network) = network_interface.nested_network() else {
+				let Some(network) = network_interface.network(false) else {
 					log::error!("Could not get network in EnterNestedNetwork");
 					return;
 				};
@@ -334,7 +334,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ExposeInput { node_id, input_index, new_exposed } => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
-				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+				let Some(network) = network_interface.network(use_document_network) else {
 					return;
 				};
 
@@ -839,7 +839,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PointerUp => {
-				let Some(network) = network_interface.nested_network() else {
+				let Some(network) = network_interface.network(false) else {
 					warn!("No network");
 					return;
 				};
@@ -858,7 +858,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							output_connector,
 							use_document_network: false,
 						});
-						let Some(network) = network_interface.nested_network() else {
+						let Some(network) = network_interface.network(false) else {
 							return;
 						};
 						if let OutputConnector::Node(node_id, _) = output_connector {
@@ -912,7 +912,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						// Ensure selected_node is not the exports/imports node
 						if let Some(selected_node) = network.nodes.get(&selected_node_id) {
 							// Check if any downstream node has any input that feeds into the primary export of the selected node
-							let has_primary_output_connection = network_interface.network_metadata(false).outward_wires(selected_node_id).iter().any(|downstream_node_id| {
+							let node = outward_wires.get(&selected_node_id).or_else(|| network.nodes.get(&selected_node_id)) else {
+								log::error!("Could not get node");
+								return;
+							};
+							let has_primary_output_connection = network_interface.collect_outward_wires(false).get(&selected_node_id).iter().any(|downstream_node_id| {
 								let Some(downstream_node) = network.nodes.get(downstream_node_id) else {
 									log::error!("Could not get downstream node");
 									return;
@@ -1285,7 +1289,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
-				let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+				let Some(network) = network_interface.network(use_document_network) else {
 					return;
 				};
 
@@ -1662,7 +1666,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn collect_nodes(&self, network_interface: &NodeNetworkInterface, wires: &[FrontendNodeWire]) -> Vec<FrontendNode> {
-		let Some(network) = network_interface.nested_network() else {
+		let Some(network) = network_interface.network(false) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
@@ -2075,7 +2079,7 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		let Some(network) = network_interface.nested_network() else {
+		let Some(network) = network_interface.network(false) else {
 			log::error!("Could not send graph since nested network does not exist");
 			return;
 		};
@@ -2162,8 +2166,8 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
-	pub fn copy_nodes<'a>(network_interface: &'a NodeNetworkInterface, new_ids: &'a HashMap<NodeId, NodeId>, use_document_network: bool) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
-		let Some(network) = network_interface.document_or_nested_network(use_document_network) else {
+	pub fn copy_nodes<'a>(network_interface: &'a NodeNetworkInterface, new_ids: &'a HashMap<NodeId, NodeId>, use_document_network: bool) -> impl Iterator<Item = (NodeId, NodeTemplate)> + 'a {
+		let Some(network) = network_interface.network(use_document_network) else {
 			log::error!("Could not get network in copy_nodes");
 			return Vec::new().into_iter();
 		};

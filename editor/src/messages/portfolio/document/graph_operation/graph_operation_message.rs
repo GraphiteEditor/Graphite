@@ -19,7 +19,7 @@ use glam::{DAffine2, DVec2, IVec2};
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
 	AddNodesAsChild {
-		nodes: HashMap<NodeId, DocumentNode>,
+		nodes: HashMap<NodeId, NodeTemplate>,
 		new_ids: HashMap<NodeId, NodeId>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
@@ -115,7 +115,7 @@ pub enum GraphOperationMessage {
 	},
 	NewCustomLayer {
 		id: NodeId,
-		nodes: HashMap<NodeId, DocumentNode>,
+		nodes: HashMap<NodeId, NodeTemplate>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 		alias: String,

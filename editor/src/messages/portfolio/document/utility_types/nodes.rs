@@ -1,4 +1,7 @@
-use super::{document_metadata::{DocumentMetadata, LayerNodeIdentifier}, network_metadata::NodeNetworkInterface};
+use super::{
+	document_metadata::{DocumentMetadata, LayerNodeIdentifier},
+	network_metadata::NodeNetworkInterface,
+};
 
 use graph_craft::document::{NodeId, NodeNetwork};
 
@@ -103,9 +106,7 @@ impl SelectedNodes {
 
 	// Ensures all selected nodes must be in the same network
 	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
-		self.0
-			.iter()
-			.filter(|node_id| network.nodes.contains_key(*node_id))
+		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
@@ -113,7 +114,9 @@ impl SelectedNodes {
 	}
 
 	pub fn network_has_selected_nodes(&self, network: &NodeNetwork) -> bool {
-		self.0.iter().any(|node_id| network.nodes.contains_key(node_id) || *node_id == network.imports_metadata.0 || *node_id == network.exports_metadata.0)
+		self.0
+			.iter()
+			.any(|node_id| network.nodes.contains_key(node_id) || *node_id == network.imports_metadata.0 || *node_id == network.exports_metadata.0)
 	}
 
 	pub fn has_selected_nodes(&self) -> bool {
@@ -126,7 +129,7 @@ impl SelectedNodes {
 
 	// TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected in the graph, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, since different nodes should be selected in each case, but cannot be distinguished. Currently it is not possible to shift+click a node in the node graph while a layer is selected. Instead of set_selected_nodes, add_selected_nodes should be used.
 	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
-		let Some(network) = network_interface.nested_network() else { return };
+		let Some(network) = network_interface.network(false) else { return };
 		let document_network = network_interface.document_network();
 
 		let mut new_nodes = new;
@@ -146,7 +149,7 @@ impl SelectedNodes {
 	}
 
 	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
-		let Some(network) = network_interface.nested_network() else { return };
+		let Some(network) = network_interface.network(false) else { return };
 		let document_network = network_interface.document_network();
 		// If the nodes to add are in the document network, clear selected nodes in the current network
 		if new.iter().any(|node_to_add| document_network.nodes.contains_key(node_to_add)) {

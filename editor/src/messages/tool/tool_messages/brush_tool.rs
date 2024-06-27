@@ -416,7 +416,7 @@ impl Fsm for BrushToolFsmState {
 fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(DocumentMessage::DeselectAllLayers);
 
-	let brush_node = resolve_document_node_type("Brush").expect("Brush node does not exist");
+	let brush_node = resolve_document_node_type("Brush").expect("Brush node does not exist").default_node_template();
 
 	let id = NodeId(generate_uuid());
 	responses.add(GraphOperationMessage::NewCustomLayer {
