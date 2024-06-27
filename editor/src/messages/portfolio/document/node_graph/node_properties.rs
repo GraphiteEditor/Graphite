@@ -18,7 +18,8 @@ use graphene_core::vector::misc::CentroidType;
 use graphene_core::vector::style::{GradientType, LineCap, LineJoin};
 use graphene_std::vector::style::{Fill, FillChoice};
 
-use glam::{DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_std::transform::Footprint;
 use graphene_std::vector::misc::BooleanOperation;
 
 pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
@@ -135,6 +136,148 @@ fn bool_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name
 		])
 	}
 	widgets
+}
+
+fn footprint_widget(document_node: &DocumentNode, node_id: NodeId, index: usize) -> Vec<LayoutGroup> {
+	let mut location_widgets = start_widgets(document_node, node_id, index, "Footprint", FrontendGraphDataType::General, true);
+	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let mut scale_widgets = vec![TextLabel::new("").widget_holder()];
+	add_blank_assist(&mut scale_widgets);
+	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	let mut resolution_widgets = vec![TextLabel::new("").widget_holder()];
+	add_blank_assist(&mut resolution_widgets);
+	resolution_widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+
+	if let NodeInput::Value {
+		tagged_value: TaggedValue::Footprint(footprint),
+		exposed: false,
+	} = &document_node.inputs[index]
+	{
+		let footprint = *footprint;
+		let top_left = footprint.transform.transform_point2(DVec2::ZERO);
+		let bounds = footprint.scale();
+		let oversample = footprint.resolution.as_dvec2() / bounds;
+
+		location_widgets.extend_from_slice(&[
+			NumberInput::new(Some(top_left.x))
+				.label("X")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) {
+							let diff = DVec2::new(top_left.x - x, 0.);
+							(top_left - diff, bounds)
+						})(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(top_left.y))
+				.label("Y")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) {
+							let diff = DVec2::new(0., top_left.y - y);
+							(top_left - diff, bounds)
+						})(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]);
+
+		scale_widgets.extend_from_slice(&[
+			NumberInput::new(Some(bounds.x))
+				.label("W")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |x: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(x, bounds.y)) })(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			NumberInput::new(Some(bounds.y))
+				.label("H")
+				.unit(" px")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let (offset, scale) = (move |y: f64| -> (DVec2, DVec2) { (top_left, DVec2::new(bounds.x, y)) })(x.value.unwrap_or_default());
+
+						let footprint = Footprint {
+							transform: DAffine2::from_scale_angle_translation(scale.into(), 0., offset.into()),
+							resolution: (oversample * scale).as_uvec2(),
+							..footprint
+						};
+
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]);
+
+		resolution_widgets.push(
+			NumberInput::new(Some((footprint.resolution.as_dvec2() / bounds).x as f64 * 100.))
+				.label("Resolution")
+				.unit("%")
+				.on_update(update_value(
+					move |x: &NumberInput| {
+						let resolution = (bounds * x.value.unwrap_or(100.) / 100.).as_uvec2().max((1, 1).into()).min((4000, 4000).into());
+
+						let footprint = Footprint { resolution, ..footprint };
+						TaggedValue::Footprint(footprint)
+					},
+					node_id,
+					index,
+				))
+				.on_commit(commit_value)
+				.widget_holder(),
+		);
+	}
+
+	vec![
+		LayoutGroup::Row { widgets: location_widgets },
+		LayoutGroup::Row { widgets: scale_widgets },
+		LayoutGroup::Row { widgets: resolution_widgets },
+	]
 }
 
 fn vec2_widget(document_node: &DocumentNode, node_id: NodeId, index: usize, name: &str, x: &str, y: &str, unit: &str, min: Option<f64>, mut assist: impl FnMut(&mut Vec<WidgetHolder>)) -> LayoutGroup {
@@ -1639,6 +1782,9 @@ pub fn transform_properties(document_node: &DocumentNode, node_id: NodeId, _cont
 	let scale = vec2_widget(document_node, node_id, 3, "Scale", "W", "H", "x", None, add_blank_assist);
 
 	vec![translation, rotation, scale]
+}
+pub fn rasterize_properties(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	footprint_widget(document_node, node_id, 1)
 }
 
 pub fn node_section_font(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
