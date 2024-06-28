@@ -5908,7 +5908,7 @@ name = "tag-derive"
 version = "0.0.1"
 dependencies = [
  "quote",
- "syn 2.0.63",
+ "syn 2.0.66",
 ]
 
 [[package]]

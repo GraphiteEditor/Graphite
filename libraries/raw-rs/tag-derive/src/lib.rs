@@ -37,7 +37,7 @@ pub fn tag_derive(input: TokenStream) -> TokenStream {
 
 			fn get<R: Read + Seek>(ifd: &Ifd, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
 				#( let #struct_idents = <#struct_types as Tag>::get(ifd, file)?; )*
-				Ok(#new_name {  #( #struct_idents ),* })
+				Ok(#new_name { #( #struct_idents ),* })
 			}
 		}
 	};

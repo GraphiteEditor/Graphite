@@ -1,12 +1,13 @@
 pub mod decoder;
 pub mod tiff;
 
-use std::io::{Read, Seek};
 use tag_derive::Tag;
-use thiserror::Error;
 use tiff::file::TiffRead;
 use tiff::tags::{Compression, ImageLength, ImageWidth, Model, StripByteCounts, SubIfd, Tag};
 use tiff::{Ifd, TiffError};
+
+use std::io::{Read, Seek};
+use thiserror::Error;
 
 pub struct RawImage {
 	pub data: Vec<u16>,
@@ -40,13 +41,13 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	if model == "DSLR-A100" {
 		Ok(decoder::arw1::decode_a100(ifd, &mut file))
 	} else {
-		let subifd = ifd.get_value::<SubIfd, _>(&mut file)?;
-		let arw_ifd = subifd.get_value::<ArwIfd, _>(&mut file)?;
+		let sub_ifd = ifd.get_value::<SubIfd, _>(&mut file)?;
+		let arw_ifd = sub_ifd.get_value::<ArwIfd, _>(&mut file)?;
 
 		if arw_ifd.compression == 1 {
-			Ok(decoder::uncompressed::decode(subifd, &mut file))
+			Ok(decoder::uncompressed::decode(sub_ifd, &mut file))
 		} else if arw_ifd.strip_byte_counts[0] == arw_ifd.image_width * arw_ifd.image_height {
-			Ok(decoder::arw2::decode(subifd, &mut file))
+			Ok(decoder::arw2::decode(sub_ifd, &mut file))
 		} else {
 			// TODO: implement for arw 1.
 			todo!()
@@ -54,11 +55,11 @@ pub fn decode<R: Read + Seek>(reader: &mut R) -> Result<RawImage, DecoderError> 
 	}
 }
 
-pub fn process_8bit(image: RawImage) -> Image<u8> {
+pub fn process_8bit(_image: RawImage) -> Image<u8> {
 	todo!()
 }
 
-pub fn process_16bit(image: RawImage) -> Image<u16> {
+pub fn process_16bit(_image: RawImage) -> Image<u16> {
 	todo!()
 }
 

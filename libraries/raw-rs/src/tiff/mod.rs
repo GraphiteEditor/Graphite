@@ -4,12 +4,12 @@ mod types;
 pub mod values;
 
 use file::TiffRead;
+use tags::Tag;
+
 use num_enum::{FromPrimitive, IntoPrimitive};
 use std::fmt::Display;
 use std::io::{Read, Seek};
 use thiserror::Error;
-
-use tags::Tag;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u16)]
@@ -89,7 +89,7 @@ impl Ifd {
 		let mut ifd_entries = Vec::with_capacity(num.into());
 		for _ in 0..num {
 			let tag = file.read_u16()?.into();
-			let type_ = file.read_u16()?.into();
+			let type = file.read_u16()?.into();
 			let count = file.read_u32()?;
 			let value = file.read_u32()?;
 

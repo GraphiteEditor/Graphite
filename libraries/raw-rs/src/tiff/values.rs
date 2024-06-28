@@ -14,7 +14,7 @@ impl CurveLookupTable {
 			sony_curve[i + 1] = values[i] >> 2 & 0xfff;
 		}
 
-		let mut table = vec![0u16; (sony_curve[5] + 1).into()];
+		let mut table = vec![0_u16; (sony_curve[5] + 1).into()];
 		for i in 0..5 {
 			for j in (sony_curve[i] + 1)..=sony_curve[i + 1] {
 				table[j as usize] = table[(j - 1) as usize] + (1 << i);

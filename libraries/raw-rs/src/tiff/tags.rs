@@ -4,8 +4,9 @@ use super::{Ifd, TagId, TiffError, TiffRead};
 use std::io::{Read, Seek};
 
 pub trait SimpleTag {
-	const ID: TagId;
 	type Type: TagType;
+
+	const ID: TagId;
 	const NAME: &'static str;
 }
 
@@ -29,110 +30,128 @@ pub struct SonyDataOffset;
 pub struct SonyToneCurve;
 
 impl SimpleTag for ImageWidth {
-	const ID: TagId = TagId::ImageWidth;
 	type Type = TypeNumber;
+
+	const ID: TagId = TagId::ImageWidth;
 	const NAME: &'static str = "Image Width";
 }
 
 impl SimpleTag for ImageLength {
-	const ID: TagId = TagId::ImageLength;
 	type Type = TypeNumber;
+
+	const ID: TagId = TagId::ImageLength;
 	const NAME: &'static str = "Image Length";
 }
 
 impl SimpleTag for BitsPerSample {
-	const ID: TagId = TagId::BitsPerSample;
 	type Type = TypeShort;
+
+	const ID: TagId = TagId::BitsPerSample;
 	const NAME: &'static str = "Bits per Sample";
 }
 
 impl SimpleTag for Compression {
-	const ID: TagId = TagId::Compression;
 	type Type = TypeShort;
+
+	const ID: TagId = TagId::Compression;
 	const NAME: &'static str = "Compression";
 }
 
 impl SimpleTag for PhotometricInterpretation {
-	const ID: TagId = TagId::PhotometricInterpretation;
 	type Type = TypeShort;
+
+	const ID: TagId = TagId::PhotometricInterpretation;
 	const NAME: &'static str = "Photometric Interpretation";
 }
 
 impl SimpleTag for Make {
-	const ID: TagId = TagId::Make;
 	type Type = TypeString;
+
+	const ID: TagId = TagId::Make;
 	const NAME: &'static str = "Make";
 }
 
 impl SimpleTag for Model {
-	const ID: TagId = TagId::Model;
 	type Type = TypeString;
+
+	const ID: TagId = TagId::Model;
 	const NAME: &'static str = "Model";
 }
 
 impl SimpleTag for StripOffsets {
-	const ID: TagId = TagId::StripOffsets;
 	type Type = Array<TypeNumber>;
+
+	const ID: TagId = TagId::StripOffsets;
 	const NAME: &'static str = "Strip Offsets";
 }
 
 impl SimpleTag for SamplesPerPixel {
-	const ID: TagId = TagId::SamplesPerPixel;
 	type Type = TypeShort;
+
+	const ID: TagId = TagId::SamplesPerPixel;
 	const NAME: &'static str = "Samples per Pixel";
 }
 
 impl SimpleTag for RowsPerStrip {
-	const ID: TagId = TagId::RowsPerStrip;
 	type Type = TypeNumber;
+
+	const ID: TagId = TagId::RowsPerStrip;
 	const NAME: &'static str = "Rows per Strip";
 }
 
 impl SimpleTag for StripByteCounts {
-	const ID: TagId = TagId::StripByteCounts;
 	type Type = Array<TypeNumber>;
+
+	const ID: TagId = TagId::StripByteCounts;
 	const NAME: &'static str = "Strip Byte Counts";
 }
 
 impl SimpleTag for SubIfd {
-	const ID: TagId = TagId::SubIfd;
 	type Type = TypeIfd;
+
+	const ID: TagId = TagId::SubIfd;
 	const NAME: &'static str = "SubIFD";
 }
 
 impl SimpleTag for JpegOffset {
-	const ID: TagId = TagId::JpegOffset;
 	type Type = TypeLong;
+
+	const ID: TagId = TagId::JpegOffset;
 	const NAME: &'static str = "Jpeg Offset";
 }
 
 impl SimpleTag for JpegLength {
-	const ID: TagId = TagId::JpegLength;
 	type Type = TypeLong;
+
+	const ID: TagId = TagId::JpegLength;
 	const NAME: &'static str = "Jpeg Length";
 }
 
 impl SimpleTag for CfaPatternDim {
-	const ID: TagId = TagId::CfaPatternDim;
 	type Type = ConstArray<TypeShort, 2>;
+
+	const ID: TagId = TagId::CfaPatternDim;
 	const NAME: &'static str = "CFA Pattern Dimension";
 }
 
 impl SimpleTag for CfaPattern {
-	const ID: TagId = TagId::CfaPattern;
 	type Type = Array<TypeByte>;
+
+	const ID: TagId = TagId::CfaPattern;
 	const NAME: &'static str = "CFA Pattern";
 }
 
 impl SimpleTag for SonyDataOffset {
-	const ID: TagId = TagId::SubIfd;
 	type Type = TypeLong;
+
+	const ID: TagId = TagId::SubIfd;
 	const NAME: &'static str = "Sony Data Offset";
 }
 
 impl SimpleTag for SonyToneCurve {
-	const ID: TagId = TagId::SonyToneCurve;
 	type Type = TypeSonyToneCurve;
+
+	const ID: TagId = TagId::SonyToneCurve;
 	const NAME: &'static str = "Sony Tone Curve";
 }
 
