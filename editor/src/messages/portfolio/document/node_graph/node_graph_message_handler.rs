@@ -936,8 +936,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							let has_primary_input_connection = selected_node.inputs.get(0).is_some_and(|first_input| first_input.as_value().is_some());
 							// Check that neither the primary input or output of the selected node are already connected.
 							if !has_primary_output_connection && !has_primary_input_connection {
-								let network_metadata = network_interface.network_metadata(false);
-								let Some(bounding_box) = network_metadata.node_bounding_box(selected_node_id).or_else(|| network_metadata.layer_bounding_box(selected_node_id)) else {
+								let Some(bounding_box) = network_interface.node_bounding_box(selected_node_id) else {
 									log::error!("Could not get bounding box for node: {selected_node_id}");
 									return;
 								};
@@ -1046,7 +1045,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 			}
 			NodeGraphMessage::PrintSelectedNodeCoordinates => {
-				let Some(network) = network_interface.nested_network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
+				let Some(network) = network_interface.network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
 					warn!("No network");
 					return;
 				};
@@ -1107,7 +1106,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.send_graph(network_interface, document_metadata, collapsed, graph_view_overlay_open, responses);
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
-				let Some(network) = network_interface.nested_network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
+				let Some(network) = network_interface.network_for_selected_nodes(&self.network, std::iter::once(&node_id)) else {
 					return;
 				};
 				if let Some(node) = network.nodes.get(&node_id) {
@@ -1486,7 +1485,7 @@ impl NodeGraphMessageHandler {
 
 	/// Updates the buttons for visibility, locked, and preview
 	fn update_selection_action_buttons(&mut self, network_interface: &NodeNetworkInterface, selected_nodes: &SelectedNodes, responses: &mut VecDeque<Message>) {
-		let Some(network) = network_interface.nested_network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
+		let Some(network) = network_interface.network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
@@ -1551,7 +1550,7 @@ impl NodeGraphMessageHandler {
 	/// Collate the properties panel sections for a node graph
 	pub fn collate_properties(context: &mut NodePropertiesContext, selected_nodes: &SelectedNodes) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
-		let Some(network) = context.network_interface.nested_network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
+		let Some(network) = context.network_interface.network_for_selected_nodes(selected_nodes.selected_nodes_ref().iter()) else {
 			warn!("No network in collate_properties");
 			return Vec::new();
 		};
@@ -2179,7 +2178,7 @@ impl NodeGraphMessageHandler {
 	}
 
 	pub fn eligible_to_be_layer(&self, network_interface: &NodeNetworkInterface, node_id: NodeId) -> bool {
-		let Some(network) = network_interface.nested_network_for_selected_nodes(std::iter::once(&node_id)) else {
+		let Some(network) = network_interface.network_for_selected_nodes(std::iter::once(&node_id)) else {
 			log::error!("Could not get network in eligible_to_be_layer");
 			return false;
 		};

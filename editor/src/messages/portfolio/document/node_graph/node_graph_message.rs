@@ -54,7 +54,7 @@ pub enum NodeGraphMessage {
 	},
 	InsertNode {
 		node_id: NodeId,
-		document_node: DocumentNode,
+		document_node: NodeTemplate,
 	},
 	InsertNodeBetween {
 		post_node_id: NodeId,
