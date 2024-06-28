@@ -16,8 +16,10 @@ documentation = "https://docs.rs/raw-rs"
 raw-rs-tests = []
 
 [dependencies]
+bitstream-io = "2.3.0"
 num_enum = "0.7.2"
 thiserror = { workspace = true }
+tag-derive = { path = "tag-derive" }
 
 [dev-dependencies]
 libraw-rs = "0.0.4"

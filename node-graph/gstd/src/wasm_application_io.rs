@@ -1,13 +1,17 @@
 use dyn_any::StaticType;
 use graphene_core::application_io::{ApplicationError, ApplicationIo, ExportFormat, RenderConfig, ResourceFuture, SurfaceHandle, SurfaceHandleFrame, SurfaceId};
+use graphene_core::raster::bbox::Bbox;
 use graphene_core::raster::Image;
 use graphene_core::raster::{color::SRGBA8, ImageFrame};
 use graphene_core::renderer::{format_transform_matrix, GraphicElementRendered, ImageRenderMode, RenderParams, RenderSvgSegmentList, SvgRender};
-use graphene_core::transform::Footprint;
+use graphene_core::transform::{Footprint, TransformMut};
 use graphene_core::Color;
 use graphene_core::Node;
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
+
+use base64::Engine;
+use glam::DAffine2;
 
 use core::future::Future;
 #[cfg(target_arch = "wasm32")]
@@ -360,6 +364,60 @@ fn render_canvas(
 		transform: glam::DAffine2::IDENTITY,
 	};
 	RenderOutput::CanvasFrame(frame.into())
+}
+
+pub struct RasterizeNode<Footprint, Surface> {
+	footprint: Footprint,
+	surface_handle: Surface,
+}
+
+#[node_macro::node_fn(RasterizeNode)]
+async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, footprint: Footprint, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> ImageFrame<Color> {
+	let mut render = SvgRender::new();
+
+	if footprint.transform.matrix2.determinant() == 0. {
+		log::trace!("Invalid footprint received for rasterization");
+		return ImageFrame::default();
+	}
+	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
+	let size = aabb.size();
+	let resolution = footprint.resolution;
+	let render_params = RenderParams {
+		culling_bounds: None,
+		..Default::default()
+	};
+
+	*data.transform_mut() = DAffine2::from_translation(-aabb.start) * data.transform();
+	data.render_svg(&mut render, &render_params);
+	render.format_svg(glam::DVec2::ZERO, size);
+	let svg_string = render.svg.to_svg_string();
+
+	let canvas = &surface_handle.surface;
+	canvas.set_width(resolution.x);
+	canvas.set_height(resolution.y);
+
+	let context = canvas.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
+
+	let preamble = "data:image/svg+xml;base64,";
+	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);
+	base64_string.push_str(preamble);
+	base64::engine::general_purpose::STANDARD.encode_string(svg_string, &mut base64_string);
+
+	let image_data = web_sys::HtmlImageElement::new().unwrap();
+	image_data.set_src(base64_string.as_str());
+	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
+	context
+		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
+		.unwrap();
+
+	let rasterized = context.get_image_data(0., 0., resolution.x as f64, resolution.y as f64).unwrap();
+
+	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
+	ImageFrame {
+		image,
+		transform: footprint.transform,
+		..Default::default()
+	}
 }
 
 // Render with the data node taking in Footprint.
