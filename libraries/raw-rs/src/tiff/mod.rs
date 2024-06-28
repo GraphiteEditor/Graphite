@@ -59,7 +59,7 @@ pub enum IfdTagType {
 #[derive(Copy, Clone, Debug)]
 pub struct IfdEntry {
 	tag: TagId,
-	type_: IfdTagType,
+	the_type: IfdTagType,
 	count: u32,
 	value: u32,
 }
@@ -89,11 +89,11 @@ impl Ifd {
 		let mut ifd_entries = Vec::with_capacity(num.into());
 		for _ in 0..num {
 			let tag = file.read_u16()?.into();
-			let type = file.read_u16()?.into();
+			let the_type = file.read_u16()?.into();
 			let count = file.read_u32()?;
 			let value = file.read_u32()?;
 
-			ifd_entries.push(IfdEntry { tag, type_, count, value });
+			ifd_entries.push(IfdEntry { tag, the_type, count, value });
 		}
 
 		let next_ifd_offset = file.read_u32()?;
@@ -132,7 +132,7 @@ impl Display for Ifd {
 		for ifd_entry in self.ifd_entries() {
 			f.write_fmt(format_args!(
 				"|- Tag: {:x?}, Type: {:?}, Count: {}, Value: {:x}\n",
-				ifd_entry.tag, ifd_entry.type_, ifd_entry.count, ifd_entry.value
+				ifd_entry.tag, ifd_entry.the_type, ifd_entry.count, ifd_entry.value
 			))?;
 		}
 

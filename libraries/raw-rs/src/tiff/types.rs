@@ -24,16 +24,16 @@ pub struct TypeIfd;
 pub trait PrimitiveType {
 	type Output;
 
-	fn get_size(type_: IfdTagType) -> Option<u32>;
+	fn get_size(the_type: IfdTagType) -> Option<u32>;
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError>;
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError>;
 }
 
 impl PrimitiveType for TypeAscii {
 	type Output = char;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Ascii => Some(1),
 			_ => None,
 		}
@@ -52,8 +52,8 @@ impl PrimitiveType for TypeAscii {
 impl PrimitiveType for TypeByte {
 	type Output = u8;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Byte => Some(1),
 			_ => None,
 		}
@@ -67,8 +67,8 @@ impl PrimitiveType for TypeByte {
 impl PrimitiveType for TypeShort {
 	type Output = u16;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Short => Some(2),
 			_ => None,
 		}
@@ -82,8 +82,8 @@ impl PrimitiveType for TypeShort {
 impl PrimitiveType for TypeLong {
 	type Output = u32;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Long => Some(4),
 			_ => None,
 		}
@@ -97,16 +97,16 @@ impl PrimitiveType for TypeLong {
 impl PrimitiveType for TypeRational {
 	type Output = Rational<u32>;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Rational => Some(8),
 			_ => None,
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let numerator = TypeLong::read_primitive(type_, file)?;
-		let denominator = TypeLong::read_primitive(type_, file)?;
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let numerator = TypeLong::read_primitive(the_type, file)?;
+		let denominator = TypeLong::read_primitive(the_type, file)?;
 
 		Ok(Rational { numerator, denominator })
 	}
@@ -115,8 +115,8 @@ impl PrimitiveType for TypeRational {
 impl PrimitiveType for TypeSByte {
 	type Output = i8;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::SByte => Some(1),
 			_ => None,
 		}
@@ -130,8 +130,8 @@ impl PrimitiveType for TypeSByte {
 impl PrimitiveType for TypeSShort {
 	type Output = i16;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::SShort => Some(2),
 			_ => None,
 		}
@@ -145,8 +145,8 @@ impl PrimitiveType for TypeSShort {
 impl PrimitiveType for TypeSLong {
 	type Output = i32;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::SLong => Some(4),
 			_ => None,
 		}
@@ -160,16 +160,16 @@ impl PrimitiveType for TypeSLong {
 impl PrimitiveType for TypeSRational {
 	type Output = Rational<i32>;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::SRational => Some(8),
 			_ => None,
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let numerator = TypeSLong::read_primitive(type_, file)?;
-		let denominator = TypeSLong::read_primitive(type_, file)?;
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let numerator = TypeSLong::read_primitive(the_type, file)?;
+		let denominator = TypeSLong::read_primitive(the_type, file)?;
 
 		Ok(Rational { numerator, denominator })
 	}
@@ -178,8 +178,8 @@ impl PrimitiveType for TypeSRational {
 impl PrimitiveType for TypeFloat {
 	type Output = f32;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Float => Some(4),
 			_ => None,
 		}
@@ -193,8 +193,8 @@ impl PrimitiveType for TypeFloat {
 impl PrimitiveType for TypeDouble {
 	type Output = f64;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
 			IfdTagType::Double => Some(8),
 			_ => None,
 		}
@@ -220,20 +220,20 @@ impl PrimitiveType for TypeUndefined {
 impl PrimitiveType for TypeNumber {
 	type Output = u32;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
-			IfdTagType::Byte => TypeByte::get_size(type_),
-			IfdTagType::Short => TypeShort::get_size(type_),
-			IfdTagType::Long => TypeLong::get_size(type_),
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
+			IfdTagType::Byte => TypeByte::get_size(the_type),
+			IfdTagType::Short => TypeShort::get_size(the_type),
+			IfdTagType::Long => TypeLong::get_size(the_type),
 			_ => None,
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		Ok(match type_ {
-			IfdTagType::Byte => TypeByte::read_primitive(type_, file)?.into(),
-			IfdTagType::Short => TypeShort::read_primitive(type_, file)?.into(),
-			IfdTagType::Long => TypeLong::read_primitive(type_, file)?,
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		Ok(match the_type {
+			IfdTagType::Byte => TypeByte::read_primitive(the_type, file)?.into(),
+			IfdTagType::Short => TypeShort::read_primitive(the_type, file)?.into(),
+			IfdTagType::Long => TypeLong::read_primitive(the_type, file)?,
 			_ => unreachable!(),
 		})
 	}
@@ -242,20 +242,20 @@ impl PrimitiveType for TypeNumber {
 impl PrimitiveType for TypeSNumber {
 	type Output = i32;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		match type_ {
-			IfdTagType::SByte => TypeSByte::get_size(type_),
-			IfdTagType::SShort => TypeSShort::get_size(type_),
-			IfdTagType::SLong => TypeSLong::get_size(type_),
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		match the_type {
+			IfdTagType::SByte => TypeSByte::get_size(the_type),
+			IfdTagType::SShort => TypeSShort::get_size(the_type),
+			IfdTagType::SLong => TypeSLong::get_size(the_type),
 			_ => None,
 		}
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		Ok(match type_ {
-			IfdTagType::SByte => TypeSByte::read_primitive(type_, file)?.into(),
-			IfdTagType::SShort => TypeSShort::read_primitive(type_, file)?.into(),
-			IfdTagType::SLong => TypeSLong::read_primitive(type_, file)?,
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		Ok(match the_type {
+			IfdTagType::SByte => TypeSByte::read_primitive(the_type, file)?.into(),
+			IfdTagType::SShort => TypeSShort::read_primitive(the_type, file)?.into(),
+			IfdTagType::SLong => TypeSLong::read_primitive(the_type, file)?,
 			_ => unreachable!(),
 		})
 	}
@@ -264,12 +264,12 @@ impl PrimitiveType for TypeSNumber {
 impl PrimitiveType for TypeIfd {
 	type Output = Ifd;
 
-	fn get_size(type_: IfdTagType) -> Option<u32> {
-		TypeLong::get_size(type_)
+	fn get_size(the_type: IfdTagType) -> Option<u32> {
+		TypeLong::get_size(the_type)
 	}
 
-	fn read_primitive<R: Read + Seek>(type_: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let offset = TypeLong::read_primitive(type_, file)?;
+	fn read_primitive<R: Read + Seek>(the_type: IfdTagType, file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
+		let offset = TypeLong::read_primitive(the_type, file)?;
 		Ok(Ifd::new_from_offset(file, offset)?)
 	}
 }
@@ -284,20 +284,20 @@ impl<T: PrimitiveType> TagType for T {
 	type Output = T::Output;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
 		if count != 1 {
 			return Err(TiffError::InvalidCount);
 		}
 
-		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
+		let size = T::get_size(the_type).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
 		}
 
-		T::read_primitive(type_, file)
+		T::read_primitive(the_type, file)
 	}
 }
 
@@ -313,10 +313,10 @@ impl<T: PrimitiveType> TagType for Array<T> {
 	type Output = Vec<T::Output>;
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
-		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
+		let size = T::get_size(the_type).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
@@ -324,7 +324,7 @@ impl<T: PrimitiveType> TagType for Array<T> {
 
 		let mut ans = Vec::with_capacity(count.try_into()?);
 		for _ in 0..count {
-			ans.push(T::read_primitive(type_, file)?);
+			ans.push(T::read_primitive(the_type, file)?);
 		}
 		Ok(ans)
 	}
@@ -334,14 +334,14 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 	type Output = [T::Output; N];
 
 	fn read<R: Read + Seek>(file: &mut TiffRead<R>) -> Result<Self::Output, TiffError> {
-		let type_ = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
+		let the_type = IfdTagType::try_from(file.read_u16()?).map_err(|_| TiffError::InvalidType)?;
 		let count = file.read_u32()?;
 
 		if count != N.try_into()? {
 			return Err(TiffError::InvalidCount);
 		}
 
-		let size = T::get_size(type_).ok_or(TiffError::InvalidType)?;
+		let size = T::get_size(the_type).ok_or(TiffError::InvalidType)?;
 		if count * size > 4 {
 			let offset = file.read_u32()?;
 			file.seek_from_start(offset)?;
@@ -349,7 +349,7 @@ impl<T: PrimitiveType, const N: usize> TagType for ConstArray<T, N> {
 
 		let mut ans = Vec::with_capacity(count.try_into()?);
 		for _ in 0..count {
-			ans.push(T::read_primitive(type_, file)?);
+			ans.push(T::read_primitive(the_type, file)?);
 		}
 		ans.try_into().map_err(|_| TiffError::InvalidCount)
 	}
