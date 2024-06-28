@@ -1149,15 +1149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-queue"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df0346b5d5e76ac2fe4e327c5fd1118d6be7c51dfb18f9b7922923f287471e35"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-utils"
 version = "0.8.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2392,7 +2383,6 @@ dependencies = [
  "url",
  "usvg",
  "vello",
- "vulkan-executor",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -6968,15 +6958,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
-name = "vk-parse"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6a0bda9bbe6b9e50e6456c80aa8fe4cca3b21e4311a1130c41e4915ec2e32a"
-dependencies = [
- "xml-rs",
-]
-
-[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6994,49 +6975,6 @@ checksum = "d3b17ae1f6c8a2b28506cd96d412eebf83b4a0ff2cbefeeb952f2f9dfa44ba18"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "vulkan-executor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "bytemuck",
- "dyn-any",
- "glam",
- "graph-craft",
- "graphene-core",
- "log",
- "num-traits",
- "serde",
- "vulkano",
-]
-
-[[package]]
-name = "vulkano"
-version = "0.31.0"
-source = "git+https://github.com/GraphiteEditor/vulkano?branch=fix_rust_gpu#dbec4e91030c60849caccaa3b933fc2aac0d327b"
-dependencies = [
- "ahash",
- "ash",
- "bytemuck",
- "core-graphics-types",
- "crossbeam-queue",
- "half",
- "heck 0.4.1",
- "indexmap 1.9.3",
- "lazy_static",
- "libloading 0.7.4",
- "objc",
- "parking_lot",
- "proc-macro2",
- "quote",
- "regex",
- "serde",
- "serde_json",
- "smallvec",
- "vk-parse",
 ]
 
 [[package]]

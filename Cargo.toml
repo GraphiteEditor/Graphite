@@ -12,7 +12,6 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/compilation-server",
 	"node-graph/compilation-client",
-	"node-graph/vulkan-executor",
 	"node-graph/wgpu-executor",
 	"node-graph/gpu-executor",
 	"node-graph/gpu-compiler/gpu-compiler-bin-wrapper",
