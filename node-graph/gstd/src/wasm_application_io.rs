@@ -314,7 +314,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 	RenderOutput::Svg(render.svg.to_svg_string())
 }
 
-#[cfg(any(feature = "resvg", feature = "vello"))]
+#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 fn render_canvas(
 	data: impl GraphicElementRendered,
 	mut render: SvgRender,
@@ -440,7 +440,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
@@ -468,7 +468,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
