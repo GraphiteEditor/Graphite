@@ -30,7 +30,8 @@ fn read_and_huffman_decode_file<R: Read + Seek, E: Endianness>(huff: &[u16], fil
 	let huffman_table = &huff[1..];
 
 	// `number_of_bits` will be no more than 32, so the result is put into a u32
-	let bits: usize = file.read(number_of_bits).unwrap();
+	let bits: u32 = file.read(number_of_bits).unwrap();
+	let bits = bits as usize;
 
 	let bits_to_seek_from = huffman_table[bits].to_le_bytes()[1] as i64 - number_of_bits as i64;
 	file.seek_bits(std::io::SeekFrom::Current(bits_to_seek_from)).unwrap();

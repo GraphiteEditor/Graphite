@@ -84,9 +84,9 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 			let mut pixel = [0_u16; 16];
 			let mut bit = 30;
 			for i in 0..16 {
-				pixel[i] = match i {
-					_ if i == index_to_set_max => max,
-					_ if i == index_to_set_min => min,
+				pixel[i] = match () {
+					_ if i as u32 == index_to_set_max => max,
+					_ if i as u32 == index_to_set_min => min,
 					_ => {
 						let result = as_u16(&data[(data_index + (bit >> 3))..][..2], file.endian()).unwrap();
 						let result = ((result >> (bit & 7)) & 0x07f) << shift_by_bits;
