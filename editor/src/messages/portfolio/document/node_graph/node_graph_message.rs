@@ -54,7 +54,7 @@ pub enum NodeGraphMessage {
 	},
 	InsertNode {
 		node_id: NodeId,
-		document_node: NodeTemplate,
+		node_template: NodeTemplate,
 	},
 	InsertNodeBetween {
 		post_node_id: NodeId,
@@ -64,10 +64,6 @@ pub enum NodeGraphMessage {
 		insert_node_input_index: usize,
 		pre_node_output_index: usize,
 		pre_node_id: NodeId,
-	},
-	MoveSelectedNodes {
-		displacement_x: i32,
-		displacement_y: i32,
 	},
 	PasteNodes {
 		serialized_nodes: String,
@@ -112,10 +108,6 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	/// Move all the downstream nodes to the right in the graph to allow space for a newly inserted node
-	ShiftNode {
-		node_id: NodeId,
-	},
 	SetVisibility {
 		node_id: NodeId,
 		visible: bool,
@@ -135,6 +127,11 @@ pub enum NodeGraphMessage {
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
+	},
+	ShiftNodes {
+		node_ids: Vec<NodeId>,
+		displacement_x: i32,
+		displacement_y: i32,
 	},
 	TogglePreview {
 		node_id: NodeId,

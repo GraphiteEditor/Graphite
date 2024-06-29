@@ -134,7 +134,7 @@ impl Fsm for ImaginateToolFsmState {
 				// 	imaginate_node_id,
 				// 	imaginate_node_type.to_document_node_default_inputs([Some(NodeInput::node(transform_node_id, 0))], next_pos()),
 				// );
-				responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
+				// responses.add(NodeGraphMessage::ShiftNode { node_id: imaginate_node_id });
 
 				// // Add a layer with a frame to the document
 				// responses.add(Operation::AddFrame {

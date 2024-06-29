@@ -89,8 +89,6 @@ pub struct DocumentNodeDefinition {
 
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
-	pub input_names: Vec<&'static str>,
-	pub output_names: Vec<&'static str>,
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
@@ -2400,6 +2398,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							.enumerate()
 							.map(|(id, node)| (NodeId(id as u64), node))
 							.collect(),
+							input_names: vec!["Vector Data", "Translation", "Rotation", "Scale", "Skew", "Pivot"],
+							output_names: vec!["Data"],
 							..Default::default()
 						},
 						..Default::default()
@@ -2409,8 +2409,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			category: "Transform",
-			input_names: vec!["Vector Data", "Translation", "Rotation", "Scale", "Skew", "Pivot"],
-			output_names: vec!["Data"],
 			properties: node_properties::transform_properties,
 			..Default::default()
 		},
@@ -2831,33 +2829,23 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 }
 
 impl DocumentNodeDefinition {
-	fn to_node_template(&self, inputs: impl IntoIterator<Item = NodeInput>) -> NodeTemplate {
-		let inputs: Vec<_> = inputs.into_iter().collect();
-		assert_eq!(inputs.len(), self.inputs.len(), "Inputs passed from the graph must be equal to the number required");
-
-		DocumentNode {
-			name: self.name.to_string(),
-			is_layer: self.is_layer,
-			inputs,
-			manual_composition: self.manual_composition.clone(),
-			has_primary_output: self.has_primary_output,
-			implementation: self.implementation.clone(),
-			metadata,
-			..Default::default()
-		}
-	}
-
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn node_template_override_inputs(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
-		let mut input_override = input_override.into_iter();
-		let inputs = self.inputs.iter().map(|default| input_override.next().unwrap_or_default().unwrap_or_else(|| default.default.clone()));
-		self.to_node_template(inputs)
+	pub fn node_template_input_override(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
+		let mut template = self.node_template.clone();
+		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
+			if let Some(input_override) = input_override {
+				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface
+				assert!(matches!(input_override, NodeInput::Value(_)), "Only value inputs are supported for input overrides");
+				template.document_node.inputs[index] = input_override;
+			}
+		});
+		template
 	}
 
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
-		self.to_node_template(self.inputs.iter().map(|input| input.default.clone()))
+		self.node_template_input_override(self.node_template.document_node.inputs.iter().map(|input| input.default.clone()))
 	}
 }
 

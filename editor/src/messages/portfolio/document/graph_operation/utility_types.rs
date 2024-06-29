@@ -184,22 +184,22 @@ impl<'a> ModifyInputsContext<'a> {
 
 	/// Creates an artboard as the primary export for the document network
 	pub fn create_artboard(&self, new_id: NodeId, artboard: Artboard) -> Option<NodeId> {
-		let mut artboard_node_definition = resolve_document_node_type("Artboard").expect("Node").node_template_override_inputs(
-			[
-				Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
-				Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
-				Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
-				Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
-				Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
-				Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
-			],
-		);
+		let mut artboard_node_definition = resolve_document_node_type("Artboard").expect("Node").node_template_input_override([
+			Some(NodeInput::value(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroup::EMPTY), true)),
+			Some(NodeInput::value(TaggedValue::GraphicGroup(graphene_core::GraphicGroup::EMPTY), true)),
+			Some(NodeInput::value(TaggedValue::IVec2(artboard.location), false)),
+			Some(NodeInput::value(TaggedValue::IVec2(artboard.dimensions), false)),
+			Some(NodeInput::value(TaggedValue::Color(artboard.background), false)),
+			Some(NodeInput::value(TaggedValue::Bool(artboard.clip), false)),
+		]);
 
 		self.insert_layer_to_stack(new_id, artboard_node_definition, LayerNodeIdentifier::ROOT_PARENT, 0);
 	}
 	pub fn insert_vector_data(&mut self, subpaths: Vec<Subpath<ManipulatorGroupId>>, layer: LayerNodeIdentifier) {
-		let shape = resolve_document_node_type("Shape").expect("Shape node does not exist").node_template_override_inputs([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
-		
+		let shape = resolve_document_node_type("Shape")
+			.expect("Shape node does not exist")
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::Subpaths(subpaths), false))]);
+
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
 		let stroke = resolve_document_node_type("Stroke").expect("Stroke node does not exist").default_node_template();
@@ -216,14 +216,12 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_text(&mut self, text: String, font: Font, size: f64, layer: LayerNodeIdentifier) {
-		let text = resolve_document_node_type("Text").expect("Text node does not exist").override_definition_inputs(
-			[
-				NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
-				NodeInput::value(TaggedValue::String(text), false),
-				NodeInput::value(TaggedValue::Font(font), false),
-				NodeInput::value(TaggedValue::F64(size), false),
-			],
-		);
+		let text = resolve_document_node_type("Text").expect("Text node does not exist").override_definition_inputs([
+			NodeInput::network(graph_craft::concrete!(graphene_std::wasm_application_io::WasmEditorApi), 0),
+			NodeInput::value(TaggedValue::String(text), false),
+			NodeInput::value(TaggedValue::Font(font), false),
+			NodeInput::value(TaggedValue::F64(size), false),
+		]);
 
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 		let fill = resolve_document_node_type("Fill").expect("Fill node does not exist").default_node_template();
@@ -241,8 +239,10 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_image_data(&self, image_frame: ImageFrame<Color>, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		let image = resolve_document_node_type("Image").expect("Image node does not exist").node_template_override_inputs([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
-		
+		let image = resolve_document_node_type("Image")
+			.expect("Image node does not exist")
+			.node_template_input_override([Some(NodeInput::value(TaggedValue::ImageFrame(image_frame), false))]);
+
 		let transform = resolve_document_node_type("Transform").expect("Transform node does not exist").default_node_template();
 
 		let transform_id = NodeId(generate_uuid());
@@ -282,7 +282,9 @@ impl<'a> ModifyInputsContext<'a> {
 				self.insert_node_to_chain(
 					new_node_id,
 					output_layer,
-					resolve_document_node_type(name).expect("Node type \"{name}\" doesn't exist when inserting node by name").default_node_template(),
+					resolve_document_node_type(name)
+						.expect("Node type \"{name}\" doesn't exist when inserting node by name")
+						.default_node_template(),
 				);
 				new_node_id
 			});

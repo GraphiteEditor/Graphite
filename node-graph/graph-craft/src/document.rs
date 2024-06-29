@@ -443,7 +443,7 @@ impl NodeInput {
 			NodeInput::Inline(_) => false,
 		}
 	}
-	// Network node inputs in the document network are not displayed, but still exist in the compiled network
+	/// Network node inputs in the document network are not displayed, but still exist in the compiled network
 	pub fn is_exposed_to_frontend(&self, is_document_network: bool) -> bool {
 		match self {
 			NodeInput::Node { .. } => true,

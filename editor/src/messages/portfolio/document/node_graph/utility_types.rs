@@ -66,7 +66,7 @@ pub struct FrontendNode {
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
 	pub alias: String,
-	pub name: String,
+	pub reference: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]

@@ -119,26 +119,29 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::CreateBooleanOperationNode { node_id, operation } => {
-				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation").clone()
-					.expect("Failed to create a Boolean Operation node").node_template_override_inputs(
-					[
+				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation")
+					.clone()
+					.expect("Failed to create a Boolean Operation node")
+					.node_template_input_override([
 						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
 						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
 						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-					],
-				);
+					]);
 
-				network_interface.insert_node(node_id, new_boolean_operation_node, document_network, &Vec::new());
+				network_interface.insert_node(node_id, new_boolean_operation_node, true);
 			}
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
-				if document_network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
-					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses);
+				if network_interface.document_network().nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
+					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses, true);
 				}
 			}
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
-				network_interface.remove_references_from_network( node_id, reconnect_to_sibling, true);
-				responses.add(NodeGraphMessage::DisconnectInput { input: InputConnector::node(node_id, 0), use_document_network: true });
+				network_interface.remove_references_from_network(node_id, reconnect_to_sibling, true);
+				responses.add(NodeGraphMessage::DisconnectInput {
+					input: InputConnector::node(node_id, 0),
+					use_document_network: true,
+				});
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
@@ -278,7 +281,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					});
 
 					// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
-					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![lower_layer.to_node()], reconnect: true, use_document_network: true });
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![lower_layer.to_node()],
+						reconnect: true,
+						use_document_network: true,
+					});
 				}
 
 				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
@@ -519,7 +526,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, document_metadata, responses);
 
-				if let Some(artboard_id) = modify_inputs.create_artboard( id, artboard) {
+				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
 					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
@@ -615,7 +622,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			}
 			GraphOperationMessage::ClearArtboards => {
 				for &artboard in document_metadata.all_artboards() {
-					responses.add(NodeGraphMessage::DeleteNodes { node_ids: vec![artboard.to_node()], reconnect: true, use_document_network: true });
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![artboard.to_node()],
+						reconnect: true,
+						use_document_network: true,
+					});
 				}
 				load_network_structure(document_network, document_metadata, collapsed);
 			}
@@ -668,7 +679,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(NodeGraphMessage::SendGraph);
 				}
 			}
-			GraphOperationMessage::SetNodeInput { input_connector, input} => {
+			GraphOperationMessage::SetNodeInput { input_connector, input } => {
 				if modify_inputs.set_input(input_connector, input, false) {
 					load_network_structure(document_network, document_metadata, collapsed);
 				}
@@ -764,7 +775,7 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 }
 
 fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: isize) {
-	let layer= modify_inputs.create_layer(id, parent, insert_index);
+	let layer = modify_inputs.create_layer(id, parent, insert_index);
 	modify_inputs.layer_node = Some(layer);
 	match node {
 		usvg::Node::Group(group) => {

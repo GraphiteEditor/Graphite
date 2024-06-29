@@ -324,6 +324,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					});
 					responses.add_front(BroadcastEvent::ToolAbort);
 				}
+				responses.add_front(DocumentMessage::StartTransaction);
 			}
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
