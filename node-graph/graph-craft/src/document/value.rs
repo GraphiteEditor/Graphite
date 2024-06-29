@@ -170,7 +170,6 @@ tagged_value! {
 	VectorModification(graphene_core::vector::VectorModification),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
-	NodeAlias(String),
 }
 
 impl<'a> TaggedValue {

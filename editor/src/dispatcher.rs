@@ -493,14 +493,11 @@ mod test {
 
 			let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
 			for node in document.network.nodes.values_mut().filter(|d| d.name == "Artboard") {
-				if node.inputs.len() < 7 {
-					node.inputs.push(NodeInput::value(TaggedValue::NodeAlias(String::new()), false));
-				}
 				if let Some(network) = node.implementation.get_network_mut() {
 					for node in network.nodes.values_mut() {
 						if node.name == "To Artboard" {
 							node.implementation = DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>");
-							node.inputs.push(NodeInput::network(graphene_core::concrete!(String), 6));
+							node.inputs.insert(1, NodeInput::value(TaggedValue::String("Artboard".to_string()), false));
 						}
 					}
 				}

@@ -1319,24 +1319,6 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Resolve nodes using TaggedValue::NodeAlias to access their alias e.g. artboard node
-	pub fn resolve_alias(&mut self) {
-		for node in self.nodes.values_mut() {
-			if let Some(network) = node.implementation.get_network_mut() {
-				network.resolve_alias();
-			}
-			for input in node.inputs.iter_mut() {
-				if let NodeInput::Value {
-					tagged_value: crate::document::TaggedValue::NodeAlias(alias),
-					..
-				} = input
-				{
-					*alias = node.alias.clone();
-				}
-			}
-		}
-	}
-
 	/// Converts the `DocumentNode`s with a `DocumentNodeImplementation::Extract` into a `ClonedNode` that returns
 	/// the `DocumentNode` specified by the single `NodeInput::Node`.
 	/// The referenced node is removed from the network, and any `NodeInput::Node`s used by the referenced node are replaced with a generically typed network input.

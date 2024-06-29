@@ -316,7 +316,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 				DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
-				DocumentInputType::value("Alias", TaggedValue::NodeAlias(String::new()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
