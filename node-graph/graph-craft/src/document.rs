@@ -247,16 +247,10 @@ pub struct OriginalLocation {
 impl Default for DocumentNode {
 	fn default() -> Self {
 		Self {
-			alias: Default::default(),
-			name: Default::default(),
 			inputs: Default::default(),
 			manual_composition: Default::default(),
-			has_primary_output: true,
 			implementation: Default::default(),
-			is_layer: false,
 			visible: true,
-			locked: Default::default(),
-			metadata: DocumentNodeMetadata::default(),
 			skip_deduplication: Default::default(),
 			world_state_hash: Default::default(),
 			original_location: OriginalLocation::default(),
@@ -537,23 +531,6 @@ impl DocumentNodeImplementation {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-/// Root Node is the "default" export for a node network. Used by document metadata, displaying UI-only "Export" node, and for restoring the default preview node.
-pub struct RootNode {
-	pub id: NodeId,
-	pub output_index: usize,
-}
-#[derive(PartialEq, Debug, Clone, Hash, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
-	#[default]
-	No,
-}
-
 // TODO: Eventually remove this (probably starting late 2024)
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
@@ -657,56 +634,6 @@ impl NodeNetwork {
 		hasher.finish()
 	}
 
-	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
-	pub fn get_root_node(&self) -> Option<RootNode> {
-		match self.previewing {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => self.exports.first().and_then(|export| {
-				if let NodeInput::Node { node_id, output_index, .. } = export {
-					Some(RootNode {
-						id: *node_id,
-						output_index: *output_index,
-					})
-				} else {
-					None
-				}
-			}),
-		}
-	}
-
-	/// Sets the root node only if a node is being previewed
-	pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
-		if let Previewing::Yes { root_node_to_restore } = self.previewing {
-			// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
-			if let Some(root_node_to_restore) = root_node_to_restore {
-				if root_node_to_restore.id != node_id {
-					self.start_previewing(node_id, output_index);
-				} else {
-					self.stop_preview();
-				}
-			} else {
-				self.stop_preview();
-			}
-		}
-	}
-
-	/// Start previewing with a restore node
-	pub fn start_previewing(&mut self, previous_node_id: NodeId, output_index: usize) {
-		self.previewing = Previewing::Yes {
-			root_node_to_restore: Some(RootNode { id: previous_node_id, output_index }),
-		};
-	}
-
-	/// Start previewing without a restore node
-	pub fn start_previewing_without_restore(&mut self) {
-		self.previewing = Previewing::Yes { root_node_to_restore: None };
-	}
-
-	/// Stops preview, does not reset export
-	pub fn stop_preview(&mut self) {
-		self.previewing = Previewing::No;
-	}
-
 	pub fn value_network(node: DocumentNode) -> Self {
 		Self {
 			exports: vec![NodeInput::node(NodeId(0), 0)],
@@ -716,24 +643,24 @@ impl NodeNetwork {
 	}
 
 	/// A graph with just an input node
-	pub fn new_network() -> Self {
-		Self {
-			exports: vec![NodeInput::node(NodeId(0), 0)],
-			nodes: [(
-				NodeId(0),
-				DocumentNode {
-					name: "Input Frame".into(),
-					manual_composition: Some(concrete!(u32)),
-					implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
-					metadata: DocumentNodeMetadata { position: (8, 4).into() },
-					..Default::default()
-				},
-			)]
-			.into_iter()
-			.collect(),
-			..Default::default()
-		}
-	}
+	// pub fn new_network() -> Self {
+	// 	Self {
+	// 		exports: vec![NodeInput::node(NodeId(0), 0)],
+	// 		nodes: [(
+	// 			NodeId(0),
+	// 			DocumentNode {
+	// 				name: "Input Frame".into(),
+	// 				manual_composition: Some(concrete!(u32)),
+	// 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
+	// 				metadata: DocumentNodeMetadata { position: (8, 4).into() },
+	// 				..Default::default()
+	// 			},
+	// 		)]
+	// 		.into_iter()
+	// 		.collect(),
+	// 		..Default::default()
+	// 	}
+	// }
 
 	/// Appends a new node to the network after the output node and sets it as the new output
 	// pub fn push_node_to_document_network(&mut self, mut node: DocumentNode) -> NodeId {
@@ -776,53 +703,6 @@ impl NodeNetwork {
 			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
 		}
 		network
-	}
-
-	/// Check if the specified node id is connected to the output
-	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
-		// If the node is the output then return true
-		if self
-			.exports
-			.iter()
-			.any(|export| if let NodeInput::Node { node_id, .. } = export { *node_id == target_node_id } else { false })
-		{
-			return true;
-		}
-
-		if self.exports_metadata.0 == target_node_id {
-			return true;
-		}
-		// Get the outputs
-		let mut stack = self
-			.exports
-			.iter()
-			.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { self.nodes.get(node_id) } else { None })
-			.collect::<Vec<_>>();
-		let mut already_visited = HashSet::new();
-		already_visited.extend(self.exports.iter().filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id) } else { None }));
-
-		while let Some(node) = stack.pop() {
-			for input in &node.inputs {
-				if let &NodeInput::Node { node_id: ref_id, .. } = input {
-					// Skip if already viewed
-					if already_visited.contains(&ref_id) {
-						continue;
-					}
-					// If the target node is used as input then return true
-					if ref_id == target_node_id {
-						return true;
-					}
-					// Add the referenced node to the stack
-					let Some(ref_node) = self.nodes.get(&ref_id) else {
-						continue;
-					};
-					already_visited.insert(ref_id);
-					stack.push(ref_node);
-				}
-			}
-		}
-
-		false
 	}
 
 	/// Is the node being used directly as an output?

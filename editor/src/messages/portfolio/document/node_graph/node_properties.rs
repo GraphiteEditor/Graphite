@@ -29,6 +29,7 @@ pub fn string_properties(text: impl Into<String>) -> Vec<LayoutGroup> {
 fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| {
 		if let Some(value) = value(input_value) {
+			
 			NodeGraphMessage::SetInputValue { node_id, input_index, value }.into()
 		} else {
 			Message::NoOp

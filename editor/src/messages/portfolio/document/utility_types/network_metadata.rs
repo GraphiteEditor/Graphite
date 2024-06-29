@@ -132,6 +132,57 @@ impl NodeNetworkInterface {
 		}
 	}
 
+		/// Check if the specified node id is connected to the output
+	pub fn connected_to_output(&self, target_node_id: NodeId) -> bool {
+		let Some(network) = self.network_for_selected_nodes(std::iter::once(&target_node_id)) else {
+			log::error!("Could not get network in connected_to_output");
+			return false;
+		};
+		// If the node is the output then return true
+		if network
+			.exports
+			.iter()
+			.any(|export| if let NodeInput::Node { node_id, .. } = export { *node_id == target_node_id } else { false })
+		{
+			return true;
+		}
+
+		if network.exports_metadata.0 == target_node_id {
+			return true;
+		}
+		// Get the outputs
+		let mut stack = network
+			.exports
+			.iter()
+			.filter_map(|output| if let NodeInput::Node { node_id, .. } = output { network.nodes.get(node_id) } else { None })
+			.collect::<Vec<_>>();
+		let mut already_visited = HashSet::new();
+		already_visited.extend(network.exports.iter().filter_map(|output| if let NodeInput::Node { node_id, .. } = output { Some(node_id) } else { None }));
+
+		while let Some(node) = stack.pop() {
+			for input in &node.inputs {
+				if let &NodeInput::Node { node_id: ref_id, .. } = input {
+					// Skip if already viewed
+					if already_visited.contains(&ref_id) {
+						continue;
+					}
+					// If the target node is used as input then return true
+					if ref_id == target_node_id {
+						return true;
+					}
+					// Add the referenced node to the stack
+					let Some(ref_node) = network.nodes.get(&ref_id) else {
+						continue;
+					};
+					already_visited.insert(ref_id);
+					stack.push(ref_node);
+				}
+			}
+		}
+
+		false
+	}
+
 	/// Collect a hashmap of all downstream inputs from an output.
 	pub fn collect_outward_wires(&self, use_document_network: bool) -> HashMap<OutputConnector, Vec<InputConnector>> {
 		let mut outward_wires = HashMap::new();
@@ -351,6 +402,7 @@ impl NodeNetworkInterface {
 				match layer_metadata.position {
 					LayerPosition::Absolute(position) => return Some(position),
 					LayerPosition::Stack(y_offset) => {
+						// TODO: Use root node to restore if previewing
 						let Some(downstream_node_connectors) = outward_wires.get(&OutputConnector::node(node_id, 0)) else {
 							log::error!("Could not get downstream node in get_position");
 							return None;
@@ -371,6 +423,7 @@ impl NodeNetworkInterface {
 						let mut current_node_id = node_id;
 						let mut node_distance_from_layer = 1;
 						loop {
+							// TODO: Use root node to restore if previewing
 							let Some(downstream_node_connectors) = outward_wires.get(&OutputConnector::node(node_id, 0)) else {
 								log::error!("Could not get downstream node for node with Position::Chain");
 								return None;
@@ -423,13 +476,31 @@ impl NodeNetworkInterface {
 		})
 	}
 	
-	pub fn is_previewing(&self, use_document_network: bool) -> bool {
+	pub fn previewing(&self, use_document_network: bool) -> Previewing {
 		let Some(network_metadata) = self.network_metadata(use_document_network) else {
-			log::error!("Could not get nested network_metadata in is_previewing");
+			log::error!("Could not get nested network_metadata in previewing");
 			return false;
 		};
-		matches!(network_metadata.persistent_metadata.previewing, Previewing::Yes)
+		network_metadata.persistent_metadata.previewing
 	}
+
+	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
+	pub fn get_root_node(&self) -> Option<OutputConnector> {
+		match self.previewing {
+			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
+			Previewing::No => self.exports.first().and_then(|export| {
+				if let NodeInput::Node { node_id, output_index, .. } = export {
+					Some(RootNode {
+						id: *node_id,
+						output_index: *output_index,
+					})
+				} else {
+					None
+				}
+			}),
+		}
+	}
+
 	pub fn persistent_node_metadata(&self, node_id: &NodeId, use_document_network: bool) -> Option<&DocumentNodePersistentMetadata> {
 		let Some(network_metadata) = self.network_metadata(use_document_network) else {
 			log::error!("Could not get nested network_metadata");
@@ -536,12 +607,12 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the metadata for the network the selected nodes are part of, which is either the document network metadata or the metadata from the network_path.
-	fn network_metadata_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> &NodeNetworkMetadata {
+	fn network_metadata_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&NodeNetworkMetadata> {
 		self.network_metadata_mut(self.selected_nodes_in_document_network(selected_nodes))
 	}
 
-	/// This method is implemented in the interface since creating a node requires information from both the NodeNetwork and network metadata, and passing self as a parameter is not desirable.
-	fn get_transient_node_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&mut DocumentNodeTransientMetadata> {
+	/// This method is implemented in the interface since creating a node requires information from both the NodeNetwork and network metadata
+	pub fn get_transient_node_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&mut DocumentNodeTransientMetadata> {
 		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
 			log::error!("Could not get nested network_metadata in get_transient_node_metadata");
 			return None
@@ -553,7 +624,7 @@ impl NodeNetworkInterface {
 		node_metadata.transient_metadata.get_transient_node_metadata(self, node_id, use_document_network)
 	}
 
-	fn get_transient_network_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&mut NodeNetworkTransientMetadata> {
+	pub fn get_transient_network_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&mut NodeNetworkTransientMetadata> {
 		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
 			log::error!("Could not get nested network_metadata in get_transient_node_metadata");
 			return None
@@ -661,8 +732,11 @@ impl NodeNetworkInterface {
 		self.get_transient_node_metadata(&node_id, false).and_then(|transient_node_metadata| transient_node_metadata.node_click_target.subpath.bounding_box())
 	}
 
-	pub fn get_input_position(&mut self, node_id: NodeId, input_index: usize) -> Option<DVec2> {
-		self.get_transient_node_metadata(&node_id, false).and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.get_input_port_position(input_index))
+	pub fn get_input_position(&mut self, input_connector: InputConnector) -> Option<DVec2> {
+		match input_connector {
+			InputConnector::Node(node_id, output_index) => self.get_transient_node_metadata(&node_id, false).and_then(|transient_node_metadata| transient_node_metadata.port_click_targets.get_input_port_position(output_index)),
+			InputConnector::Export(import_index) => None, // TODO: Implement getting position for the new import connection UI
+		}
 	}
 	pub fn get_output_position(&mut self, output_connector: OutputConnector) -> Option<DVec2> {
 		match output_connector {
@@ -685,7 +759,7 @@ impl NodeNetworkInterface {
 		};
 
 		selected_nodes
-			.selected_nodes(network)
+			.selected_nodes()
 			.filter_map(|node_id| {
 				let Some(node_metadata) = self.network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
 					log::debug!("Could not get click target for node {node_id}");
@@ -728,6 +802,7 @@ impl NodeNetworkInterface {
 		old_network
 	}
 
+	/// Ensure network metadata, positions, and other metadata is kept in sync
 	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, use_document_network: bool) {}
 
 	pub fn create_wire(&mut self, output_connector: OutputConnector, input_connector: InputConnector, use_document_network: bool) {
@@ -1016,18 +1091,95 @@ impl NodeNetworkInterface {
 	pub fn enter_nested_network(&mut self, node_id: NodeId) {
 		self.network_path.push(node_id);
 	}
-
+	
 	pub fn exit_nested_network(&mut self) {
 		self.network_path.pop();
 	}
-
+	
 	pub fn exit_all_nested_networks(&mut self) {
 		self.network_path.clear();
+	}
+	
+	/// Start previewing with a restore node
+	pub fn start_previewing(&mut self, previous_node_id: NodeId, output_index: usize) {
+		self.previewing = Previewing::Yes {
+			root_node_to_restore: Some(RootNode { id: previous_node_id, output_index }),
+		};
 	}
 
 	pub fn start_previewing_without_restore(&mut self) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
 		// self.network.start_previewing_without_restore();
+	}
+
+	/// Sets the root node only if a node is being previewed
+	pub fn update_root_node(&mut self, node_id: NodeId, output_index: usize) {
+		if let Previewing::Yes { root_node_to_restore } = self.previewing {
+			// Only continue previewing if the new root node is not the same as the primary export. If it is the same, end the preview
+			if let Some(root_node_to_restore) = root_node_to_restore {
+				if root_node_to_restore.id != node_id {
+					self.start_previewing(node_id, output_index);
+				} else {
+					self.stop_preview();
+				}
+			} else {
+				self.stop_preview();
+			}
+		}
+	}
+
+	/// Stops preview, does not reset export
+	pub fn stop_preview(&mut self) {
+		self.previewing = Previewing::No;
+	}
+
+	pub fn set_alias(&mut self, node_id: NodeId, alias:String){
+		let Some(network_metadata) = self.network_metadata_for_selected_nodes_mut(std::iter::once(&node_id)) else {
+			return;
+		};
+
+		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(&node_id) else {
+			log::error!("Could not get node {node_id} in set_visibility");
+			return;
+		};
+
+		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			layer_metadata.locked = locked;
+		} else {
+			log::error!("Cannot set non layer node to locked");
+		}
+		//TODO: Recalculate transient metadata
+		node_metadata.transient_metadata.unload();
+	}
+
+	pub fn set_visibility(&mut self, node_id: NodeId, is_visible:bool) {
+		let Some(network) = self.network_for_selected_nodes_mut(std::iter::once(&node_id)) else {
+			return;
+		};
+
+		let Some(node) = network.nodes.get_mut(&node_id) else {
+			log::error!("Could not get node {node_id} in set_visibility");
+			return;
+		};
+
+		node.visible = is_visible;
+	}
+
+	pub fn set_locked(&mut self, node_id: NodeId, locked:bool) {
+		let Some(network_metadata) = self.network_metadata_for_selected_nodes_mut(std::iter::once(&node_id)) else {
+			return;
+		};
+
+		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(&node_id) else {
+			log::error!("Could not get node {node_id} in set_visibility");
+			return;
+		};
+
+		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
+			layer_metadata.locked = locked;
+		} else {
+			log::error!("Cannot set non layer node to locked");
+		}
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: NodeId, is_layer: bool) {
@@ -1046,6 +1198,80 @@ impl NodeNetworkInterface {
 		// } else {
 		// 	NodeTypePersistentMetadata::Node
 		// };
+		node_metadata.transient_metadata.unload();
+	}
+
+	pub fn toggle_preview(&mut self, toggle_id: NodeId) {
+		let use_document_network = self.selected_nodes_in_document_network(std::iter::once(&toggle_id));
+		let Some(network) = self.network(use_document_network) else {
+			return;
+		};
+		// If new_export is None then disconnect
+		let mut new_export = None;
+		let mut new_previewing_state =  Previewing::No;
+		if let Some(export) = network.exports.get(0) {
+			// If there currently an export
+			if let NodeInput::Node { node_id, output_index, .. } = export {
+				let previous_export_id = *node_id;
+				let previous_output_index = *output_index;
+
+				// The export is clicked
+				if *node_id == toggle_id {
+					// If the current export is clicked and is being previewed end the preview and set either export back to root node or disconnect
+					if let Previewing::Yes { root_node_to_restore } = self.previewing(use_document_network) {
+						new_export = root_node_to_restore;
+						new_previewing_state = Previewing::No;
+					}
+					// The export is clicked and there is no preview
+					else {
+						new_previewing_state = Previewing::Yes { root_node_to_restore: Some(OutputConnector::node(previous_export_id, previous_output_index))};
+					}
+				}
+				// The export is not clicked
+				else {
+					new_export = Some(OutputConnector::node(toggle_id, 0));
+
+					// There is currently a dashed line being drawn
+					if let Previewing::Yes { root_node_to_restore } = self.previewing(use_document_network) {
+						// There is also a solid line being drawn
+						if let Some(root_node_to_restore) = root_node_to_restore {
+							// If the node with the solid line is clicked, then start previewing that node without restore
+							if root_node_to_restore.id == toggle_id {
+								new_export = Some(OutputConnector::node(toggle_id, 0));
+								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+							}
+						}
+						// There is a dashed line without a solid line.
+						else {
+							new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+						}
+					}
+					// Not previewing, there is no dashed line being drawn
+					else {
+						new_export = Some(OutputConnector::node(toggle_id, 0));
+						new_previewing_state = Previewing::Yes { root_node_to_restore: Some(OutputConnector::node(previous_export_id, previous_output_index)) };
+					}
+				}
+			}
+			// The primary export is disconnected
+			else {
+				// Set node as export and cancel any preview
+				new_export = Some(OutputConnector::node(toggle_id, 0));
+				network.start_previewing_without_restore();
+			}
+		}
+		match new_export {
+			Some(new_export) => {
+				self.create_wire(new_export, InputConnector::Export(0), use_document_network);
+			}
+			None => {
+				self.disconnect_input(InputConnector::Export(0), use_document_network);
+			}
+		}
+		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
+			return;
+		};
+		network_metadata.persistent_metadata.previewing = new_previewing_state;
 	}
 
 	/// Shifts a node by a certain offset without the auto layout system. If the node is a layer in a stack, the y_offset is shifted. If the node is a node in a chain, its position gets set to absolute.
@@ -1225,6 +1451,16 @@ impl Ports {
 	}
 }
 
+#[derive(PartialEq, Debug, Clone, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Previewing {
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes { root_node_to_restore: Option<OutputConnector> },
+	#[default]
+	No,
+}
+
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkMetadata {
@@ -1247,6 +1483,7 @@ pub struct NodeNetworkPersistentMetadata {
 	// Stores the transform and navigation state for the network
 	pub navigation_metadata: NavigationMetadata,
 }
+
 
 #[derive(Debug, Clone)]
 pub enum CurrentNodeNetworkTransientMetadata {

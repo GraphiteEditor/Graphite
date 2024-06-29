@@ -139,7 +139,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
 				network_interface.remove_references_from_network(node_id, reconnect_to_sibling, true);
 				responses.add(NodeGraphMessage::DisconnectInput {
-					input: InputConnector::node(node_id, 0),
+					input_connector: InputConnector::node(node_id, 0),
 					use_document_network: true,
 				});
 			}
@@ -711,7 +711,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				node.visible = visible;
 
 				// Only generate node graph if one of the selected nodes is connected to the output
-				if document_network.connected_to_output(node_id) {
+				if network_interface.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
@@ -746,7 +746,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let Some(node) = document_network.nodes.get_mut(&node_id) else { return };
 				node.locked = locked;
 
-				if document_network.connected_to_output(node_id) {
+				if network_interface.connected_to_output(node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 

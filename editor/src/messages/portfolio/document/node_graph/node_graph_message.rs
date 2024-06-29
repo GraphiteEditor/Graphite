@@ -36,7 +36,7 @@ pub enum NodeGraphMessage {
 		reconnect: bool,
 	},
 	DisconnectInput {
-		input: InputConnector,
+		input_connector: InputConnector,
 		use_document_network: bool,
 	},
 	EnterNestedNetwork,
@@ -103,11 +103,6 @@ pub enum NodeGraphMessage {
 		input: NodeInput,
 		use_document_network: bool,
 	},
-	SetQualifiedInputValue {
-		node_id: NodeId,
-		input_index: usize,
-		value: TaggedValue,
-	},
 	SetVisibility {
 		node_id: NodeId,
 		visible: bool,
@@ -116,13 +111,13 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		locked: bool,
 	},
-	SetName {
+	SetAlias {
 		node_id: NodeId,
-		name: String,
+		alias: String,
 	},
-	SetNameImpl {
+	SetAliasImpl {
 		node_id: NodeId,
-		name: String,
+		alias: String,
 	},
 	SetToNodeOrLayer {
 		node_id: NodeId,

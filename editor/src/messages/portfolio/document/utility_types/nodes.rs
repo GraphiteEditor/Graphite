@@ -105,8 +105,8 @@ impl SelectedNodes {
 	}
 
 	// Ensures all selected nodes must be in the same network
-	pub fn selected_nodes<'a>(&'a self, network: &'a NodeNetwork) -> impl Iterator<Item = &NodeId> + '_ {
-		self.0.iter().filter(|node_id| network.nodes.contains_key(*node_id))
+	pub fn selected_nodes<'a>(&'a self) -> impl Iterator<Item = &NodeId> + '_ {
+		self.0.iter()
 	}
 
 	pub fn selected_nodes_ref(&self) -> &Vec<NodeId> {
@@ -127,6 +127,7 @@ impl SelectedNodes {
 		self.0.retain(f);
 	}
 
+	// Ensures new selected nodes are all in the same network
 	// TODO: This function is run when a node in the layer panel is currently selected, and a new node is selected in the graph, as well as when a node is currently selected in the graph and a node in the layer panel is selected. These are fundamentally different operations, since different nodes should be selected in each case, but cannot be distinguished. Currently it is not possible to shift+click a node in the node graph while a layer is selected. Instead of set_selected_nodes, add_selected_nodes should be used.
 	pub fn set_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
 		let Some(network) = network_interface.network(false) else { return };
@@ -148,6 +149,7 @@ impl SelectedNodes {
 		self.0 = new_nodes;
 	}
 
+	// Ensures all selected nodes are all in the same network
 	pub fn add_selected_nodes(&mut self, new: Vec<NodeId>, network_interface: &NodeNetworkInterface) {
 		let Some(network) = network_interface.network(false) else { return };
 		let document_network = network_interface.document_network();
