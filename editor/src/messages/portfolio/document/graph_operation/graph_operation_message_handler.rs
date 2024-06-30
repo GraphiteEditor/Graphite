@@ -81,7 +81,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
 
 				match (downstream_node, upstream_node) {
-					(Some(downstream_node), Some(upstream_node)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+					(Some(downstream_node), Some(upstream_node)) => responses.add(NodeGraphMessage::InsertNodeBetween {
 						post_node_id: downstream_node,
 						post_node_input_index: input_index,
 						insert_node_output_index: 0,
@@ -89,13 +89,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: upstream_node,
+						use_document_network: true,
 					}),
 					(Some(downstream_node), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node,
 						input_index: input_index,
 						input: NodeInput::node(*new_layer_id, 0),
 					}),
-					(None, Some(upstream_node)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+					(None, Some(upstream_node)) => responses.add(NodeGraphMessage::InsertNodeBetween {
 						post_node_id: document_network.exports_metadata.0,
 						post_node_input_index: 0,
 						insert_node_output_index: 0,
@@ -103,6 +104,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: upstream_node,
+						use_document_network: true,
 					}),
 					(None, None) => {
 						if let Some(primary_export) = document_network.exports.get_mut(0) {
@@ -185,7 +187,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 
 				match (post_node_id, pre_node_id) {
-					(Some(post_node_id), Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+					(Some(post_node_id), Some(pre_node_id)) => responses.add(NodeGraphMessage::InsertNodeBetween {
 						post_node_id: post_node_id,
 						post_node_input_index: post_node_input_index,
 						insert_node_output_index: 0,
@@ -193,8 +195,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: pre_node_id,
+						use_document_network: true,
 					}),
-					(None, Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
+					(None, Some(pre_node_id)) => responses.add(NodeGraphMessage::InsertNodeBetween {
 						post_node_id: document_network.exports_metadata.0,
 						post_node_input_index: 0,
 						insert_node_output_index: 0,
@@ -202,6 +205,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: pre_node_id,
+						use_document_network: true,
 					}),
 					(Some(post_node_id), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: post_node_id,
@@ -262,7 +266,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				});
 
 				// Insert it in the upper layer's chain, right before it enters the upper layer
-				responses.add(GraphOperationMessage::InsertNodeBetween {
+				responses.add(NodeGraphMessage::InsertNodeBetween {
 					post_node_id: upper_layer.to_node(),
 					post_node_input_index: 1,
 					insert_node_id: boolean_operation_node_id,
@@ -270,6 +274,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					insert_node_input_index: 0,
 					pre_node_id: upper_node_id,
 					pre_node_output_index: upper_output_index,
+					use_document_network: true,
 				});
 
 				// Connect the lower chain to the Boolean Operation node's lower input
@@ -303,49 +308,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				// Re-render
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			GraphOperationMessage::InsertNodeBetween {
-				post_node_id,
-				post_node_input_index,
-				insert_node_output_index,
-				insert_node_id,
-				insert_node_input_index,
-				pre_node_output_index,
-				pre_node_id,
-			} => {
-				let post_node = document_network.nodes.get(&post_node_id);
-				let Some((post_node_input_index, _)) = post_node
-					.map_or(&document_network.exports, |post_node| &post_node.inputs)
-					.iter()
-					.enumerate()
-					.filter(|input| input.1.is_exposed())
-					.nth(post_node_input_index)
-				else {
-					error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
-					return;
-				};
-				let Some(insert_node) = document_network.nodes.get(&insert_node_id) else {
-					error!("Insert node not found");
-					return;
-				};
-				let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
-					error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
-					return;
-				};
-
-				let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
-				responses.add(GraphOperationMessage::SetNodeInput {
-					node_id: post_node_id,
-					input_index: post_node_input_index,
-					input: post_input,
-				});
-
-				let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
-				responses.add(GraphOperationMessage::SetNodeInput {
-					node_id: insert_node_id,
-					input_index: insert_node_input_index,
-					input: insert_input,
-				});
 			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {

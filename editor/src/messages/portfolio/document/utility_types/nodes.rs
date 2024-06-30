@@ -36,7 +36,6 @@ impl serde::Serialize for JsRawBuffer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
-	pub name: String,
 	pub alias: String,
 	pub tooltip: String,
 	#[serde(rename = "childrenAllowed")]

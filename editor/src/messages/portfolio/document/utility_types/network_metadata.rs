@@ -41,6 +41,7 @@ pub struct NodeNetworkInterface {
 }
 
 // Public immutable getters for the network interface
+// TODO: Should use_document_network be passed as a parameter for node getters, or should the network be derived within the network
 impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		&self.network
@@ -66,6 +67,20 @@ impl NodeNetworkInterface {
 		} else {
 			self.network_metadata.nested_metadata(&self.network_path)
 		}
+	}
+
+	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
+	pub fn encapsulating_node_metadata(&self) -> Option<&DocumentNodeMetadata> {
+		let mut encapsulating_path = self.network_path.clone();
+		let Some(encapsulating_node) = encapsulating_path.pop() else {
+			return None;
+		};
+		let Some(parent_metadata) = self
+				.document_network_metadata()
+				.nested_metadata(&encapsulating_path) else {
+					return None;
+				};
+		parent_metadata.persistent_metadata.node_metadata.get(&encapsulating_node)
 	}
 
 	pub fn selected_nodes_in_document_network(&self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> bool {
@@ -485,15 +500,20 @@ impl NodeNetworkInterface {
 	}
 
 	/// Returns the root node (the node that the solid line is connect to), or None if no nodes are connected to the output
-	pub fn get_root_node(&self) -> Option<OutputConnector> {
-		match self.previewing {
+	pub fn get_root_node(&self, use_document_network: bool) -> Option<OutputConnector> {
+		let Some(network) = self.network(use_document_network) else {
+			log::error!("Could not get network in get_root_node");
+			return None;
+		};
+		let Some(network_metatata) = self.network_metadata(use_document_network) else {
+			log::error!("Could not get nested network_metadata in get_root_node");
+			return None;
+		};
+		match network_metatata.persistent_metadata.previewing {
 			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => self.exports.first().and_then(|export| {
+			Previewing::No => network.exports.first().and_then(|export| {
 				if let NodeInput::Node { node_id, output_index, .. } = export {
-					Some(RootNode {
-						id: *node_id,
-						output_index: *output_index,
-					})
+					Some(OutputConnector::node(*node_id, *output_index))
 				} else {
 					None
 				}
@@ -526,7 +546,7 @@ impl NodeNetworkInterface {
 			.unwrap_or(if self.persistent_node_metadata(node_id, use_document_network).expect("Could not get persistent node metadata in untitled_layer_label").is_layer() && self.get_reference(node_id, use_document_network).is_some_and(|reference| reference == "Merge")  { "Untitled Layer".to_string() } else { self.get_reference(node_id, use_document_network).unwrap_or_default() })
 	}
 
-	pub fn get_locked(&self, node_id: &NodeId, use_document_network: bool) -> bool {
+	pub fn is_locked(&self, node_id: &NodeId, use_document_network: bool) -> bool {
 		let Some(persistent_node_metadata) = self.persistent_node_metadata(&node_id, false) else {
 			log::error!("Could not get persistent node metadata in get_locked for node {node_id}");
 			return false;
@@ -572,6 +592,26 @@ impl NodeNetworkInterface {
 
 		// TODO: Eventually allow nodes at the bottom of a stack to be layers, where `input_count` is 0
 		self.persistent_node_metadata(node_id, use_document_network).is_some_and(|node_metadata| node_metadata.has_primary_output) && output_count == 1 && (input_count == 1 || input_count == 2)
+	}
+
+	pub fn has_primary_output(&self, node_id: &NodeId, use_document_network: bool) -> bool {
+		let Some(node_metadata) = self.persistent_node_metadata(node_id, use_document_network) else {
+			log::error!("Could not get node_metadata in has_primary_output");
+			return false;
+		};
+		node_metadata.has_primary_output
+	}
+
+	pub fn is_visible(&self, node_id: &NodeId, use_document_network: bool) -> bool {
+		let Some(network) = self.network(use_document_network) else {
+			log::error!("Could not get nested network_metadata in is_visible");
+			return false;
+		};
+		let Some(node) = network.nodes.get(node_id) else {
+			log::error!("Could not get nested node_metadata in is_visible");
+			return false;
+		};
+		node.visible
 	}
 }
 
@@ -1384,6 +1424,12 @@ impl OutputConnector {
 			OutputConnector::Import(output_index) => output_index,
 		}
 	}
+	pub fn node_id(&self) -> Option<NodeId> {
+		match self {
+			OutputConnector::Node {node_id, ..} => Some(*node_id),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -1471,6 +1517,24 @@ pub struct NodeNetworkMetadata {
 
 impl NodeNetworkMetadata {
 	pub const GRID_SIZE: u32 = 24;
+	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
+		let mut network_metadata = Some(self);
+
+		for segment in nested_path {
+			network_metadata = network_metadata.and_then(|network| network.persistent_metadata.node_metadata.get(segment)).and_then(|node| node.persistent_metadata.network_metadata);
+		}
+		network_metadata
+	}
+
+	/// Get the mutable nested network given by the path of node ids
+	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
+		let mut network_metadata = Some(self);
+
+		for segment in nested_path {
+			network_metadata = network_metadata.and_then(|network| network.persistent_metadata.node_metadata.get_mut(segment)).and_then(|node| node.persistent_metadata.network_metadata);
+		}
+		network_metadata
+	}
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1639,8 +1703,9 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
 	pub alias: Option<String>,
-	pub input_names: Vec<&'static str>,
-	pub output_names: Vec<&'static str>,
+	/// TODO: Should input/output names always be the same length as the inputs/outputs of the DocumentNode?
+	pub input_names: Vec<String>,
+	pub output_names: Vec<String>,
 	/// Indicates to the UI if a primary output should be drawn for this node.
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
 	#[serde(default = "return_true")]

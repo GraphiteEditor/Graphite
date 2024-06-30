@@ -57,13 +57,17 @@ pub enum NodeGraphMessage {
 		node_template: NodeTemplate,
 	},
 	InsertNodeBetween {
+		// Post node
 		post_node_id: NodeId,
 		post_node_input_index: usize,
-		insert_node_output_index: usize,
+		// Inserted node
 		insert_node_id: NodeId,
+		insert_node_output_index: usize,
 		insert_node_input_index: usize,
-		pre_node_output_index: usize,
+		// Pre node
 		pre_node_id: NodeId,
+		pre_node_output_index: usize,
+		use_document_network: bool,
 	},
 	PasteNodes {
 		serialized_nodes: String,

@@ -367,6 +367,51 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
 				network_interface.insert_node(node_id, node_template, false);
 			}
+			NodeGraphMessage::InsertNodeBetween {
+				post_node_id,
+				post_node_input_index,
+				insert_node_output_index,
+				insert_node_id,
+				insert_node_input_index,
+				pre_node_output_index,
+				pre_node_id,
+				use_document_network,
+			} => {
+				// let post_node = document_network.nodes.get(&post_node_id);
+				// let Some((post_node_input_index, _)) = post_node
+				// 	.map_or(&document_network.exports, |post_node| &post_node.inputs)
+				// 	.iter()
+				// 	.enumerate()
+				// 	.filter(|input| input.1.is_exposed())
+				// 	.nth(post_node_input_index)
+				// else {
+				// 	error!("Failed to find input index {post_node_input_index} on node {post_node_id:#?}");
+				// 	return;
+				// };
+				// let Some(insert_node) = document_network.nodes.get(&insert_node_id) else {
+				// 	error!("Insert node not found");
+				// 	return;
+				// };
+				// let Some((insert_node_input_index, _)) = insert_node.inputs.iter().enumerate().filter(|input| input.1.is_exposed()).nth(insert_node_input_index) else {
+				// 	error!("Failed to find input index {insert_node_input_index} on node {insert_node_id:#?}");
+				// 	return;
+				// };
+
+				// let post_input = NodeInput::node(insert_node_id, insert_node_output_index);
+				// responses.add(GraphOperationMessage::SetNodeInput {
+				// 	node_id: post_node_id,
+				// 	input_index: post_node_input_index,
+				// 	input: post_input,
+				// });
+
+				// let insert_input = NodeInput::node(pre_node_id, pre_node_output_index);
+				// responses.add(GraphOperationMessage::SetNodeInput {
+				// 	node_id: insert_node_id,
+				// 	input_index: insert_node_input_index,
+				// 	input: insert_input,
+				// });
+			}
+
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
 					Ok(d) => d,
@@ -828,7 +873,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 									return;
 								};
 								// TODO: Cache all wire locations if this is a performance issue
-								let overlapping_wire = Self::collect_wires(network).into_iter().find(|frontend_wire| {
+								let overlapping_wire = Self::collect_wires(&network_interface).into_iter().find(|frontend_wire| {
 									let Some(input_position) = network_metadata.get_input_position(frontend_wire.wire_end, frontend_wire.wire_end_input_index) else {
 										log::error!("Could not get input port position for {}", frontend_wire.wire_end);
 										return false;
@@ -1311,7 +1356,11 @@ impl NodeGraphMessageHandler {
 		}
 	}
 
-	fn collect_wires(network: &NodeNetwork) -> Vec<FrontendNodeWire> {
+	fn collect_wires(network_interface: &NodeNetworkInterface) -> Vec<FrontendNodeWire> {
+		let Some(network) = network_interface.network(false) else {
+			log::error!("Could not get network when collecting wires");
+			return Vec::new();
+		};
 		let mut wires = network
 			.nodes
 			.iter()
@@ -1346,10 +1395,16 @@ impl NodeGraphMessageHandler {
 			.collect::<Vec<_>>();
 
 		// Connect primary export to root node, since previewing a node will change the primary export
-		if let Some(root_node) = network.get_root_node() {
+		if let Some((root_node_id, root_node_output_index)) = network_interface.get_root_node(false).and_then(|output_connector| {
+			if let OutputConnector::Node { node_id, output_index } = output_connector {
+				Some((node_id, output_index))
+			} else {
+				None
+			}
+		}) {
 			wires.push(FrontendNodeWire {
-				wire_start: root_node.id,
-				wire_start_output_index: root_node.output_index,
+				wire_start: root_node_id,
+				wire_start_output_index: root_node_output_index,
 				wire_end: network.exports_metadata.0,
 				wire_end_input_index: 0,
 				dashed: false,
@@ -1359,7 +1414,7 @@ impl NodeGraphMessageHandler {
 		// Connect rest of exports to their actual export field since they are not affected by previewing. Only connect the primary export if it is dashed
 		for (i, export) in network.exports.iter().enumerate() {
 			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let dashed = matches!(network.previewing, Previewing::Yes { .. }) && i == 0;
+				let dashed = matches!(network_interface.previewing(false), Previewing::Yes { .. }) && i == 0;
 				if dashed || i != 0 {
 					wires.push(FrontendNodeWire {
 						wire_start: *node_id,
@@ -1379,6 +1434,11 @@ impl NodeGraphMessageHandler {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
 		};
+		let Some(network_metadata) = network_interface.network_metadata(false) else {
+			log::error!("Could not get network_metadata when collecting nodes");
+			return Vec::new();
+		};
+
 		let connected_node_to_output_lookup = wires
 			.iter()
 			.map(|wire| ((wire.wire_start, wire.wire_start_output_index), (wire.wire_end, wire.wire_end_input_index)))
@@ -1395,7 +1455,10 @@ impl NodeGraphMessageHandler {
 		let mut nodes = Vec::new();
 		for (&node_id, node) in &network.nodes {
 			let node_id_path = &[network_interface.network_path().clone(), &[node_id]].concat();
-			let node_definition = document_node_types::resolve_document_node_type(&node.name);
+			let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
+				log::error!("Could not get node_metadata for {node_id_path}");
+				continue;
+			};
 
 			let frontend_graph_inputs = node.inputs.iter().enumerate().map(|(index, _)| {
 				// Convert the index in all inputs to the index in only the exposed inputs
@@ -1409,23 +1472,15 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
-				let definition_name = node_definition.and_then(|node_definition| {
-					let node_implementation = &node.implementation;
-					let definition_implementation = &node_definition.implementation;
-
-					// Only use definition input names if the node implementation is the same as the definition implementation
-					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
-						node_definition.inputs.get(index).map(|input| input.name.to_string())
-					} else {
-						None
-					}
-				});
-
-				let input_name = definition_name.unwrap_or(network_interface.get_input_type(node_id, index, false).nested_type().to_string());
+				let input_name = node_metadata
+					.persistent_metadata
+					.input_names
+					.get(index)
+					.unwrap_or(network_interface.get_input_type(node_id, index, false).nested_type());
 
 				FrontendGraphInput {
 					data_type: frontend_data_type,
-					name: input_name,
+					name: input_name.to_string(),
 					resolved_type: input_type.map(|input| format!("{input:?}")),
 					connected: None,
 				}
@@ -1444,15 +1499,11 @@ impl NodeGraphMessageHandler {
 				.next()
 				.filter(|(input, _)| {
 					// Don't show EditorApi input to nodes like "Text" in the document network
-					if network_interface.is_document_network() && matches!(input, NodeInput::Network { .. }) {
-						false
-					} else {
-						input.is_exposed()
-					}
+					input.is_exposed_to_frontend(network_interface.is_document_network())
 				})
 				.map(|(_, input_type)| input_type);
 			let exposed_inputs = inputs
-				.filter(|(input, _)| input.is_exposed() && !(matches!(input, NodeInput::Network { .. }) && network_interface.is_document_network()))
+				.filter(|(input, _)| input.is_exposed_to_frontend(network_interface.is_document_network()))
 				.map(|(_, input_type)| input_type)
 				.collect();
 
@@ -1464,7 +1515,7 @@ impl NodeGraphMessageHandler {
 				FrontendGraphDataType::General
 			};
 			let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, 0)).unwrap_or(&(Vec::new(), Vec::new())).clone();
-			let primary_output = if node.has_primary_output {
+			let primary_output = if network_interface.has_primary_output(&node_id, false) {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
@@ -1478,7 +1529,7 @@ impl NodeGraphMessageHandler {
 
 			let mut exposed_outputs = Vec::new();
 			for (index, exposed_output) in output_types.iter().enumerate() {
-				if index == 0 && node.has_primary_output {
+				if index == 0 && network_interface.has_primary_output(&node_id, false) {
 					continue;
 				}
 				let frontend_data_type = if let Some(output_type) = &exposed_output {
@@ -1486,12 +1537,15 @@ impl NodeGraphMessageHandler {
 				} else {
 					FrontendGraphDataType::General
 				};
-
-				let output_name = node_definition
-					.and_then(|node_definition| {
-						// If a node has multiple outputs, node and definition must have Network implementations
-						node_definition.outputs.get(index).map(|output| output.name.to_string())
-					})
+				let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get(&node_id) else {
+					log::error!("Could not get node_metadata when getting output for {node_id}");
+					continue;
+				};
+				let output_name = node_metadata
+					.persistent_metadata
+					.output_names
+					.get(index)
+					.map(|output_name| output_name.to_string())
 					.unwrap_or(format!("Output {}", index + 1));
 
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
@@ -1507,13 +1561,13 @@ impl NodeGraphMessageHandler {
 			let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
 			let reference = network_interface.get_reference(&node_id, false);
 
-			let Some(position) = network_interface.get_position(&node_id, network_interface.collect_outward_wires(false)) else {
+			let Some(position) = network_interface.get_position(&node_id, network_interface.collect_outward_wires(false), false) else {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
 			let previewed = is_export && !is_root_node;
 
-			let locked = network_interface.get_locked(&node_id, false);
+			let locked = network_interface.is_locked(&node_id, false);
 
 			let errors = self
 				.node_graph_errors
@@ -1547,51 +1601,14 @@ impl NodeGraphMessageHandler {
 			});
 		}
 
-		// Get import/export names from parent node definition input/outputs. None means to use type, or "Import/Export + index" if type can't be determined
+		// Get import/export names from parent node metadata input/outputs. None means to use type, or "Import/Export + index" if type can't be determined
 		let mut import_names = Vec::new();
 		let mut export_names = vec![None; network.exports.len()];
 
-		let mut encapsulating_path = self.network.clone();
-		if let Some(encapsulating_node) = encapsulating_path.pop() {
-			let parent_node = network_interface
-				.document_network()
-				.nested_network(&encapsulating_path)
-				.expect("Encapsulating path should always exist")
-				.nodes
-				.get(&encapsulating_node)
-				.expect("Last path node should always exist in encapsulating network");
-
-			let parent_definition = document_node_types::resolve_document_node_type(&parent_node.name);
-			let node_implementation = &parent_node.implementation;
-
-			// Get all import names from definition
-			for (index, _) in parent_node.inputs.iter().enumerate() {
-				let definition_name = parent_definition.and_then(|node_definition| {
-					// Only use definition input names if the parent implementation is the same as the definition implementation
-					let definition_implementation = &node_definition.implementation;
-					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
-						node_definition.inputs.get(index).map(|input| input.name.to_string())
-					} else {
-						None
-					}
-				});
-
-				import_names.push(definition_name);
-			}
-
-			// Get all export names from definition
-			for (index, _) in network.exports.iter().enumerate() {
-				let definition_name = parent_definition.and_then(|node_definition| {
-					// Only use definition input names if the parent implementation is the same as the definition implementation
-					let definition_implementation = &node_definition.implementation;
-					if std::mem::discriminant(node_implementation) == std::mem::discriminant(definition_implementation) {
-						node_definition.outputs.get(index).map(|output| output.name.to_string())
-					} else {
-						None
-					}
-				});
-				export_names[index] = definition_name;
-			}
+		if let Some(encapsulating_metadata) = network_interface.encapsulating_node_metadata() {
+			// Get all import/export names from encapsulating node metadata
+			import_names = encapsulating_metadata.persistent_metadata.input_names;
+			export_names = encapsulating_metadata.persistent_metadata.output_names;
 		}
 
 		// Add "Export" UI-only node
@@ -1599,7 +1616,7 @@ impl NodeGraphMessageHandler {
 		for (index, export) in network.exports.iter().enumerate() {
 			let (frontend_data_type, input_type) = if let NodeInput::Node { node_id, output_index, .. } = export {
 				let node = network.nodes.get(node_id).expect("Node should always exist");
-				let node_id_path = &[&self.network[..], &[*node_id]].concat();
+				let node_id_path: &Vec<NodeId> = &[&self.network[..], &[*node_id]].concat();
 				let output_types = Self::get_output_types(node, &network_interface.resolved_types, &node_id_path);
 
 				if let Some(output_type) = output_types.get(*output_index).cloned().flatten() {
@@ -1620,7 +1637,7 @@ impl NodeGraphMessageHandler {
 
 			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
 			let connected = if index == 0 {
-				network.get_root_node().map(|root_node| root_node.id)
+				network_interface.get_root_node(false).and_then(|root_node| root_node.node_id())
 			} else {
 				if let NodeInput::Node { node_id, .. } = export {
 					Some(*node_id)
@@ -1629,10 +1646,9 @@ impl NodeGraphMessageHandler {
 				}
 			};
 
-			let definition_name = export_names[index].clone();
-
 			// `export_names` is pre-initialized with None, so this is safe
-			let export_name = definition_name
+			let export_name = export_names[index]
+				.clone()
 				.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
 				.unwrap_or(format!("Export {}", index + 1));
 
@@ -1654,8 +1670,8 @@ impl NodeGraphMessageHandler {
 			id: network.exports_metadata.0,
 			is_layer: false,
 			can_be_layer: false,
+			reference: None,
 			alias: "Exports".to_string(),
-			name: "Exports".to_string(),
 			primary_input: None,
 			exposed_inputs: export_node_inputs,
 			primary_output: None,
@@ -1671,7 +1687,7 @@ impl NodeGraphMessageHandler {
 		// Add "Import" UI-only node
 		if !network_interface.is_document_network() {
 			let mut import_node_outputs = Vec::new();
-			for (index, definition_name) in import_names.into_iter().enumerate() {
+			for (index, import_name) in import_names.into_iter().enumerate() {
 				let (connected, connected_index) = connected_node_to_output_lookup.get(&(network.imports_metadata.0, index)).unwrap_or(&(Vec::new(), Vec::new())).clone();
 				// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 				// TODO: Non exposed inputs are not added to the inputs_source_map, fix `pub fn document_node_types(&self) -> ResolvedDocumentNodeTypes`
@@ -1683,7 +1699,7 @@ impl NodeGraphMessageHandler {
 					FrontendGraphDataType::General
 				};
 
-				let import_name = definition_name
+				let import_name = import_name
 					.or(input_type.clone().map(|input_type| TaggedValue::from_type(&input_type).ty().to_string()))
 					.unwrap_or(format!("Import {}", index + 1));
 
@@ -1699,8 +1715,8 @@ impl NodeGraphMessageHandler {
 				id: network.imports_metadata.0,
 				is_layer: false,
 				can_be_layer: false,
+				reference: None,
 				alias: "Imports".to_string(),
-				name: "Imports".to_string(),
 				primary_input: None,
 				exposed_inputs: Vec::new(),
 				primary_output: None,
@@ -1741,13 +1757,13 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, metadata: &DocumentMetadata, collapsed: &CollapsedLayers, responses: &mut VecDeque<Message>) {
-		for (&node_id, node) in &document_network.nodes {
-			if node.is_layer {
-				let layer = LayerNodeIdentifier::new(node_id, document_network);
+		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
+			if node_metadata.persistent_metadata.is_layer() {
+				let layer = LayerNodeIdentifier::new(node_id, network_interface.document_network());
 
 				let parents_visible = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						document_network.nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
+						network_interface.document_network().nodes.get(&layer.to_node()).map(|node| node.visible).unwrap_or_default()
 					} else {
 						true
 					}
@@ -1755,7 +1771,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_unlocked = layer.ancestors(metadata).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						document_network.nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
+						network_interface.document_network().nodes.get(&layer.to_node()).map(|node| !node.locked).unwrap_or_default()
 					} else {
 						true
 					}
@@ -1768,20 +1784,20 @@ impl NodeGraphMessageHandler {
 						layer.has_children(metadata)
 						|| (
 							// At least one secondary input is exposed on this layer node
-							node.inputs.iter().skip(1).any(|input| input.is_exposed()) &&
+							network_interface.document_network().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node_id| node_id.inputs.iter().skip(1).any(|input| input.is_exposed())) &&
 							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
-							document_network.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
+							network_interface.document_network().upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
 						),
 					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
 					//reference: network_interface.get_reference(&node_id, true),
-					display_name: network_interface.untitled_layer_label(&node_id, true),
+					alias: network_interface.untitled_layer_label(&node_id, true),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
-					visible: node.visible,
+					visible: network_interface.is_visible(&node_id, true),
 					parents_visible,
-					unlocked: !node.locked,
+					unlocked: !network_interface.is_locked(&node_id, true),
 					parents_unlocked,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });
@@ -1801,7 +1817,6 @@ impl NodeGraphMessageHandler {
 			return;
 		};
 
-		// View encapsulating network
 		responses.add(DocumentMessage::DocumentStructureChanged);
 		responses.add(PropertiesPanelMessage::Refresh);
 
@@ -1810,7 +1825,7 @@ impl NodeGraphMessageHandler {
 		Self::update_layer_panel(document_network, metadata, collapsed, responses);
 
 		if graph_open {
-			let wires = Self::collect_wires(network);
+			let wires = Self::collect_wires(network_interface);
 			let nodes = self.collect_nodes(network_interface, &wires);
 
 			responses.add(FrontendMessage::UpdateNodeGraph { nodes, wires });

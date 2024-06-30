@@ -469,7 +469,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						DocumentMessageHandler::get_downstream_node(&self.document_network(), &self.metadata, first_unselected_parent_folder)
 							.unwrap_or((self.document_network().exports_metadata.0, 0));
 
-					responses.add(GraphOperationMessage::InsertNodeBetween {
+					responses.add(NodeGraphMessage::InsertNodeBetween {
 						post_node_id: folder_downstream_node_id,
 						post_node_input_index: folder_downstream_input_index,
 						insert_node_output_index: 0,
@@ -477,6 +477,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
 						pre_node_id: first_unselected_parent_folder.to_node(),
+						use_document_network: true,
 					});
 
 					responses.add(GraphOperationMessage::ShiftUpstream {

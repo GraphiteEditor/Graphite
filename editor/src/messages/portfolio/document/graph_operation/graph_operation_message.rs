@@ -46,18 +46,6 @@ pub enum GraphOperationMessage {
 	InsertBooleanOperation {
 		operation: BooleanOperation,
 	},
-	InsertNodeBetween {
-		// Post node
-		post_node_id: NodeId,
-		post_node_input_index: usize,
-		// Inserted node
-		insert_node_id: NodeId,
-		insert_node_output_index: usize,
-		insert_node_input_index: usize,
-		// Pre node
-		pre_node_id: NodeId,
-		pre_node_output_index: usize,
-	},
 	LoadStructure,
 	MoveSelectedSiblingsToChild {
 		new_parent: LayerNodeIdentifier,
