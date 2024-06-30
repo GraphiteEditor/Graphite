@@ -2,7 +2,7 @@ use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag};
 use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
-use crate::RawImage;
+use crate::{RawImage, SubtractBlack};
 
 use std::io::{Read, Seek};
 use tag_derive::Tag;
@@ -40,10 +40,16 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 	// Converting the bps from 12 to 14 so that ARW 2.3.1 and 2.3.5 have the same 14 bps.
 	image.iter_mut().for_each(|x| *x <<= 2);
 
+	image[0] = 0;
+
 	RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		cfa_pattern: cfa_pattern.try_into().unwrap(),
+		maximum: (1 << 14) - 1,
+		black: SubtractBlack::None,
+		cam_to_xyz: None,
 	}
 }
 
