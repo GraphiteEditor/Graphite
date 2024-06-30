@@ -22,6 +22,7 @@ pub fn decode_a100<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage
 		data: image,
 		width: image_width,
 		height: image_height,
+		cfa_pattern: todo!(),
 		maximum: (1 << 12) - 1,
 		black: SubtractBlack::None,
 		cam_to_xyz: None,

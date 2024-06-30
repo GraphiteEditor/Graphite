@@ -53,6 +53,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		cfa_pattern: cfa_pattern.try_into().unwrap(),
 		maximum: if bits_per_sample == 16 { u16::MAX } else { (1 << bits_per_sample) - 1 },
 		black: SubtractBlack::CfaGrid(ifd.black_level),
 		cam_to_xyz: None,

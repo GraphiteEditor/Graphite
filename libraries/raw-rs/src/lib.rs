@@ -20,6 +20,7 @@ pub struct RawImage {
 	pub data: Vec<u16>,
 	pub width: usize,
 	pub height: usize,
+	pub cfa_pattern: [u8; 4],
 	pub maximum: u16,
 	pub black: SubtractBlack,
 	pub cam_to_xyz: Option<[f64; 12]>,

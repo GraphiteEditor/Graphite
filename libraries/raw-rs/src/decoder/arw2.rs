@@ -46,6 +46,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		cfa_pattern: cfa_pattern.try_into().unwrap(),
 		maximum: (1 << 14) - 1,
 		black: SubtractBlack::None,
 		cam_to_xyz: None,
