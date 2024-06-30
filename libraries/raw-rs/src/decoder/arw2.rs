@@ -2,7 +2,7 @@ use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag};
 use crate::tiff::values::CurveLookupTable;
 use crate::tiff::{Ifd, TiffError};
-use crate::RawImage;
+use crate::{RawImage, SubtractBlack};
 
 use std::io::{Read, Seek};
 use tag_derive::Tag;
@@ -44,6 +44,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		black: SubtractBlack::None,
 	}
 }
 

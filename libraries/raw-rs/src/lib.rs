@@ -1,5 +1,6 @@
 pub mod decoder;
 pub mod tiff;
+pub mod preprocessing;
 
 use tag_derive::Tag;
 use tiff::file::TiffRead;
@@ -9,10 +10,17 @@ use tiff::{Ifd, TiffError};
 use std::io::{Read, Seek};
 use thiserror::Error;
 
+pub enum SubtractBlack {
+	None,
+	Value(u16),
+	CfaGrid([u16; 4]),
+}
+
 pub struct RawImage {
 	pub data: Vec<u16>,
 	pub width: usize,
 	pub height: usize,
+	pub black: SubtractBlack,
 }
 
 pub struct Image<T> {

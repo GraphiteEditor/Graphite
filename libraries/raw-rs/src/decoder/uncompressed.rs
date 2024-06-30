@@ -1,7 +1,7 @@
 use crate::tiff::file::TiffRead;
-use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag};
+use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, BlackLevel};
 use crate::tiff::{Ifd, TiffError};
-use crate::RawImage;
+use crate::{RawImage, SubtractBlack};
 use std::io::{Read, Seek};
 use tag_derive::Tag;
 
@@ -13,6 +13,7 @@ struct ArwUncompressedIfd {
 	rows_per_strip: RowsPerStrip,
 	bits_per_sample: BitsPerSample,
 	compression: Compression,
+	black_level: BlackLevel,
 	cfa_pattern: CfaPattern,
 	cfa_pattern_dim: CfaPatternDim,
 	strip_offsets: StripOffsets,
@@ -52,5 +53,6 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		black: SubtractBlack::CfaGrid(ifd.black_level),
 	}
 }

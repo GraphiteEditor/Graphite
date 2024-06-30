@@ -24,10 +24,12 @@ pub struct StripByteCounts;
 pub struct SubIfd;
 pub struct JpegOffset;
 pub struct JpegLength;
-pub struct CfaPatternDim;
-pub struct CfaPattern;
 pub struct SonyDataOffset;
 pub struct SonyToneCurve;
+pub struct BlackLevel;
+pub struct CfaPatternDim;
+pub struct CfaPattern;
+
 
 impl SimpleTag for ImageWidth {
 	type Type = TypeNumber;
@@ -153,6 +155,12 @@ impl SimpleTag for SonyToneCurve {
 
 	const ID: TagId = TagId::SonyToneCurve;
 	const NAME: &'static str = "Sony Tone Curve";
+}
+
+impl SimpleTag for BlackLevel {
+	const ID: TagId = TagId::BlackLevel;
+	type Type = ConstArray<TypeShort, 4>;
+	const NAME: &'static str = "Black Level";
 }
 
 pub trait Tag {
