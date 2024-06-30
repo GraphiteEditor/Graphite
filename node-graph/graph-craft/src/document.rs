@@ -1164,7 +1164,7 @@ impl NodeNetwork {
 
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
-						let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 						match *parent_input {
 							// If the input to self is a node, connect the corresponding output of the inner network to it
 							NodeInput::Node { node_id, output_index, lambda } => {
@@ -1190,7 +1190,7 @@ impl NodeNetwork {
 			// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
 			// for (i, export) in inner_network.exports.iter().enumerate() {
 			// 	if let NodeInput::Network { import_index, .. } = export {
-			// 		let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+			// 		let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 			// 		match *parent_input {
 			// 			// If the input to self is a node, connect the corresponding output of the inner network to it
 			// 			NodeInput::Node { node_id, output_index, lambda } => {

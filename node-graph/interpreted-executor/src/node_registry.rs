@@ -522,7 +522,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					}
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f32), fn_type!(f32), fn_type!(bool)]),
+			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
 		)],
 		vec![
 			(

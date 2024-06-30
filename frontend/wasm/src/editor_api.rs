@@ -766,7 +766,10 @@ async fn poll_node_graph_evaluation() {
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();
 		if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-			error!("Error evaluating node graph {e}");
+			// TODO: This is a hacky way to suppress the error, but it shouldn't be generated in the first place
+			if e != "No active document" {
+				error!("Error evaluating node graph {e}");
+			}
 		}
 
 		// Send each `FrontendMessage` to the JavaScript frontend

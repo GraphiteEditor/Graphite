@@ -605,7 +605,8 @@ impl core::fmt::Debug for GraphErrorType {
 					"Node graph type error! If this just appeared while editing the graph,\n\
 					consider using undo to go back and try another way to connect the nodes.\n\
 					\n\
-					No node implementation exists for type ({parameters}).\n\
+					No node implementation exists for type:\n\
+					({parameters})\n\
 					\n\
 					Caused by{}:\n\
 					{}",

@@ -272,7 +272,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								NodeInput::network(concrete!(TaggedValue), 3),
 								NodeInput::network(concrete!(TaggedValue), 4),
 								NodeInput::network(concrete!(TaggedValue), 5),
-								NodeInput::network(concrete!(TaggedValue), 6),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, -3) }, // To Artboard
