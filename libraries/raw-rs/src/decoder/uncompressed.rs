@@ -1,5 +1,5 @@
 use crate::tiff::file::TiffRead;
-use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag, BlackLevel};
+use crate::tiff::tags::{BitsPerSample, BlackLevel, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, RowsPerStrip, StripByteCounts, StripOffsets, Tag};
 use crate::tiff::{Ifd, TiffError};
 use crate::{RawImage, SubtractBlack};
 use std::io::{Read, Seek};
@@ -53,6 +53,8 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		data: image,
 		width: image_width,
 		height: image_height,
+		maximum: if bits_per_sample == 16 { u16::MAX } else { (1 << bits_per_sample) - 1 },
 		black: SubtractBlack::CfaGrid(ifd.black_level),
+		cam_to_xyz: None,
 	}
 }

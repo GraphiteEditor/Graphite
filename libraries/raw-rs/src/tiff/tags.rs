@@ -30,7 +30,6 @@ pub struct BlackLevel;
 pub struct CfaPatternDim;
 pub struct CfaPattern;
 
-
 impl SimpleTag for ImageWidth {
 	type Type = TypeNumber;
 
