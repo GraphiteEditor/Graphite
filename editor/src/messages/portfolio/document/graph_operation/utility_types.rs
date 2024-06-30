@@ -1,7 +1,7 @@
 use super::transform_utils::{self, LayerBounds};
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::{NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
@@ -167,10 +167,9 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let mut parent = parent;
 		if parent == LayerNodeIdentifier::ROOT_PARENT {
-			if let Some(root_node) = self.network_interface.document_network().get_root_node() {
+			if let Some(root_node) = self.network_interface.get_root_node(false) {
 				// If the current root node is the artboard, then the new layer should be a child of the artboard
-				let current_root_node = self.network_interface.document_network().nodes.get(&root_node.id).expect("Root node should always exist");
-				if current_root_node.is_artboard() && current_root_node.is_layer {
+				if self.network_interface.is_artboard(&root_node.node_id) && self.network_interface.is_layer(&root_node.node_id) {
 					parent = LayerNodeIdentifier::new(root_node.id, &self.network_interface);
 				}
 			}

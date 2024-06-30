@@ -2,7 +2,7 @@ use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::network_metadata::{
+use crate::messages::portfolio::document::utility_types::network_interface::{
 	DocumentNodeMetadata, DocumentNodeMetadataTemplate, DocumentNodePersistentMetadata, NodeNetworkInterface, NodeNetworkInterfaceTemplate, NodeNetworkMetadata, NodeNetworkMetadataTemplate,
 	NodeNetworkPersistentMetadata, NodeTemplate,
 };

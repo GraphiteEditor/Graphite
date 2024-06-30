@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, NetworkMetadata, NodeNetworkInterface};
-use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 

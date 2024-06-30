@@ -2,7 +2,7 @@ use super::transform_utils::{self, LayerBounds};
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -583,7 +583,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::ClearArtboards => {
-				for &artboard in document_metadata.all_artboards() {
+				for &artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
 						reconnect: true,
@@ -653,14 +653,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_visible(layer.to_node()));
+				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_visible(layer.to_node(), true));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
 					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
 			GraphOperationMessage::ToggleVisibility { node_id } => {
-				let visible = !document_metadata.node_is_visible(node_id);
+				let visible = !network_interface.is_visible(node_id, true);
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::SetVisibility { node_id, visible });
 			}
@@ -688,7 +688,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are locked, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
+				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_locked(layer.to_node(), true));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
 					responses.add(GraphOperationMessage::SetLocked { node_id: layer.to_node(), locked });

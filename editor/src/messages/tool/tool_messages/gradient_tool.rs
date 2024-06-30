@@ -249,7 +249,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
@@ -324,7 +324,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -363,7 +363,7 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -399,7 +399,7 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input.mouse.position, &document.document_network());
+					let selected_layer = document.click(input.mouse.position, &document.metadata);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {

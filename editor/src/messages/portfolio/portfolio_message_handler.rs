@@ -213,15 +213,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 
 						buffer.push(CopyBufferEntry {
-							nodes: NodeGraphMessageHandler::copy_nodes(
-								&active_document.network_interface,
-								&copy_ids,
-								true
-							)
-							.collect(),
+							nodes: NodeGraphMessageHandler::copy_nodes(&active_document.network_interface, &copy_ids, true).collect(),
 							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
-							visible: active_document.selected_nodes.layer_visible(layer, active_document.metadata()),
-							locked: active_document.selected_nodes.layer_locked(layer, active_document.metadata()),
+							visible: active_document.selected_nodes.layer_visible(layer, &active_document.network_interface),
+							locked: active_document
+								.selected_nodes
+								.layer_locked(layer, &active_document.network_interface, &active_document.network_interface),
 							collapsed: false,
 							alias: previous_alias.to_string(),
 						});
@@ -623,7 +620,7 @@ impl PortfolioMessageHandler {
 		let mut new_document = new_document;
 		self.document_ids.push(document_id);
 		new_document.update_layers_panel_options_bar_widgets(responses);
-		
+
 		self.documents.insert(document_id, new_document);
 
 		if self.active_document().is_some() {

@@ -1,5 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
-use crate::messages::portfolio::document::utility_types::network_metadata::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::NodeGraphMessageHandler;
 use crate::node_graph_executor::NodeGraphExecutor;

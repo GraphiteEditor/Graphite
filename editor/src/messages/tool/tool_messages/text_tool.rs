@@ -269,7 +269,7 @@ impl TextToolData {
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
 		if let Some(clicked_text_layer_path) = document
-			.click(mouse, document.document_network())
+			.click(mouse, document.metadata)
 			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_network(), "Text"))
 		{
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);

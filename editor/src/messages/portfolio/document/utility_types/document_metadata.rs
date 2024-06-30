@@ -1,3 +1,4 @@
+use super::network_interface;
 use super::nodes::SelectedNodes;
 
 use graph_craft::document::FlowType;
@@ -17,15 +18,13 @@ use std::num::NonZeroU64;
 
 // TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
 // TODO: it might be better to have a system that can query the state of the node network on demand.
+// TODO: Store as transient network metadata for the document network in network interface.
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
-	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
-	structure: HashMap<LayerNodeIdentifier, NodeRelations>,
-	artboards: HashSet<LayerNodeIdentifier>,
-	folders: HashSet<LayerNodeIdentifier>,
-	hidden: HashSet<NodeId>,
-	locked: HashSet<NodeId>,
-	click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
+	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
+	pub folders: HashSet<LayerNodeIdentifier>,
+	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -37,8 +36,6 @@ impl Default for DocumentMetadata {
 			structure: HashMap::new(),
 			artboards: HashSet::new(),
 			folders: HashSet::new(),
-			hidden: HashSet::new(),
-			locked: HashSet::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -74,62 +71,16 @@ impl DocumentMetadata {
 
 	/// Layers excluding ones that are children of other layers in the list.
 	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
-		let mut sorted_layers = layers
-			.map(|layer| {
-				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
-				layer_path.reverse();
-				layer_path
-			})
-			.collect::<Vec<_>>();
-
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
-		sorted_layers
+		// moved to network interface
 	}
 
 	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
 	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
-		layers
-			.map(|layer| {
-				let mut layer_path = layer.ancestors(self).collect::<Vec<_>>();
-				layer_path.reverse();
-
-				if !include_self || !self.is_artboard(layer) {
-					layer_path.pop();
-				}
-
-				layer_path
-			})
-			.reduce(|mut a, b| {
-				a.truncate(a.iter().zip(b.iter()).position(|(&a, &b)| a != b).unwrap_or_else(|| a.len().min(b.len())));
-				a
-			})
-			.and_then(|layer| layer.last().copied())
-	}
-
-	pub fn active_artboard(&self) -> LayerNodeIdentifier {
-		self.artboards.iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT)
-	}
-
-	pub fn all_artboards(&self) -> &HashSet<LayerNodeIdentifier> {
-		&self.artboards
+		// moved to network interface
 	}
 
 	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
 		self.folders.contains(&layer)
-	}
-
-	pub fn is_artboard(&self, layer: LayerNodeIdentifier) -> bool {
-		self.artboards.contains(&layer)
-	}
-
-	pub fn node_is_visible(&self, layer: NodeId) -> bool {
-		!self.hidden.contains(&layer)
-	}
-
-	pub fn node_is_locked(&self, layer: NodeId) -> bool {
-		self.locked.contains(&layer)
 	}
 
 	/// Folders sorted from most nested to least nested
@@ -137,94 +88,6 @@ impl DocumentMetadata {
 		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
 		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
 		folders
-	}
-}
-
-// ==============================================
-// DocumentMetadata: Selected layer modifications
-// ==============================================
-
-impl DocumentMetadata {
-	/// Loads the structure of layer nodes from a node graph.
-	pub fn load_structure(&mut self, graph: &NodeNetwork) {
-		self.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
-		self.artboards = HashSet::new();
-		self.folders = HashSet::new();
-		self.hidden = HashSet::new();
-		self.locked = HashSet::new();
-
-		// Should refer to output node
-
-		let mut awaiting_horizontal_flow = vec![(NodeId(std::u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
-		let mut awaiting_primary_flow = vec![];
-
-		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
-			let horizontal_flow_iter = graph.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
-			// Skip the horizontal_root_node_id node
-			for (current_node, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(std::u64::MAX) { 0 } else { 1 }) {
-				if !current_node.visible {
-					self.hidden.insert(current_node_id);
-				}
-
-				if current_node.locked {
-					self.locked.insert(current_node_id);
-				}
-
-				if current_node.is_layer {
-					let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
-					if !self.structure.contains_key(&current_layer_node) {
-						awaiting_primary_flow.push((current_node_id, parent_layer_node));
-
-						parent_layer_node.push_child(self, current_layer_node);
-						parent_layer_node = current_layer_node;
-
-						if is_artboard(current_layer_node, graph) {
-							self.artboards.insert(current_layer_node);
-						}
-
-						if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
-							self.folders.insert(current_layer_node);
-						}
-					}
-				}
-			}
-
-			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
-				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
-				// Skip the primary_root_node_id node
-				for (current_node, current_node_id) in primary_flow_iter.skip(1) {
-					if !current_node.visible {
-						self.hidden.insert(current_node_id);
-					}
-
-					if current_node.locked {
-						self.locked.insert(current_node_id);
-					}
-
-					if current_node.is_layer {
-						// Create a new layer for the top of each stack, and add it as a child to the previous parent
-						let current_layer_node = LayerNodeIdentifier::new(current_node_id, graph);
-						if !self.structure.contains_key(&current_layer_node) {
-							parent_layer_node.push_child(self, current_layer_node);
-
-							// The layer nodes for the horizontal flow is itself
-							awaiting_horizontal_flow.push((current_node_id, current_layer_node));
-
-							if is_artboard(current_layer_node, graph) {
-								self.artboards.insert(current_layer_node);
-							}
-
-							if graph.nodes.get(&current_layer_node.to_node()).map(|node| node.layer_has_child_layers(graph)).unwrap_or_default() {
-								self.folders.insert(current_layer_node);
-							}
-						}
-					}
-				}
-			}
-		}
-
-		self.upstream_transforms.retain(|node, _| graph.nodes.contains_key(node));
-		self.click_targets.retain(|layer, _| self.structure.contains_key(layer));
 	}
 }
 
@@ -329,19 +192,12 @@ impl DocumentMetadata {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.all_layers()
-			.filter(|&layer| include_artboards || !self.is_artboard(layer))
-			.filter_map(|layer| self.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds)
+		// moved to network interface
 	}
 
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
-		selected_nodes
-			.selected_layers(self)
-			.filter(|&layer| include_artboards || !self.is_artboard(layer))
-			.filter_map(|layer| self.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds)
+		// moved to network interface
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &bezier_rs::Subpath<PointId>> {
@@ -659,14 +515,6 @@ struct NodeRelations {
 // ================
 // Helper functions
 // ================
-
-pub fn is_artboard(layer: LayerNodeIdentifier, network: &NodeNetwork) -> bool {
-	if layer == LayerNodeIdentifier::ROOT_PARENT {
-		return false;
-	}
-	let Some(node) = network.nodes.get(&layer.to_node()) else { return false };
-	node.is_artboard()
-}
 
 #[test]
 fn test_tree() {

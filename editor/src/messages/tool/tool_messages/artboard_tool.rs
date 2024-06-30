@@ -125,7 +125,7 @@ impl ArtboardToolData {
 
 		let mut intersections = document
 			.click_xray(input.mouse.position)
-			.filter(|&layer| document.document_network().nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()));
+			.filter(|&layer| document.network_interface.is_artboard(&layer.to_node()));
 
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
@@ -397,7 +397,7 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
-				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.metadata().is_artboard(*layer));
+				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.network_interface.is_artboard(layer.to_node()));
 				self
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {

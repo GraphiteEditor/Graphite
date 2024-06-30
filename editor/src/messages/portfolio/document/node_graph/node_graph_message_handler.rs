@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_types::NodePropertiesContext;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, FrontendGraphDataType};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_metadata::{self, Connector, InputConnector, NodeNetworkInterface, NodeNetworkMetadata, OutputConnector, Port};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, Connector, InputConnector, NodeNetworkInterface, NodeNetworkMetadata, OutputConnector, Port};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry, SelectedNodes};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -1515,7 +1515,7 @@ impl NodeGraphMessageHandler {
 				FrontendGraphDataType::General
 			};
 			let (connected, connected_index) = connected_node_to_output_lookup.get(&(node_id, 0)).unwrap_or(&(Vec::new(), Vec::new())).clone();
-			let primary_output = if network_interface.has_primary_output(&node_id, false) {
+			let primary_output = if network_interface.has_primary_output(&node_id) {
 				Some(FrontendGraphOutput {
 					data_type: frontend_data_type,
 					name: "Output 1".to_string(),
@@ -1529,7 +1529,7 @@ impl NodeGraphMessageHandler {
 
 			let mut exposed_outputs = Vec::new();
 			for (index, exposed_output) in output_types.iter().enumerate() {
-				if index == 0 && network_interface.has_primary_output(&node_id, false) {
+				if index == 0 && network_interface.has_primary_output(&node_id) {
 					continue;
 				}
 				let frontend_data_type = if let Some(output_type) = &exposed_output {
@@ -1584,7 +1584,7 @@ impl NodeGraphMessageHandler {
 
 			nodes.push(FrontendNode {
 				id: node_id,
-				is_layer: network_interface.persistent_node_metadata(&node_id, false).is_some_and(|node_metadata| node_metadata.is_layer()),
+				is_layer: network_interface.persistent_node_metadata(&node_id).is_some_and(|node_metadata| node_metadata.is_layer()),
 				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id),
 				alias: network_interface.untitled_layer_label(&node_id, false),
 				reference,

@@ -337,7 +337,7 @@ impl PathToolData {
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input.mouse.position, &document.document_network()) {
+		else if let Some(layer) = document.click(input.mouse.position, &document.metadata) {
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {

@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::network_metadata::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
+use super::utility_types::network_interface::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::NodeGraphHandlerData;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::properties_panel::utility_types::PropertiesPanelMessageHandlerData;
-use crate::messages::portfolio::document::utility_types::document_metadata::{is_artboard, DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -110,10 +110,6 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
-	/// Stores stateful information about the document's network such as the graph's structural topology and which layers are hidden, locked, etc.
-	/// This is updated frequently, whenever the information it's derived from changes.
-	#[serde(skip)]
-	pub metadata: DocumentMetadata,
 }
 
 impl Default for DocumentMessageHandler {
@@ -551,14 +547,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					return;
 				}
 				// Artboards can only have `ROOT_PARENT` as the parent.
-				let any_artboards = selected_layers.iter().any(|&layer| self.metadata.is_artboard(layer));
+				let any_artboards = selected_layers.iter().any(|&layer| self.network_interface.is_artboard(&layer.to_node()));
 				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
 					return;
 				}
 
 				// Non-artboards cannot be put at the top level if artboards also exist there
-				let selected_any_non_artboards = selected_layers.iter().any(|&layer| !self.metadata.is_artboard(layer));
-				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT.children(self.metadata()).any(|layer| self.metadata.is_artboard(layer));
+				let selected_any_non_artboards = selected_layers.iter().any(|&layer| !self.network_interface.is_artboard(&layer.to_node()));
+				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+					.children(self.metadata())
+					.any(|layer| self.network_interface.is_artboard(&layer.to_node()));
 				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
 					return;
 				}
@@ -619,7 +617,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, self.metadata(), &self.network_interface))
 						{
 							responses.add(GraphOperationMessage::TransformChange {
 								layer,
@@ -654,7 +652,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()) && !self.selected_nodes.layer_locked(layer, self.metadata()))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, self.metadata(), &self.network_interface))
 						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
@@ -789,8 +787,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let metadata = self.metadata();
 				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
-					.filter(move |&layer| !metadata.is_artboard(layer))
-					.filter(|&layer| self.selected_nodes.layer_visible(layer, metadata) && !self.selected_nodes.layer_locked(layer, metadata));
+					.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node()))
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, metadata, &self.network_interface));
 				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
@@ -865,7 +863,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				}
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
-				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
+				for layer in self.selected_nodes.selected_layers_except_artboards(&self.network_interface) {
 					responses.add(GraphOperationMessage::BlendModeSet { layer, blend_mode });
 				}
 			}
@@ -873,7 +871,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.backup(responses);
 				let opacity = opacity.clamp(0., 1.);
 
-				for layer in self.selected_nodes.selected_layers_except_artboards(self.metadata()) {
+				for layer in self.selected_nodes.selected_layers_except_artboards(&self.network_interface) {
 					responses.add(GraphOperationMessage::OpacitySet { layer, opacity });
 				}
 			}
@@ -993,8 +991,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 					// Cannot ungroup artboard
-					let folder_node = self.document_network().nodes.get(&folder.to_node()).expect("Folder node should always exist");
-					if folder_node.is_artboard() {
+					if self.network_interface.is_artboard(&folder.to_node()) {
 						return;
 					}
 
@@ -1177,13 +1174,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 impl DocumentMessageHandler {
 	/// Runs an intersection test with all layers and a viewport space quad
-	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+	pub fn intersect_quad<'a>(&'a self, viewport_quad: graphene_core::renderer::Quad) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let document_quad = self.metadata.document_to_viewport.inverse() * viewport_quad;
 		self.metadata
 			.all_layers()
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
-			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
-			.filter(|&layer| !is_artboard(layer, network))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface, &self.network_interface))
+			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -1194,20 +1191,20 @@ impl DocumentMessageHandler {
 		let point = self.metadata.document_to_viewport.inverse().transform_point2(viewport_location);
 		self.metadata
 			.all_layers()
-			.filter(|&layer| self.selected_nodes.layer_visible(layer, self.metadata()))
-			.filter(|&layer| !self.selected_nodes.layer_locked(layer, self.metadata()))
+			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface, &self.network_interface))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &d| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
-	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
+	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
 		node_list
 			.iter()
 			.find(|&&layer| {
 				if layer != LayerNodeIdentifier::ROOT_PARENT {
-					!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+					layer.has_children(metadata)
 				} else {
 					log::error!("ROOT_PARENT should not exist in find_deepest");
 					false
@@ -1217,19 +1214,21 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	pub fn click_list_any(&self, viewport_location: DVec2) -> Vec<LayerNodeIdentifier> {
+		self.click_xray(viewport_location)
+			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
+			.collect::<Vec<_>>()
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		let mut node_list = self.click_list_any(viewport_location, network);
+	pub fn click_list(&self, viewport_location: DVec2, metadata: &DocumentMetadata) -> Vec<LayerNodeIdentifier> {
+		let mut node_list = self.click_list_any(viewport_location);
 		node_list.truncate(
 			node_list
 				.iter()
 				.position(|&layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
+						layer.has_children(metadata)
 					} else {
 						log::error!("ROOT_PARENT should not exist in click_list_any");
 						false
@@ -1241,21 +1240,21 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
-	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location, network).last().copied()
+	pub fn click(&self, viewport_location: DVec2, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+		self.click_list(viewport_location, metadata).last().copied()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_layers(self.metadata())
+			.selected_visible_layers(self.metadata(), &self.network_interface)
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
 
 	pub fn selected_visible_and_unlock_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_and_unlocked_layers(self.metadata())
+			.selected_visible_and_unlocked_layers(self.metadata(), &self.network_interface)
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1577,7 +1576,7 @@ impl DocumentMessageHandler {
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
 		self.metadata()
 			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), include_self)
-			.unwrap_or_else(|| self.metadata().active_artboard())
+			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
 	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
@@ -1945,7 +1944,7 @@ impl DocumentMessageHandler {
 
 	pub fn update_layers_panel_options_bar_widgets(&self, responses: &mut VecDeque<Message>) {
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
-		let selected_layers_except_artboards = self.selected_nodes.selected_layers_except_artboards(self.metadata());
+		let selected_layers_except_artboards = self.selected_nodes.selected_layers_except_artboards(&self.network_interface);
 
 		// Look up the current opacity and blend mode of the selected layers (if any), and split the iterator into the first tuple and the rest.
 		let mut opacity_and_blend_mode = selected_layers_except_artboards.map(|layer| {
@@ -1997,8 +1996,8 @@ impl DocumentMessageHandler {
 			.collect();
 
 		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
-		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_visible(layer.to_node()));
-		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.metadata().node_is_locked(layer.to_node()));
+		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(layer.to_node()));
+		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(layer.to_node()));
 
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![

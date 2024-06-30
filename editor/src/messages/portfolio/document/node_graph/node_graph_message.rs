@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::portfolio::document::utility_types::network_metadata::{Connector, InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{Connector, InputConnector, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
