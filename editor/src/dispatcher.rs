@@ -36,6 +36,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
@@ -235,7 +236,9 @@ impl Dispatcher {
 
 		if !is_blocked {
 			match message_logging_verbosity {
-				MessageLoggingVerbosity::Off => {}
+				MessageLoggingVerbosity::Off => {
+					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
+				} // Change this for debugging
 				MessageLoggingVerbosity::Names => {
 					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
 				}
