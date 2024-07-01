@@ -236,9 +236,7 @@ impl Dispatcher {
 
 		if !is_blocked {
 			match message_logging_verbosity {
-				MessageLoggingVerbosity::Off => {
-					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
-				} // Change this for debugging
+				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
 					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
 				}
