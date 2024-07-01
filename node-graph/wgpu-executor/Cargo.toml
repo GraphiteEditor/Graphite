@@ -13,20 +13,22 @@ passthrough = []
 
 [dependencies]
 graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
+node-macro = { workspace = true }
 graph-craft = { workspace = true }
 gpu-executor = { path = "../gpu-executor" }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 num-traits = { workspace = true }
 log = { workspace = true }
-serde = { workspace = true, optional = true }
+serde = { workspace = true }
 glam = { workspace = true }
 base64 = { workspace = true }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
-wgpu = { workspace = true, features = ["spirv"] }
+wgpu = { workspace = true, features = ["spirv", "strict_asserts", "api_log_info"] }
 spirv = { workspace = true }
 futures = { workspace = true }
 futures-intrusive = "0.5.0"
 web-sys = { workspace = true, features = ["HtmlCanvasElement"] }
 winit = { workspace = true }
 nvtx = { version = "1.2", optional = true }
+half = "2.4.1"

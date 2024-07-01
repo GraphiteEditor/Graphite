@@ -1,9 +1,11 @@
-use graph_craft::document::*;
-use graph_craft::graphene_compiler::Executor;
+use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::imaginate_input::ImaginatePreferences;
 use graph_craft::{concrete, ProtoNodeIdentifier};
+use graph_craft::{document::*, generic};
 use graphene_core::application_io::{ApplicationIo, NodeGraphUpdateSender};
+use graphene_core::raster::ImageFrame;
 use graphene_core::text::FontCache;
+use graphene_std::transform::Footprint;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 
@@ -77,17 +79,14 @@ fn init_logging() {
 		.unwrap();
 }
 
-fn create_executor(_document_string: String) -> Result<DynamicExecutor, Box<dyn Error>> {
-	// let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
-	// let document = serde_json::from_value::<Document>(document["document_legacy"].clone()).expect("Failed to parse document");
-	// let Some(LegacyLayerType::Layer(ref network)) = document.root.iter().find(|layer| matches!(layer, LegacyLayerType::Layer(_))) else {
-	panic!("Failed to extract node graph from document")
-	// };
-	// let wrapped_network = wrap_network_in_scope(network.clone());
-	// let compiler = Compiler {};
-	// let protograph = compiler.compile_single(wrapped_network)?;
-	// let executor = block_on(DynamicExecutor::new(protograph))?;
-	// Ok(executor)
+fn create_executor(document_string: String) -> Result<DynamicExecutor, Box<dyn Error>> {
+	let document: serde_json::Value = serde_json::from_str(&document_string).expect("Failed to parse document");
+	let network = serde_json::from_value::<NodeNetwork>(document["network"].clone()).expect("Failed to parse document");
+	let wrapped_network = wrap_network_in_scope(network.clone(), 0);
+	let compiler = Compiler {};
+	let protograph = compiler.compile_single(wrapped_network)?;
+	let executor = block_on(DynamicExecutor::new(protograph)).unwrap();
+	Ok(executor)
 }
 
 fn begin_scope() -> DocumentNode {
@@ -110,7 +109,7 @@ fn begin_scope() -> DocumentNode {
 				},
 				DocumentNode {
 					name: "RefNode".to_string(),
-					manual_composition: Some(concrete!(WasmEditorApi)),
+					manual_composition: Some(concrete!(())),
 					inputs: vec![NodeInput::lambda(NodeId(1), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
 					..Default::default()
@@ -124,6 +123,80 @@ fn begin_scope() -> DocumentNode {
 			..Default::default()
 		}),
 		inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 0)],
+		..Default::default()
+	}
+}
+
+pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
+	network.generate_node_paths(&[]);
+
+	let begin_scope = begin_scope();
+
+	let inner_network = DocumentNode {
+		name: "Scope".to_string(),
+		implementation: DocumentNodeImplementation::Network(network),
+		inputs: vec![NodeInput::node(NodeId(0), 1)],
+		metadata: DocumentNodeMetadata::position((-10, 0)),
+		..Default::default()
+	};
+
+	let render_node = graph_craft::document::DocumentNode {
+		name: "Output".into(),
+		inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(0), 1)],
+		implementation: graph_craft::document::DocumentNodeImplementation::Network(NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(2), 0)],
+			nodes: [
+				DocumentNode {
+					name: "Create Canvas".to_string(),
+					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+					skip_deduplication: true,
+					..Default::default()
+				},
+				DocumentNode {
+					name: "Cache".to_string(),
+					manual_composition: Some(concrete!(())),
+					inputs: vec![NodeInput::node(NodeId(0), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+					..Default::default()
+				},
+				DocumentNode {
+					name: "RenderNode".to_string(),
+					inputs: vec![
+						NodeInput::network(concrete!(WasmEditorApi), 1),
+						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
+						NodeInput::node(NodeId(1), 0),
+					],
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode<_, _, _>")),
+					..Default::default()
+				},
+			]
+			.into_iter()
+			.enumerate()
+			.map(|(id, node)| (NodeId(id as u64), node))
+			.collect(),
+			..Default::default()
+		}),
+		metadata: DocumentNodeMetadata::position((-3, 0)),
+		..Default::default()
+	};
+
+	// wrap the inner network in a scope
+	let nodes = vec![
+		begin_scope,
+		inner_network,
+		render_node,
+		DocumentNode {
+			name: "End Scope".to_string(),
+			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
+			inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
+			..Default::default()
+		},
+	];
+
+	NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(3), 0)],
+		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
 		..Default::default()
 	}
 }

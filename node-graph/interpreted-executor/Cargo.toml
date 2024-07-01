@@ -16,6 +16,7 @@ quantization = ["graphene-std/quantization"]
 graphene-core = { workspace = true, features = ["std"] }
 graphene-std = { path = "../gstd", features = ["serde"] }
 graph-craft = { path = "../graph-craft" }
+wgpu = { workspace = true }
 gpu-executor = { path = "../gpu-executor" }
 wgpu-executor = { path = "../wgpu-executor" }
 dyn-any = { workspace = true, features = ["log-bad-types", "glam"] }

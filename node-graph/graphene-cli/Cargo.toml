@@ -46,7 +46,7 @@ wasm-bindgen = { workspace = true, optional = true }
 futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wgpu = { workspace = true }
 
 [dev-dependencies]
