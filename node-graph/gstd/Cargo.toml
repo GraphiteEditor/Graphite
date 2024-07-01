@@ -16,7 +16,7 @@ gpu = [
 	"compilation-client",
 	"gpu-executor",
 ]
-wgpu = ["gpu", "wgpu-executor", "dep:wgpu"]
+wgpu = ["gpu", "dep:wgpu"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
@@ -42,7 +42,7 @@ graphene-core = { path = "../gcore", default-features = false, features = [
 ] }
 dyn-any = { path = "../../libraries/dyn-any", features = ["derive"] }
 graph-craft = { path = "../graph-craft", features = ["serde"] }
-wgpu-executor = { path = "../wgpu-executor", optional = true }
+wgpu-executor = { path = "../wgpu-executor" }
 gpu-executor = { path = "../gpu-executor", optional = true }
 gpu-compiler-bin-wrapper = { path = "../gpu-compiler/gpu-compiler-bin-wrapper", optional = true }
 compilation-client = { path = "../compilation-client", optional = true }

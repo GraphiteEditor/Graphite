@@ -30,9 +30,8 @@ pub fn init_graphite() {
 
 	// Set up the logger with a default level of debug
 
-	console_log::init_with_level(log::Level::Debug);
-	// log::set_logger(&LOGGER).expect("Failed to set logger");
-	// log::set_max_level(log::LevelFilter::Debug);
+	log::set_logger(&LOGGER).expect("Failed to set logger");
+	log::set_max_level(log::LevelFilter::Debug);
 }
 
 /// When a panic occurs, notify the user and log the error to the JS console before the backend dies
@@ -97,7 +96,7 @@ impl log::Log for WasmLog {
 
 		let file = record.file().unwrap_or_else(|| record.target());
 		let line = record.line().map_or_else(|| "[Unknown]".to_string(), |line| line.to_string());
-		let msg = &format!("%c{}%c {file}:{line} %c\n{}", name, record.args());
+		let msg = &format!("%c{} {file}:{line} \n{}%c", name, record.args());
 		log(msg, color)
 	}
 

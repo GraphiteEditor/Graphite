@@ -6,6 +6,8 @@ use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
 
+#[cfg(feature = "gpu")]
+use gpu_executor::*;
 use graph_craft::concrete;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
@@ -23,8 +25,6 @@ use graphene_core::*;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
 use wgpu_executor::{Bindgroup, CommandBuffer, PipelineLayout, ShaderHandle, ShaderInputFrame, WgpuShaderInput};
-#[cfg(feature = "gpu")]
-use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
 
 use once_cell::sync::Lazy;
 use std::collections::VecDeque;

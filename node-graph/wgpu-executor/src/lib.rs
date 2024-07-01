@@ -314,7 +314,6 @@ impl WgpuExecutor {
 
 		let surface = &canvas.as_ref().surface.0;
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		println!("{surface_caps:?}");
 		if surface_caps.formats.is_empty() {
 			log::warn!("No surface formats available");
 			// return Ok(());
@@ -475,7 +474,6 @@ impl WgpuExecutor {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 
 		let surface_caps = surface.get_capabilities(&self.context.adapter);
-		log::debug!("caps: {surface_caps:?}");
 		let surface_format = wgpu::TextureFormat::Rgba16Float;
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
