@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	delta: HashMap<PointId, DVec2>,
 }
 
@@ -77,10 +78,15 @@ impl PointModification {
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	start_point: HashMap<SegmentId, PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	end_point: HashMap<SegmentId, PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	handle_primary: HashMap<SegmentId, Option<DVec2>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	stroke: HashMap<SegmentId, StrokeId>,
 }
 
@@ -233,7 +239,9 @@ impl SegmentModification {
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	segment_range: HashMap<RegionId, core::ops::RangeInclusive<SegmentId>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	fill: HashMap<RegionId, FillId>,
 }
 
@@ -463,4 +471,60 @@ fn modify_existing() {
 		vector_data.segment_bezier_iter().nth(9).unwrap().1,
 		Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
 	);
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use std::hash::Hash;
+fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	K: Serialize + Eq + Hash,
+	V: Serialize,
+	S: Serializer,
+{
+	let mut seq = serializer.serialize_seq(Some(hashmap.len()))?;
+	for (key, value) in hashmap {
+		seq.serialize_element(&(key, value))?;
+	}
+	seq.end()
+}
+
+fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+where
+	K: Deserialize<'de> + Eq + Hash,
+	V: Deserialize<'de>,
+	D: Deserializer<'de>,
+{
+	struct HashMapVisitor<K, V> {
+		marker: std::marker::PhantomData<fn() -> HashMap<K, V>>,
+	}
+
+	impl<'de, K, V> Visitor<'de> for HashMapVisitor<K, V>
+	where
+		K: Deserialize<'de> + Eq + Hash,
+		V: Deserialize<'de>,
+	{
+		type Value = HashMap<K, V>;
+
+		fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+			formatter.write_str("a sequence of tuples")
+		}
+
+		fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+		where
+			A: SeqAccess<'de>,
+		{
+			let mut hashmap = HashMap::new();
+			while let Some((key, value)) = seq.next_element()? {
+				hashmap.insert(key, value);
+			}
+			Ok(hashmap)
+		}
+	}
+
+	let visitor = HashMapVisitor { marker: std::marker::PhantomData };
+	deserializer.deserialize_seq(visitor)
 }
