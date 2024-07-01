@@ -1,7 +1,6 @@
 use super::utility_types::TransformIn;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use graphene_core::vector::VectorModificationType;
 
 use bezier_rs::Subpath;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
@@ -10,6 +9,7 @@ use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::PointId;
+use graphene_core::vector::VectorModificationType;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::misc::BooleanOperation;
 

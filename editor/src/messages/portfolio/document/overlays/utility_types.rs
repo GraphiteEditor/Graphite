@@ -1,12 +1,14 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
+
 use bezier_rs::{Bezier, Subpath};
+use graphene_core::renderer::Quad;
+use graphene_std::vector::{PointId, VectorData};
+
 use core::borrow::Borrow;
 use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
-use graphene_core::renderer::Quad;
-use graphene_std::vector::{PointId, VectorData};
 use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -42,9 +44,11 @@ impl OverlayContext {
 	pub fn line(&mut self, start: DVec2, end: DVec2) {
 		self.dashed_line(start, end, None, None)
 	}
-	pub fn coloured_line(&mut self, start: DVec2, end: DVec2, color: &str) {
+
+	pub fn colored_line(&mut self, start: DVec2, end: DVec2, color: &str) {
 		self.dashed_line(start, end, Some(color), None)
 	}
+
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);

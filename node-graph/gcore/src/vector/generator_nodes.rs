@@ -1,7 +1,9 @@
 use super::HandleId;
 use crate::vector::{PointId, VectorData};
 use crate::Node;
+
 use bezier_rs::Subpath;
+
 use glam::DVec2;
 
 #[derive(Debug, Clone, Copy)]

@@ -60,14 +60,15 @@ impl ToolColorOptions {
 	}
 
 	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		if let Some(colour) = self.active_color() {
-			let fill = graphene_core::vector::style::Fill::solid(colour);
+		if let Some(color) = self.active_color() {
+			let fill = graphene_core::vector::style::Fill::solid(color);
 			responses.add(GraphOperationMessage::FillSet { layer, fill });
 		}
 	}
+
 	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		if let Some(colour) = self.active_color() {
-			let stroke = graphene_core::vector::style::Stroke::new(Some(colour), weight);
+		if let Some(color) = self.active_color() {
+			let stroke = graphene_core::vector::style::Stroke::new(Some(color), weight);
 			responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
 		}
 	}

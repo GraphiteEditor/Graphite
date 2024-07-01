@@ -37,7 +37,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.coloured_line(
+			overlay_context.colored_line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				&("#".to_string() + &grid_color.rgba_hex()),
@@ -111,7 +111,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.coloured_line(
+		overlay_context.colored_line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			&("#".to_string() + &grid_color.rgba_hex()),
@@ -129,7 +129,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.coloured_line(
+			overlay_context.colored_line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
 				&("#".to_string() + &grid_color.rgba_hex()),

@@ -59,7 +59,7 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 		return Some(1);
 	}
 
-	/*  Parameterize points, and attempt to fit curve */
+	// Parameterize points, and attempt to fit curve
 
 	let mut u = chord_length_parameterize(data);
 	if u[data.len() - 1] == 0. {
@@ -69,7 +69,7 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 	generate_bezier(bezier, data, &u, t_hat_1, t_hat_2, error);
 	reparameterize(data, &mut u, bezier);
 
-	/* Find max deviation of points to fitted curve. */
+	// Find max deviation of points to fitted curve.
 	let tolerance = (error + 1e-9).sqrt();
 	let (mut split_point, mut max_error_ratio) = compute_max_error_ratio(data, &u, bezier, tolerance, 0);
 
@@ -77,9 +77,9 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 		return Some(1);
 	}
 
-	/* If error not too large, then try some reparameterization and iteration. */
+	// If error not too large, then try some reparameterization and iteration.
 	if (0.0..=3.).contains(&max_error_ratio) {
-		let max_iterations = 4; /* max times to try iterating */
+		let max_iterations = 4; // Max times to try iterating
 		for _ in 0..max_iterations {
 			generate_bezier(bezier, data, &u, t_hat_1, t_hat_2, error);
 			reparameterize(data, &mut u, bezier);
@@ -95,14 +95,14 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 		assert!(split_point < data.len());
 		if split_point == 0 {
 			if t_hat_1 == DVec2::ZERO {
-				/* Got spike even with unconstrained initial tangent. */
+				// Got spike even with unconstrained initial tangent.
 				split_point += 1;
 			} else {
 				return bezier_fit_cubic_full(bezier, data, DVec2::ZERO, t_hat_2, error, max_beziers);
 			}
 		} else if split_point == data.len() - 1 {
 			if t_hat_2 == DVec2::ZERO {
-				/* Got spike even with unconstrained final tangent. */
+				// Got spike even with unconstrained final tangent.
 				split_point -= 1;
 			} else {
 				return bezier_fit_cubic_full(bezier, data, t_hat_1, DVec2::ZERO, error, max_beziers);
@@ -111,9 +111,7 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 	}
 
 	if 1 < max_beziers {
-		/*
-		 *  Fitting failed -- split at max error point and fit recursively
-		 */
+		// Fitting failed -- split at max error point and fit recursively
 		let rec_max_beziers1 = max_beziers - 1;
 
 		let [rec_t_hat_1, rec_t_hat_2] = if is_corner {
@@ -122,7 +120,7 @@ fn bezier_fit_cubic_full(bezier: &mut [DVec2], data: &[DVec2], t_hat_1: DVec2, t
 			}
 			[DVec2::ZERO; 2]
 		} else {
-			/* Unit tangent vector at splitPoint. */
+			// Unit tangent vector at splitPoint.
 			let rec_t_hat_2 = darray_center_tangent(data, split_point, data.len());
 			[-rec_t_hat_2, rec_t_hat_2]
 		};
@@ -147,7 +145,7 @@ fn reparameterize(d: &[DVec2], u: &mut [f64], bez_curve: &[DVec2]) {
 	assert!(bez_curve[3] == d[last]);
 	assert!(u[0] == 0.);
 	assert!(u[last] == 1.);
-	/* Otherwise, consider including 0 and last in the below loop. */
+	// Otherwise, consider including 0 and last in the below loop.
 
 	for i in 1..last {
 		u[i] = newton_raphson_root_find(bez_curve, d[i], u[i]);
@@ -159,43 +157,43 @@ fn newton_raphson_root_find(q: &[DVec2], p: DVec2, u: f64) -> f64 {
 	assert!(0. <= u);
 	assert!(u <= 1.);
 
-	/* Generate control vertices for Q'. */
+	// Generate control vertices for Q'.
 	let mut q1 = [DVec2::ZERO; 3];
 	for i in 0..3 {
 		q1[i] = 3. * (q[i + 1] - q[i]);
 	}
 
-	/* Generate control vertices for Q''. */
+	// Generate control vertices for Q''.
 	let mut q2 = [DVec2::ZERO; 2];
 	for i in 0..2 {
 		q2[i] = 2. * (q1[i + 1] - q1[i]);
 	}
 
-	/* Compute Q(u), Q'(u) and Q''(u). */
+	// Compute Q(u), Q'(u) and Q''(u).
 
 	let q_u = crate::Bezier::from_cubic_dvec2(q[0], q[1], q[2], q[3]).evaluate(crate::TValue::Parametric(u));
 	let q1_u = crate::Bezier::from_quadratic_dvec2(q1[0], q1[1], q1[2]).evaluate(crate::TValue::Parametric(u));
 	let q2_u = crate::Bezier::from_linear_dvec2(q2[0], q2[1]).evaluate(crate::TValue::Parametric(u));
 
-	/* Compute f(u)/f'(u), where f is the derivative wrt u of distsq(u) = 0.5 * the square of the
-	distance from P to Q(u).  Here we're using Newton-Raphson to find a stationary point in the
-	distsq(u), hopefully corresponding to a local minimum in distsq (and hence a local minimum
-	distance from P to Q(u)). */
+	// Compute f(u)/f'(u), where f is the derivative wrt u of distsq(u) = 0.5 * the square of the
+	// distance from P to Q(u).  Here we're using Newton-Raphson to find a stationary point in the
+	// distsq(u), hopefully corresponding to a local minimum in distsq (and hence a local minimum
+	// distance from P to Q(u)).
 	let diff = q_u - p;
 	let numerator = diff.dot(q1_u);
 	let denominator = q1_u.dot(q1_u) + diff.dot(q2_u);
 
 	let mut improved_u = if denominator > 0. {
-		/* One iteration of Newton-Raphson:
-		improved_u = u - f(u)/f'(u) */
+		// One iteration of Newton-Raphson:
+		// improved_u = u - f(u)/f'(u)
 		u - (numerator / denominator)
 	} else {
-		/* Using Newton-Raphson would move in the wrong direction (towards a local maximum rather
-		than local minimum), so we move an arbitrary amount in the right direction. */
+		// Using Newton-Raphson would move in the wrong direction (towards a local maximum rather
+		// than local minimum), so we move an arbitrary amount in the right direction.
 		if numerator > 0. {
 			u * 0.98 - 0.001
 		} else if numerator < 0. {
-			/* Deliberately asymmetrical, to reduce the chance of cycling. */
+			// Deliberately asymmetrical, to reduce the chance of cycling.
 			0.031 + u * 0.98
 		} else {
 			u
@@ -208,7 +206,7 @@ fn newton_raphson_root_find(q: &[DVec2], p: DVec2, u: f64) -> f64 {
 		improved_u = improved_u.clamp(0., 1.);
 	}
 
-	/* Ensure that improved_u isn't actually worse. */
+	// Ensure that improved_u isn't actually worse.
 	{
 		let diff_lensq = diff.length_squared();
 		let mut proportion = 0.125;
@@ -216,7 +214,7 @@ fn newton_raphson_root_find(q: &[DVec2], p: DVec2, u: f64) -> f64 {
 			let bezier_pt = crate::Bezier::from_cubic_dvec2(q[0], q[1], q[2], q[3]).evaluate(crate::TValue::Parametric(improved_u));
 			if (bezier_pt - p).length_squared() > diff_lensq {
 				if proportion > 1. {
-					//g_warning("found proportion %g", proportion);
+					// g_warning("found proportion %g", proportion);
 					improved_u = u;
 					break;
 				}
@@ -237,7 +235,7 @@ fn darray_center_tangent(d: &[DVec2], center: usize, len: usize) -> DVec2 {
 	assert!(center < len - 1);
 
 	if d[center + 1] == d[center - 1] {
-		/* Rotate 90 degrees in an arbitrary direction. */
+		// Rotate 90 degrees in an arbitrary direction.
 		let diff = d[center] - d[center - 1];
 		diff.perp()
 	} else {
@@ -249,22 +247,21 @@ fn darray_center_tangent(d: &[DVec2], center: usize, len: usize) -> DVec2 {
 // https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/bezier-utils.cpp#L387
 fn estimate_lengths(bezier: &mut [DVec2], data: &[DVec2], u_prime: &[f64], t_hat_1: DVec2, t_hat_2: DVec2) {
 	let len = data.len();
-	let mut c = [[0.; 2]; 2]; /* Matrix C. */
-	let mut x = [0.; 2]; /* Matrix X. */
+	let mut c = [[0.; 2]; 2]; // Matrix C
+	let mut x = [0.; 2]; // Matrix X
 
-	/* First and last control points of the Bezier curve are positioned exactly at the first and
-	last data points. */
+	// First and last control points of the Bezier curve are positioned exactly at the first and last data points.
 	bezier[0] = data[0];
 	bezier[3] = data[len - 1];
 
 	for i in 0..len {
-		/* Bezier control point coefficients. */
+		// Bezier control point coefficients.
 		let b0 = (1. - u_prime[i]) * (1. - u_prime[i]) * (1. - u_prime[i]);
 		let b1 = 3. * u_prime[i] * (1. - u_prime[i]) * (1. - u_prime[i]);
 		let b2 = 3. * u_prime[i] * u_prime[i] * (1. - u_prime[i]);
 		let b3 = u_prime[i] * u_prime[i] * u_prime[i];
 
-		/* rhs for eqn */
+		// rhs for eqn
 		let a1 = b1 * t_hat_1;
 		let a2 = b2 * t_hat_2;
 
@@ -273,32 +270,29 @@ fn estimate_lengths(bezier: &mut [DVec2], data: &[DVec2], u_prime: &[f64], t_hat
 		c[1][0] = c[0][1];
 		c[1][1] += a2.dot(a2);
 
-		/* Additional offset to the data point from the predicted point if we were to set bezier[1]
-		to bezier[0] and bezier[2] to bezier[3]. */
+		// Additional offset to the data point from the predicted point if we were to set bezier[1] to bezier[0] and bezier[2] to bezier[3].
 		let shortfall = data[i] - ((b0 + b1) * bezier[0]) - ((b2 + b3) * bezier[3]);
 		x[0] += a1.dot(shortfall);
 		x[1] += a2.dot(shortfall);
 	}
 
-	/* We've constructed a pair of equations in the form of a matrix product C * alpha = X.
-	Now solve for alpha. */
+	// We've constructed a pair of equations in the form of a matrix product C * alpha = X. Now solve for alpha.
 
-	/* Compute the determinants of C and X. */
+	// Compute the determinants of C and X.
 	let det_c0_c1 = c[0][0] * c[1][1] - c[1][0] * c[0][1];
 	let [mut alpha_l, mut alpha_r] = if det_c0_c1 != 0. {
-		/* Apparently Kramer's rule. */
+		// Apparently Kramer's rule.
 		let det_c0_x = c[0][0] * x[1] - c[0][1] * x[0];
 		let det_x_c1 = x[0] * c[1][1] - x[1] * c[0][1];
 		[det_x_c1 / det_c0_c1, det_c0_x / det_c0_c1]
 	} else {
-		/* The matrix is under-determined.  Try requiring alpha_l == alpha_r.
-		 *
-		 * One way of implementing the constraint alpha_l == alpha_r is to treat them as the same
-		 * variable in the equations.  We can do this by adding the columns of C to form a single
-		 * column, to be multiplied by alpha to give the column vector X.
-		 *
-		 * We try each row in turn.
-		 */
+		// The matrix is under-determined. Try requiring alpha_l == alpha_r.
+		//
+		// One way of implementing the constraint alpha_l == alpha_r is to treat them as the same
+		// variable in the equations.  We can do this by adding the columns of C to form a single
+		// column, to be multiplied by alpha to give the column vector X.
+		//
+		// We try each row in turn.
 		let c0 = c[0][0] + c[0][1];
 		if c0 != 0. {
 			[x[0] / c0; 2]
@@ -307,31 +301,27 @@ fn estimate_lengths(bezier: &mut [DVec2], data: &[DVec2], u_prime: &[f64], t_hat
 			if c1 != 0. {
 				[x[1] / c1; 2]
 			} else {
-				/* Let the below code handle this. */
+				// Let the below code handle this.
 				[0.; 2]
 			}
 		}
 	};
 
-	/* If alpha negative, use the Wu/Barsky heuristic (see text).  (If alpha is 0, you get
-	coincident control points that lead to divide by zero in any subsequent
-	NewtonRaphsonRootFind() call.) */
-	// \todo Check whether this special-casing is necessary now that
-	// NewtonRaphsonRootFind handles non-positive denominator.
+	// If alpha negative, use the Wu/Barsky heuristic (see text).
+	// (If alpha is 0, you get coincident control points that lead to divide by zero in any subsequent NewtonRaphsonRootFind() call.)
+	// TODO: Check whether this special-casing is necessary now that NewtonRaphsonRootFind handles non-positive denominator.
 	if alpha_l < 1.0e-6 || alpha_r < 1.0e-6 {
 		alpha_l = data[0].distance(data[len - 1]) / 3.;
 		alpha_r = alpha_l;
 	}
 
-	/* Control points 1 and 2 are positioned an alpha distance out on the tangent vectors, left and
-	right, respectively. */
+	// Control points 1 and 2 are positioned an alpha distance out on the tangent vectors, left and right, respectively.
 	bezier[1] = alpha_l * t_hat_1 + bezier[0];
 	bezier[2] = alpha_r * t_hat_2 + bezier[3];
 }
-/*
- * ComputeLeftTangent, ComputeRightTangent, ComputeCenterTangent :
- * Approximate unit tangents at endpoints and "center" of digitized curve
- */
+
+// ComputeLeftTangent, ComputeRightTangent, ComputeCenterTangent:
+// Approximate unit tangents at endpoints and "center" of digitized curve
 
 // https://gitlab.com/inkscape/lib2geom/-/blob/master/src/2geom/bezier-utils.cpp#L706
 fn darray_left_tangent_simple(d: &[DVec2]) -> DVec2 {
@@ -398,8 +388,7 @@ fn generate_bezier(bezier: &mut [DVec2], data: &[DVec2], u: &[f64], t_hat_1: DVe
 	let mut est_t_hat_1 = if est1 { darray_left_tangent(data, tolerance_sq) } else { t_hat_1 };
 	let est_t_hat_2 = if est2 { darray_right_tangent(data, tolerance_sq) } else { t_hat_2 };
 	estimate_lengths(bezier, data, u, est_t_hat_1, est_t_hat_2);
-	/* We find that darray_right_tangent tends to produce better results
-	for our current freehand tool than full estimation. */
+	// We find that darray_right_tangent tends to produce better results for our current freehand tool than full estimation.
 	if est1 {
 		estimate_bi(bezier, 1, data, u);
 		if bezier[1] != bezier[0] {
@@ -421,15 +410,15 @@ fn estimate_bi(bezier: &mut [DVec2], ei: usize, data: &[DVec2], u: &[f64]) {
 		let ui = u[i];
 		let b = [((1. - ui) * (1. - ui) * (1. - ui)), (3. * ui * (1. - ui) * (1. - ui)), (3. * ui * ui * (1. - ui)), (ui * ui * ui)];
 
-		for d in 0..2 {
-			num[d] += b[ei] * (b[0] * bezier[0][d] + b[oi] * bezier[oi][d] + b[3] * bezier[3][d] + -data[i][d]);
+		for (d, num_d) in num.iter_mut().enumerate() {
+			*num_d += b[ei] * (b[0] * bezier[0][d] + b[oi] * bezier[oi][d] + b[3] * bezier[3][d] + -data[i][d]);
 		}
 		den -= b[ei] * b[ei];
 	}
 
 	if den != 0. {
-		for d in 0..2 {
-			bezier[ei][d] = num[d] / den;
+		for (d, num_d) in num.iter().enumerate() {
+			bezier[ei][d] = num_d / den;
 		}
 	} else {
 		bezier[ei] = (oi as f64 * bezier[0] + ei as f64 * bezier[3]) / 3.;
@@ -445,12 +434,11 @@ fn compute_max_error_ratio(d: &[DVec2], u: &[f64], bezier_curve: &[DVec2], toler
 	assert!(bezier_curve[3] == d[last]);
 	assert!(u[0] == 0.);
 	assert!(u[last] == 1.);
-	/* I.e. assert that the error for the first & last points is zero.
-	 * Otherwise we should include those points in the below loop.
-	 * The assertion is also necessary to ensure 0 < splitPoint < last.
-	 */
+	// I.e. assert that the error for the first & last points is zero.
+	// Otherwise we should include those points in the below loop.
+	// The assertion is also necessary to ensure 0 < splitPoint < last.
 
-	let mut max_distance_sq = 0.; /* Maximum error */
+	let mut max_distance_sq = 0.; // Maximum error
 	let mut max_hook_ratio = 0.;
 	let mut snap_end = 0;
 	let mut previous_point = bezier_curve[0];

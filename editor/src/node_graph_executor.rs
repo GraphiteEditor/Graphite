@@ -57,7 +57,7 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	/// The current click targets for layer nodes.
 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	/// Vector data in vector modify nodes
+	/// Vector data in vector modify nodes.
 	vector_modify: HashMap<NodeId, VectorData>,
 	/// The current upstream transforms for nodes.
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -151,7 +151,6 @@ impl NodeRuntime {
 		requests.reverse();
 		requests.dedup_by(|a, b| matches!(a, NodeRuntimeMessage::ExecutionRequest(_)) && matches!(b, NodeRuntimeMessage::ExecutionRequest(_)));
 		requests.reverse();
-		println!("Got request {:#?}", requests.len());
 		for request in requests {
 			match request {
 				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
@@ -159,7 +158,6 @@ impl NodeRuntime {
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
 					execution_id, graph, render_config, ..
 				}) => {
-					println!("exeCUTE");
 					let transform = render_config.viewport.transform;
 
 					let result = self.execute_network(graph, render_config).await;
@@ -226,19 +224,16 @@ impl NodeRuntime {
 			};
 
 			assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-			println!("Update exec");
 			if let Err(e) = self.executor.update(proto_network).await {
 				self.node_graph_errors = e;
 			} else {
 				self.graph_hash = Some(hash_code);
 			}
-			println!("Resolve type");
 			self.resolved_types = self.executor.document_node_types();
 		}
 
 		use graph_craft::graphene_compiler::Executor;
 
-		println!("Getting response");
 		let result = match self.executor.input_type() {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),

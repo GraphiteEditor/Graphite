@@ -789,7 +789,6 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				// dbg!(&self.inferred);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {

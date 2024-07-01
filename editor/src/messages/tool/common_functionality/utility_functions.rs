@@ -1,7 +1,9 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
-use glam::DVec2;
+
 use graphene_std::vector::PointId;
+
+use glam::DVec2;
 
 /// Determines if a path should be extended. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {

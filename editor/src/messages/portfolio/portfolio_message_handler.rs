@@ -657,9 +657,7 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		println!("Poll eval");
 		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-			println!("No active doc");
 			return Err("No active document".to_string());
 		};
 

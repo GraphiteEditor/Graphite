@@ -13,8 +13,7 @@ use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::Type;
-use graphene_core::{Artboard, Color};
+use graphene_core::{Artboard, Color, Type};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 

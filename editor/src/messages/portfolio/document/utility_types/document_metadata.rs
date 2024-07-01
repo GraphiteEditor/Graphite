@@ -1,6 +1,5 @@
-use crate::messages::tool::common_functionality::graph_modification_utils;
-
 use super::nodes::SelectedNodes;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::FlowType;
@@ -8,10 +7,10 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
-
-use glam::{DAffine2, DVec2};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorData;
+
+use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -305,7 +304,7 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
-	/// Update the cached click targets & vector modify values of the layers
+	/// Update the cached click targets and vector modify values of the layers
 	pub fn update_from_monitor(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>, new_vector_modify: HashMap<NodeId, VectorData>) {
 		self.click_targets = new_click_targets;
 		self.vector_modify = new_vector_modify;

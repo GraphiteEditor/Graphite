@@ -6,12 +6,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
-use glam::DVec2;
+
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
 use graphene_core::vector::VectorModificationType;
 use graphene_core::Color;
 use graphene_std::vector::{HandleId, PointId, SegmentId};
+
+use glam::DVec2;
 
 #[derive(Default)]
 pub struct FreehandTool {
@@ -258,7 +260,7 @@ impl FreehandToolData {
 			if last_segment != segment {
 				responses.add(GraphOperationMessage::Vector {
 					layer,
-					modification_type: VectorModificationType::SetG1Continous {
+					modification_type: VectorModificationType::SetG1Continuous {
 						handles: [HandleId::end(last_segment), HandleId::primary(segment)],
 						enabled: true,
 					},

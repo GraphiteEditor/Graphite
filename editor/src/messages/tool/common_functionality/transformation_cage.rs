@@ -126,8 +126,8 @@ impl SelectedEdges {
 			for point in points {
 				let old_position = point.document_point;
 				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
-				let normalised = (bounds_space - self.bounds[0]) / (self.bounds[1] - self.bounds[0]);
-				let updated = normalised * (max - min) + min;
+				let normalized = (bounds_space - self.bounds[0]) / (self.bounds[1] - self.bounds[0]);
+				let updated = normalized * (max - min) + min;
 				point.document_point = bounds_to_doc.transform_point2(updated);
 				let mut snapped = if constrain {
 					let constraint = SnapConstraint::Line {

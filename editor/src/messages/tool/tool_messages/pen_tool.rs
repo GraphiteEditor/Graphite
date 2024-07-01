@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::utility_functions::should_extend;
+
 use bezier_rs::{Bezier, BezierHandles};
 use graph_craft::document::NodeId;
 use graphene_core::uuid::generate_uuid;
@@ -211,7 +212,7 @@ struct PenToolData {
 	next_point: DVec2,
 	next_handle_start: DVec2,
 
-	g1_continous: bool,
+	g1_continuous: bool,
 
 	angle: f64,
 	auto_panning: AutoPanning,
@@ -221,9 +222,11 @@ impl PenToolData {
 	fn latest_point(&self) -> Option<&LastPoint> {
 		self.latest_points.get(self.point_index)
 	}
+
 	fn latest_point_mut(&mut self) -> Option<&mut LastPoint> {
 		self.latest_points.get_mut(self.point_index)
 	}
+
 	fn add_point(&mut self, point: LastPoint) {
 		self.point_index = (self.point_index + 1).min(self.latest_points.len());
 		self.latest_points.truncate(self.point_index);
@@ -232,7 +235,7 @@ impl PenToolData {
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
 	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2) {
-		self.g1_continous = true;
+		self.g1_continuous = true;
 		let document = snap_data.document;
 		self.next_handle_start = self.next_point;
 
@@ -292,13 +295,12 @@ impl PenToolData {
 		let id = SegmentId::generate();
 		let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
-		info!("Finish place handle");
 
 		// Mirror
 		if let Some(last_segment) = self.latest_point().and_then(|point| point.in_segment) {
 			responses.add(GraphOperationMessage::Vector {
 				layer,
-				modification_type: VectorModificationType::SetG1Continous {
+				modification_type: VectorModificationType::SetG1Continuous {
 					handles: [HandleId::end(last_segment), HandleId::primary(id)],
 					enabled: true,
 				},
@@ -308,7 +310,7 @@ impl PenToolData {
 			self.add_point(LastPoint {
 				id: end,
 				pos: next_point,
-				in_segment: self.g1_continous.then_some(id),
+				in_segment: self.g1_continuous.then_some(id),
 				handle_start: next_handle_start,
 			});
 		}
@@ -320,9 +322,9 @@ impl PenToolData {
 		self.next_handle_start = self.compute_snapped_angle(snap_data, transform, colinear, mouse, Some(self.next_point), false);
 		if let Some(handle_end) = self.handle_end.as_mut().filter(|_| colinear) {
 			*handle_end = self.next_point * 2. - self.next_handle_start;
-			self.g1_continous = true;
+			self.g1_continuous = true;
 		} else {
-			self.g1_continous = false;
+			self.g1_continuous = false;
 		}
 
 		responses.add(OverlaysMessage::Draw);
@@ -628,10 +630,6 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::DraggingHandle | PenToolFsmState::PlacingAnchor, PenToolMessage::Abort | PenToolMessage::Confirm) => {
-				// Abort or commit the transaction to the undo history
-				// let message = tool_data.finish_transaction(self, document, responses).unwrap_or(DocumentMessage::AbortTransaction);
-				// responses.add(message);
-
 				tool_data.layer = None;
 				tool_data.handle_end = None;
 				tool_data.latest_points.clear();

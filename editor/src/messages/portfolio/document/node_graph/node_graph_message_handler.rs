@@ -1547,17 +1547,15 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
-	// We don't care about trying to do this hacky div thing on non wasm
 	#[cfg(not(target_arch = "wasm32"))]
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
 		warn!("Failed to find width of {node:#?} due to non-wasm arch");
-		return None;
+		None
 	}
 
 	#[cfg(target_arch = "wasm32")]
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		use web_sys::window;
-		let document = window().unwrap().document().unwrap();
+		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
 			Ok(div) => div,
 			Err(err) => {
@@ -1602,6 +1600,7 @@ impl NodeGraphMessageHandler {
 
 		Some(text_width)
 	}
+
 	pub fn layer_width_cells(node: &DocumentNode) -> u32 {
 		let half_grid_cell_offset = 24. / 2.;
 		let thumbnail_width = 3. * 24.;
