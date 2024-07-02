@@ -500,7 +500,7 @@ mod test {
 							if node.name == "To Artboard" {
 								node.implementation = DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>");
 								if node.inputs.len() != 6 {
-									node.inputs.insert(2, NodeInput::value(TaggedValue::IVec2(IVec2::default()), false));
+									node.inputs.insert(2, NodeInput::value(TaggedValue::IVec2(glam::IVec2::default()), false));
 								}
 							}
 						}

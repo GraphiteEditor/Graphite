@@ -39,7 +39,6 @@ pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
 
-#[cfg(test)]
 // TODO: This should be extracted from the graph at the location of the transform node.
 pub struct LayerBounds {
 	pub bounds: [DVec2; 2],
@@ -47,7 +46,6 @@ pub struct LayerBounds {
 	pub layer_transform: DAffine2,
 }
 
-#[cfg(test)]
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
 	pub fn new(

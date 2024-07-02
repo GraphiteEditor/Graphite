@@ -23,7 +23,7 @@ pub struct PortfolioMessageData<'a> {
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub(crate) documents: HashMap<DocumentId, DocumentMessageHandler>,
+	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],

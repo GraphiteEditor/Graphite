@@ -2416,6 +2416,7 @@ name = "graphite-wasm"
 version = "0.0.0"
 dependencies = [
  "bezier-rs",
+ "glam",
  "graph-craft",
  "graphene-core",
  "graphite-editor",
