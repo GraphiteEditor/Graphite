@@ -6,12 +6,14 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 
-use graph_craft::document::NodeNetwork;
+use graph_craft::document::{self, NodeNetwork};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::{ManipulatorPointId, SelectedType};
 
 use glam::{DAffine2, DVec2};
 use std::collections::{HashMap, VecDeque};
+
+use super::network_interface::{self, NodeNetworkInterface};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum OriginalTransforms {
@@ -31,7 +33,9 @@ impl OriginalTransforms {
 		}
 	}
 
-	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], document_network: &NodeNetwork, document_metadata: &DocumentMetadata, shape_editor: Option<&'a ShapeState>) {
+	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
+		let document_network = network_interface.document_network();
+		let document_metadata = network_interface.document_metadata();
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
@@ -64,7 +68,7 @@ impl OriginalTransforms {
 					if path_map.contains_key(&layer) {
 						continue;
 					}
-					let Some(vector_data) = graph_modification_utils::get_subpaths(layer, document_network) else {
+					let Some(vector_data) = graph_modification_utils::get_subpaths(layer, network_interface) else {
 						continue;
 					};
 					let get_manipulator_point_position = |point_id: ManipulatorPointId| {
@@ -311,8 +315,7 @@ impl TransformOperation {
 pub struct Selected<'a> {
 	pub selected: &'a [LayerNodeIdentifier],
 	pub responses: &'a mut VecDeque<Message>,
-	pub document_network: &'a NodeNetwork,
-	pub document_metadata: &'a DocumentMetadata,
+	pub network_interface: &'a NodeNetworkInterface,
 	pub original_transforms: &'a mut OriginalTransforms,
 	pub pivot: &'a mut DVec2,
 	pub shape_editor: Option<&'a ShapeState>,
@@ -325,8 +328,7 @@ impl<'a> Selected<'a> {
 		pivot: &'a mut DVec2,
 		selected: &'a [LayerNodeIdentifier],
 		responses: &'a mut VecDeque<Message>,
-		document_network: &'a NodeNetwork,
-		document_metadata: &'a DocumentMetadata,
+		network_interface: &'a NodeNetworkInterface,
 		shape_editor: Option<&'a ShapeState>,
 		tool_type: &'a ToolType,
 	) -> Self {
@@ -335,13 +337,12 @@ impl<'a> Selected<'a> {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 
-		original_transforms.update(selected, document_network, document_metadata, shape_editor);
+		original_transforms.update(selected, network_interface, shape_editor);
 
 		Self {
 			selected,
 			responses,
-			document_network,
-			document_metadata,
+			network_interface,
 			original_transforms,
 			pivot,
 			shape_editor,
@@ -353,7 +354,7 @@ impl<'a> Selected<'a> {
 		let xy_summation = self
 			.selected
 			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.document_network, self.document_metadata))
+			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.network_interface.document_network(), self.network_interface.document_metadata()))
 			.reduce(|a, b| a + b)
 			.unwrap_or_default();
 
@@ -364,7 +365,7 @@ impl<'a> Selected<'a> {
 		let [min, max] = self
 			.selected
 			.iter()
-			.filter_map(|&layer| self.document_metadata.bounding_box_viewport(layer))
+			.filter_map(|&layer| self.network_interface.document_metadata().bounding_box_viewport(layer))
 			.reduce(Quad::combine_bounds)
 			.unwrap_or_default();
 		(min + max) / 2.
@@ -410,12 +411,14 @@ impl<'a> Selected<'a> {
 	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if !self.selected.is_empty() {
 			// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-			for layer_ancestors in self.document_metadata.shallowest_unique_layers(self.selected.iter().copied()) {
+			for layer_ancestors in self.network_interface.shallowest_unique_layers(self.selected.iter().copied()) {
 				let layer = *layer_ancestors.last().unwrap();
 
 				match &self.original_transforms {
-					OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.document_metadata, layer, layer_transforms.get(&layer), transformation, self.responses),
-					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.document_metadata, layer, path_transforms.get(&layer), transformation, self.responses),
+					OriginalTransforms::Layer(layer_transforms) => {
+						Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses)
+					}
+					OriginalTransforms::Path(path_transforms) => Self::transform_path(self.network_interface.document_metadata(), layer, path_transforms.get(&layer), transformation, self.responses),
 				}
 			}
 		}

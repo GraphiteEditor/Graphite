@@ -18,12 +18,11 @@ use std::num::NonZeroU64;
 
 // TODO: To avoid storing a stateful snapshot of some other system's state (which is easily to accidentally get out of sync),
 // TODO: it might be better to have a system that can query the state of the node network on demand.
-// TODO: Store as transient network metadata for the document network in network interface.
+// TODO: Store in network interface.
 #[derive(Debug, Clone)]
 pub struct DocumentMetadata {
 	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
-	pub folders: HashSet<LayerNodeIdentifier>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
@@ -34,8 +33,6 @@ impl Default for DocumentMetadata {
 		Self {
 			upstream_transforms: HashMap::new(),
 			structure: HashMap::new(),
-			artboards: HashSet::new(),
-			folders: HashSet::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -68,29 +65,7 @@ impl DocumentMetadata {
 	fn get_structure_mut(&mut self, node_identifier: LayerNodeIdentifier) -> &mut NodeRelations {
 		self.structure.entry(node_identifier).or_default()
 	}
-
-	/// Layers excluding ones that are children of other layers in the list.
-	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
-		// moved to network interface
-	}
-
-	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
-	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
-		// moved to network interface
-	}
-
-	pub fn is_folder(&self, layer: LayerNodeIdentifier) -> bool {
-		self.folders.contains(&layer)
-	}
-
-	/// Folders sorted from most nested to least nested
-	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
-		let mut folders: Vec<_> = layers.filter(|layer| self.folders.contains(layer)).collect();
-		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
-		folders
-	}
 }
-
 // ============================
 // DocumentMetadata: Transforms
 // ============================

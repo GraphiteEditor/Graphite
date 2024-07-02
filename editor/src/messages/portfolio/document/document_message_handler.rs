@@ -2,7 +2,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::clipboards::Clipboard;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, OptionBoundsSnapping, OptionPointSnapping, SnappingOptions, SnappingState};
-use super::utility_types::network_interface::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
+use super::utility_types::network_interface::{self, InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{generate_uuid, GRAPHITE_GIT_COMMIT_HASH};
 use crate::consts::{ASYMPTOTIC_EFFECT, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
@@ -284,7 +284,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let id = NodeId(generate_uuid());
 
 				let parent = self
-					.metadata()
+					.network_interface
 					.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
@@ -311,7 +311,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				self.backup(responses);
 
 				responses.add_front(BroadcastEvent::SelectionChanged);
-				for path in self.metadata().shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
+				for path in self.network_interface.shallowest_unique_layers(self.selected_nodes.selected_layers(self.metadata())) {
 					// `path` will never include `ROOT_PARENT`, so this is safe
 					responses.add_front(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![layer.to_node()],
@@ -399,7 +399,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let Some(parent) = self.metadata().deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
+				let Some(parent) = self.network_interface.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), false) else {
 					// Cancel grouping layers across different artboards
 					// TODO: Group each set of layers for each artboard separately
 					return;
@@ -564,7 +564,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 				let layer_above_insertion = if insert_index == 0 { Some(parent) } else { parent.children(&self.metadata).nth(insert_index - 1) };
 
-				let binding = self.metadata.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
+				let binding = self.network_interface.shallowest_unique_layers(self.selected_nodes.selected_layers(&self.metadata));
 				let get_last_elements = binding.iter().map(|x| x.last().expect("empty path")).collect::<Vec<_>>();
 
 				// TODO: The `.collect()` is necessary to avoid borrowing issues with `self`. See if this can be avoided to improve performance.
@@ -984,7 +984,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::UngroupSelectedLayers => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				let folder_paths = self.metadata().folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
+				let folder_paths = self.network_interface.folders_sorted_by_most_nested(self.selected_nodes.selected_layers(self.metadata()));
 				for folder in folder_paths {
 					if folder == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
@@ -1549,7 +1549,7 @@ impl DocumentMessageHandler {
 		// Horizontal traversal if layer_to_move is the top of its layer stack, primary traversal if not
 		let flow_type = if downstream_layer_is_parent { FlowType::HorizontalFlow } else { FlowType::PrimaryFlow };
 
-		network
+		network_interface
 			.upstream_flow_back_from_nodes(vec![downstream_layer_node_id], flow_type)
 			.find(|(node, node_id)| {
 				// Get secondary input only if it is the downstream_layer_node_id, the parent of layer to move, and a layer node (parent might be output)
@@ -1574,7 +1574,7 @@ impl DocumentMessageHandler {
 
 	/// Finds the parent folder which, based on the current selections, should be the container of any newly added layers.
 	pub fn new_layer_parent(&self, include_self: bool) -> LayerNodeIdentifier {
-		self.metadata()
+		self.network_interface
 			.deepest_common_ancestor(self.selected_nodes.selected_layers(self.metadata()), include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}

@@ -261,7 +261,7 @@ impl SnapManager {
 			if snap_data.ignore.contains(&layer) {
 				return;
 			}
-			if document.metadata.is_folder(layer) {
+			if layer.has_children(document.metadata) {
 				for layer in layer.children(&document.metadata) {
 					add_candidates(layer, snap_data, quad, candidates);
 				}

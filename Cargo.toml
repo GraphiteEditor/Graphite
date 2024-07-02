@@ -27,7 +27,6 @@ exclude = ["node-graph/gpu-compiler"]
 [workspace.dependencies]
 specta = { git = "https://github.com/oscartbeaumont/specta.git", features = [
 	"glam",
-	"typescript",
 ] }
 rustc-hash = "1.1.0"
 # wasm-bindgen upgrades may break various things so we pin the version

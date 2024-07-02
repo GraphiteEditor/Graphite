@@ -318,7 +318,7 @@ impl DocumentNode {
 					(ProtoNodeInput::None, ConstructionArgs::Value(tagged_value))
 				}
 				NodeInput::Node { node_id, output_index, lambda } => {
-					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node. {:#?}", self);
+					assert_eq!(output_index, 0, "Outputs should be flattened before converting to proto node");
 					let node = if lambda { ProtoNodeInput::NodeLambda(node_id) } else { ProtoNodeInput::Node(node_id) };
 					(node, ConstructionArgs::Nodes(vec![]))
 				}
@@ -586,7 +586,6 @@ impl std::hash::Hash for NodeNetwork {
 			id.hash(state);
 			node.hash(state);
 		}
-		self.previewing.hash(state);
 	}
 }
 impl Default for NodeNetwork {
@@ -601,7 +600,7 @@ impl Default for NodeNetwork {
 }
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports && self.previewing == other.previewing && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
+		self.exports == other.exports && self.imports_metadata == other.imports_metadata && self.exports_metadata == other.exports_metadata
 	}
 }
 
@@ -691,20 +690,6 @@ impl NodeNetwork {
 			.any(|output| if let NodeInput::Node { node_id, .. } = output { *node_id == node_id_to_check } else { false })
 	}
 
-	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
-	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
-		FlowIter {
-			stack: node_ids,
-			network: self,
-			flow_type,
-		}
-	}
-
-	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
-	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
-		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
-	}
-
 	/// Check there are no cycles in the graph (this should never happen).
 	pub fn is_acyclic(&self) -> bool {
 		let mut dependencies: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
@@ -731,54 +716,6 @@ impl NodeNetwork {
 	}
 }
 
-#[derive(PartialEq)]
-pub enum FlowType {
-	/// Iterate over all upstream nodes from every input (the primary and all secondary).
-	UpstreamFlow,
-	/// Iterate over nodes connected to the primary input.
-	PrimaryFlow,
-	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
-	HorizontalFlow,
-}
-/// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
-/// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
-/// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
-/// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
-struct FlowIter<'a> {
-	stack: Vec<NodeId>,
-	network: &'a NodeNetwork,
-	flow_type: FlowType,
-}
-impl<'a> Iterator for FlowIter<'a> {
-	type Item = (&'a DocumentNode, NodeId);
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			let mut node_id = self.stack.pop()?;
-
-			// Special handling for iterating from ROOT_PARENT in load_structure`
-			if node_id == NodeId(std::u64::MAX) {
-				if let Some(root_node) = self.network.get_root_node() {
-					node_id = root_node.id
-				} else {
-					return None;
-				}
-			}
-
-			if let Some(document_node) = self.network.nodes.get(&node_id) {
-				let skip = if self.flow_type == FlowType::HorizontalFlow && document_node.is_layer { 1 } else { 0 };
-				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
-				let inputs = document_node.inputs.iter().skip(skip).take(take);
-
-				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
-
-				self.stack.extend(node_ids);
-
-				return Some((document_node, node_id));
-			}
-		}
-	}
-}
-
 /// Functions for compiling the network
 impl NodeNetwork {
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
@@ -788,11 +725,6 @@ impl NodeNetwork {
 				*node_id = f(*node_id)
 			}
 		});
-		if let Previewing::Yes { root_node_to_restore } = &mut self.previewing {
-			if let Some(root_node_to_restore) = root_node_to_restore.as_mut() {
-				root_node_to_restore.id = f(root_node_to_restore.id);
-			}
-		}
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes
 			.into_iter()

@@ -1,5 +1,6 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
 use crate::messages::prelude::*;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
@@ -58,9 +59,9 @@ pub fn set_manipulator_colinear_handles_state(manipulator_groups: &[ManipulatorG
 }
 
 /// Locate the subpaths from the shape nodes of a particular layer
-pub fn get_subpaths(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
+pub fn get_subpaths(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<&Vec<Subpath<ManipulatorGroupId>>> {
 	let path_data_node_input_index = 0;
-	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, document_network).find_input("Shape", path_data_node_input_index)? {
+	if let TaggedValue::Subpaths(subpaths) = NodeGraphLayer::new(layer, network_interface).find_input("Shape", path_data_node_input_index)? {
 		Some(subpaths)
 	} else {
 		None
@@ -203,23 +204,24 @@ pub fn get_manipulator_from_id(subpaths: &[Subpath<ManipulatorGroupId>], id: Man
 
 /// An immutable reference to a layer within the document node graph for easy access.
 pub struct NodeGraphLayer<'a> {
-	node_graph: &'a NodeNetwork,
+	network_interface: &'a NodeNetworkInterface,
 	layer_node: NodeId,
 }
 
 impl<'a> NodeGraphLayer<'a> {
 	/// Get the layer node from the document
-	pub fn new(layer: LayerNodeIdentifier, network: &'a NodeNetwork) -> Self {
+	pub fn new(layer: LayerNodeIdentifier, network_interface: &'a NodeNetworkInterface) -> Self {
 		debug_assert!(layer != LayerNodeIdentifier::ROOT_PARENT, "Cannot create new NodeGraphLayer from ROOT_PARENT");
 		Self {
-			node_graph: network,
+			network_interface,
 			layer_node: layer.to_node(),
 		}
 	}
 
 	/// Return an iterator up the horizontal flow of the layer
 	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
-		self.node_graph.upstream_flow_back_from_nodes(vec![self.layer_node], graph_craft::document::FlowType::HorizontalFlow)
+		self.network_interface
+			.upstream_flow_back_from_nodes(vec![self.layer_node], graph_craft::document::FlowType::HorizontalFlow)
 	}
 
 	/// Node id of a node if it exists in the layer's primary flow

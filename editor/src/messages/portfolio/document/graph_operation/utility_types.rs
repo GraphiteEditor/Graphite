@@ -254,7 +254,6 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn get_existing_node_id(&self, name: &'static str) -> NodeId {
 		let existing_node_id = self
 			.network_interface
-			.document_network()
 			.upstream_flow_back_from_nodes(
 				self.layer_node.map_or_else(
 					|| {

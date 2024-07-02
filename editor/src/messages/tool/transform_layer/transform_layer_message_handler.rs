@@ -56,8 +56,7 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			&mut self.pivot,
 			&selected_layers,
 			responses,
-			&document.document_network(),
-			&document.metadata,
+			&document.network_interface,
 			Some(shape_editor),
 			&tool_data.active_tool_type,
 		);

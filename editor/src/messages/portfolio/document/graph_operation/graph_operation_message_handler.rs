@@ -673,7 +673,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				node.visible = visible;
 
 				// Only generate node graph if one of the selected nodes is connected to the output
-				if network_interface.connected_to_output(node_id) {
+				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
@@ -708,7 +708,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let Some(node) = document_network.nodes.get_mut(&node_id) else { return };
 				node.locked = locked;
 
-				if network_interface.connected_to_output(node_id) {
+				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 

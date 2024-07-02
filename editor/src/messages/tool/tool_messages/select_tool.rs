@@ -321,7 +321,7 @@ impl SelectToolData {
 	fn start_duplicates(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		self.non_duplicated_layers = Some(self.layers_dragging.clone());
 		let mut new_dragging = Vec::new();
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
+		for layer_ancestors in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied().rev()) {
 			let Some(layer) = layer_ancestors.last().copied() else { continue };
 
 			// `layer` cannot be `ROOT_PARENT`, since `ROOT_PARENT` cannot be part of `layers_dragging`
@@ -353,7 +353,7 @@ impl SelectToolData {
 				.and_then(|input| input.as_node())
 			{
 				document
-					.document_network()
+					.network_interface
 					.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
 					.enumerate()
 					.for_each(|(index, (_, node_id))| {
@@ -382,7 +382,7 @@ impl SelectToolData {
 		};
 
 		// Delete the duplicated layers
-		for layer_ancestors in document.metadata().shallowest_unique_layers(self.layers_dragging.iter().copied()) {
+		for layer_ancestors in document.network_interface.shallowest_unique_layers(self.layers_dragging.iter().copied()) {
 			let layer = layer_ancestors.last().unwrap();
 			if *layer == LayerNodeIdentifier::ROOT_PARENT {
 				log::error!("ROOT_PARENT cannot be in layers_dragging");
@@ -571,8 +571,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&tool_data.layers_dragging,
 							responses,
-							&document.document_network(),
-							&document.metadata,
+							&document.network_interface,
 							None,
 							&ToolType::Select,
 						);
@@ -600,8 +599,7 @@ impl Fsm for SelectToolFsmState {
 							&mut bounds.center_of_transformation,
 							&selected,
 							responses,
-							&document.document_network(),
-							&document.metadata,
+							&document.network_interface,
 							None,
 							&ToolType::Select,
 						);
@@ -715,7 +713,7 @@ impl Fsm for SelectToolFsmState {
 				let mouse_delta = document.metadata.document_to_viewport.transform_vector2(offset);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
+				for layer_ancestors in document.network_interface.shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer: *layer_ancestors.last().unwrap(),
 						transform: DAffine2::from_translation(mouse_delta),
@@ -760,16 +758,7 @@ impl Fsm for SelectToolFsmState {
 							}
 						});
 						let selected = &tool_data.layers_dragging;
-						let mut selected = Selected::new(
-							&mut bounds.original_transforms,
-							&mut pivot,
-							selected,
-							responses,
-							&document.document_network(),
-							&document.metadata,
-							None,
-							&ToolType::Select,
-						);
+						let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, selected, responses, &document.network_interface, None, &ToolType::Select);
 
 						selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 
@@ -814,8 +803,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounds.center_of_transformation,
 						&tool_data.layers_dragging,
 						responses,
-						&document.document_network(),
-						&document.metadata,
+						&document.network_interface,
 						None,
 						&ToolType::Select,
 					);
@@ -1084,8 +1072,7 @@ impl Fsm for SelectToolFsmState {
 						&mut bounding_box_overlays.opposite_pivot,
 						&tool_data.layers_dragging,
 						responses,
-						&document.document_network(),
-						&document.metadata,
+						&document.network_interface,
 						None,
 						&ToolType::Select,
 					);

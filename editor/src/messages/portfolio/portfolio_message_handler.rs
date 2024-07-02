@@ -183,7 +183,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let binding = active_document
-						.metadata()
+						.network_interface
 						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
 
 					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
@@ -204,7 +204,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							.and_then(|input| input.as_node())
 						{
 							active_document
-								.document_network()
+								.network_interface
 								.upstream_flow_back_from_nodes(vec![input_node], graph_craft::document::FlowType::UpstreamFlow)
 								.enumerate()
 								.for_each(|(index, (_, node_id))| {

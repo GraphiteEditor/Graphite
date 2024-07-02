@@ -436,7 +436,7 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 		return;
 	}
 
-	if document.metadata().is_folder(layer) {
+	if layer.has_children(document.metadata) {
 		for child in layer.descendants(document.metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}

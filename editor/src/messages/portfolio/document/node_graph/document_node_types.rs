@@ -92,21 +92,16 @@ pub struct DocumentNodeDefinition {
 	pub properties: fn(&DocumentNode, NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup>,
 }
 
-impl Default for DocumentNodeDefinition {
-	fn default() -> Self {
-		Self {
-			name: Default::default(),
-			category: Default::default(),
-			is_layer: false,
-			implementation: Default::default(),
-			inputs: Default::default(),
-			outputs: Default::default(),
-			has_primary_output: true,
-			properties: node_properties::node_no_properties,
-			manual_composition: Default::default(),
-		}
-	}
-}
+// impl Default for DocumentNodeDefinition {
+// 	fn default() -> Self {
+// 		Self {
+// 			identifier: "",
+// 			node_template: Default::default(),
+// 			category: Default::default(),
+// 			properties: node_properties::node_no_properties,
+// 		}
+// 	}
+// }
 
 // We use the once cell for lazy initialization to avoid the overhead of reconstructing the node list every time.
 // TODO: make document nodes not require a `'static` lifetime to avoid having to split the construction into const and non-const parts.

@@ -163,7 +163,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							use_document_network: false,
 						});
 						if let OutputConnector::Node(node_id, _) = output_connector {
-							if network_interface.connected_to_output(node_id) {
+							if network_interface.connected_to_output(&node_id) {
 								responses.add(NodeGraphMessage::RunDocumentGraph);
 							}
 						} else {
@@ -240,7 +240,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						input: value_input,
 						use_document_network,
 					});
-					if network_interface.connected_to_output(node_id) {
+					if network_interface.connected_to_output(&node_id) {
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				} else {
@@ -788,7 +788,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							use_document_network: false,
 						});
 						if let OutputConnector::Node(node_id, _) = output_connector {
-							if network_interface.connected_to_output(node_id) {
+							if network_interface.connected_to_output(&node_id) {
 								responses.add(NodeGraphMessage::RunDocumentGraph);
 							}
 						} else {
@@ -943,7 +943,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 											});
 
 											if let OutputConnector::Node(node_id, _) = output_connector {
-												if network_interface.connected_to_output(node_id) {
+												if network_interface.connected_to_output(&node_id) {
 													responses.add(NodeGraphMessage::RunDocumentGraph);
 												}
 											} else {
@@ -1042,12 +1042,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let use_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(&node_id));
 				let input = NodeInput::Value { tagged_value: value, exposed: false };
 				responses.add(NodeGraphMessage::SetNodeInput {
-					input_connector: InputConnector(node_id, input_index),
+					input_connector: InputConnector::node(node_id, input_index),
 					input,
 					use_document_network,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (network_interface.get_reference(&node_id, use_document_network) != "Imaginate" || input_index == 0) && network_interface.connected_to_output(node_id) {
+				if (network_interface.get_reference(&node_id, use_document_network) != "Imaginate" || input_index == 0) && network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -1105,7 +1105,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				network_interface.set_visibility(node_id, is_layer);
 
 				// Only generate node graph if one of the selected nodes is connected to the output
-				if network_interface.connected_to_output(node_id) {
+				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 
@@ -1121,7 +1121,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetLocked { node_id, locked } => {
 				network_interface.set_locked(node_id, locked);
 
-				if network_interface.connected_to_output(node_id) {
+				if network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 				// If change has been made to document_network
@@ -1138,7 +1138,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						is_layer: !network_interface.is_layer(node_id),
 					});
 				}
-				if selected_nodes.selected_nodes().any(|node_id| network_interface.connected_to_output(*node_id)) {
+				if selected_nodes.selected_nodes().any(|node_id| network_interface.connected_to_output(node_id)) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -1338,13 +1338,14 @@ impl NodeGraphMessageHandler {
 			1 => {
 				let nodes_not_upstream_of_layer = nodes
 					.into_iter()
-					.filter(|&selected_node_id| !network.is_node_upstream_of_another_by_horizontal_flow(layers[0], selected_node_id));
+					.filter(|&selected_node_id| !context.network_interface.is_node_upstream_of_another_by_horizontal_flow(layers[0], selected_node_id));
 				if nodes_not_upstream_of_layer.count() > 0 {
 					return Vec::new();
 				}
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				network
+				context
+					.network_interface
 					.upstream_flow_back_from_nodes(vec![layers[0]], graph_craft::document::FlowType::HorizontalFlow)
 					.enumerate()
 					.take_while(|(i, (node, _))| if *i == 0 { true } else { !node.is_layer })
@@ -1786,7 +1787,7 @@ impl NodeGraphMessageHandler {
 							// At least one secondary input is exposed on this layer node
 							network_interface.document_network().nodes.get(&node_id).map_or_else(||{log::error!("Could not get node {node_id} in update_layer_panel"); false}, |node_id| node_id.inputs.iter().skip(1).any(|input| input.is_exposed())) &&
 							// But nothing is connected to it, since we only get 1 item (ourself) when we ask for the flow from the secondary input
-							network_interface.document_network().upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
+							network_interface.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).count() == 1
 						),
 					children_present: layer.has_children(metadata),
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),

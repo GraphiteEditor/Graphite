@@ -72,6 +72,10 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn document_metadata(&self) -> &DocumentMetadata {
+		&self.document_metadata
+	}
+
 	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
 	pub fn encapsulating_node_metadata(&self) -> Option<&DocumentNodeMetadata> {
 		let mut encapsulating_path = self.network_path.clone();
@@ -136,7 +140,7 @@ impl NodeNetworkInterface {
 		if node.inputs.len() > 1 {
 			let mut last_chain_node_distance = 0u32;
 			// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
-			for (index, (_, node_id)) in network.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow).enumerate() {
+			for (index, (_, node_id)) in self.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow).enumerate() {
 				if let Some(NodeTypePersistentMetadata::Node(node_persistent_metadata)) = network_metadata.persistent_metadata.node_metadata.get(&node_id).map(|node_metadata| node_metadata.persistent_metadata.node_type_metadata) {
 					if Position::Chain = node_persistent_metadata.position {
 						last_chain_node_distance = index;
@@ -625,12 +629,88 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in is_artboard");
 			return false;
 		};
-		node_metadata.reference.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id))
+		node_metadata.reference.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(&node_id))
 	}
 
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		self.document_network_metadata().persistent_metadata.node_metadata.iter().filter_map(|(_, node_metadata)| if node_metadata.persistent_metadata.reference.is_some_and(|reference| reference == "Artboard") { Some(LayerNodeIdentifier::new(*node_id, self.document_network())) } else { None }).collect()
 	}
+
+	/// Folders sorted from most nested to least nested
+	pub fn folders_sorted_by_most_nested(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<LayerNodeIdentifier> {
+		let mut folders: Vec<_> = layers.filter(|layer| layer.has_children(&self.document_metadata)).collect();
+		folders.sort_by_cached_key(|a| std::cmp::Reverse(a.ancestors(self).count()));
+		folders
+	}
+
+	/// Calculates the document bounds in document space
+	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.document_metadata.all_layers()
+			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node()))
+			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Calculates the selected layer bounds in document space
+	pub fn selected_bounds_document_space(&self, include_artboards: bool, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
+		selected_nodes
+			.selected_layers(&self.document_metadata)
+			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node()))
+			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
+			.reduce(Quad::combine_bounds)
+	}
+
+	/// Layers excluding ones that are children of other layers in the list.
+	/// TODO: Cache this
+	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
+		let mut sorted_layers = layers
+			.map(|layer| {
+				let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
+				layer_path.reverse();
+				layer_path
+			})
+			.collect::<Vec<_>>();
+
+		// Sorting here creates groups of similar UUID paths
+		sorted_layers.sort();
+		sorted_layers.dedup_by(|a, b| a.starts_with(b));
+		sorted_layers
+	}
+
+	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
+	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
+		layers
+			.map(|layer| {
+				let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
+				layer_path.reverse();
+
+				if !include_self || !self.is_artboard(&layer.to_node()) {
+					layer_path.pop();
+				}
+
+				layer_path
+			})
+			.reduce(|mut a, b| {
+				a.truncate(a.iter().zip(b.iter()).position(|(&a, &b)| a != b).unwrap_or_else(|| a.len().min(b.len())));
+				a
+			})
+			.and_then(|layer| layer.last().copied())
+	}
+	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
+	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
+		FlowIter {
+			stack: node_ids,
+			network: self.network_for_selected_nodes(node_ids.iter()),
+			network_metadata: self.network_metadata_for_selected_nodes(node_ids.iter()),
+			flow_type,
+		}
+	}
+
+	/// In the network `X -> Y -> Z`, `is_node_upstream_of_another_by_primary_flow(Z, X)` returns true.
+	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, potentially_upstream_node: NodeId) -> bool {
+		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
+	}
+
 }
 
 // Private mutable getters for use within the network interface
@@ -847,34 +927,55 @@ impl NodeNetworkInterface {
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self) {
 		self.document_metadata.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
-		self.document_metadata.folders = HashSet::new();
+
+		// Only load structure if there is a root node
+		let Some(root_node) = self.get_root_node(true) else {
+			return;
+		};
+
+		let Some(first_root_layer) = self.upstream_flow_back_from_nodes(root_node.node_id, FlowType::PrimaryFlow).find_map(|(_, node_id)| if self.is_layer(&node_id) { Some(LayerNodeIdentifier::new(node_id, self.document_network())) } else { None }) else {
+			return;
+		};
 
 		// Should refer to output node
-		let mut awaiting_horizontal_flow = vec![(NodeId(std::u64::MAX), LayerNodeIdentifier::ROOT_PARENT)];
+		let mut awaiting_horizontal_flow = vec![(first_root_layer.to_node(), first_root_layer)];
 		let mut awaiting_primary_flow = vec![];
 
 		while let Some((horizontal_root_node_id, mut parent_layer_node)) = awaiting_horizontal_flow.pop() {
-			let horizontal_flow_iter = self.document_network().upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
-			// Skip the horizontal_root_node_id node
-			for (_, current_node_id) in horizontal_flow_iter.skip(if horizontal_root_node_id == NodeId(std::u64::MAX) { 0 } else { 1 }) {
-				if self.is_layer(&current_node_id) {
-					let current_layer_node = LayerNodeIdentifier::new(current_node_id, self.document_network());
-					if !self.document_metadata.structure.contains_key(&current_layer_node) {
-						awaiting_primary_flow.push((current_node_id, parent_layer_node));
+			let horizontal_flow_iter = self.upstream_flow_back_from_nodes(vec![horizontal_root_node_id], FlowType::HorizontalFlow);
+			// Special handling for the root layer
+			if horizontal_root_node_id == first_root_layer.to_node() { 
+				// Skip the horizontal_root_node_id node
+				for (_, current_node_id) in horizontal_flow_iter.skip(0) {
+					if self.is_layer(&current_node_id) {
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self.document_network());
+						if !self.document_metadata.structure.contains_key(&current_layer_node) {
+							if current_node_id == first_root_layer.to_node() {
+								awaiting_primary_flow.push((current_node_id, LayerNodeIdentifier::ROOT_PARENT));
+							} else {
+								awaiting_primary_flow.push((current_node_id, parent_layer_node));
+							}
+							parent_layer_node.push_child(self, current_layer_node);
+							parent_layer_node = current_layer_node;
+						}
+					}
+				}
+			} else { 
+				// Skip the horizontal_root_node_id node
+				for (_, current_node_id) in horizontal_flow_iter.skip(1) {
+					if self.is_layer(&current_node_id) {
+						let current_layer_node = LayerNodeIdentifier::new(current_node_id, self.document_network());
+						if !self.document_metadata.structure.contains_key(&current_layer_node) {
+							awaiting_primary_flow.push((current_node_id, parent_layer_node));
 
-						parent_layer_node.push_child(self, current_layer_node);
-						parent_layer_node = current_layer_node;
-
-						if self.document_network().nodes.get(&current_layer_node.to_node()).is_some_and(|node| node.inputs.iter().skip(1).any(|input| {
-							input.as_node().map_or(false, |node_id| {
-								self.document_network().upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(_, node_id)| self.is_layer(&node_id))
-							})
-						})) {
-							self.document_metadata.folders.insert(current_layer_node);
+							parent_layer_node.push_child(self, current_layer_node);
+							parent_layer_node = current_layer_node;
 						}
 					}
 				}
 			}
+
+			
 
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
 				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
@@ -888,14 +989,6 @@ impl NodeNetworkInterface {
 
 							// The layer nodes for the horizontal flow is itself
 							awaiting_horizontal_flow.push((current_node_id, current_layer_node));
-
-							if self.document_network().nodes.get(&current_layer_node.to_node()).is_some_and(|node| node.inputs.iter().skip(1).any(|input| {
-								input.as_node().map_or(false, |node_id| {
-									self.document_network().upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).any(|(_, node_id)| self.is_layer(&node_id))
-								})
-							})) {
-								self.document_metadata.folders.insert(current_layer_node);
-							}
 						}
 					}
 				}
@@ -904,59 +997,6 @@ impl NodeNetworkInterface {
 
 		self.document_metadata.upstream_transforms.retain(|node, _| self.document_network.nodes.contains_key(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
-	}
-
-	/// Calculates the document bounds in document space
-	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata.all_layers()
-			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node()))
-			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds)
-	}
-
-	/// Calculates the selected layer bounds in document space
-	pub fn selected_bounds_document_space(&self, include_artboards: bool, selected_nodes: &SelectedNodes) -> Option<[DVec2; 2]> {
-		selected_nodes
-			.selected_layers(&self.document_metadata)
-			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node()))
-			.filter_map(|layer| self.document_metadata.bounding_box_document(layer))
-			.reduce(Quad::combine_bounds)
-	}
-
-	/// Layers excluding ones that are children of other layers in the list.
-	pub fn shallowest_unique_layers(&self, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Vec<Vec<LayerNodeIdentifier>> {
-		let mut sorted_layers = layers
-			.map(|layer| {
-				let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
-				layer_path.reverse();
-				layer_path
-			})
-			.collect::<Vec<_>>();
-
-		// Sorting here creates groups of similar UUID paths
-		sorted_layers.sort();
-		sorted_layers.dedup_by(|a, b| a.starts_with(b));
-		sorted_layers
-	}
-
-	/// Ancestor that is shared by all layers and that is deepest (more nested). Default may be the root. Skips selected non-folder, non-artboard layers
-	pub fn deepest_common_ancestor(&self, layers: impl Iterator<Item = LayerNodeIdentifier>, include_self: bool) -> Option<LayerNodeIdentifier> {
-		layers
-			.map(|layer| {
-				let mut layer_path = layer.ancestors(&self.document_metadata).collect::<Vec<_>>();
-				layer_path.reverse();
-
-				if !include_self || !self.is_artboard(&layer.to_node()) {
-					layer_path.pop();
-				}
-
-				layer_path
-			})
-			.reduce(|mut a, b| {
-				a.truncate(a.iter().zip(b.iter()).position(|(&a, &b)| a != b).unwrap_or_else(|| a.len().min(b.len())));
-				a
-			})
-			.and_then(|layer| layer.last().copied())
 	}
 }
 
@@ -1073,7 +1113,7 @@ impl NodeNetworkInterface {
 				continue;
 			};
 
-			for (_, upstream_id) in network.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
+			for (_, upstream_id) in self.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
 				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
 				let mut stack = vec![upstream_id];
@@ -1522,6 +1562,52 @@ impl NodeNetworkInterface {
 	pub fn move_node_to_chain(&mut self, node_id: NodeId, parent: NodeId) {}
 }
 
+#[derive(PartialEq)]
+pub enum FlowType {
+	/// Iterate over all upstream nodes from every input (the primary and all secondary).
+	UpstreamFlow,
+	/// Iterate over nodes connected to the primary input.
+	PrimaryFlow,
+	/// Iterate over the secondary input for layer nodes and primary input for non layer nodes.
+	HorizontalFlow,
+}
+/// Iterate over upstream nodes. The behavior changes based on the `flow_type` that's set.
+/// - [`FlowType::UpstreamFlow`]: iterates over all upstream nodes from every input (the primary and all secondary).
+/// - [`FlowType::PrimaryFlow`]: iterates along the horizontal inputs of nodes, so in the case of a node chain `a -> b -> c`, this would yield `c, b, a` if we started from `c`.
+/// - [`FlowType::HorizontalFlow`]: iterates over the secondary input for layer nodes and primary input for non layer nodes.
+struct FlowIter<'a> {
+	stack: Vec<NodeId>,
+	network: &'a NodeNetwork,
+	network_metadata: &'a NodeNetworkMetadata,
+	flow_type: FlowType,
+}
+impl<'a> Iterator for FlowIter<'a> {
+	type Item = (&'a DocumentNode, NodeId);
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let mut node_id = self.stack.pop()?;
+
+			// Special handling for iterating from ROOT_PARENT in load_structure`
+			// TODO: Delete this
+			if node_id == NodeId(std::u64::MAX) {
+				panic!("ROOT_PARENT should not be iterated over in upstream_flow_back_from_nodes");
+			}
+
+			if let (Some(document_node), Some(node_metadata)) = (self.network.nodes.get(&node_id), self.network_metadata.persistent_metadata.node_metadata.get(&node_id)) {
+				let skip = if self.flow_type == FlowType::HorizontalFlow && node_metadata.persistent_metadata.is_layer() { 1 } else { 0 };
+				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
+				let inputs = document_node.inputs.iter().skip(skip).take(take);
+
+				let node_ids = inputs.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(node_id) } else { None });
+
+				self.stack.extend(node_ids);
+
+				return Some((document_node, node_id));
+			}
+		}
+	}
+}
+
 /// Represents an input connector with index based on the [`DocumentNode::inputs`] index, not the visible input index
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub enum InputConnector {
@@ -1702,6 +1788,12 @@ pub enum CurrentNodeNetworkTransientMetadata {
 	Unloaded,
 }
 
+impl Default for CurrentNodeNetworkTransientMetadata {
+    fn default() -> Self {
+        CurrentNodeNetworkTransientMetadata::Unloaded
+    }
+}
+
 impl CurrentNodeNetworkTransientMetadata {
 	/// Always returns the Loaded variant, and creates it if it does not exist
 	pub fn get_transient_network_metadata(&mut self, network_interface: &NodeNetworkInterface, use_document_network: bool) -> &NodeNetworkTransientMetadata {
@@ -1742,12 +1834,6 @@ pub struct NodeNetworkTransientMetadata {
 	pub import_ports: Ports,
 	/// All export connector click targets
 	pub export_ports: Ports,
-}
-
-impl Default for CurrentNodeNetworkTransientMetadata {
-    fn default() -> Self {
-        CurrentNodeNetworkTransientMetadata::Unloaded
-    }
 }
 
 impl NodeNetworkTransientMetadata {

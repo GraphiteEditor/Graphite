@@ -95,10 +95,10 @@ async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, edito
 	};
 
 	// TODO: The cache should be based on the network topology not the node name
-	let compute_pass_descriptor = if self.cache.borrow().contains_key(&node.name) {
-		self.cache.borrow().get(&node.name).unwrap().clone()
+	let compute_pass_descriptor = if self.cache.borrow().contains_key("placeholder") {
+		self.cache.borrow().get("placeholder").unwrap().clone()
 	} else {
-		let name = node.name.to_string();
+		let name = "placeholder".to_string();
 		let Ok(compute_pass_descriptor) = create_compute_pass_descriptor(node, &image, executor, quantization).await else {
 			log::error!("Error creating compute pass descriptor in 'map_gpu()");
 			return ImageFrame::empty();
@@ -175,19 +175,16 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 		exports: vec![NodeInput::node(NodeId(3), 0)],
 		nodes: [
 			DocumentNode {
-				name: "Slice".into(),
 				inputs: vec![NodeInput::Inline(InlineRust::new("i1[(_global_index.y * i0 + _global_index.x) as usize]".into(), concrete![Color]))],
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::CopiedNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
-				name: "Quantization".into(),
 				inputs: vec![NodeInput::network(concrete!(quantization::Quantization), 1)],
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
 			},
 			DocumentNode {
-				name: "Width".into(),
 				inputs: vec![NodeInput::network(concrete!(u32), 0)],
 				implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
 				..Default::default()
@@ -214,7 +211,6 @@ async fn create_compute_pass_descriptor<T: Clone + Pixel + StaticTypeSized>(
 				..Default::default()
 			},
 			DocumentNode {
-				name: "MapNode".into(),
 				#[cfg(feature = "quantization")]
 				inputs: vec![NodeInput::node(NodeId(3), 0)],
 				#[cfg(not(feature = "quantization"))]
@@ -435,7 +431,6 @@ async fn blend_gpu_image(foreground: ImageFrame<Color>, background: ImageFrame<C
 	let network = NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(0), 0)],
 		nodes: [DocumentNode {
-			name: "BlendOp".into(),
 			inputs: vec![NodeInput::Inline(InlineRust::new(
 				format!(
 					r#"graphene_core::raster::adjustments::BlendNode::new(

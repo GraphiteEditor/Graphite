@@ -268,7 +268,7 @@ impl BrushToolData {
 
 		self.layer = Some(layer);
 		for (node, node_id) in document
-			.document_network()
+			.network_interface
 			.upstream_flow_back_from_nodes(vec![layer.to_node()], graph_craft::document::FlowType::HorizontalFlow)
 		{
 			if node.name == "Brush" && node_id != layer.to_node() {
