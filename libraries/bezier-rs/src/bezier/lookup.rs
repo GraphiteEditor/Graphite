@@ -356,5 +356,8 @@ mod tests {
 
 		let bezier2 = Bezier::from_quadratic_coordinates(0., 0., 0., 100., 100., 100.);
 		assert_eq!(bezier2.project(DVec2::new(100., 0.)), 0.);
+
+		let bezier3 = Bezier::from_cubic_coordinates(-50.0, -50.0, -50.0, -50.0, 50.0, -50.0, 50.0, -50.0);
+		assert_eq!(DVec2::new(0., -50.), bezier3.evaluate(TValue::Parametric(bezier3.project(DVec2::new(0., -50.)))));
 	}
 }

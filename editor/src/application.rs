@@ -21,8 +21,8 @@ impl Editor {
 		std::mem::take(&mut self.dispatcher.responses)
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.dispatcher.poll_node_graph_evaluation(responses);
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		self.dispatcher.poll_node_graph_evaluation(responses)
 	}
 }
 

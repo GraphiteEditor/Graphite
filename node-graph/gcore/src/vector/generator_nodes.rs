@@ -1,5 +1,5 @@
-use crate::uuid::ManipulatorGroupId;
-use crate::vector::VectorData;
+use super::HandleId;
+use crate::vector::{PointId, VectorData};
 use crate::Node;
 
 use bezier_rs::Subpath;
@@ -28,7 +28,14 @@ fn ellipse_generator(_input: (), radius_x: f64, radius_y: f64) -> VectorData {
 	let radius = DVec2::new(radius_x, radius_y);
 	let corner1 = -radius;
 	let corner2 = radius;
-	super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2))
+	let mut ellipse = super::VectorData::from_subpath(Subpath::new_ellipse(corner1, corner2));
+	let len = ellipse.segment_domain.ids().len();
+	for i in 0..len {
+		ellipse
+			.colinear_manipulators
+			.push([HandleId::end(ellipse.segment_domain.ids()[i]), HandleId::primary(ellipse.segment_domain.ids()[(i + 1) % len])]);
+	}
+	ellipse
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +53,7 @@ trait CornerRadius {
 impl CornerRadius for f64 {
 	fn generate(self, size: DVec2, clamped: bool) -> super::VectorData {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])])
+		super::VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4]))
 	}
 }
 impl CornerRadius for [f64; 4] {
@@ -66,7 +73,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		super::VectorData::from_subpaths(vec![Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)])
+		super::VectorData::from_subpath(Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius))
 	}
 }
 
@@ -122,7 +129,11 @@ pub struct SplineGenerator<Positions> {
 
 #[node_macro::node_fn(SplineGenerator)]
 fn spline_generator(_input: (), positions: Vec<DVec2>) -> VectorData {
-	super::VectorData::from_subpath(Subpath::new_cubic_spline(positions))
+	let mut spline = super::VectorData::from_subpath(Subpath::new_cubic_spline(positions));
+	for pair in spline.segment_domain.ids().windows(2) {
+		spline.colinear_manipulators.push([HandleId::end(pair[0]), HandleId::primary(pair[1])]);
+	}
+	spline
 }
 
 // TODO(TrueDoctor): I removed the Arc requirement we should think about when it makes sense to use it vs making a generic value node
@@ -132,9 +143,12 @@ pub struct PathGenerator<ColinearManipulators> {
 }
 
 #[node_macro::node_fn(PathGenerator)]
-fn generate_path(path_data: Vec<Subpath<ManipulatorGroupId>>, colinear_manipulators: Vec<ManipulatorGroupId>) -> super::VectorData {
-	let mut vector_data = super::VectorData::from_subpaths(path_data);
-	vector_data.colinear_manipulators = colinear_manipulators;
+fn generate_path(path_data: Vec<Subpath<PointId>>, colinear_manipulators: Vec<PointId>) -> super::VectorData {
+	let mut vector_data = super::VectorData::from_subpaths(path_data, false);
+	vector_data.colinear_manipulators = colinear_manipulators
+		.iter()
+		.filter_map(|&point| super::ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
+		.collect();
 	vector_data
 }
 

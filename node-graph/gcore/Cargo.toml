@@ -65,3 +65,7 @@ rand = { workspace = true, default-features = false, features = ["std_rng"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints.rust]
+# the spirv target is not in the list of common cfgs so must be added manually
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_arch, values("spirv"))'] }

@@ -18,7 +18,7 @@ impl FrontendGraphDataType {
 	pub fn with_type(input: &Type) -> Self {
 		match TaggedValue::from_type(input) {
 			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
-			TaggedValue::Subpaths(_) | TaggedValue::RcSubpath(_) | TaggedValue::VectorData(_) => Self::VectorData,
+			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)

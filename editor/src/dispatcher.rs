@@ -205,8 +205,8 @@ impl Dispatcher {
 		list
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
-		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses);
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
 	/// Create the tree structure for logging the messages as a tree
@@ -262,10 +262,7 @@ mod test {
 	use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use crate::messages::prelude::*;
-	use crate::messages::tool::tool_messages::tool_prelude::ToolType;
 	use crate::test_utils::EditorTestUtils;
-
-	use graph_craft::document::NodeId;
 	use graphene_core::raster::color::Color;
 
 	fn init_logger() {
@@ -412,11 +409,9 @@ mod test {
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
 
-	// TODO: Fix text
-	#[ignore]
-	#[test]
+	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.
-	fn check_if_demo_art_opens() {
+	async fn check_if_demo_art_opens() {
 		use crate::messages::layout::utility_types::widget_prelude::*;
 
 		let print_problem_to_terminal_on_failure = |value: &String| {
@@ -449,6 +444,16 @@ mod test {
 				document_name: document_name.into(),
 				document_serialized_content,
 			});
+			println!("Responses:\n{responses:#?}");
+
+			// Check if the graph renders
+			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
+			portfolio
+				.executor
+				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE);
+			crate::node_graph_executor::run_node_graph().await;
+			let mut messages = VecDeque::new();
+			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
@@ -463,5 +468,130 @@ mod test {
 				}
 			}
 		}
+	}
+
+	#[ignore]
+	#[test]
+	fn migrate() {
+		futures::executor::block_on(async {
+			use crate::messages::portfolio::document::graph_operation::transform_utils::*;
+			use crate::messages::portfolio::document::graph_operation::utility_types::*;
+
+			use graph_craft::document::NodeInput;
+			use graph_craft::document::{value::TaggedValue, DocumentNodeImplementation};
+			use graphene_core::vector::*;
+
+			init_logger();
+			let mut editor = Editor::create();
+
+			for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
+				let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+				let document_serialized_content = document_serialized_content.replace("\"ManipulatorGroupIds\"", "\"PointIds\"");
+
+				let responses = editor.handle_message(PortfolioMessage::OpenDocumentFile {
+					document_name: document_name.into(),
+					document_serialized_content,
+				});
+
+				let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+				for node in document.network.nodes.values_mut().filter(|d| d.name == "Artboard") {
+					if let Some(network) = node.implementation.get_network_mut() {
+						for node in network.nodes.values_mut() {
+							if node.name == "To Artboard" {
+								node.implementation = DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>");
+								if node.inputs.len() != 6 {
+									node.inputs.insert(2, NodeInput::value(TaggedValue::IVec2(glam::IVec2::default()), false));
+								}
+							}
+						}
+					}
+				}
+
+				let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
+				portfolio
+					.executor
+					.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE);
+				crate::node_graph_executor::run_node_graph().await;
+
+				let mut messages = VecDeque::new();
+				editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+
+				let document = editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap();
+				let mut updated_nodes = HashSet::new();
+				document.metadata.load_structure(&document.network);
+				for node in document.network.nodes.iter().filter(|(_, d)| d.name == "Merge").map(|(id, _)| *id).collect::<Vec<_>>() {
+					let layer = LayerNodeIdentifier::new(node, &document.network);
+					if document.metadata.is_folder(layer) {
+						continue;
+					}
+					let bounds = LayerBounds::new(&document.metadata, layer);
+
+					let mut responses = VecDeque::new();
+					let mut shape = None;
+
+					if let Some(mut modify_inputs) =
+						ModifyInputsContext::new_with_layer(layer.to_node(), &mut document.network, &mut document.metadata, &mut document.node_graph_handler, &mut responses)
+					{
+						modify_inputs.modify_existing_inputs("Transform", |inputs, node_id, metadata| {
+							if !updated_nodes.insert(node_id) {
+								return;
+							}
+
+							let transform = get_current_transform(&inputs);
+							let upstream_transform = metadata.upstream_transform(node_id);
+							let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(&inputs))));
+
+							update_transform(inputs, pivot_transform * transform * pivot_transform.inverse());
+						});
+						modify_inputs.modify_existing_inputs("Shape", |inputs, node_id, metadata| {
+							if !updated_nodes.insert(node_id) {
+								return;
+							}
+
+							let empty_vec = Vec::new();
+
+							let path_data = if let NodeInput::Value {
+								tagged_value: TaggedValue::Subpaths(translation),
+								..
+							} = &inputs[0]
+							{
+								translation
+							} else {
+								&empty_vec
+							};
+
+							let empty_vec = Vec::new();
+
+							let colinear_manipulators = if let NodeInput::Value {
+								tagged_value: TaggedValue::PointIds(translation),
+								..
+							} = &inputs[1]
+							{
+								translation
+							} else {
+								&empty_vec
+							};
+
+							let mut vector_data = VectorData::from_subpaths(path_data, false);
+							vector_data.colinear_manipulators = colinear_manipulators
+								.iter()
+								.filter_map(|&point| ManipulatorPointId::Anchor(point).get_handle_pair(&vector_data))
+								.collect();
+
+							shape = Some((node_id, VectorModification::create_from_vector(&vector_data)));
+						});
+					}
+					if let Some((id, modification)) = shape {
+						let metadata = document.network.nodes.remove(&id).map(|node| node.metadata).unwrap_or_default();
+						let node_type = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type("Path Modify").unwrap();
+
+						let document_node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))], metadata);
+						document.network.nodes.insert(id, document_node);
+					}
+				}
+
+				// std::fs::write(format!("../demo-artwork/{file_name}"), document.serialize_document()).unwrap();
+			}
+		})
 	}
 }

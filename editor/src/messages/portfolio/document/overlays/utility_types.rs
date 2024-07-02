@@ -2,12 +2,14 @@ use super::utility_functions::overlay_canvas_context;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER};
 use crate::messages::prelude::Message;
 
-use bezier_rs::Subpath;
+use bezier_rs::{Bezier, Subpath};
 use graphene_core::renderer::Quad;
-use wasm_bindgen::JsValue;
+use graphene_std::vector::{PointId, VectorData};
 
+use core::borrow::Borrow;
 use core::f64::consts::TAU;
 use glam::{DAffine2, DVec2};
+use wasm_bindgen::JsValue;
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -39,7 +41,15 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
+	pub fn line(&mut self, start: DVec2, end: DVec2) {
+		self.dashed_line(start, end, None, None)
+	}
+
+	pub fn colored_line(&mut self, start: DVec2, end: DVec2, color: &str) {
+		self.dashed_line(start, end, Some(color), None)
+	}
+
+	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, dash_width: Option<f64>) {
 		let start = start.round() - DVec2::splat(0.5);
 		let end = end.round() - DVec2::splat(0.5);
 		if let Some(dash_width) = dash_width {
@@ -152,9 +162,44 @@ impl OverlayContext {
 		self.render_context.stroke();
 	}
 
-	pub fn outline<'a, Id: bezier_rs::Identifier>(&mut self, subpaths: impl Iterator<Item = &'a Subpath<Id>>, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector_data: &VectorData, transform: DAffine2) {
+		self.render_context.begin_path();
+		let mut last_point = None;
+		for (_, bezier, start_id, end_id) in vector_data.segment_bezier_iter() {
+			let move_to = last_point != Some(start_id);
+			last_point = Some(end_id);
+
+			self.bezier_command(bezier, transform, move_to);
+		}
+
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.stroke();
+	}
+
+	pub fn outline_bezier(&mut self, bezier: Bezier, transform: DAffine2) {
+		self.render_context.begin_path();
+		self.bezier_command(bezier, transform, true);
+		self.render_context.set_stroke_style(&wasm_bindgen::JsValue::from_str(COLOR_OVERLAY_BLUE));
+		self.render_context.stroke();
+	}
+
+	fn bezier_command(&self, bezier: Bezier, transform: DAffine2, move_to: bool) {
+		let Bezier { start, end, handles } = bezier.apply_transformation(|point| transform.transform_point2(point));
+		if move_to {
+			self.render_context.move_to(start.x, start.y);
+		}
+
+		match handles {
+			bezier_rs::BezierHandles::Linear => self.render_context.line_to(end.x, end.y),
+			bezier_rs::BezierHandles::Quadratic { handle } => self.render_context.quadratic_curve_to(handle.x, handle.y, end.x, end.y),
+			bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => self.render_context.bezier_curve_to(handle_start.x, handle_start.y, handle_end.x, handle_end.y, end.x, end.y),
+		}
+	}
+
+	pub fn outline<'a>(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.render_context.begin_path();
 		for subpath in subpaths {
+			let subpath = subpath.borrow();
 			let mut curves = subpath.iter().peekable();
 
 			let Some(first) = curves.peek() else {

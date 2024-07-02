@@ -16,13 +16,12 @@ use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
+use renderer::{ClickTarget, Quad};
+use vector::PointId;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
-use renderer::{ClickTarget, Quad};
-use web_sys::window;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
@@ -62,7 +61,7 @@ pub struct NodeGraphMessageHandler {
 	/// Click targets for every node in the network by using the path to that node.
 	pub node_metadata: HashMap<NodeId, NodeMetadata>,
 	/// Cache for the bounding box around all nodes in node graph space.
-	pub bounding_box_subpath: Option<Subpath<ManipulatorGroupId>>,
+	pub bounding_box_subpath: Option<Subpath<PointId>>,
 	auto_panning: AutoPanning,
 }
 
@@ -1548,8 +1547,15 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
 	fn get_text_width(node: &DocumentNode) -> Option<f64> {
-		let document = window().unwrap().document().unwrap();
+		warn!("Failed to find width of {node:#?} due to non-wasm arch");
+		None
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	fn get_text_width(node: &DocumentNode) -> Option<f64> {
+		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
 			Ok(div) => div,
 			Err(err) => {
@@ -1594,6 +1600,7 @@ impl NodeGraphMessageHandler {
 
 		Some(text_width)
 	}
+
 	pub fn layer_width_cells(node: &DocumentNode) -> u32 {
 		let half_grid_cell_offset = 24. / 2.;
 		let thumbnail_width = 3. * 24.;

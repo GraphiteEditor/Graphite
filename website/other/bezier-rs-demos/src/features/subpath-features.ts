@@ -7,6 +7,27 @@ const subpathFeatures = {
 		name: "Constructor",
 		callback: (subpath: WasmSubpathInstance): string => subpath.to_svg(),
 	},
+	fit: {
+		name: "Fit Points",
+		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.fit(options.max_segments, options.error),
+
+		inputOptions: [
+			{
+				variable: "error",
+				min: 0,
+				max: 25,
+				step: 1,
+				default: 10,
+			},
+			{
+				variable: "max_segments",
+				min: 1,
+				max: 3,
+				step: 1,
+				default: 2,
+			},
+		],
+	},
 	insert: {
 		name: "Insert",
 		callback: (subpath: WasmSubpathInstance, options: Record<string, number>, _: undefined): string => subpath.insert(options.t, SUBPATH_T_VALUE_VARIANTS[options.TVariant]),

@@ -1,4 +1,4 @@
-use super::transform_utils::{self, LayerBounds};
+use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -9,10 +9,9 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{generate_uuid, NodeId, NodeInput, NodeNetwork, Previewing};
 use graphene_core::renderer::Quad;
 use graphene_core::text::Font;
-use graphene_core::vector::style::{Fill, Gradient, GradientType, LineCap, LineJoin, Stroke};
+use graphene_core::vector::style::{Fill, Gradient, GradientStops, GradientType, LineCap, LineJoin, Stroke};
 use graphene_core::Color;
 use graphene_std::vector::convert_usvg_path;
-use graphene_std::vector::style::GradientStops;
 
 use glam::{DAffine2, DVec2, IVec2};
 
@@ -404,15 +403,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
-			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run UpdateBounds on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.update_bounds(old_bounds, new_bounds);
-				}
-			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Cannot run StrokeSet on ROOT_PARENT");
@@ -433,9 +423,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					return;
 				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
-				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
+					modify_inputs.transform_change(transform, transform_in, parent_transform, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSet {
@@ -451,9 +440,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 
 				let current_transform = Some(document_metadata.transform_to_viewport(layer));
-				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
+					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
@@ -461,21 +449,17 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
 					return;
 				}
-				let bounds = LayerBounds::new(document_metadata, layer);
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					modify_inputs.pivot_set(pivot, bounds);
+					modify_inputs.pivot_set(pivot);
 				}
 			}
-			GraphOperationMessage::Vector { layer, modification } => {
+			GraphOperationMessage::Vector { layer, modification_type } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Cannot run Vector on ROOT_PARENT");
 					return;
 				}
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, node_graph, responses) {
-					let previous_layer = modify_inputs.vector_modify(modification);
-					if let Some(layer) = previous_layer {
-						responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true })
-					}
+					modify_inputs.vector_modify(modification_type);
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
@@ -698,6 +682,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 			GraphOperationMessage::SetName { layer, name } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(GraphOperationMessage::SetNameImpl { layer, name });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			GraphOperationMessage::SetNameImpl { layer, name } => {
 				if let Some(node) = document_network.nodes.get_mut(&layer.to_node()) {
@@ -829,10 +814,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
 
-			let center = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
-
 			modify_inputs.modify_inputs("Transform", true, |inputs, _node_id, _metadata| {
-				transform_utils::update_transform(inputs, center.inverse() * transform * usvg_transform(node.abs_transform()) * center);
+				transform_utils::update_transform(inputs, transform * usvg_transform(node.abs_transform()));
 			});
 			let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 			let transformed_bound_transform = DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);

@@ -170,11 +170,11 @@ fn solidify_stroke(vector_data: VectorData) -> VectorData {
 		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
 		if subpath_out.1.is_some() {
 			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(subpath_out.0);
-			result.append_subpath(subpath_out.1.unwrap());
+			result.append_subpath(subpath_out.0, false);
+			result.append_subpath(subpath_out.1.unwrap(), false);
 		} else {
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out.0);
+			result.append_subpath(subpath_out.0, false);
 		}
 	}
 
@@ -363,7 +363,7 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 	let mut result = VectorData::empty();
-	for (_, mut subpath) in vector_data.region_bezier_paths() {
+	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
@@ -400,6 +400,8 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
 
+	let stroke_id = StrokeId::ZERO;
+
 	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
 		let handle_start = first_handles[start_index];
 		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
@@ -407,7 +409,7 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 		vector_data
 			.segment_domain
-			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, stroke_id)
 	}
 
 	vector_data
@@ -484,7 +486,7 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
 		}
 
-		result.append_subpath(source_path);
+		result.append_subpath(source_path, true);
 	}
 	// Mismatched subpath count
 	for mut source_path in source_paths {

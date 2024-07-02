@@ -23,9 +23,9 @@ pub struct PortfolioMessageData<'a> {
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	documents: HashMap<DocumentId, DocumentMessageHandler>,
+	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
-	active_document_id: Option<DocumentId>,
+	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
 	pub persistent_data: PersistentData,
 	pub executor: NodeGraphExecutor,
@@ -656,12 +656,13 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-			return;
+			return Err("No active document".to_string());
 		};
 
-		if self.executor.poll_node_graph_evaluation(active_document, responses).is_err() {
+		let result = self.executor.poll_node_graph_evaluation(active_document, responses);
+		if result.is_err() {
 			let error = r#"
 				<rect x="50%" y="50%" width="480" height="100" transform="translate(-240 -50)" rx="4" fill="var(--color-error-red)" />
 				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
@@ -673,5 +674,6 @@ impl PortfolioMessageHandler {
 				.to_string();
 			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
 		}
+		result
 	}
 }

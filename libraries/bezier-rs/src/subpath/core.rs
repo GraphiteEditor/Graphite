@@ -5,11 +5,11 @@ use glam::DVec2;
 use std::fmt::Write;
 
 /// Functionality relating to core `Subpath` operations, such as constructors and `iter`.
-impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
+impl<PointId: crate::Identifier> Subpath<PointId> {
 	/// Create a new `Subpath` using a list of [ManipulatorGroup]s.
 	/// A `Subpath` with less than 2 [ManipulatorGroup]s may not be closed.
 	#[track_caller]
-	pub fn new(manipulator_groups: Vec<ManipulatorGroup<ManipulatorGroupId>>, closed: bool) -> Self {
+	pub fn new(manipulator_groups: Vec<ManipulatorGroup<PointId>>, closed: bool) -> Self {
 		assert!(!closed || manipulator_groups.len() > 1, "A closed Subpath must contain more than 1 ManipulatorGroup.");
 		Self { manipulator_groups, closed }
 	}
@@ -22,13 +22,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 					anchor: bezier.start(),
 					in_handle: None,
 					out_handle: bezier.handle_start(),
-					id: ManipulatorGroupId::new(),
+					id: PointId::new(),
 				},
 				ManipulatorGroup {
 					anchor: bezier.end(),
 					in_handle: bezier.handle_end(),
 					out_handle: None,
-					id: ManipulatorGroupId::new(),
+					id: PointId::new(),
 				},
 			],
 			false,
@@ -48,17 +48,17 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			anchor: first.start(),
 			in_handle: None,
 			out_handle: first.handle_start(),
-			id: ManipulatorGroupId::new(),
+			id: PointId::new(),
 		}];
-		let mut inner_groups: Vec<ManipulatorGroup<ManipulatorGroupId>> = beziers
+		let mut inner_groups: Vec<ManipulatorGroup<PointId>> = beziers
 			.windows(2)
 			.map(|bezier_pair| ManipulatorGroup {
 				anchor: bezier_pair[1].start(),
 				in_handle: bezier_pair[0].handle_end(),
 				out_handle: bezier_pair[1].handle_start(),
-				id: ManipulatorGroupId::new(),
+				id: PointId::new(),
 			})
-			.collect::<Vec<ManipulatorGroup<ManipulatorGroupId>>>();
+			.collect::<Vec<ManipulatorGroup<PointId>>>();
 		manipulator_groups.append(&mut inner_groups);
 
 		let last = beziers.last().unwrap();
@@ -67,7 +67,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 				anchor: last.end(),
 				in_handle: last.handle_end(),
 				out_handle: None,
-				id: ManipulatorGroupId::new(),
+				id: PointId::new(),
 			});
 			return Subpath::new(manipulator_groups, false);
 		}
@@ -104,7 +104,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath`.
-	pub fn iter(&self) -> SubpathIter<ManipulatorGroupId> {
+	pub fn iter(&self) -> SubpathIter<PointId> {
 		SubpathIter {
 			subpath: self,
 			index: 0,
@@ -113,7 +113,7 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns an iterator of the [Bezier]s along the `Subpath` always considering it as a closed subpath.
-	pub fn iter_closed(&self) -> SubpathIter<ManipulatorGroupId> {
+	pub fn iter_closed(&self) -> SubpathIter<PointId> {
 		SubpathIter {
 			subpath: self,
 			index: 0,
@@ -122,12 +122,12 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 	}
 
 	/// Returns a slice of the [ManipulatorGroup]s in the `Subpath`.
-	pub fn manipulator_groups(&self) -> &[ManipulatorGroup<ManipulatorGroupId>] {
+	pub fn manipulator_groups(&self) -> &[ManipulatorGroup<PointId>] {
 		&self.manipulator_groups
 	}
 
 	/// Returns a mutable reference to the [ManipulatorGroup]s in the `Subpath`.
-	pub fn manipulator_groups_mut(&mut self) -> &mut Vec<ManipulatorGroup<ManipulatorGroupId>> {
+	pub fn manipulator_groups_mut(&mut self) -> &mut Vec<ManipulatorGroup<PointId>> {
 		&mut self.manipulator_groups
 	}
 
@@ -232,9 +232,13 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 
 	/// Constructs a rounded rectangle with `corner1` and `corner2` as the two corners and `corner_radii` as the radii of the corners: `[top_left, top_right, bottom_right, bottom_left]`.
 	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radii: [f64; 4]) -> Self {
+		if corner_radii.iter().all(|radii| radii.abs() < f64::EPSILON * 100.) {
+			return Self::new_rect(corner1, corner2);
+		}
+
 		use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
-		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<ManipulatorGroupId>> {
+		let new_arc = |center: DVec2, corner: DVec2, radius: f64| -> Vec<ManipulatorGroup<PointId>> {
 			let point1 = center + DVec2::from_angle(-PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			let point2 = center + DVec2::from_angle(PI * 0.25).rotate(corner - center) * FRAC_1_SQRT_2;
 			if radius == 0. {
@@ -245,10 +249,8 @@ impl<ManipulatorGroupId: crate::Identifier> Subpath<ManipulatorGroupId> {
 			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 			let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 			vec![
-				ManipulatorGroup::new_anchor(point1),
 				ManipulatorGroup::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
 				ManipulatorGroup::new(point2, Some(point2 + handle_offset * (corner - point2).normalize()), None),
-				ManipulatorGroup::new_anchor(point2),
 			]
 		};
 		Self::new(
