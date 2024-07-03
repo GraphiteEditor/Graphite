@@ -64,7 +64,7 @@ pub struct NodeRuntime {
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
-enum NodeRuntimeMessage {
+pub enum NodeRuntimeMessage {
 	ExecutionRequest(ExecutionRequest),
 	FontCacheUpdate(FontCache),
 	ImaginatePreferencesUpdate(ImaginatePreferences),
@@ -80,13 +80,13 @@ pub struct ExportConfig {
 	pub size: DVec2,
 }
 
-pub(crate) struct ExecutionRequest {
+pub struct ExecutionRequest {
 	execution_id: u64,
 	graph: NodeNetwork,
 	render_config: RenderConfig,
 }
 
-pub(crate) struct ExecutionResponse {
+pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<Message>,
@@ -98,7 +98,7 @@ pub(crate) struct ExecutionResponse {
 	transform: DAffine2,
 }
 
-pub(crate) enum NodeGraphUpdate {
+pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
@@ -122,7 +122,7 @@ thread_local! {
 }
 
 impl NodeRuntime {
-	fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
+	pub fn new(receiver: Receiver<NodeRuntimeMessage>, sender: Sender<NodeGraphUpdate>) -> Self {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
@@ -238,7 +238,7 @@ impl NodeRuntime {
 			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err("No input type".to_string()),
+			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
 		};
 		let result = match result {
 			Ok(value) => value,
@@ -386,6 +386,13 @@ pub async fn run_node_graph() {
 	}
 }
 
+pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
+	NODE_RUNTIME.with(|node_runtime| {
+		let mut node_runtime = node_runtime.borrow_mut();
+		node_runtime.replace(runtime)
+	})
+}
+
 #[derive(Debug)]
 pub struct NodeGraphExecutor {
 	sender: Sender<NodeRuntimeMessage>,
@@ -402,9 +409,7 @@ impl Default for NodeGraphExecutor {
 	fn default() -> Self {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		NODE_RUNTIME.with(|runtime| {
-			runtime.borrow_mut().replace(NodeRuntime::new(request_receiver, response_sender));
-		});
+		replace_node_runtime(NodeRuntime::new(request_receiver, response_sender));
 
 		Self {
 			futures: Default::default(),
@@ -582,7 +587,7 @@ impl NodeGraphExecutor {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.metadata.update_from_monitor(HashMap::new(), HashMap::new());
 
-							return Err(format!("Node graph evaluation failed {e}"));
+							return Err(format!("Node graph evaluation failed:\n{e}"));
 						}
 					};
 

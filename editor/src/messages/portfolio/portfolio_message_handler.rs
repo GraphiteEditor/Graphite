@@ -375,6 +375,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_saved,
 				document_serialized_content,
 			} => {
+				// TODO: Eventually remove this (probably starting late 2024)
+				let do_not_upgrade = document_name.contains("__DO_NOT_UPGRADE__");
+				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
+				if document_serialized_content.contains("ManipulatorGroupIds") && !do_not_upgrade {
+					responses.add(FrontendMessage::TriggerUpgradeDocumentToVectorManipulationFormat {
+						document_id,
+						document_name,
+						document_is_auto_saved,
+						document_is_saved,
+						document_serialized_content,
+					});
+					return;
+				}
+
 				let document = DocumentMessageHandler::with_name_and_content(document_name, document_serialized_content);
 				match document {
 					Ok(mut document) => {
