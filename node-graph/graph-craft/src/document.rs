@@ -565,8 +565,8 @@ pub struct NodeNetwork {
 	/// Each export is a reference to a node within this network, paired with its output index, that is the source of the network's exported data.
 	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias (probably starting late 2024)
 	pub exports: Vec<NodeInput>,
-	/// TODO: Instead of storing import types in each NodeInput::Network connection, store them here
-	//pub import_types: Vec<Type>,
+	/// Instead of storing import types in each NodeInput::Network connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
+	pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
 	pub nodes: HashMap<NodeId, DocumentNode>,
 	/// Temporary fields to store metadata for "Import"/"Export" UI-only nodes, eventually will be replaced with lines leading to edges
@@ -592,6 +592,7 @@ impl Default for NodeNetwork {
 	fn default() -> Self {
 		NodeNetwork {
 			exports: Default::default(),
+			import_types: Default::default(),
 			nodes: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),

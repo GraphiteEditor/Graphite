@@ -1928,14 +1928,12 @@ pub struct DocumentNodeMetadata {
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
-	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
-	pub network_metadata: Option<NodeNetworkMetadata>,
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no alias is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
 	pub reference: Option<&'static str>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
-	pub alias: Option<String>,
+	pub alias: String,
 	/// TODO: Should input/output names always be the same length as the inputs/outputs of the DocumentNode?
 	pub input_names: Vec<String>,
 	pub output_names: Vec<String>,
@@ -1943,9 +1941,11 @@ pub struct DocumentNodePersistentMetadata {
 	/// True for most nodes, but the Split Channels node is an example of a node that has multiple secondary outputs but no primary output.
 	#[serde(default = "return_true")]
 	pub has_primary_output: bool,
-	// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
+	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
 	/// All fields in NodeTypePersistentMetadata should automatically be updated by using the network interface API
 	pub node_type_metadata: NodeTypePersistentMetadata,
+	/// This should always be Some for nodes with a [`DocumentNodeImplementation::Network`], and none for [`DocumentNodeImplementation::ProtoNode`]
+	pub network_metadata: Option<NodeNetworkMetadata>,
 }
 impl DocumentNodePersistentMetadata {
 
@@ -1958,6 +1958,21 @@ impl DocumentNodePersistentMetadata {
 pub enum NodeTypePersistentMetadata {
 	Layer(LayerPersistentMetadata),
 	Node(NodePersistentMetadata),
+}
+
+impl Default for NodeTypePersistentMetadata {
+	fn default() -> Self {
+		NodeTypePersistentMetadata::node(IVec2::ZERO)
+	}
+}
+
+impl NodeTypePersistentMetadata {
+	pub fn node(position: IVec2) -> NodeTypePersistentMetadata {
+		NodeTypePersistentMetadata::Node(NodePersistentMetadata { position: NodePosition::Absolute(position) })
+	}
+	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
+		NodeTypePersistentMetadata::Layer(LayerPersistentMetadata { position: LayerPosition::Absolute(position), locked: false })
+	}
 }
 
 /// All fields in LayerMetadata should automatically be updated by using the network interface API
@@ -2241,6 +2256,6 @@ pub impl Default for NavigationMetadata {
 /// All persistent editor and Graphene data for a node. Used to serialize and deserialize a node, pass it through the editor, and create definitions.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeTemplate {
-	pub persistent_node_metadata: DocumentNodePersistentMetadata,
 	pub document_node: DocumentNode,
+	pub persistent_node_metadata: DocumentNodePersistentMetadata,
 }
