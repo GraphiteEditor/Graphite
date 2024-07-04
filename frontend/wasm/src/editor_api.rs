@@ -555,7 +555,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
 		let id = NodeId(generate_uuid());
-		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, x, y };
+		let message = NodeGraphMessage::CreateNode { node_id: Some(id), node_type, input_override: vec![], use_document_network: false };
+		// TODO: Move node to location and run auto layout system
 		self.dispatch(message);
 	}
 

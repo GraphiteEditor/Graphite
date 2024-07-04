@@ -300,7 +300,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					nodes: HashMap::new(),
 					parent,
 					insert_index,
-					alias: String::new(),
 				});
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
@@ -404,98 +403,47 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					// TODO: Group each set of layers for each artboard separately
 					return;
 				};
-
-				// Move layers in nested unselected folders above the first unselected parent folder
+				// Group all child layers of the parent that are either selected or parents of selected layers
+				let mut all_layers_to_group = HashSet::new();
 				let selected_layers = self.selected_nodes.selected_layers(self.metadata()).collect::<Vec<_>>();
 				for layer in selected_layers.clone() {
-					let mut first_unselected_parent_folder = layer.parent(&self.metadata).expect("Layer should always have parent");
-
-					// Find folder in parent child stack
+					let mut lead = layer.parent(&self.metadata).expect("Layer should always have parent");
+					let mut layer_to_group = layer;
+					// Loop over all downstream folders until the parent is selected
 					loop {
-						// Loop until parent layer is deselected. Note that parent cannot be selected, since it is an ancestor of all selected layers
-						if !selected_layers.iter().any(|selected_layer| *selected_layer == first_unselected_parent_folder) {
+						// Loop until parent layer is selected. Note that parent cannot be selected, since it is an ancestor of all selected layers
+						if lead == parent {
 							break;
 						}
-						let Some(new_folder) = first_unselected_parent_folder.parent(&self.metadata) else {
+						let Some(new_folder) = first_unselected_parent_folder else {
 							log::error!("Layer should always have parent");
 							return;
 						};
-						first_unselected_parent_folder = new_folder;
+						layer_to_group = lead;
+						lead = new_folder;
 					}
-
-					// Don't move nodes above new group folder parent
-					if first_unselected_parent_folder == parent {
-						continue;
-					}
-
-					// `ROOT_PARENT` cannot be selected, so this should never be true
-					if layer == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("ROOT_PARENT cannot be deleted");
-						continue;
-					}
-
-					// `first_unselected_parent_folder` must be a child of `parent`, so it cannot be the `ROOT_PARENT`
-					if first_unselected_parent_folder == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("first_unselected_parent_folder cannot be ROOT_PARENT");
-						continue;
-					}
-
-					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
-						node_id: layer.to_node(),
-						reconnect_to_sibling: true,
-					});
-
-					// Move disconnected node to folder
-					let folder_position = self
-						.document_network()
-						.nodes
-						.get(&first_unselected_parent_folder.to_node())
-						.expect("Current folder should always exist")
-						.metadata
-						.position;
-
-					// TODO: Node layout system - Moving the disconnected layer should make space when being inserted in the parent stack
-					responses.add(GraphOperationMessage::SetNodePosition {
-						node_id: layer.to_node(),
-						position: folder_position,
-					});
-
-					// Insert node right above the folder
-					let (folder_downstream_node_id, folder_downstream_input_index) =
-						DocumentMessageHandler::get_downstream_node(&self.document_network(), &self.metadata, first_unselected_parent_folder)
-							.unwrap_or((self.document_network().exports_metadata.0, 0));
-
-					responses.add(NodeGraphMessage::InsertNodeBetween {
-						post_node_id: folder_downstream_node_id,
-						post_node_input_index: folder_downstream_input_index,
-						insert_node_output_index: 0,
-						insert_node_id: layer.to_node(),
-						insert_node_input_index: 0,
-						pre_node_output_index: 0,
-						pre_node_id: first_unselected_parent_folder.to_node(),
-						use_document_network: true,
-					});
-
-					responses.add(GraphOperationMessage::ShiftUpstream {
-						node_id: first_unselected_parent_folder.to_node(),
-						shift: IVec2::new(0, 3),
-						shift_self: true,
-					});
+					all_layers_to_group.insert(layer_to_group);
 				}
-				let calculated_insert_index = DocumentMessageHandler::get_calculated_insert_index(&self.metadata, &self.selected_nodes, parent);
-
 				let folder_id = NodeId(generate_uuid());
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id: folder_id,
 					nodes: HashMap::new(),
 					parent,
 					insert_index: calculated_insert_index,
-					alias: String::new(),
 				});
 
 				let parent = LayerNodeIdentifier::new_unchecked(folder_id);
-				responses.add(GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent: parent });
-
+				let mut insert_index = 0;
+				// Ensure nodes are grouped in order
+				for child in parent.children(self.network_interface.document_metadata()) {
+					responses.add(GraphOperationMessage::MoveLayerToStack {
+						layer,
+						parent,
+						insert_index,
+						skip_rerender: true,
+					});
+					insert_index += 1;
+				};
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
@@ -584,17 +532,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						continue;
 					}
 
-					// Disconnect layer to move and reconnect downstream node to upstream sibling if it exists.
-					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
-						node_id: layer_to_move.to_node(),
-						reconnect_to_sibling: true,
-					});
-					// Reconnect layer_to_move to new parent at insert index.
-					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
-						node_id: layer_to_move.to_node(),
-						parent: parent,
-						insert_index,
-					});
+					// Disconnect layer to move and reconnect first downstream layer to upstream sibling if it exists.
+					responses.add(GraphOperationMessage::MoveLayerToStack { layer: layer_to_move, parent, insert_index, skip_rerender: true });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);

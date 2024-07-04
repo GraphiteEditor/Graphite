@@ -23,7 +23,7 @@ use crate::messages::{
 };
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 
-use super::{document_metadata::{DocumentMetadata, LayerNodeIdentifier}, misc::PTZ, nodes::SelectedNodes};
+use super::{document_metadata::{DocumentMetadata, LayerNodeIdentifier}, misc::PTZ, nodes::{self, SelectedNodes}};
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -1016,7 +1016,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Ensure network metadata, positions, and other metadata is kept in sync
-	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput, use_document_network: bool) {}
+	pub fn set_input(&mut self, input_connector: InputConnector, input: NodeInput,skip_rerender:bool, use_document_network: bool) {}
 
 	pub fn create_wire(&mut self, output_connector: OutputConnector, input_connector: InputConnector, use_document_network: bool) {
 		
@@ -1070,7 +1070,8 @@ impl NodeNetworkInterface {
 		// }
 	}
 
-	/// Used to insert a node from a node definition into the network.
+	/// Used to insert a node template into the network.
+	/// Do not shift nodes here, instead run a layout command for a group of nodes after inserting
 	pub fn insert_node(&mut self, node_id: NodeId, node_template: NodeTemplate, use_document_network: bool) {
 		// Ensure there is space for the new node
 		// let Some(network) = document_network.nested_network_mut(network_path) else {
@@ -1163,9 +1164,6 @@ impl NodeNetworkInterface {
 		// Updates the selected nodes, and rerender the document
 		selected_nodes.retain_selected_nodes(|node_id| !delete_nodes.contains(node_id));
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		if use_document_network {
-			responses.add(GraphOperationMessage::LoadStructure);
-		}
 	}
 
 	pub fn remove_references_from_network(&mut self, deleting_node_id: NodeId, reconnect: bool, use_document_network: bool) -> bool {
@@ -1555,11 +1553,15 @@ impl NodeNetworkInterface {
 	/// Moves a node to the same position as another node, and shifts all upstream nodes
 	pub fn move_node_to(&mut self, node_id: NodeId, target_id: NodeId) {}
 
-	// Disconnects, moves a node and all upstream children to a stack index, and reconnects
-	pub fn move_node_to_stack(&mut self, node_id: NodeId, parent: NodeId) {}
+	// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
+	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize) {
+		// TODO: Run the auto layout system to make space for the new nodes
+	}
 
 	// Moves a node and all upstream children to the end of a layer chain
-	pub fn move_node_to_chain(&mut self, node_id: NodeId, parent: NodeId) {}
+	pub fn move_node_to_chain(&mut self, node_id: NodeId, parent: LayerNodeIdentifier) {
+		// TODO: Run the auto layout system to make space for the new nodes
+	}
 }
 
 #[derive(PartialEq)]

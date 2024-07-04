@@ -2,7 +2,7 @@ use super::transform_utils::{self, LayerBounds};
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::messages::prelude::*;
 
@@ -41,33 +41,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
-			GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index } => {
-				let shift = document_network
-					.get_root_node()
-					.and_then(|root_node| {
-						nodes.get(&root_node.id).and_then(|node| {
-							if parent == LayerNodeIdentifier::ROOT_PARENT {
-								return None;
-							};
-							let parent_node_id = parent.to_node();
-							document_network
-								.nodes
-								.get(&parent_node_id)
-								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
-						})
-					})
-					.unwrap_or_default();
-
-				for (old_id, mut document_node) in nodes {
-					// Shift copied node
-					document_node.metadata.position += shift;
-
+			GraphOperationMessage::AddNodes { nodes, new_ids } => {
+				for (old_id, node_template) in nodes {
 					// Get the new, non-conflicting id
 					let node_id = *new_ids.get(&old_id).unwrap();
-					document_node = network_interface.map_ids(document_node, &new_ids, true);
+					node_template = network_interface.map_ids(node_template, &new_ids, true);
 
 					// Insert node into network
-					node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
+					network_interface.insert_node(node_id, node_template, true);
 				}
 
 				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
@@ -76,61 +57,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 
 				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
-				let (downstream_node, upstream_node, input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent, insert_index);
 
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
-
-				match (downstream_node, upstream_node) {
-					(Some(downstream_node), Some(upstream_node)) => responses.add(NodeGraphMessage::InsertNodeBetween {
-						post_node_id: downstream_node,
-						post_node_input_index: input_index,
-						insert_node_output_index: 0,
-						insert_node_id: *new_layer_id,
-						insert_node_input_index: 0,
-						pre_node_output_index: 0,
-						pre_node_id: upstream_node,
-						use_document_network: true,
-					}),
-					(Some(downstream_node), None) => responses.add(GraphOperationMessage::SetNodeInput {
-						node_id: downstream_node,
-						input_index: input_index,
-						input: NodeInput::node(*new_layer_id, 0),
-					}),
-					(None, Some(upstream_node)) => responses.add(NodeGraphMessage::InsertNodeBetween {
-						post_node_id: document_network.exports_metadata.0,
-						post_node_input_index: 0,
-						insert_node_output_index: 0,
-						insert_node_id: *new_layer_id,
-						insert_node_input_index: 0,
-						pre_node_output_index: 0,
-						pre_node_id: upstream_node,
-						use_document_network: true,
-					}),
-					(None, None) => {
-						if let Some(primary_export) = document_network.exports.get_mut(0) {
-							*primary_export = NodeInput::node(*new_layer_id, 0)
-						}
-					}
-				};
-				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: *new_layer_id,
-					shift: IVec2::new(0, 3),
-					shift_self: true,
-				});
-
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			GraphOperationMessage::CreateBooleanOperationNode { node_id, operation } => {
-				let new_boolean_operation_node = resolve_document_node_type("Boolean Operation")
-					.clone()
-					.expect("Failed to create a Boolean Operation node")
-					.node_template_input_override([
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
-						Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
-					]);
-
-				network_interface.insert_node(node_id, new_boolean_operation_node, true);
 			}
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
@@ -138,210 +66,129 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					network_interface.delete_nodes(vec![NodeId(0)], true, selected_nodes, responses, true);
 				}
 			}
-			GraphOperationMessage::DisconnectNodeFromStack { node_id, reconnect_to_sibling } => {
-				network_interface.remove_references_from_network(node_id, reconnect_to_sibling, true);
-				responses.add(NodeGraphMessage::DisconnectInput {
-					input_connector: InputConnector::node(node_id, 0),
-					use_document_network: true,
-				});
+			GraphOperationMessage::InsertBooleanOperation { operation } => {
+				// TODO: Rework boolean operation to be a layer node which takes the two vector shapes as a single graphic group side input
+				// let mut selected_layers = selected_nodes.selected_layers(&document_metadata);
+
+				// let upper_layer = selected_layers.next();
+				// let lower_layer = selected_layers.next();
+
+				// let Some(upper_layer) = upper_layer else { return };
+
+				// let Some(upper_layer_node) = document_network.nodes.get(&upper_layer.to_node()) else { return };
+				// let lower_layer_node = lower_layer.and_then(|lower_layer| document_network.nodes.get(&lower_layer.to_node()));
+
+				// let Some(NodeInput::Node {
+				// 	node_id: upper_node_id,
+				// 	output_index: upper_output_index,
+				// 	..
+				// }) = upper_layer_node.inputs.get(1).cloned()
+				// else {
+				// 	return;
+				// };
+				// let (lower_node_id, lower_output_index) = match lower_layer_node.and_then(|lower_layer_node| lower_layer_node.inputs.get(1).cloned()) {
+				// 	Some(NodeInput::Node {
+				// 		node_id: lower_node_id,
+				// 		output_index: lower_output_index,
+				// 		..
+				// 	}) => (Some(lower_node_id), Some(lower_output_index)),
+				// 	_ => (None, None),
+				// };
+
+				// let boolean_operation_node_id = NodeId::new();
+
+				// // Store a history step before doing anything
+				// responses.add(DocumentMessage::StartTransaction);
+
+				// // Create the new Boolean Operation node
+				// responses.add(NodeGraphMessage::CreateNode {
+				// 	node_id: Some(boolean_operation_node_id),
+				// 	node_type: "Boolean Operation".to_string(),
+				// 	input_override: vec![
+				// 		Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+				// 		Some(NodeInput::value(TaggedValue::VectorData(graphene_std::vector::VectorData::empty()), true)),
+				// 		Some(NodeInput::value(TaggedValue::BooleanOperation(operation), false)),
+				// 	],
+				// 	use_document_network: true,
+				// });
+
+				// // Insert it in the upper layer's chain, right before it enters the upper layer
+				// responses.add(NodeGraphMessage::InsertNodeBetween {
+				// 	post_node_id: upper_layer.to_node(),
+				// 	post_node_input_index: 1,
+				// 	insert_node_id: boolean_operation_node_id,
+				// 	insert_node_output_index: 0,
+				// 	insert_node_input_index: 0,
+				// 	pre_node_id: upper_node_id,
+				// 	pre_node_output_index: upper_output_index,
+				// 	use_document_network: true,
+				// });
+
+				// // Connect the lower chain to the Boolean Operation node's lower input
+				// if let (Some(lower_layer), Some(lower_node_id), Some(lower_output_index)) = (lower_layer, lower_node_id, lower_output_index) {
+				// 	responses.add(GraphOperationMessage::SetNodeInput {
+				// 		node_id: boolean_operation_node_id,
+				// 		input_index: 1,
+				// 		input: NodeInput::node(lower_node_id, lower_output_index),
+				// 	});
+
+				// 	// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
+				// 	responses.add(NodeGraphMessage::DeleteNodes {
+				// 		node_ids: vec![lower_layer.to_node()],
+				// 		reconnect: true,
+				// 		use_document_network: true,
+				// 	});
+				// }
+
+				// // Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
+				// responses.add(GraphOperationMessage::SetNodePosition {
+				// 	node_id: boolean_operation_node_id,
+				// 	position: upper_layer_node.metadata.position,
+				// });
+
+				// // After the previous step, the Boolean Operation node is overlapping the upper layer, so we need to shift and its entire chain to the left by its width plus some padding
+				// responses.add(GraphOperationMessage::ShiftUpstream {
+				// 	node_id: boolean_operation_node_id,
+				// 	shift: (-8, 0).into(),
+				// 	shift_self: true,
+				// });
+
+				// // Re-render
+				// responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
+			GraphOperationMessage::MoveLayerToStack {
+				layer,
+				parent,
+				insert_index,
+				skip_rerender,
+			} => {
+				network_interface.move_layer_to_stack(layer, parent, insert_index);
+				if !skip_rerender {
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+				}
 			}
 			GraphOperationMessage::FillSet { layer, fill } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run FillSet on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.fill_set(fill);
 				}
 			}
-			GraphOperationMessage::InsertNodeAtStackIndex { node_id, parent, insert_index } => {
-				let (post_node_id, pre_node_id, post_node_input_index) = ModifyInputsContext::get_post_node_with_index(document_network, parent, insert_index);
-
-				// `layer_to_move` should always correspond to a node.
-				let Some(layer_to_move_node) = document_network.nodes.get(&node_id) else {
-					log::error!("Layer node not found when inserting node {} at index {}", node_id, insert_index);
-					return;
-				};
-
-				// Move current layer to post node.
-				let current_position = layer_to_move_node.metadata.position;
-				let new_position = if let Some(post_node_id) = post_node_id {
-					document_network.nodes.get(&post_node_id).expect("Post node id should always refer to a node").metadata.position
-				} else if let Some(root_node) = document_network.get_root_node() {
-					document_network.nodes.get(&root_node.id).expect("Root node id should always refer to a node").metadata.position + IVec2::new(8, -3)
-				} else {
-					document_network.exports_metadata.1
-				};
-
-				// If moved to top of a layer stack, move to the left of the post node. If moved within a stack, move directly on the post node. The stack will be shifted down later.
-				let offset_to_post_node = if insert_index == 0 {
-					new_position - current_position - IVec2::new(8, 0)
-				} else {
-					new_position - current_position
-				};
-
-				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: node_id,
-					shift: offset_to_post_node,
-					shift_self: true,
-				});
-
-				match (post_node_id, pre_node_id) {
-					(Some(post_node_id), Some(pre_node_id)) => responses.add(NodeGraphMessage::InsertNodeBetween {
-						post_node_id: post_node_id,
-						post_node_input_index: post_node_input_index,
-						insert_node_output_index: 0,
-						insert_node_id: node_id,
-						insert_node_input_index: 0,
-						pre_node_output_index: 0,
-						pre_node_id: pre_node_id,
-						use_document_network: true,
-					}),
-					(None, Some(pre_node_id)) => responses.add(NodeGraphMessage::InsertNodeBetween {
-						post_node_id: document_network.exports_metadata.0,
-						post_node_input_index: 0,
-						insert_node_output_index: 0,
-						insert_node_id: node_id,
-						insert_node_input_index: 0,
-						pre_node_output_index: 0,
-						pre_node_id: pre_node_id,
-						use_document_network: true,
-					}),
-					(Some(post_node_id), None) => responses.add(GraphOperationMessage::SetNodeInput {
-						node_id: post_node_id,
-						input_index: post_node_input_index,
-						input: NodeInput::node(node_id, 0),
-					}),
-					(None, None) => {
-						if let Some(primary_export) = document_network.exports.get_mut(0) {
-							*primary_export = NodeInput::node(node_id, 0)
-						}
-					}
-				}
-
-				// Shift stack down, starting at the moved node.
-				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: node_id,
-					shift: IVec2::new(0, 3),
-					shift_self: true,
-				});
-			}
-			GraphOperationMessage::InsertBooleanOperation { operation } => {
-				let mut selected_layers = selected_nodes.selected_layers(&document_metadata);
-
-				let upper_layer = selected_layers.next();
-				let lower_layer = selected_layers.next();
-
-				let Some(upper_layer) = upper_layer else { return };
-
-				let Some(upper_layer_node) = document_network.nodes.get(&upper_layer.to_node()) else { return };
-				let lower_layer_node = lower_layer.and_then(|lower_layer| document_network.nodes.get(&lower_layer.to_node()));
-
-				let Some(NodeInput::Node {
-					node_id: upper_node_id,
-					output_index: upper_output_index,
-					..
-				}) = upper_layer_node.inputs.get(1).cloned()
-				else {
-					return;
-				};
-				let (lower_node_id, lower_output_index) = match lower_layer_node.and_then(|lower_layer_node| lower_layer_node.inputs.get(1).cloned()) {
-					Some(NodeInput::Node {
-						node_id: lower_node_id,
-						output_index: lower_output_index,
-						..
-					}) => (Some(lower_node_id), Some(lower_output_index)),
-					_ => (None, None),
-				};
-
-				let boolean_operation_node_id = NodeId::new();
-
-				// Store a history step before doing anything
-				responses.add(DocumentMessage::StartTransaction);
-
-				// Create the new Boolean Operation node
-				responses.add(GraphOperationMessage::CreateBooleanOperationNode {
-					node_id: boolean_operation_node_id,
-					operation,
-				});
-
-				// Insert it in the upper layer's chain, right before it enters the upper layer
-				responses.add(NodeGraphMessage::InsertNodeBetween {
-					post_node_id: upper_layer.to_node(),
-					post_node_input_index: 1,
-					insert_node_id: boolean_operation_node_id,
-					insert_node_output_index: 0,
-					insert_node_input_index: 0,
-					pre_node_id: upper_node_id,
-					pre_node_output_index: upper_output_index,
-					use_document_network: true,
-				});
-
-				// Connect the lower chain to the Boolean Operation node's lower input
-				if let (Some(lower_layer), Some(lower_node_id), Some(lower_output_index)) = (lower_layer, lower_node_id, lower_output_index) {
-					responses.add(GraphOperationMessage::SetNodeInput {
-						node_id: boolean_operation_node_id,
-						input_index: 1,
-						input: NodeInput::node(lower_node_id, lower_output_index),
-					});
-
-					// Delete the lower layer (but its chain is kept since it's still used by the Boolean Operation node)
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![lower_layer.to_node()],
-						reconnect: true,
-						use_document_network: true,
-					});
-				}
-
-				// Put the Boolean Operation where the output layer is located, since this is the correct shift relative to its left input chain
-				responses.add(GraphOperationMessage::SetNodePosition {
-					node_id: boolean_operation_node_id,
-					position: upper_layer_node.metadata.position,
-				});
-
-				// After the previous step, the Boolean Operation node is overlapping the upper layer, so we need to shift and its entire chain to the left by its width plus some padding
-				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: boolean_operation_node_id,
-					shift: (-8, 0).into(),
-					shift_self: true,
-				});
-
-				// Re-render
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
 			GraphOperationMessage::OpacitySet { layer, opacity } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run OpacitySet on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.opacity_set(opacity);
 				}
 			}
 			GraphOperationMessage::BlendModeSet { layer, blend_mode } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run BlendModeSet on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blend_mode_set(blend_mode);
 				}
 			}
 			GraphOperationMessage::UpdateBounds { layer, old_bounds, new_bounds } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run UpdateBounds on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.update_bounds(old_bounds, new_bounds);
 				}
 			}
 			GraphOperationMessage::StrokeSet { layer, stroke } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run StrokeSet on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.stroke_set(stroke);
 				}
 			}
@@ -351,13 +198,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformChange on ROOT_PARENT");
-					return;
-				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_change(transform, transform_in, parent_transform, bounds, skip_rerender);
 				}
 			}
@@ -367,131 +210,41 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				transform_in,
 				skip_rerender,
 			} => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformSet on ROOT_PARENT");
-					return;
-				}
 				let parent_transform = document_metadata.downstream_transform_to_viewport(layer);
-
 				let current_transform = Some(document_metadata.transform_to_viewport(layer));
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.transform_set(transform, transform_in, parent_transform, current_transform, bounds, skip_rerender);
 				}
 			}
 			GraphOperationMessage::TransformSetPivot { layer, pivot } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run TransformSetPivot on ROOT_PARENT");
-					return;
-				}
 				let bounds = LayerBounds::new(document_metadata, layer);
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.pivot_set(pivot, bounds);
 				}
 			}
 			GraphOperationMessage::Vector { layer, modification } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run Vector on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					let previous_layer = modify_inputs.vector_modify(modification);
 					if let Some(layer) = previous_layer {
-						responses.add(GraphOperationMessage::DeleteLayer { layer, reconnect: true })
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: vec![layer.to_node()],
+							reconnect: true,
+							use_document_network: true,
+						});
 					}
 				}
 			}
 			GraphOperationMessage::Brush { layer, strokes } => {
-				if layer == LayerNodeIdentifier::ROOT_PARENT {
-					log::error!("Cannot run Brush on ROOT_PARENT");
-					return;
-				}
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer.to_node(), document_network, document_metadata, responses) {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.brush_modify(strokes);
 				}
 			}
-			GraphOperationMessage::LoadStructure => {
-				load_network_structure(document_network, document_metadata, collapsed);
-			}
-			GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent } => {
-				let Some(group_parent) = new_parent.parent(&document_metadata) else {
-					log::error!("Could not find parent for layer {:?}", new_parent);
-					return;
-				};
-
-				// Create a vec of nodes to move with all selected layers in the parent layer child stack, as well as each non layer sibling directly upstream of the selected layer
-				let mut selected_siblings = Vec::new();
-
-				// Skip over horizontal non layer node chain that feeds into parent
-				let Some(mut current_stack_node_id) = group_parent.first_child(&document_metadata).and_then(|current_stack_node| Some(current_stack_node.to_node())) else {
-					log::error!("Folder should always have child");
-					return;
-				};
-				let current_stack_node_id = &mut current_stack_node_id;
-
-				loop {
-					let mut current_stack_node = document_network.nodes.get(current_stack_node_id).expect("Current stack node id should always be a node");
-
-					// Check if the current stack node is a selected layer
-					if selected_nodes
-						.selected_layers(&document_metadata)
-						.any(|selected_node_id| selected_node_id.to_node() == *current_stack_node_id)
-					{
-						selected_siblings.push(*current_stack_node_id);
-
-						// Push all non layer sibling nodes directly upstream of the selected layer
-						loop {
-							let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
-
-							let next_node = document_network.nodes.get(node_id).expect("Stack node id should always be a node");
-
-							// If the next node is a layer, immediately break and leave current stack node as the non layer node
-							if next_node.is_layer {
-								break;
-							}
-
-							*current_stack_node_id = *node_id;
-							current_stack_node = next_node;
-
-							selected_siblings.push(*current_stack_node_id);
-						}
-					}
-
-					// Get next node
-					let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
-					*current_stack_node_id = *node_id;
-				}
-
-				// Start with the furthest upstream node, move it as a child of the new folder, and continue downstream for each layer in vec
-				for node_to_move in selected_siblings.iter().rev() {
-					// Disconnect node, then reconnect as new child
-					responses.add(GraphOperationMessage::DisconnectNodeFromStack {
-						node_id: *node_to_move,
-						reconnect_to_sibling: true,
-					});
-
-					responses.add(GraphOperationMessage::InsertNodeAtStackIndex {
-						node_id: *node_to_move,
-						parent: new_parent,
-						insert_index: 0,
-					});
-				}
-
-				let Some(most_upstream_sibling) = selected_siblings.last() else {
-					return;
-				};
-				responses.add(NodeGraphMessage::DisconnectInput {
-					node_id: *most_upstream_sibling,
-					input_index: 0,
-				});
-			}
 			GraphOperationMessage::NewArtboard { id, artboard } => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, document_metadata, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
-				if let Some(artboard_id) = modify_inputs.create_artboard(id, artboard) {
-					responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard_id] });
-				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				modify_inputs.create_artboard(id, artboard);
+				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 			}
 			GraphOperationMessage::NewBitmapLayer {
 				id,
@@ -499,69 +252,38 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(network_interface, document_metadata, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id, parent, insert_index);
 				modify_inputs.insert_image_data(image_frame, layer, responses);
+				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), 0);
 			}
-			GraphOperationMessage::NewCustomLayer {
-				id,
-				nodes,
-				parent,
-				insert_index,
-				alias,
-			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
+			GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index } => {
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(id, parent, insert_index);
 
-				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
+				if nodes.len() > 0 {
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
-					if let Some(node) = modify_inputs.network_interface.nodes.get_mut(&id) {
-						node.alias = alias.clone();
-					}
-
-					let shift = nodes
-						.get(&NodeId(0))
-						.and_then(|node| {
-							modify_inputs
-								.network_interface
-								.nodes
-								.get(&layer)
-								.map(|layer| layer.metadata.position - node.metadata.position + IVec2::new(-8, 0))
-						})
-						.unwrap_or_default();
-
 					for (old_id, mut document_node) in nodes {
-						// Shift copied node
-						document_node.metadata.position += shift;
-
 						// Get the new, non-conflicting id
 						let node_id = *new_ids.get(&old_id).unwrap();
 						document_node = network_interface.map_ids(document_node, &new_ids, true);
 
 						// Insert node into network
-						node_graph.insert_node(node_id, document_node, document_network, &Vec::new());
-						node_graph.update_click_target(node_id, document_network, Vec::new());
+						network_interface.insert_node(node_id, document_node, true);
 					}
-
-					if let Some(layer_node) = document_network.nodes.get_mut(&layer) {
-						if let Some(&input) = new_ids.get(&NodeId(0)) {
-							layer_node.inputs[1] = NodeInput::node(input, 0);
-						}
-					}
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				} else {
-					error!("Creating new custom layer failed");
+					// Since all the new nodes are already connected, just connect the input of the layer to first new node
+					let first_new_node_id = new_ids[&NodeId(0)];
+					network_interface.set_input(InputConnector::node(layer.to_node(), 1), NodeInput::node(first_new_node_id, 0), true, true);
 				}
-
-				load_network_structure(document_network, document_metadata, collapsed);
+				// Move the layer and all nodes to the correct position in the network
+				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
-					modify_inputs.insert_vector_data(subpaths, layer);
-				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				modify_inputs.insert_vector_data(subpaths, layer);
+				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
 			}
 			GraphOperationMessage::NewTextLayer {
 				id,
@@ -571,14 +293,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				parent,
 				insert_index,
 			} => {
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
-				if let Some(layer) = modify_inputs.create_layer(id, parent, insert_index) {
-					modify_inputs.insert_text(text, font, size, layer);
-				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
+				let layer = modify_inputs.create_layer(id, parent, insert_index);
+				modify_inputs.insert_text(text, font, size, layer);
+				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
 			}
-			GraphOperationMessage::ResizeArtboard { id, location, dimensions } => {
-				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(id, document_network, document_metadata, responses) {
+			GraphOperationMessage::ResizeArtboard { layer, location, dimensions } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, document_network, responses) {
 					modify_inputs.resize_artboard(location, dimensions);
 				}
 			}
@@ -586,11 +307,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				for &artboard in network_interface.all_artboards() {
 					responses.add(NodeGraphMessage::DeleteNodes {
 						node_ids: vec![artboard.to_node()],
-						reconnect: true,
+						reconnect: false,
 						use_document_network: true,
 					});
 				}
-				load_network_structure(document_network, document_metadata, collapsed);
+				//TODO: Replace deleted artboards with merge nodes
 			}
 			GraphOperationMessage::NewSvg {
 				id,
@@ -610,10 +331,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						return;
 					}
 				};
-				let mut modify_inputs = ModifyInputsContext::new(document_network, document_metadata, responses);
+				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
 				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root)), transform, id, parent, insert_index);
-				load_network_structure(document_network, document_metadata, collapsed);
 			}
 			GraphOperationMessage::SetNodePosition { node_id, position } => {
 				let Some(node) = document_network.nodes.get_mut(&node_id) else {
@@ -755,6 +475,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 				.reduce(Quad::combine_bounds)
 				.unwrap_or_default();
 			modify_inputs.insert_vector_data(subpaths, layer);
+			modify_inputs.network_interface.move_layer_to_stack(layer.to_node(), parent, insert_index);
 
 			let center = DAffine2::from_translation((bounds[0] + bounds[1]) / 2.);
 

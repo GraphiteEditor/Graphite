@@ -4337,7 +4337,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 impl DocumentNodeDefinition {
 	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], using the provided `input_override` and falling back to the default inputs.
 	/// `input_override` does not have to be the correct length.
-	pub fn node_template_input_override(&self, input_override: impl IntoIterator<Item = Option>) -> NodeTemplate {
+	pub fn node_template_input_override(&self, input_override: impl IntoIterator<Item = Option<NodeInput>>) -> NodeTemplate {
 		let mut template = self.node_template.clone();
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
@@ -4348,10 +4348,10 @@ impl DocumentNodeDefinition {
 		});
 
 		// Automatically set the import_types from the node input types
-		if let Some(DocumentNodeImplementation::Network(network)) = &mut template.document_node.implementation {
-			let input_types = template.document_node.inputs.iter().map(|input| input.ty()).collect::<Vec<_>>();
-			network.import_types = input_types;
-		}
+		// if let Some(DocumentNodeImplementation::Network(network)) = &mut template.document_node.implementation {
+		// 	let input_types = template.document_node.inputs.iter().map(|input| input.ty()).collect::<Vec<_>>();
+		// 	network.import_types = input_types;
+		// }
 
 		// Set the reference to the node definition
 		template.persistent_node_metadata.reference = Some(self.identifier);

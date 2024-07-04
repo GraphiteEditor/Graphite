@@ -1,6 +1,7 @@
 use super::utility_types::TransformIn;
 use super::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
 
 use bezier_rs::Subpath;
@@ -18,37 +19,24 @@ use glam::{DAffine2, DVec2, IVec2};
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum GraphOperationMessage {
-	AddNodesAsChild {
+	AddNodes {
 		nodes: HashMap<NodeId, NodeTemplate>,
 		new_ids: HashMap<NodeId, NodeId>,
-		parent: LayerNodeIdentifier,
-		insert_index: isize,
-	},
-	CreateBooleanOperationNode {
-		node_id: NodeId,
-		operation: BooleanOperation,
 	},
 	// TODO: Eventually remove this (probably starting late 2024)
 	DeleteLegacyOutputNode,
-	DisconnectNodeFromStack {
-		node_id: NodeId,
-		reconnect_to_sibling: bool,
-	},
 	FillSet {
 		layer: LayerNodeIdentifier,
 		fill: Fill,
 	},
-	InsertNodeAtStackIndex {
-		node_id: NodeId,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
-	},
 	InsertBooleanOperation {
 		operation: BooleanOperation,
 	},
-	LoadStructure,
-	MoveSelectedSiblingsToChild {
-		new_parent: LayerNodeIdentifier,
+	MoveLayerToStack {
+		layer: LayerNodeIdentifier,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+		skip_rerender: bool,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,
@@ -106,7 +94,6 @@ pub enum GraphOperationMessage {
 		nodes: HashMap<NodeId, NodeTemplate>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
-		alias: String,
 	},
 	NewVectorLayer {
 		id: NodeId,
@@ -123,7 +110,7 @@ pub enum GraphOperationMessage {
 		insert_index: isize,
 	},
 	ResizeArtboard {
-		id: NodeId,
+		layer: LayerNodeIdentifier,
 		location: IVec2,
 		dimensions: IVec2,
 	},

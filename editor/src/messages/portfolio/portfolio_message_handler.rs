@@ -12,6 +12,7 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
 use graph_craft::document::NodeId;
 use graphene_core::text::Font;
+use graphene_std::Node;
 
 use std::sync::Arc;
 
@@ -397,7 +398,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						trace!("Pasting into folder {parent:?} as index: {insert_index}");
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-						responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
+						let new_layer_id = new_ids[&NodeId(0)];
+						responses.add(GraphOperationMessage::AddNodes { nodes, new_ids});
+						responses.add(GraphOperationMessage::MoveLayerToStack {layer: new_layer_id, parent, insert_index, skip_rerender: false});
 					}
 				};
 
@@ -418,13 +421,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						for entry in data.into_iter().rev() {
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-							responses.add(GraphOperationMessage::AddNodesAsChild {
+							let new_layer_id = new_ids[&NodeId(0)];
+							responses.add(GraphOperationMessage::AddNodes {
 								nodes: entry.nodes,
 								new_ids,
-								parent,
-								insert_index: -1,
 							});
+							responses.add(GraphOperationMessage::MoveLayerToStack {layer: new_layer_id, parent, insert_index: 0, skip_rerender: true});
 						}
+						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
 			}

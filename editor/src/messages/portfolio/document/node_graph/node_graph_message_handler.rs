@@ -126,7 +126,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
-			NodeGraphMessage::CreateNode { node_id, node_type, x, y } => {
+			NodeGraphMessage::CreateNode { node_id, node_type, input_override, use_document_network } => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -137,44 +137,47 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				};
 
-				let node_template = document_node_type.default_node_template();
+				let node_template = document_node_type.node_template_input_override(input_override);
 				self.context_menu = None;
 
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
+				responses.add(NodeGraphMessage::InsertNode { node_id, node_template, use_document_network });
 
-				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-					let Some(output_connector) = network_interface.get_output_connector_from_click(output_connector_position) else {
-						log::error!("Could not get output from connector start");
-						return;
-					};
-
-					// Ensure connection is to correct input of new node. If it does not have an input then do not connect
-					if let Some((input_index, _)) = node_template
-						.document_node
-						.inputs
-						.iter()
-						.enumerate()
-						.find(|(input_index, input)| input.is_exposed_to_frontend(network_interface.is_document_network()))
-					{
-						responses.add(NodeGraphMessage::CreateWire {
-							output_connector,
-							input_connector: InputConnector::node(node_id, input_index),
-							use_document_network: false,
-						});
-						if let OutputConnector::Node(node_id, _) = output_connector {
-							if network_interface.connected_to_output(&node_id) {
+				// Only auto connect to the dragged wire if the node is being added to the currently opened network
+				if !use_document_network {
+					if let Some(output_connector_position) = self.wire_in_progress_from_connector {
+						let Some(output_connector) = network_interface.get_output_connector_from_click(output_connector_position) else {
+							log::error!("Could not get output from connector start");
+							return;
+						};
+	
+						// Ensure connection is to correct input of new node. If it does not have an input then do not connect
+						if let Some((input_index, _)) = node_template
+							.document_node
+							.inputs
+							.iter()
+							.enumerate()
+							.find(|(input_index, input)| input.is_exposed_to_frontend(network_interface.is_document_network()))
+						{
+							responses.add(NodeGraphMessage::CreateWire {
+								output_connector,
+								input_connector: InputConnector::node(node_id, input_index),
+								use_document_network: false,
+							});
+							if let OutputConnector::Node(node_id, _) = output_connector {
+								if network_interface.connected_to_output(&node_id) {
+									responses.add(NodeGraphMessage::RunDocumentGraph);
+								}
+							} else {
+								// Creating wire to export node, always run graph
 								responses.add(NodeGraphMessage::RunDocumentGraph);
 							}
-						} else {
-							// Creating wire to export node, always run graph
-							responses.add(NodeGraphMessage::RunDocumentGraph);
+							responses.add(NodeGraphMessage::SendGraph);
 						}
-						responses.add(NodeGraphMessage::SendGraph);
+	
+						self.wire_in_progress_from_connector = None;
+						self.wire_in_progress_to_connector = None;
 					}
-
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
 				}
 
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
@@ -285,7 +288,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// document_node.metadata.position += IVec2::splat(2);
 
 					// Insert new node into graph
-					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
+					responses.add(NodeGraphMessage::InsertNode { node_id, node_template, false });
 				}
 
 				self.update_selected(network_interface, selected_nodes, responses);
@@ -364,8 +367,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::InsertNode { node_id, node_template } => {
-				network_interface.insert_node(node_id, node_template, false);
+			NodeGraphMessage::InsertNode { node_id, node_template, use_document_network } => {
+				network_interface.insert_node(node_id, node_template, use_document_network);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				post_node_id,
@@ -411,7 +414,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				// 	input: insert_input,
 				// });
 			}
-
+			NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index } => {
+				network_interface.move_layer_to_stack(layer, parent, insert_index);
+			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
 				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
 					Ok(d) => d,

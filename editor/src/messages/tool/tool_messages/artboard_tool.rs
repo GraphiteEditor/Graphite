@@ -167,7 +167,7 @@ impl ArtboardToolData {
 		let size = (max - min).abs();
 
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			id: self.selected_artboard.unwrap().to_node(),
+			layer: self.selected_artboard.unwrap(),
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
@@ -242,7 +242,7 @@ impl Fsm for ArtboardToolFsmState {
 						return ArtboardToolFsmState::Ready;
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
-						id: tool_data.selected_artboard.unwrap().to_node(),
+						layer: tool_data.selected_artboard.unwrap(),
 						location: position.round().as_ivec2(),
 						dimensions: size.round().as_ivec2(),
 					});
@@ -292,7 +292,7 @@ impl Fsm for ArtboardToolFsmState {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
-							id: artboard.to_node(),
+							layer: artboard,
 							location: start.round().as_ivec2(),
 							dimensions: size.round().as_ivec2(),
 						});
@@ -411,7 +411,7 @@ impl Fsm for ArtboardToolFsmState {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
-							id: tool_data.selected_artboard.unwrap().to_node(),
+							layer: tool_data.selected_artboard.unwrap(),
 							location: DVec2::new(bounds.bounds[0].x + delta_x, bounds.bounds[0].y + delta_y).round().as_ivec2(),
 							dimensions: (bounds.bounds[1] - bounds.bounds[0]).round().as_ivec2(),
 						});

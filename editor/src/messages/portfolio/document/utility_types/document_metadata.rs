@@ -205,7 +205,7 @@ impl Default for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	/// A conceptual node used to represent the UI-only "Export" node
+	/// A conceptual node used to represent the parent of all stacks
 	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node
@@ -228,6 +228,7 @@ impl LayerNodeIdentifier {
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
 		let id = NodeId(u64::from(self.0) - 1);
+
 		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
 		id
 	}

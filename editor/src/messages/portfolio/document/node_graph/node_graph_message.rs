@@ -18,8 +18,8 @@ pub enum NodeGraphMessage {
 	CreateNode {
 		node_id: Option<NodeId>,
 		node_type: String,
-		x: i32,
-		y: i32,
+		input_override: impl IntoIterator<Item = Option<NodeInput>>,
+		use_document_network: bool,
 	},
 	CreateWire {
 		output_connector: OutputConnector,
@@ -39,6 +39,7 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 		use_document_network: bool,
 	},
+
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	EnforceLayerHasNoMultiParams {
@@ -55,6 +56,7 @@ pub enum NodeGraphMessage {
 	InsertNode {
 		node_id: NodeId,
 		node_template: NodeTemplate,
+		use_document_network: bool,
 	},
 	InsertNodeBetween {
 		// Post node
@@ -68,6 +70,9 @@ pub enum NodeGraphMessage {
 		pre_node_id: NodeId,
 		pre_node_output_index: usize,
 		use_document_network: bool,
+	},
+	MoveLayerToStack {
+		layer: LayerN, parent, insert_index
 	},
 	PasteNodes {
 		serialized_nodes: String,

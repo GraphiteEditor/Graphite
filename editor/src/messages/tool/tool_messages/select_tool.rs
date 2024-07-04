@@ -367,11 +367,13 @@ impl SelectToolData {
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
 			let layer_id = new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer").clone();
-			responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
+			responses.add(GraphOperationMessage::AddNodes { nodes, new_ids });
+			responses.add(GraphOperationMessage::MoveLayerToStack {layer: layer_id, parent, insert_index, skip_rerender: true});
 			new_dragging.push(LayerNodeIdentifier::new_unchecked(layer_id));
 		}
 		let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 		self.layers_dragging = new_dragging;
 	}
 
