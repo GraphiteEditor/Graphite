@@ -57,7 +57,7 @@ pub struct NodeRuntime {
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	/// The current click targets for layer nodes.
 	click_targets: HashMap<NodeId, Vec<ClickTarget>>,
-	/// Vector data in vector modify nodes.
+	/// Vector data in Path nodes.
 	vector_modify: HashMap<NodeId, VectorData>,
 	/// The current upstream transforms for nodes.
 	upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,

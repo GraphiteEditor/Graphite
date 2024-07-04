@@ -777,7 +777,7 @@ impl EditorHandle {
 			}
 			if let Some((id, modification)) = shape {
 				let metadata = document.network.nodes.remove(&id).map(|node| node.metadata).unwrap_or_default();
-				let node_type = resolve_document_node_type("Path Modify").unwrap();
+				let node_type = resolve_document_node_type("Path").unwrap();
 
 				let document_node = node_type.to_document_node_default_inputs([None, Some(NodeInput::value(TaggedValue::VectorModification(modification), false))], metadata);
 				document.network.nodes.insert(id, document_node);

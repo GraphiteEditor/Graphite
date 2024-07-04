@@ -71,9 +71,9 @@ impl DocumentMetadata {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<VectorData> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network);
 
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path Modify").and_then(|node| self.vector_modify.get(&node)) {
+		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.vector_modify.get(&node)) {
 			let mut modified = vector_data.clone();
-			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path Modify", 1) {
+			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
 				modification.apply(&mut modified);
 			}
 			return Some(modified);

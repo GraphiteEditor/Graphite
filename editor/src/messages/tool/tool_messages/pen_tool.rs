@@ -522,7 +522,7 @@ impl Fsm for PenToolFsmState {
 				} else {
 					// New path layer
 					let nodes = {
-						let node_type = resolve_document_node_type("Path Modify").expect("Path Modify node does not exist");
+						let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 						HashMap::from([(NodeId(0), node_type.to_document_node_default_inputs([], Default::default()))])
 					};
 

@@ -2353,7 +2353,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Path Modify",
+			name: "Path",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::node(NodeId(1), 0)],

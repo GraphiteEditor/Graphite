@@ -660,13 +660,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		self.modify_inputs("Path Modify", false, |inputs, _node_id, _metadata| {
+		self.modify_inputs("Path", false, |inputs, _node_id, _metadata| {
 			let [_, NodeInput::Value {
 				tagged_value: TaggedValue::VectorModification(modification),
 				..
 			}] = inputs.as_mut_slice()
 			else {
-				panic!("Path Modify does not have modification input");
+				panic!("Path node does not have modification input");
 			};
 
 			modification.modify(&modification_type);
