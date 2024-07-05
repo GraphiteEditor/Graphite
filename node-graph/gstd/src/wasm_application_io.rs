@@ -243,7 +243,7 @@ pub struct DrawImageFrameNode<Surface> {
 }
 
 #[node_macro::node_fn(DrawImageFrameNode)]
-async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>) -> SurfaceHandleFrame<HtmlCanvasElement> {
+async fn draw_image_frame_node<'a: 'input>(image: ImageFrame<SRGBA8>, surface_handle: Arc<WasmSurfaceHandle>) -> SurfaceHandleFrame<HtmlCanvasElement> {
 	let image_data = image.image.data;
 	let array: Clamped<&[u8]> = Clamped(bytemuck::cast_slice(image_data.as_slice()));
 	if image.image.width > 0 && image.image.height > 0 {
@@ -290,9 +290,9 @@ fn decode_image_node<'a: 'input>(data: Arc<[u8]>) -> ImageFrame<Color> {
 pub use graph_craft::document::value::RenderOutput;
 pub struct RenderNode<Data, Surface, Parameter> {
 	data: Data,
-	#[cfg(any(feature = "resvg", feature = "vello"))]
+	#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 	surface_handle: Surface,
-	#[cfg(not(any(feature = "resvg", feature = "vello")))]
+	#[cfg(not(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32")))]
 	surface_handle: PhantomData<Surface>,
 	parameter: PhantomData<Parameter>,
 }
@@ -426,7 +426,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, Footprint, Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
@@ -441,7 +441,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
@@ -455,7 +455,7 @@ impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<
 where
 	Data: Node<'input, (), Output = F>,
 	Surface: Node<'input, (), Output = SurfaceFuture>,
-	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<HtmlCanvasElement>>>,
+	SurfaceFuture: core::future::Future<Output = Arc<SurfaceHandle<<crate::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>>,
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]
@@ -469,7 +469,7 @@ where
 			let output_format = editor.render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
-				#[cfg(any(feature = "resvg", feature = "vello"))]
+				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 				ExportFormat::Canvas => render_canvas(self.data.eval(()).await, SvgRender::new(), render_params, footprint, editor, self.surface_handle.eval(()).await),
 				_ => todo!("Non-SVG render output for {output_format:?}"),
 			}
@@ -481,9 +481,9 @@ impl<Data, Surface, Parameter> RenderNode<Data, Surface, Parameter> {
 	pub fn new(data: Data, surface_handle: Surface) -> Self {
 		Self {
 			data,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
+			#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
 			surface_handle,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
+			#[cfg(not(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32")))]
 			surface_handle: PhantomData,
 			parameter: PhantomData,
 		}

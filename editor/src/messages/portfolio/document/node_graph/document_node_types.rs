@@ -761,20 +761,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Dimensions", TaggedValue::UVec2((512, 512).into()), false),
 				DocumentInputType::value("Seed", TaggedValue::U32(0), false),
 				DocumentInputType::value("Scale", TaggedValue::F64(10.), false),
-				DocumentInputType::value("Noise Type", TaggedValue::NoiseType(NoiseType::Perlin), false),
+				DocumentInputType::value("Noise Type", TaggedValue::NoiseType(NoiseType::default()), false),
 				// Domain Warp
-				DocumentInputType::value("Domain Warp Type", TaggedValue::DomainWarpType(DomainWarpType::None), false),
+				DocumentInputType::value("Domain Warp Type", TaggedValue::DomainWarpType(DomainWarpType::default()), false),
 				DocumentInputType::value("Domain Warp Amplitude", TaggedValue::F64(100.), false),
 				// Fractal
-				DocumentInputType::value("Fractal Type", TaggedValue::FractalType(FractalType::None), false),
+				DocumentInputType::value("Fractal Type", TaggedValue::FractalType(FractalType::default()), false),
 				DocumentInputType::value("Fractal Octaves", TaggedValue::U32(3), false),
 				DocumentInputType::value("Fractal Lacunarity", TaggedValue::F64(2.), false),
 				DocumentInputType::value("Fractal Gain", TaggedValue::F64(0.5), false),
 				DocumentInputType::value("Fractal Weighted Strength", TaggedValue::F64(0.), false), // 0-1 range
 				DocumentInputType::value("Fractal Ping Pong Strength", TaggedValue::F64(2.), false),
 				// Cellular
-				DocumentInputType::value("Cellular Distance Function", TaggedValue::CellularDistanceFunction(CellularDistanceFunction::Euclidean), false),
-				DocumentInputType::value("Cellular Return Type", TaggedValue::CellularReturnType(CellularReturnType::Nearest), false),
+				DocumentInputType::value("Cellular Distance Function", TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
+				DocumentInputType::value("Cellular Return Type", TaggedValue::CellularReturnType(CellularReturnType::default()), false),
 				DocumentInputType::value("Cellular Jitter", TaggedValue::F64(1.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -802,7 +802,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				DocumentInputType::value("Insertion", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Replace", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+				DocumentInputType::value("Replace", TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::insert_channel_properties,
@@ -935,7 +935,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Color Channel",
 			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::default()), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::color_channel_properties,
 			..Default::default()
@@ -944,7 +944,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			name: "Blend Mode Value",
 			category: "Inputs",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-			inputs: vec![DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::Normal), false)],
+			inputs: vec![DocumentInputType::value("Blend Mode", TaggedValue::BlendMode(BlendMode::default()), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
 			properties: node_properties::blend_mode_value_properties,
 			..Default::default()
@@ -955,7 +955,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+				DocumentInputType::value("Luminance Calc", TaggedValue::LuminanceCalculation(LuminanceCalculation::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::luminance_properties,
@@ -967,7 +967,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				DocumentInputType::value("From", TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
+				DocumentInputType::value("From", TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::extract_channel_properties,
@@ -1864,7 +1864,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("(Blue) Blue", TaggedValue::F64(100.), false),
 				DocumentInputType::value("(Blue) Constant", TaggedValue::F64(0.), false),
 				// Display-only properties (not used within the node)
-				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+				DocumentInputType::value("Output Channel", TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_channel_mixer_properties,
@@ -1879,7 +1879,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
 				// Mode
-				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
+				DocumentInputType::value("Mode", TaggedValue::RelativeAbsolute(RelativeAbsolute::default()), false),
 				// Reds
 				DocumentInputType::value("(Reds) Cyan", TaggedValue::F64(0.), false),
 				DocumentInputType::value("(Reds) Magenta", TaggedValue::F64(0.), false),
@@ -1926,7 +1926,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("(Blacks) Yellow", TaggedValue::F64(0.), false),
 				DocumentInputType::value("(Blacks) Black", TaggedValue::F64(0.), false),
 				// Display-only properties (not used within the node)
-				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
+				DocumentInputType::value("Colors", TaggedValue::SelectiveColorChoice(SelectiveColorChoice::default()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
 			properties: node_properties::adjust_selective_color_properties,
@@ -2347,9 +2347,39 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 			inputs: vec![
 				DocumentInputType::value("Path Data", TaggedValue::Subpaths(vec![]), false),
-				DocumentInputType::value("Colinear Manipulators", TaggedValue::ManipulatorGroupIds(vec![]), false),
+				DocumentInputType::value("Colinear Manipulators", TaggedValue::PointIds(vec![]), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Path",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+						..monitor_node()
+					},
+					DocumentNode {
+						name: "Path Modify".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_core::vector::VectorModification), 1)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::PathModify<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
+				DocumentInputType::value("Modification", TaggedValue::VectorModification(Default::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector Data", FrontendGraphDataType::VectorData)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2489,8 +2519,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				DocumentInputType::value("Weight", TaggedValue::F64(0.), false),
 				DocumentInputType::value("Dash Lengths", TaggedValue::VecF64(Vec::new()), false),
 				DocumentInputType::value("Dash Offset", TaggedValue::F64(0.), false),
-				DocumentInputType::value("Line Cap", TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt), false),
-				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
+				DocumentInputType::value("Line Cap", TaggedValue::LineCap(graphene_core::vector::style::LineCap::default()), false),
+				DocumentInputType::value("Line Join", TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::default()), false),
 				DocumentInputType::value("Miter Limit", TaggedValue::F64(4.), false),
 			],
 			outputs: vec![DocumentOutputType::new("Vector", FrontendGraphDataType::VectorData)],

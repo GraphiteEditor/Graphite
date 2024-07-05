@@ -334,8 +334,14 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
-		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
+		let filled = self.style.fill() != &crate::vector::style::Fill::None;
+		let fill = |mut subpath: bezier_rs::Subpath<_>| {
+			if filled {
+				subpath.set_closed(true);
+			}
+			subpath
+		};
+		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
@@ -475,7 +481,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.artboards.len() > 0
+		!self.artboards.is_empty()
 	}
 }
 

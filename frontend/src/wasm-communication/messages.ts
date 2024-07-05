@@ -788,6 +788,15 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 
 export class TriggerViewportResize extends JsMessage {}
 
+// TODO: Eventually remove this (probably starting late 2024)
+export class TriggerUpgradeDocumentToVectorManipulationFormat extends JsMessage {
+	readonly documentId!: bigint;
+	readonly documentName!: string;
+	readonly documentIsAutoSaved!: boolean;
+	readonly documentIsSaved!: boolean;
+	readonly documentSerializedContent!: string;
+}
+
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -1439,6 +1448,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
+	TriggerUpgradeDocumentToVectorManipulationFormat,
 	TriggerViewportResize,
 	TriggerVisitLink,
 	UpdateActiveDocument,

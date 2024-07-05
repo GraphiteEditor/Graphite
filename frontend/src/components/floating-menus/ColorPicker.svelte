@@ -47,9 +47,9 @@
 	// Gradient color stops
 	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
-	$: selectedGradientColour = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
-	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColour;
+	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;

@@ -529,7 +529,7 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection_list = document.click_list(input.mouse.position, &document.network);
+				let intersection_list = document.click_list(input.mouse.position, &document.network).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
@@ -1264,7 +1264,7 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 	if is_layer_fed_by_node_of_name(layer, document_network, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, document_network, "Shape") {
+	} else if is_layer_fed_by_node_of_name(layer, document_network, "Path") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }
