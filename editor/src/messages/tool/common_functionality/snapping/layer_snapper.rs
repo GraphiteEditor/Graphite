@@ -21,20 +21,21 @@ impl LayerSnapper {
 		if !document.snapping_state.target_enabled(target) {
 			return;
 		}
-		let Some(bounds) = (if document.metadata.is_artboard(layer) {
+
+		let bounds = if document.metadata.is_artboard(layer) {
 			document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)).map(Quad::from_box)
 		} else {
 			document
 				.metadata
 				.bounding_box_with_transform(layer, DAffine2::IDENTITY)
 				.map(|bounds| document.metadata.transform_to_document(layer) * Quad::from_box(bounds))
-		}) else {
-			return;
 		};
+		let Some(bounds) = bounds else { return };
 
 		if bounds.0.iter().any(|point| !point.is_finite()) {
 			return;
 		}
+
 		for document_curve in bounds.bezier_lines() {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
@@ -178,10 +179,12 @@ impl LayerSnapper {
 			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
+
 			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
 				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
 					continue;
 				};
+
 				get_bbox_points(Quad::from_box(bounds), &mut self.points_to_snap, BBoxSnapValues::ARTBOARD, document);
 			}
 		}

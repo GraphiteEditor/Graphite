@@ -687,8 +687,8 @@ impl Fsm for SelectToolFsmState {
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, ignore);
-				let [start, current] = [tool_data.drag_start, tool_data.drag_current];
-				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &mut tool_data.snap_candidates);
+				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
+				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {

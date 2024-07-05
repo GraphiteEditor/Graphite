@@ -116,14 +116,11 @@ struct ArtboardToolData {
 impl ArtboardToolData {
 	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
 		self.snap_candidates.clear();
+
 		let Some(layer) = self.selected_artboard else { return };
-		// for layer in layer.children(document.metadata()) {
-		// 	snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
-		// }
 
 		if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) {
-			let quad = Quad::from_box(bounds);
-			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
+			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
 		}
 	}
 
@@ -233,12 +230,11 @@ impl Fsm for ArtboardToolFsmState {
 						tool_data.bounding_box_manager.take();
 					}
 				}
+
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
-				info!("Draw overlays");
 
 				self
 			}
-
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
 				let to_viewport = document.metadata().document_to_viewport;
 				let to_document = to_viewport.inverse();
@@ -247,6 +243,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
+
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
@@ -255,8 +252,11 @@ impl Fsm for ArtboardToolFsmState {
 					ArtboardToolFsmState::Dragging
 				} else {
 					tool_data.get_snap_candidates(document, input);
+
 					let point = SnapCandidatePoint::handle(to_document.transform_point2(input.mouse.position));
+
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+
 					tool_data.drag_start = snapped.snapped_point_document;
 					tool_data.drag_current = snapped.snapped_point_document;
 
@@ -277,7 +277,6 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::ResizingBounds
 			}
-
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
@@ -286,7 +285,7 @@ impl Fsm for ArtboardToolFsmState {
 					let snap_data = SnapData::ignore(document, input, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &mut tool_data.snap_candidates);
+					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
@@ -321,9 +320,12 @@ impl Fsm for ArtboardToolFsmState {
 				let to_viewport = document.metadata().document_to_viewport;
 				let ignore = if let Some(layer) = tool_data.selected_artboard { vec![layer] } else { vec![] };
 				let snap_data = SnapData::ignore(document, input, &ignore);
+
 				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
+
 				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
 				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
+
 				tool_data.snap_manager.update_indicator(snapped);
 
 				let mut start = to_viewport.transform_point2(tool_data.drag_start);
