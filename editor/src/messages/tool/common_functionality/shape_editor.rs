@@ -116,7 +116,7 @@ impl ClosestSegment {
 
 		// Point
 		let midpoint = PointId::generate();
-		let modification_type = VectorModificationType::InsertPoint { id: midpoint, pos: first.end };
+		let modification_type = VectorModificationType::InsertPoint { id: midpoint, position: first.end };
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 		// First segment
@@ -866,7 +866,7 @@ impl ShapeState {
 
 					// Create new point
 					let id = PointId::generate();
-					let modification_type = VectorModificationType::InsertPoint { id, pos };
+					let modification_type = VectorModificationType::InsertPoint { id, position: pos };
 
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 

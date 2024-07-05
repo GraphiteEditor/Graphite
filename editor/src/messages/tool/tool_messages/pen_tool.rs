@@ -285,7 +285,7 @@ impl PenToolData {
 		// Generate new point if not closing
 		let end = end.unwrap_or_else(|| {
 			let end = PointId::generate();
-			let modification_type = VectorModificationType::InsertPoint { id: end, pos: next_point };
+			let modification_type = VectorModificationType::InsertPoint { id: end, position: next_point };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 			end
@@ -538,7 +538,7 @@ impl Fsm for PenToolFsmState {
 					let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 					let pos = transform.inverse().transform_point2(snapped.snapped_point_document);
-					let modification_type = VectorModificationType::InsertPoint { id, pos };
+					let modification_type = VectorModificationType::InsertPoint { id, position: pos };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 					tool_data.add_point(LastPoint {
 						id,

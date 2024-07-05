@@ -4,7 +4,6 @@
 pub(crate) mod compare;
 
 mod bezier;
-mod bezier_fit;
 mod consts;
 mod poisson_disk;
 mod polynomial;
@@ -13,7 +12,6 @@ mod symmetrical_basis;
 mod utils;
 
 pub use bezier::*;
-pub use bezier_fit::*;
 pub use subpath::*;
 pub use symmetrical_basis::*;
 pub use utils::{Cap, Join, SubpathTValue, TValue, TValueType};

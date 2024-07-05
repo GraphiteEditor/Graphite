@@ -21,14 +21,14 @@ impl PointModification {
 	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
 		point_domain.retain(|id| !self.remove.contains(id));
 
-		for (id, pos) in point_domain.positions_mut() {
+		for (id, position) in point_domain.positions_mut() {
 			let Some(&delta) = self.delta.get(&id) else { continue };
 			if !delta.is_finite() {
 				warn!("Invalid delta when applying a point modification");
 				continue;
 			}
 
-			*pos += delta;
+			*position += delta;
 
 			for (_, handles, start, end) in segment_domain.handles_mut() {
 				if start == id {
@@ -60,9 +60,9 @@ impl PointModification {
 		}
 	}
 
-	fn push(&mut self, id: PointId, pos: DVec2) {
+	fn push(&mut self, id: PointId, position: DVec2) {
 		self.add.push(id);
-		self.delta.insert(id, pos);
+		self.delta.insert(id, position);
 	}
 
 	fn remove(&mut self, id: PointId) {
@@ -293,7 +293,7 @@ pub struct VectorModification {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorModificationType {
 	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
-	InsertPoint { id: PointId, pos: DVec2 },
+	InsertPoint { id: PointId, position: DVec2 },
 
 	RemoveSegment { id: SegmentId },
 	RemovePoint { id: PointId },
@@ -333,7 +333,7 @@ impl VectorModification {
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
 		match vector_data_modification {
 			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles, StrokeId::ZERO),
-			VectorModificationType::InsertPoint { id, pos } => self.points.push(*id, *pos),
+			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
 
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
 			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
@@ -357,11 +357,11 @@ impl VectorModification {
 				self.segments.handle_primary.insert(*segment, handles[0]);
 				self.segments.handle_end.insert(*segment, handles[1]);
 			}
-			VectorModificationType::SetPrimaryHandle { segment, relative_position: pos } => {
-				self.segments.handle_primary.insert(*segment, Some(*pos));
+			VectorModificationType::SetPrimaryHandle { segment, relative_position } => {
+				self.segments.handle_primary.insert(*segment, Some(*relative_position));
 			}
-			VectorModificationType::SetEndHandle { segment, relative_position: pos } => {
-				self.segments.handle_end.insert(*segment, Some(*pos));
+			VectorModificationType::SetEndHandle { segment, relative_position } => {
+				self.segments.handle_end.insert(*segment, Some(*relative_position));
 			}
 			VectorModificationType::SetStartPoint { segment, id } => {
 				self.segments.start_point.insert(*segment, *id);
@@ -374,12 +374,12 @@ impl VectorModification {
 				*self.points.delta.entry(*point).or_default() += *delta;
 			}
 			VectorModificationType::ApplyPrimaryDelta { segment, delta } => {
-				let pos = self.segments.handle_primary.entry(*segment).or_default();
-				*pos = Some(pos.unwrap_or_default() + *delta);
+				let position = self.segments.handle_primary.entry(*segment).or_default();
+				*position = Some(position.unwrap_or_default() + *delta);
 			}
 			VectorModificationType::ApplyEndDelta { segment, delta } => {
-				let pos = self.segments.handle_end.entry(*segment).or_default();
-				*pos = Some(pos.unwrap_or_default() + *delta);
+				let position = self.segments.handle_end.entry(*segment).or_default();
+				*position = Some(position.unwrap_or_default() + *delta);
 			}
 		}
 	}
