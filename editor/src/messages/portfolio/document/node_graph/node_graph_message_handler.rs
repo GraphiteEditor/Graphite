@@ -79,6 +79,23 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 
 		match message {
 			// TODO: automatically remove broadcast messages.
+			NodeGraphMessage::AddNodes { nodes, new_ids, use_document_network } => {
+				for (old_node_id, node_template) in nodes {
+					// Get the new node template
+					node_template = network_interface.map_ids(node_template, &old_node_id, &new_ids, use_document_network);
+					
+					// Insert node into network
+					let node_id = *new_ids.get(&old_node_id).unwrap();
+					network_interface.insert_node(node_id, node_template, use_document_network);
+				}
+
+				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
+					error!("Could not get layer node when adding as child");
+					return;
+				};
+
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
+			}
 			NodeGraphMessage::Init => {
 				responses.add(BroadcastMessage::SubscribeEvent {
 					on: BroadcastEvent::SelectionChanged,
@@ -241,11 +258,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::SetNodeInput {
 						input_connector: input,
 						input: value_input,
+
 						use_document_network,
 					});
-					if network_interface.connected_to_output(&node_id) {
-						responses.add(NodeGraphMessage::RunDocumentGraph);
-					}
+					
 				} else {
 					// Since it is only possible to drag the solid line, if previewing then there must be a dashed connection, which becomes the new export
 					if matches!(network_interface.previewing(use_document_network), Previewing::Yes { .. }) {
@@ -288,7 +304,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// document_node.metadata.position += IVec2::splat(2);
 
 					// Insert new node into graph
-					responses.add(NodeGraphMessage::InsertNode { node_id, node_template, false });
+					responses.add(NodeGraphMessage::InsertNode { node_id, node_template, use_document_network: false });
 				}
 
 				self.update_selected(network_interface, selected_nodes, responses);
@@ -429,31 +445,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				// Shift nodes until it is not in the same position as another node
-				// let mut shift = IVec2::ZERO;
-				// while data
-				// 	.iter()
-				// 	.all(|(_, node)| network.nodes.values().any(|existing_node| node.metadata.position + shift == existing_node.metadata.position))
-				// {
-				// 	shift += IVec2::splat(2);
-				// }
-
 				responses.add(DocumentMessage::StartTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, NodeId(generate_uuid()))).collect();
-				for (old_id, node_template) in data {
-					// Shift copied node
-					// document_node.metadata.position += shift;
+				responses.add(NodeGraphMessage::AddNodes { nodes: data, new_ids, use_document_network: false });
 
-					// Get the new, non-conflicting id
-					let node_id = *new_ids.get(&old_id).unwrap();
-					// When pasting the default inputs are never used, so use_document_network does not matter
-					node_template = network_interface.map_ids(node_template, &new_ids, false);
-
-					// Insert node into network
-					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
-				}
-
+				//TODO: Move nodes to correct location and run layout system
 				let nodes = new_ids.values().copied().collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
@@ -1052,7 +1049,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					use_document_network,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if (network_interface.get_reference(&node_id, use_document_network) != "Imaginate" || input_index == 0) && network_interface.connected_to_output(&node_id) {
+				if (network_interface.get_reference(&node_id) != "Imaginate" || input_index == 0) && network_interface.connected_to_output(&node_id) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -1061,8 +1058,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				input,
 				use_document_network,
 			} => {
-				network_interface.set_input(input_connector, input, use_document_network);
-				load_network_structure(document_network, document_metadata, collapsed);
+				network_interface.set_input(input_connector, input, skip_rerender, use_document_network);
 			}
 			NodeGraphMessage::ShiftNodes {
 				node_ids,
@@ -1564,8 +1560,8 @@ impl NodeGraphMessageHandler {
 				});
 			}
 			let is_export = network.exports.get(0).is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network.get_root_node().is_some_and(|root_node| root_node.id == node_id);
-			let reference = network_interface.get_reference(&node_id, false);
+			let is_root_node = network_interface.get_root_node(false).is_some_and(|root_node| root_node.node_id == node_id);
+			let reference = network_interface.get_reference(&node_id);
 
 			let Some(position) = network_interface.get_position(&node_id, network_interface.collect_outward_wires(false), false) else {
 				log::error!("Could not get position for node: {node_id}");
@@ -1573,7 +1569,7 @@ impl NodeGraphMessageHandler {
 			};
 			let previewed = is_export && !is_root_node;
 
-			let locked = network_interface.is_locked(&node_id, false);
+			let locked = network_interface.is_locked(&node_id);
 
 			let errors = self
 				.node_graph_errors
@@ -1592,7 +1588,7 @@ impl NodeGraphMessageHandler {
 				id: node_id,
 				is_layer: network_interface.persistent_node_metadata(&node_id).is_some_and(|node_metadata| node_metadata.is_layer()),
 				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id),
-				alias: network_interface.untitled_layer_label(&node_id, false),
+				alias: network_interface.untitled_layer_label(&node_id),
 				reference,
 				primary_input,
 				exposed_inputs,
@@ -1798,12 +1794,12 @@ impl NodeGraphMessageHandler {
 					expanded: layer.has_children(metadata) && !collapsed.0.contains(&layer),
 					depth: layer.ancestors(metadata).count() - 1,
 					parent_id: layer.parent(metadata).and_then(|parent| if parent != LayerNodeIdentifier::ROOT_PARENT { Some(parent.to_node()) } else { None }),
-					//reference: network_interface.get_reference(&node_id, true),
-					alias: network_interface.untitled_layer_label(&node_id, true),
+					//reference: network_interface.get_reference(&node_id),
+					alias: network_interface.untitled_layer_label(&node_id),
 					tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}") } else { "".into() },
 					visible: network_interface.is_visible(&node_id, true),
 					parents_visible,
-					unlocked: !network_interface.is_locked(&node_id, true),
+					unlocked: !network_interface.is_locked(&node_id),
 					parents_unlocked,
 				};
 				responses.add(FrontendMessage::UpdateDocumentLayerDetails { data });

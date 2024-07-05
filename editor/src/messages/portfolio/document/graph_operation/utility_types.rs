@@ -1,7 +1,7 @@
 use super::transform_utils::{self, LayerBounds};
 use crate::messages::portfolio::document::node_graph::document_node_types::{resolve_document_node_type, DocumentNodeDefinition};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::prelude::*;
 
@@ -21,7 +21,7 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
 use glam::{DAffine2, DVec2, IVec2};
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{DefaultHasher, Hash};
 use web_sys::Node;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -379,17 +379,17 @@ impl<'a> ModifyInputsContext<'a> {
 		let stroke_node_id = self.get_existing_node_id("Stroke");
 
 		let input_connector = InputConnector::node(stroke_node_id, 1);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::OptionalColor(stroke.color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 2);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 3);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 4);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 5);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::LineCap(stroke.line_cap), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::LineCap(stroke.line_cap), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 6);
-		self.set_input(input_connector, NodeInput::value(TaggedValue::LineJoin(stroke.line_join), false), false);
+		self.set_input(input_connector, NodeInput::value(TaggedValue::LineJoin(stroke.line_join), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, 7);
 		self.set_input(input_connector, NodeInput::value(TaggedValue::F64(stroke.line_join_miter_limit), false), false);
 	}

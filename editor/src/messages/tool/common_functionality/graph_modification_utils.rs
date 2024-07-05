@@ -1,6 +1,6 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, NodeNetworkInterface};
 use crate::messages::prelude::*;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
@@ -85,9 +85,9 @@ pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document_network: &NodeNet
 }
 
 /// Get the manipulator groups that currently have colinear handles for a particular layer from the shape node
-pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<&Vec<ManipulatorGroupId>> {
+pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<&Vec<ManipulatorGroupId>> {
 	let colinear_manipulators_node_input_index = 1;
-	if let TaggedValue::ManipulatorGroupIds(manipulator_groups) = NodeGraphLayer::new(layer, document_network).find_input("Shape", colinear_manipulators_node_input_index)? {
+	if let TaggedValue::ManipulatorGroupIds(manipulator_groups) = NodeGraphLayer::new(layer, network_interface).find_input("Shape", colinear_manipulators_node_input_index)? {
 		Some(manipulator_groups)
 	} else {
 		None
@@ -220,8 +220,7 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Return an iterator up the horizontal flow of the layer
 	pub fn horizontal_layer_flow(&self) -> impl Iterator<Item = (&'a DocumentNode, NodeId)> {
-		self.network_interface
-			.upstream_flow_back_from_nodes(vec![self.layer_node], graph_craft::document::FlowType::HorizontalFlow)
+		self.network_interface.upstream_flow_back_from_nodes(vec![self.layer_node], FlowType::HorizontalFlow)
 	}
 
 	/// Node id of a node if it exists in the layer's primary flow

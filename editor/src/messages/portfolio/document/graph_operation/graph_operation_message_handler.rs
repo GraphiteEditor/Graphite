@@ -41,25 +41,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 		} = data;
 
 		match message {
-			GraphOperationMessage::AddNodes { nodes, new_ids } => {
-				for (old_id, node_template) in nodes {
-					// Get the new, non-conflicting id
-					let node_id = *new_ids.get(&old_id).unwrap();
-					node_template = network_interface.map_ids(node_template, &new_ids, true);
-
-					// Insert node into network
-					network_interface.insert_node(node_id, node_template, true);
-				}
-
-				let Some(new_layer_id) = new_ids.get(&NodeId(0)) else {
-					error!("Could not get layer node when adding as child");
-					return;
-				};
-
-				let insert_index = if insert_index < 0 { 0 } else { insert_index as usize };
-
-				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![*new_layer_id] });
-			}
+			
 			// TODO: Eventually remove this (probably starting late 2024)
 			GraphOperationMessage::DeleteLegacyOutputNode => {
 				if network_interface.document_network().nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
@@ -262,22 +244,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let layer = modify_inputs.create_layer(id, parent, insert_index);
 
 				if nodes.len() > 0 {
+					// Add the nodes to the network
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
-
-					for (old_id, mut document_node) in nodes {
-						// Get the new, non-conflicting id
-						let node_id = *new_ids.get(&old_id).unwrap();
-						document_node = network_interface.map_ids(document_node, &new_ids, true);
-
-						// Insert node into network
-						network_interface.insert_node(node_id, document_node, true);
-					}
+					responses.add(NodeGraphMessage::AddNodes {nodes, new_ids, use_document_network: true});
+					
 					// Since all the new nodes are already connected, just connect the input of the layer to first new node
 					let first_new_node_id = new_ids[&NodeId(0)];
-					network_interface.set_input(InputConnector::node(layer.to_node(), 1), NodeInput::node(first_new_node_id, 0), true, true);
+					responses.add(NodeGraphMessage::SetNodeInput {
+						input_connector: InputConnector::node(layer.to_node(), 1),
+						input: NodeInput::node(first_new_node_id, 0),
+						use_document_network: true,
+					});
 				}
 				// Move the layer and all nodes to the correct position in the network
-				network_interface.move_layer_to_stack(layer.to_node(), parent.to_node(), insert_index);
+				responses.add(GraphOperationMessage::MoveLayerToStack { layer, parent, insert_index, skip_rerender: false })
 			}
 			GraphOperationMessage::NewVectorLayer { id, subpaths, parent, insert_index } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
@@ -408,7 +388,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are locked, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_locked(layer.to_node(), true));
+				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| network_interface.is_locked(&layer.to_node()));
 
 				for layer in selected_nodes.selected_layers(&document_metadata) {
 					responses.add(GraphOperationMessage::SetLocked { node_id: layer.to_node(), locked });

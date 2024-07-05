@@ -15,7 +15,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.network_interface.document_metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
 	for primary in 0..2 {
@@ -58,7 +58,7 @@ fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut Ove
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.network_interface.document_metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 
 	let min = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
@@ -93,7 +93,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.network_interface.document_metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
@@ -145,7 +145,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let grid_color = document.snapping_state.grid.grid_color;
 	let cmp = |a: &f64, b: &f64| a.partial_cmp(b).unwrap();
 	let origin = document.snapping_state.grid.origin;
-	let document_to_viewport = document.metadata().document_to_viewport;
+	let document_to_viewport = document.network_interface.document_metadata().document_to_viewport;
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.size]);
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();

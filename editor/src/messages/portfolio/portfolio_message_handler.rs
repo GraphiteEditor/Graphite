@@ -1,3 +1,4 @@
+use super::document::utility_types::network_interface::{self, NodeNetworkInterface};
 use super::utility_types::PersistentData;
 use crate::application::generate_uuid;
 use crate::consts::DEFAULT_DOCUMENT_NAME;
@@ -185,11 +186,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				let copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let binding = active_document
 						.network_interface
-						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.metadata()));
+						.shallowest_unique_layers(active_document.selected_nodes.selected_layers(active_document.network_interface.document_metadata()));
 
 					let get_last_elements: Vec<_> = binding.iter().map(|x| x.last().expect("empty path")).collect();
 
-					let ordered_last_elements: Vec<_> = active_document.metadata.all_layers().filter(|layer| get_last_elements.contains(&layer)).collect();
+					let ordered_last_elements: Vec<_> = active_document
+						.network_interface
+						.document_metadata()
+						.all_layers()
+						.filter(|layer| get_last_elements.contains(&layer))
+						.collect();
 
 					for layer in ordered_last_elements {
 						let layer_node_id = layer.to_node();
@@ -214,12 +220,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						};
 
 						buffer.push(CopyBufferEntry {
-							nodes: NodeGraphMessageHandler::copy_nodes(&active_document.network_interface, &copy_ids, true).collect(),
-							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.metadata()),
+							nodes: active_document.network_interface.copy_nodes(&copy_ids, true).collect(),
+							selected: active_document.selected_nodes.selected_layers_contains(layer, active_document.network_interface.document_metadata()),
 							visible: active_document.selected_nodes.layer_visible(layer, &active_document.network_interface),
-							locked: active_document
-								.selected_nodes
-								.layer_locked(layer, &active_document.network_interface, &active_document.network_interface),
+							locked: active_document.selected_nodes.layer_locked(layer, &active_document.network_interface),
 							collapsed: false,
 							alias: previous_alias.to_string(),
 						});
@@ -399,8 +403,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let nodes = entry.clone().nodes;
 						let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 						let new_layer_id = new_ids[&NodeId(0)];
-						responses.add(GraphOperationMessage::AddNodes { nodes, new_ids});
-						responses.add(GraphOperationMessage::MoveLayerToStack {layer: new_layer_id, parent, insert_index, skip_rerender: false});
+						responses.add(NodeGraphMessage::AddNodes {
+							nodes,
+							new_ids,
+							use_document_network: true,
+						});
+						responses.add(GraphOperationMessage::MoveLayerToStack {
+							layer: new_layer_id,
+							parent,
+							insert_index,
+							skip_rerender: false,
+						});
 					}
 				};
 
@@ -422,11 +435,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 							let new_layer_id = new_ids[&NodeId(0)];
-							responses.add(GraphOperationMessage::AddNodes {
+							responses.add(NodeGraphMessage::AddNodes {
 								nodes: entry.nodes,
 								new_ids,
+								use_document_network: true,
 							});
-							responses.add(GraphOperationMessage::MoveLayerToStack {layer: new_layer_id, parent, insert_index: 0, skip_rerender: true});
+							responses.add(GraphOperationMessage::MoveLayerToStack {
+								layer: new_layer_id,
+								parent,
+								insert_index: 0,
+								skip_rerender: true,
+							});
 						}
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
@@ -557,7 +576,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 			common.extend(document.actions());
 
 			// Extend with actions that must have a selected layer
-			if document.selected_nodes.selected_layers(document.metadata()).next().is_some() {
+			if document.selected_nodes.selected_layers(document.network_interface.document_metadata()).next().is_some() {
 				common.extend(actions!(PortfolioMessageDiscriminant;
 					Copy,
 					Cut,

@@ -443,7 +443,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						skip_rerender: true,
 					});
 					insert_index += 1;
-				};
+				}
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder_id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(DocumentMessage::DocumentStructureChanged);
@@ -533,7 +533,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					}
 
 					// Disconnect layer to move and reconnect first downstream layer to upstream sibling if it exists.
-					responses.add(GraphOperationMessage::MoveLayerToStack { layer: layer_to_move, parent, insert_index, skip_rerender: true });
+					responses.add(GraphOperationMessage::MoveLayerToStack {
+						layer: layer_to_move,
+						parent,
+						insert_index,
+						skip_rerender: true,
+					});
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -591,7 +596,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, self.metadata(), &self.network_interface))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer,  &self.network_interface))
 						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
@@ -727,7 +732,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
 					.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node()))
-					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, metadata, &self.network_interface));
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer,  &self.network_interface));
 				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
@@ -1118,7 +1123,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
-			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface, &self.network_interface))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface))
 			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(move |target| target.intersect_rectangle(document_quad, self.metadata.transform_to_document(*layer))))
@@ -1131,7 +1136,7 @@ impl DocumentMessageHandler {
 		self.metadata
 			.all_layers()
 			.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface))
-			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface, &self.network_interface))
+			.filter(|&layer| !self.selected_nodes.layer_locked(layer, &self.network_interface))
 			.filter_map(|layer| self.metadata.click_target(layer).map(|targets| (layer, targets)))
 			.filter(move |(layer, target)| target.iter().any(|target: &d| target.intersect_point(point, self.metadata.transform_to_document(*layer))))
 			.map(|(layer, _)| layer)
@@ -1173,7 +1178,8 @@ impl DocumentMessageHandler {
 						false
 					}
 				})
-				.unwrap_or(0) + 1,
+				.unwrap_or(0)
+				+ 1,
 		);
 		node_list
 	}
@@ -1293,7 +1299,7 @@ impl DocumentMessageHandler {
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
 		let mut document = Self { name, ..Self::default() };
 		let transform = document.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.size() / 2., DVec2::ZERO, 0., 1.);
-		document.metadata.document_to_viewport = transform;
+		document.network_interface.document_metadata_mut().document_to_viewport = transform;
 		responses.add(DocumentMessage::UpdateDocumentTransform { transform });
 
 		document
@@ -1518,24 +1524,24 @@ impl DocumentMessageHandler {
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
 	}
 
-	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> isize {
+	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> usize {
 		parent
 			.children(metadata)
 			.enumerate()
 			.find_map(|(index, direct_child)| {
 				if selected_nodes.selected_layers(metadata).any(|selected| selected == direct_child) {
-					return Some(index as isize);
+					return Some(index as usize);
 				}
 
 				for descendant in direct_child.descendants(metadata) {
 					if selected_nodes.selected_layers(metadata).any(|selected| selected == descendant) {
-						return Some(index as isize);
+						return Some(index as usize);
 					}
 				}
 
 				None
 			})
-			.unwrap_or(-1)
+			.unwrap_or(0)
 	}
 
 	/// Loads layer resources such as creating the blob URLs for the images and loading all of the fonts in the document.
@@ -1936,7 +1942,7 @@ impl DocumentMessageHandler {
 
 		let has_selection = self.selected_nodes.selected_layers(self.metadata()).next().is_some();
 		let selection_all_visible = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(layer.to_node()));
-		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(layer.to_node()));
+		let selection_all_locked = self.selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(&layer.to_node()));
 
 		let layers_panel_options_bar = WidgetLayout::new(vec![LayoutGroup::Row {
 			widgets: vec![

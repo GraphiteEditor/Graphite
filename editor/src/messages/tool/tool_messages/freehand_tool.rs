@@ -212,7 +212,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.weight = tool_options.line_weight;
 
 				if let Some((layer, subpath_index, from_start)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
-					let transform = document.metadata().transform_to_viewport(layer);
+					let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 					let manipulator_group = ManipulatorGroup::new_anchor(pos);
 					let modification = if from_start {
@@ -231,7 +231,7 @@ impl Fsm for FreehandToolFsmState {
 					responses.add(DocumentMessage::DeselectAllLayers);
 
 					let parent = document.new_layer_parent(true);
-					let transform = document.metadata().transform_to_viewport(parent);
+					let transform = document.network_interface.document_metadata().transform_to_viewport(parent);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 					let subpath = bezier_rs::Subpath::from_anchors([pos], false);
 
@@ -255,7 +255,7 @@ impl Fsm for FreehandToolFsmState {
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
-					let transform = document.metadata().transform_to_viewport(layer);
+					let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 					let pos = transform.inverse().transform_point2(input.mouse.position);
 
 					if tool_data.last_point != pos {

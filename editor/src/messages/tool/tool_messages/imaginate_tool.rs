@@ -120,7 +120,7 @@ impl Fsm for ImaginateToolFsmState {
 
 				// // Give them a unique ID
 				// let transform_node_id = NodeId(100);
-				let imaginate_node_id = NodeId(101);
+				//let imaginate_node_id = NodeId(101);
 
 				// Create the network based on the Input -> Output passthrough default network
 				// let mut network = new_image_network(16, imaginate_node_id);

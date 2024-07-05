@@ -34,7 +34,6 @@ impl OriginalTransforms {
 	}
 
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
-		let document_network = network_interface.document_network();
 		let document_metadata = network_interface.document_metadata();
 		match self {
 			OriginalTransforms::Layer(layer_map) => {

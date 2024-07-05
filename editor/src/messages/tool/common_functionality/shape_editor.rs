@@ -4,6 +4,7 @@ use crate::consts::{DRAG_THRESHOLD, INSERT_POINT_ON_SEGMENT_TOO_CLOSE_DISTANCE};
 use crate::messages::portfolio::document::graph_operation::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{GeometrySnapSource, SnapSource};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, NodeNetworkInterface};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{get_colinear_manipulators, get_manipulator_from_id, get_manipulator_groups, get_subpaths};
 
@@ -261,13 +262,18 @@ impl ShapeState {
 			}
 		}
 
-		let mouse_delta = document.metadata.document_to_viewport.inverse().transform_vector2(input.mouse.position - previous_mouse);
+		let mouse_delta = document
+			.network_interface
+			.document_metadata()
+			.document_to_viewport
+			.inverse()
+			.transform_vector2(input.mouse.position - previous_mouse);
 		let mut offset = mouse_delta;
-		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let mut best_snapped = SnappedPoint::infinite_snap(document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		for (layer, state) in &self.selected_shape_state {
 			let Some(subpaths) = get_subpaths(*layer, &document.document_network()) else { continue };
 
-			let to_document = document.metadata.transform_to_document(*layer);
+			let to_document = document.network_interface.document_metadata().transform_to_document(*layer);
 
 			for subpath in subpaths {
 				for (index, group) in subpath.manipulator_groups().iter().enumerate() {
@@ -315,25 +321,18 @@ impl ShapeState {
 			}
 		}
 		snap_manager.update_indicator(best_snapped);
-		document.metadata.document_to_viewport.transform_vector2(offset)
+		document.network_interface.document_metadata().document_to_viewport.transform_vector2(offset)
 	}
 
 	/// Select/deselect the first point within the selection threshold.
 	/// Returns a tuple of the points if found and the offset, or `None` otherwise.
-	pub fn change_point_selection(
-		&mut self,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
-		mouse_position: DVec2,
-		select_threshold: f64,
-		add_to_selection: bool,
-	) -> Option<Option<SelectedPointsInfo>> {
+	pub fn change_point_selection(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64, add_to_selection: bool) -> Option<Option<SelectedPointsInfo>> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
 
-		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(document_network, document_metadata, mouse_position, select_threshold) {
-			let subpaths = get_subpaths(layer, document_network)?;
+		if let Some((layer, manipulator_point_id)) = self.find_nearest_point_indices(network_interface, mouse_position, select_threshold) {
+			let subpaths = get_subpaths(layer, network_interface)?;
 			let manipulator_group = get_manipulator_groups(subpaths).find(|group| group.id == manipulator_point_id.group)?;
 			let point_position = manipulator_point_id.manipulator_type.get_position(manipulator_group)?;
 
@@ -344,7 +343,7 @@ impl ShapeState {
 			let new_selected = if already_selected { !add_to_selection } else { true };
 
 			// Offset to snap the selected point to the cursor
-			let offset = mouse_position - document_metadata.transform_to_viewport(layer).transform_point2(point_position);
+			let offset = mouse_position - network_interface.document_metadata().transform_to_viewport(layer).transform_point2(point_position);
 
 			// This is selecting the manipulator only for now, next to generalize to points
 			if new_selected {
@@ -438,8 +437,8 @@ impl ShapeState {
 	}
 
 	/// A mutable iterator of all the manipulators, regardless of selection.
-	pub fn manipulator_groups<'a>(&'a self, document_network: &'a NodeNetwork) -> impl Iterator<Item = &'a ManipulatorGroup<ManipulatorGroupId>> {
-		self.iter(document_network).flat_map(|subpaths| get_manipulator_groups(subpaths))
+	pub fn manipulator_groups<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = &'a ManipulatorGroup<ManipulatorGroupId>> {
+		self.iter(network_interface).flat_map(|subpaths| get_manipulator_groups(subpaths))
 	}
 
 	/// Provide the currently selected points by reference.
@@ -453,13 +452,12 @@ impl ShapeState {
 		&self,
 		point: &ManipulatorPointId,
 		responses: &mut VecDeque<Message>,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
+		network_interface: &NodeNetworkInterface,
 		new_position: DVec2,
 		layer: LayerNodeIdentifier,
 	) -> Option<()> {
-		let subpaths = get_subpaths(layer, document_network)?;
-		let transform = document_metadata.transform_to_document(layer).inverse();
+		let subpaths = get_subpaths(layer, network_interface)?;
+		let transform = network_interface.document_metadata().transform_to_document(layer).inverse();
 		let position = transform.transform_point2(new_position);
 		let group = graph_modification_utils::get_manipulator_from_id(subpaths, point.group)?;
 		let delta = position - point.manipulator_type.get_position(group)?;
@@ -492,12 +490,12 @@ impl ShapeState {
 
 	/// Iterates over the selected manipulator groups, returning whether their handles have mixed, colinear, or free angles.
 	/// If there are no points selected this function returns mixed.
-	pub fn selected_manipulator_angles(&self, document_network: &NodeNetwork) -> ManipulatorAngle {
+	pub fn selected_manipulator_angles(&self, network_interface: &NodeNetworkInterface) -> ManipulatorAngle {
 		// This iterator contains a bool indicating whether or not selected points' manipulator groups have colinear handles.
 		let mut points_colinear_status = self
 			.selected_shape_state
 			.iter()
-			.filter_map(|(&layer, selection_state)| Some((graph_modification_utils::get_colinear_manipulators(layer, document_network)?, selection_state)))
+			.filter_map(|(&layer, selection_state)| Some((graph_modification_utils::get_colinear_manipulators(layer, network_interface)?, selection_state)))
 			.flat_map(|(colinear_manipulators, selection_state)| selection_state.selected_points.iter().map(|selected_point| colinear_manipulators.contains(&selected_point.group)));
 
 		let Some(first_is_colinear) = points_colinear_status.next() else { return ManipulatorAngle::Mixed };
@@ -645,10 +643,10 @@ impl ShapeState {
 	}
 
 	/// Move the selected points by dragging the mouse.
-	pub fn move_selected_points(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
+	pub fn move_selected_points(&self, network_interface: &NodeNetworkInterface, delta: DVec2, equidistant: bool, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+			let Some(subpaths) = get_subpaths(layer, network_interface) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, network_interface) else {
 				continue;
 			};
 
@@ -712,16 +710,10 @@ impl ShapeState {
 	}
 
 	/// Delete selected and colinear handles with zero length when the drag stops.
-	pub fn delete_selected_handles_with_zero_length(
-		&self,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
-		opposing_handle_lengths: &Option<OpposingHandleLengths>,
-		responses: &mut VecDeque<Message>,
-	) {
+	pub fn delete_selected_handles_with_zero_length(&self, network_interface: &NodeNetworkInterface, opposing_handle_lengths: &Option<OpposingHandleLengths>, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+			let Some(subpaths) = get_subpaths(layer, network_interface) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, network_interface) else {
 				continue;
 			};
 
@@ -884,9 +876,9 @@ impl ShapeState {
 		}
 	}
 
-	pub fn break_path_at_selected_point(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+	pub fn break_path_at_selected_point(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(layer, document_network) else {
+			let Some(subpaths) = get_subpaths(layer, network_interface) else {
 				continue;
 			};
 
@@ -966,9 +958,9 @@ impl ShapeState {
 	}
 
 	/// Delete point(s) and adjacent segments, which breaks a closed path as open, or an open path into multiple.
-	pub fn delete_point_and_break_path(&self, document_network: &NodeNetwork, responses: &mut VecDeque<Message>) {
+	pub fn delete_point_and_break_path(&self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(layer, document_network) else {
+			let Some(subpaths) = get_subpaths(layer, network_interface) else {
 				continue;
 			};
 
@@ -1044,18 +1036,12 @@ impl ShapeState {
 	}
 
 	/// Iterate over the shapes.
-	pub fn iter<'a>(&'a self, document_network: &'a NodeNetwork) -> impl Iterator<Item = &'a Vec<bezier_rs::Subpath<ManipulatorGroupId>>> + 'a {
-		self.selected_shape_state.keys().filter_map(|&layer| get_subpaths(layer, document_network))
+	pub fn iter<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = &'a Vec<bezier_rs::Subpath<ManipulatorGroupId>>> + 'a {
+		self.selected_shape_state.keys().filter_map(|&layer| get_subpaths(layer, network_interface))
 	}
 
 	/// Find a [ManipulatorPoint] that is within the selection threshold and return the layer path, an index to the [ManipulatorGroup], and an enum index for [ManipulatorPoint].
-	pub fn find_nearest_point_indices(
-		&mut self,
-		document_network: &NodeNetwork,
-		document_metadata: &DocumentMetadata,
-		mouse_position: DVec2,
-		select_threshold: f64,
-	) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
+	pub fn find_nearest_point_indices(&mut self, network_interface: &NodeNetworkInterface, mouse_position: DVec2, select_threshold: f64) -> Option<(LayerNodeIdentifier, ManipulatorPointId)> {
 		if self.selected_shape_state.is_empty() {
 			return None;
 		}
@@ -1063,7 +1049,7 @@ impl ShapeState {
 		let select_threshold_squared = select_threshold * select_threshold;
 		// Find the closest control point among all elements of shapes_to_modify
 		for &layer in self.selected_shape_state.keys() {
-			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(document_network, document_metadata, layer, mouse_position) {
+			if let Some((manipulator_point_id, distance_squared)) = Self::closest_point_in_layer(network_interface, layer, mouse_position) {
 				// Choose the first point under the threshold
 				if distance_squared < select_threshold_squared {
 					trace!("Selecting... manipulator point: {manipulator_point_id:?}");
@@ -1079,12 +1065,12 @@ impl ShapeState {
 	/// Find the closest manipulator, manipulator point, and distance so we can select path elements.
 	/// Brute force comparison to determine which manipulator (handle or anchor) we want to select taking O(n) time.
 	/// Return value is an `Option` of the tuple representing `(ManipulatorPointId, distance squared)`.
-	fn closest_point_in_layer(document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, pos: glam::DVec2) -> Option<(ManipulatorPointId, f64)> {
+	fn closest_point_in_layer(network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, pos: glam::DVec2) -> Option<(ManipulatorPointId, f64)> {
 		let mut closest_distance_squared: f64 = f64::MAX;
 		let mut result = None;
 
-		let subpaths = get_subpaths(layer, document_network)?;
-		let viewspace = document_metadata.transform_to_viewport(layer);
+		let subpaths = get_subpaths(layer, network_interface)?;
+		let viewspace = network_interface.document_metadata().transform_to_viewport(layer);
 		for manipulator in get_manipulator_groups(subpaths) {
 			let (selected, distance_squared) = SelectedType::closest_widget(manipulator, viewspace, pos, crate::consts::HIDE_HANDLE_DISTANCE);
 
@@ -1098,17 +1084,17 @@ impl ShapeState {
 	}
 
 	/// Find the `t` value along the path segment we have clicked upon, together with that segment ID.
-	fn closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
-		let transform = document_metadata.transform_to_viewport(layer);
+	fn closest_segment(&self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
+		let transform = network_interface.document_metadata().transform_to_viewport(layer);
 		let layer_pos = transform.inverse().transform_point2(position);
 
-		let scale = document_metadata.document_to_viewport.decompose_scale().x;
+		let scale = network_interface.document_metadata().document_to_viewport.decompose_scale().x;
 		let tolerance = tolerance + 0.5 * scale; // make more talerance at large scale
 
 		let mut closest = None;
 		let mut closest_distance_squared: f64 = tolerance * tolerance;
 
-		let subpaths = get_subpaths(layer, document_network)?;
+		let subpaths = get_subpaths(layer, network_interface)?;
 
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			for (manipulator_index, bezier) in subpath.iter().enumerate() {
@@ -1142,8 +1128,8 @@ impl ShapeState {
 	}
 
 	/// find closest to the position segment on selected layers. If there is more than one layers with close enough segment it return upper from them
-	pub fn upper_closest_segment(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
-		let closest_seg = |layer| self.closest_segment(document_network, document_metadata, layer, position, tolerance);
+	pub fn upper_closest_segment(&self, network_interface: &NodeNetworkInterface, position: glam::DVec2, tolerance: f64) -> Option<ClosestSegment> {
+		let closest_seg = |layer| self.closest_segment(network_interface, layer, position, tolerance);
 		match self.selected_shape_state.len() {
 			0 => None,
 			1 => self.selected_layers().next().copied().and_then(closest_seg),
@@ -1152,8 +1138,8 @@ impl ShapeState {
 	}
 
 	/// Handles the splitting of a curve to insert new points (which can be activated by double clicking on a curve with the Path tool).
-	pub fn split(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
-		if let Some(segment) = self.upper_closest_segment(document_network, document_metadata, position, tolerance) {
+	pub fn split(&self, network_interface: &NodeNetworkInterface, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) {
+		if let Some(segment) = self.upper_closest_segment(network_interface, position, tolerance) {
 			segment.adjusted_insert(responses);
 		}
 	}
@@ -1161,7 +1147,7 @@ impl ShapeState {
 	/// Converts a nearby clicked anchor point's handles between sharp (zero-length handles) and smooth (pulled-apart handle(s)).
 	/// If both handles aren't zero-length, they are set that. If both are zero-length, they are stretched apart by a reasonable amount.
 	/// This can can be activated by double clicking on an anchor with the Path tool.
-	pub fn flip_smooth_sharp(&self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
+	pub fn flip_smooth_sharp(&self, network_interface: &NodeNetworkInterface, position: glam::DVec2, tolerance: f64, responses: &mut VecDeque<Message>) -> bool {
 		let mut process_layer = |layer| {
 			let subpaths = get_subpaths(layer, document_network)?;
 
@@ -1224,15 +1210,15 @@ impl ShapeState {
 		false
 	}
 
-	pub fn select_all_in_quad(&mut self, document_network: &NodeNetwork, document_metadata: &DocumentMetadata, quad: [DVec2; 2], clear_selection: bool) {
+	pub fn select_all_in_quad(&mut self, network_interface: &NodeNetworkInterface, quad: [DVec2; 2], clear_selection: bool) {
 		for (&layer, state) in &mut self.selected_shape_state {
 			if clear_selection {
 				state.clear_points()
 			}
 
-			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
+			let Some(subpaths) = get_subpaths(layer, network_interface) else { continue };
 
-			let transform = document_metadata.transform_to_viewport(layer);
+			let transform = network_interface.document_metadata().transform_to_viewport(layer);
 
 			for manipulator_group in get_manipulator_groups(subpaths) {
 				for selected_type in [SelectedType::Anchor, SelectedType::InHandle, SelectedType::OutHandle] {

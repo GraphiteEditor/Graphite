@@ -212,7 +212,7 @@ impl PenToolData {
 		self.from_start = from_start;
 		self.subpath_index = subpath_index;
 
-		let Some(subpaths) = get_subpaths(layer, &document.document_network()) else { return };
+		let Some(subpaths) = get_subpaths(layer, &document.network_interface) else { return };
 		let manipulator_groups = subpaths[subpath_index].manipulator_groups();
 		let first_or_last = if from_start { manipulator_groups.first() } else { manipulator_groups.last() };
 		let Some(last_handle) = first_or_last else { return };
@@ -237,8 +237,8 @@ impl PenToolData {
 		responses.add(DocumentMessage::DeselectAllLayers);
 
 		// Get the position and set properties
-		let transform = document.metadata().transform_to_document(parent);
-		let point = SnapCandidatePoint::handle(document.metadata.document_to_viewport.inverse().transform_point2(input.mouse.position));
+		let transform = document.network_interface.document_metadata().transform_to_document(parent);
+		let point = SnapCandidatePoint::handle(document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
 		let start_position = transform.inverse().transform_point2(snapped.snapped_point_document);
 		self.snap_manager.update_indicator(snapped);
@@ -268,7 +268,7 @@ impl PenToolData {
 		(|| -> Option<()> {
 			// Get subpath
 			let layer = self.layer?;
-			let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
+			let subpath = &get_subpaths(layer, &document.network_interface)?[self.subpath_index];
 
 			// Get the last manipulator group and the one previous to that
 			let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -283,7 +283,7 @@ impl PenToolData {
 			let previous_anchor = previous_manipulator_group.anchor;
 
 			// Break the control
-			let transform = document.metadata.document_to_viewport * transform;
+			let transform = document.network_interface.document_metadata().document_to_viewport * transform;
 			let on_top = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(previous_anchor)) < crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 			if !on_top {
 				return None;
@@ -318,7 +318,7 @@ impl PenToolData {
 	fn finish_placing_handle(&mut self, document: &DocumentMessageHandler, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.network_interface)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -341,7 +341,7 @@ impl PenToolData {
 		let first_anchor = first_manipulator_group.anchor;
 		let last_in = inwards_handle.get_position(last_manipulator_group)?;
 
-		let transform = document.metadata.document_to_viewport * transform;
+		let transform = document.network_interface.document_metadata().document_to_viewport * transform;
 		let transformed_distance_between_squared = transform.transform_point2(last_anchor).distance_squared(transform.transform_point2(first_anchor));
 		let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 		let should_close_path = transformed_distance_between_squared < snap_point_tolerance_squared && previous_manipulator_group.is_some();
@@ -392,7 +392,7 @@ impl PenToolData {
 	fn drag_handle(&mut self, mut snap_data: SnapData, transform: DAffine2, mouse: DVec2, modifiers: ModifierState, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
 		let document = snap_data.document;
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.document_network())?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.network_interface)?[self.subpath_index];
 
 		// Get the last manipulator group
 		let manipulator_groups = subpath.manipulator_groups();
@@ -445,7 +445,7 @@ impl PenToolData {
 		let document = snap_data.document;
 		// Get subpath
 		let layer = self.layer?;
-		let subpath = &get_subpaths(layer, &document.document_network())?[self.subpath_index];
+		let subpath = &get_subpaths(layer, &document.network_interface)?[self.subpath_index];
 
 		// Get the last manipulator group and the one previous to that
 		let mut manipulator_groups = subpath.manipulator_groups().iter();
@@ -485,7 +485,7 @@ impl PenToolData {
 	/// Snap the angle of the line from relative to position if the key is pressed.
 	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, lock_angle: bool, snap_angle: bool, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let document = snap_data.document;
-		let mut document_pos = document.metadata.document_to_viewport.inverse().transform_point2(mouse);
+		let mut document_pos = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(mouse);
 		let snap = &mut self.snap_manager;
 
 		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
@@ -550,7 +550,7 @@ impl PenToolData {
 
 	fn finish_transaction(&mut self, fsm: PenToolFsmState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Option<DocumentMessage> {
 		// Get subpath
-		let subpath = &get_subpaths(self.layer?, &document.document_network())?[self.subpath_index];
+		let subpath = &get_subpaths(self.layer?, &document.network_interface)?[self.subpath_index];
 
 		// Abort if only one manipulator group has been placed
 		if fsm == PenToolFsmState::PlacingAnchor && subpath.len() < 3 {
@@ -605,13 +605,13 @@ impl Fsm for PenToolFsmState {
 			..
 		} = tool_action_data;
 
-		let mut transform = tool_data.layer.map(|layer| document.metadata().transform_to_document(layer)).unwrap_or_default();
+		let mut transform = tool_data.layer.map(|layer| document.network_interface.document_metadata().transform_to_document(layer)).unwrap_or_default();
 
 		if !transform.inverse().is_finite() {
 			let parent_transform = tool_data
 				.layer
-				.and_then(|layer| layer.parent(document.metadata()))
-				.map(|layer| document.metadata().transform_to_document(layer));
+				.and_then(|layer| layer.parent(document.network_interface.document_metadata()))
+				.map(|layer| document.network_interface.document_metadata().transform_to_document(layer));
 
 			transform = parent_transform.unwrap_or(DAffine2::IDENTITY);
 		}

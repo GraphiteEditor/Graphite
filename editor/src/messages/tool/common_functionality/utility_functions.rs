@@ -8,10 +8,10 @@ pub fn should_extend(document: &DocumentMessageHandler, pos: DVec2, tolerance: f
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
 
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
-		let viewspace = document.metadata().transform_to_viewport(layer);
+	for layer in document.selected_nodes.selected_layers(document.network_interface.document_metadata()) {
+		let viewspace = document.network_interface.document_metadata().transform_to_viewport(layer);
 
-		let subpaths = get_subpaths(layer, &document.document_network())?;
+		let subpaths = get_subpaths(layer, &document.network_interface)?;
 		for (subpath_index, subpath) in subpaths.iter().enumerate() {
 			if subpath.closed() {
 				continue;

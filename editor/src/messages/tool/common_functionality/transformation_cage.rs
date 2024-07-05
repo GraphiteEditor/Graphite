@@ -118,7 +118,7 @@ impl SelectedEdges {
 		}
 
 		if let Some(SizeSnapData { manager, points, snap_data }) = snap {
-			let view_to_doc = snap_data.document.metadata.document_to_viewport.inverse();
+			let view_to_doc = snap_data.document.network_interface.document_metadata().document_to_viewport.inverse();
 			let bounds_to_doc = view_to_doc * transform;
 			let mut best_snap = SnappedPoint::infinite_snap(pivot);
 			let mut best_scale_factor = DVec2::ONE;

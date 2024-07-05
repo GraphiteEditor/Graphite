@@ -25,9 +25,9 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 }
 
 pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+	for layer in document.selected_nodes.selected_layers(document.network_interface.document_metadata()) {
 		let Some(subpaths) = get_subpaths(layer, &document.network_interface) else { continue };
-		let transform = document.metadata().transform_to_viewport(layer);
+		let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 		overlay_context.outline(subpaths.iter(), transform);
@@ -54,9 +54,9 @@ pub fn path_overlays(document: &DocumentMessageHandler, shape_editor: &mut Shape
 }
 
 pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
-	for layer in document.selected_nodes.selected_layers(document.metadata()) {
+	for layer in document.selected_nodes.selected_layers(document.network_interface.document_metadata()) {
 		let Some(subpaths) = get_subpaths(layer, &document.network_interface) else { continue };
-		let transform = document.metadata().transform_to_viewport(layer);
+		let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_selected(point));
 

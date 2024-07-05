@@ -233,7 +233,7 @@ impl TextToolData {
 	}
 
 	fn load_layer_text_node(&mut self, document: &DocumentMessageHandler) -> Option<()> {
-		let transform = document.metadata().transform_to_viewport(self.layer);
+		let transform = document.network_interface.document_metadata().transform_to_viewport(self.layer);
 		let color = graph_modification_utils::get_fill_color(self.layer, &document.document_network()).unwrap_or(Color::BLACK);
 		let (text, font, font_size) = graph_modification_utils::get_text(self.layer, &document.document_network())?;
 		self.editing_text = Some(EditingText {
@@ -269,7 +269,7 @@ impl TextToolData {
 	fn interact(&mut self, state: TextToolFsmState, mouse: DVec2, document: &DocumentMessageHandler, font_cache: &FontCache, responses: &mut VecDeque<Message>) -> TextToolFsmState {
 		// Check if the user has selected an existing text layer
 		if let Some(clicked_text_layer_path) = document
-			.click(mouse, document.metadata)
+			.click(mouse, &document.network_interface.document_metadata())
 			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.document_network(), "Text"))
 		{
 			self.start_editing_layer(clicked_text_layer_path, state, document, font_cache, responses);
@@ -335,7 +335,7 @@ impl TextToolData {
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
-	let mut selected_layers = document.selected_nodes.selected_layers(document.metadata());
+	let mut selected_layers = document.selected_nodes.selected_layers(document.network_interface.document_metadata());
 	let layer = selected_layers.next()?;
 
 	// Check that only one layer is selected
@@ -368,14 +368,14 @@ impl Fsm for TextToolFsmState {
 		match (self, event) {
 			(TextToolFsmState::Editing, TextToolMessage::Overlays(mut overlay_context)) => {
 				responses.add(FrontendMessage::DisplayEditableTextboxTransform {
-					transform: document.metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
+					transform: document.network_interface.document_metadata().transform_to_viewport(tool_data.layer).to_cols_array(),
 				});
 				if let Some(editing_text) = tool_data.editing_text.as_ref() {
 					let buzz_face = font_cache.get(&editing_text.font).map(|data| load_face(data));
 					let far = graphene_core::text::bounding_box(&tool_data.new_text, buzz_face, editing_text.font_size, None);
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
-						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
+						let transformed_quad = document.network_interface.document_metadata().transform_to_viewport(tool_data.layer) * quad;
 						overlay_context.quad(transformed_quad);
 					}
 				}
@@ -383,14 +383,14 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Editing
 			}
 			(_, TextToolMessage::Overlays(mut overlay_context)) => {
-				for layer in document.selected_nodes.selected_layers(document.metadata()) {
+				for layer in document.selected_nodes.selected_layers(document.network_interface.document_metadata()) {
 					let Some((text, font, font_size)) = graph_modification_utils::get_text(layer, &document.document_network()) else {
 						continue;
 					};
 					let buzz_face = font_cache.get(font).map(|data| load_face(data));
 					let far = graphene_core::text::bounding_box(text, buzz_face, font_size, None);
 					let quad = Quad::from_box([DVec2::ZERO, far]);
-					let multiplied = document.metadata().transform_to_viewport(layer) * quad;
+					let multiplied = document.network_interface.document_metadata().transform_to_viewport(layer) * quad;
 					overlay_context.quad(multiplied);
 				}
 

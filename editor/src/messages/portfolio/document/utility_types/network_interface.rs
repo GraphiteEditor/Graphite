@@ -1,5 +1,5 @@
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{HashMap, HashSet, VecDeque},
 	hash::DefaultHasher,
 };
 
@@ -16,14 +16,15 @@ use graphene_std::{
 };
 use interpreted_executor::{dynamic_executor::ResolvedDocumentNodeTypes, node_registry::NODE_REGISTRY};
 use usvg::filter::Input;
+use web_sys::window;
 
 use crate::messages::{
 	portfolio::document::node_graph::{self, document_node_types::DocumentNodeDefinition},
-	prelude::{BroadcastEvent, GraphOperationMessage, NodeGraphMessage, NodeGraphMessageHandler},
+	prelude::{BroadcastEvent, GraphOperationMessage, Message, NodeGraphMessage, NodeGraphMessageHandler},
 };
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 
-use super::{document_metadata::{DocumentMetadata, LayerNodeIdentifier}, misc::PTZ, nodes::{self, SelectedNodes}};
+use super::{document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations}, misc::PTZ, nodes::{self, SelectedNodes}};
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -35,7 +36,7 @@ pub struct NodeNetworkInterface {
 	network_metadata: NodeNetworkMetadata,
 	// Path to the current nested network. Used by the editor to keep track of what network is currently open.
 	network_path: Vec<NodeId>,
-	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made
+	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made, which is why it was moved within the interface,
 	#[serde(skip)]
 	document_metadata: DocumentMetadata,
 	/// All input/output types based on the compiled network.
@@ -140,7 +141,7 @@ impl NodeNetworkInterface {
 		if node.inputs.len() > 1 {
 			let mut last_chain_node_distance = 0u32;
 			// Iterate upstream from the layer, and get the number of nodes distance to the last node with Position::Chain
-			for (index, (_, node_id)) in self.upstream_flow_back_from_nodes(vec![node_id], graph_craft::document::FlowType::HorizontalFlow).enumerate() {
+			for (index, (_, node_id)) in self.upstream_flow_back_from_nodes(vec![node_id], FlowType::HorizontalFlow).enumerate() {
 				if let Some(NodeTypePersistentMetadata::Node(node_persistent_metadata)) = network_metadata.persistent_metadata.node_metadata.get(&node_id).map(|node_metadata| node_metadata.persistent_metadata.node_type_metadata) {
 					if Position::Chain = node_persistent_metadata.position {
 						last_chain_node_distance = index;
@@ -219,12 +220,27 @@ impl NodeNetworkInterface {
 				DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 				DocumentNodeImplementation::Extract => 1,
 			};
-			for _ in 0..number_of_outputs {
+			for output_index in 0..number_of_outputs {
 				outward_wires.insert(OutputConnector::node(*node_id, output_index), Vec::new());
 			}
 		};
 		// Initialize output connectors for the import node
-		for import_index in 0..network.import_types.len(){
+		// TODO: Use network.import_types.len()
+		let mut encapsulating_path = self.network_path.clone();
+		let imports = if let Some(encapsulating_node_id) = encapsulating_path.pop() {
+				let parent_node = self
+					.document_network()
+					.nested_network(&encapsulating_path)
+					.expect("Parent path should always exist")
+					.nodes
+					.get(&encapsulating_node_id)
+					.expect("Last path node should always exist in parent network");
+				parent_node.inputs.len()
+			} else {
+				// There is one(?) import to the document network, but the imports are not displayed
+				1
+			};
+		for import_index in 0..imports{
 			outward_wires.insert(OutputConnector::Import(import_index), Vec::new());
 		};
 		// Collect wires between all nodes and the Imports
@@ -258,8 +274,11 @@ impl NodeNetworkInterface {
 					self.create_node_template(node_id, use_document_network).map(|node_template| (new, node_id, node_template))
 				)
 			)
-			.map(move |(new, node_id, node)| (new, self.map_ids(node, new_ids, use_document_network)))
-	}
+			.map(move |(new, node_id, node)| (new, self.map_ids(node, &node_id, new_ids, use_document_network)))
+			.collect::<Vec<_>>()
+        	.into_iter()
+
+		}
 
 	pub fn create_node_template(&self, node_id: NodeId, use_document_network: bool) -> Option<NodeTemplate> {
 		let Some(network) = self.network(use_document_network) else {
@@ -284,8 +303,8 @@ impl NodeNetworkInterface {
 
 	/// Converts all node id inputs to a new id based on a HashMap.
 	///
-	/// If the node is not in the hashmap then a default input is found based on the compiled network
-	pub fn map_ids(&self, mut node_template: NodeTemplate, new_ids: &HashMap<NodeId, NodeId>, use_document_network: bool) -> NodeTemplate {
+	/// If the node is not in the hashmap then a default input is found based on the compiled network, using the node_id passed as a parameter
+	pub fn map_ids(&self, mut node_template: NodeTemplate, node_id: &NodeId, new_ids: &HashMap<NodeId, NodeId>, use_document_network: bool) -> NodeTemplate {
 		for (input_index, input) in node_template.document_node.inputs.iter_mut().enumerate() {
 			if let &mut NodeInput::Node { node_id: id, output_index, lambda } = input {
 				if let Some(&new_id) = new_ids.get(&id) {
@@ -325,16 +344,14 @@ impl NodeNetworkInterface {
 		if let Some(input_type) = input_type {
 			input_type.clone()
 		} else if node_id == network.exports_metadata.0 {
-			if let Some(parent_node_id) = network_path.last() {
-				let mut parent_path = network_path.clone();
-				parent_path.pop();
-
+			let mut encapsulating_path = self.network_path.clone();
+			if let Some(encapsulating_node_id) = encapsulating_path.pop() {
 				let parent_node = self
 					.document_network()
-					.nested_network(&parent_path)
+					.nested_network(&encapsulating_path)
 					.expect("Parent path should always exist")
 					.nodes
-					.get(&parent_node_id)
+					.get(&encapsulating_node_id)
 					.expect("Last path node should always exist in parent network");
 
 				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, &self.resolved_types, &self.network_path);
@@ -516,7 +533,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in get_root_node");
 			return None;
 		};
-		match network_metatata.persistent_metadata.previewing {
+		match &network_metatata.persistent_metadata.previewing {
 			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
 			Previewing::No => network.exports.first().and_then(|export| {
 				if let NodeInput::Node { node_id, output_index, .. } = export {
@@ -540,26 +557,24 @@ impl NodeNetworkInterface {
 		Some(&node_metadata.persistent_metadata)
 	}
 
-	pub fn get_reference(&self, node_id: &NodeId, use_document_network: bool ) -> Option<String> {
+	pub fn get_reference(&self, node_id: &NodeId ) -> Option<String> {
 		self.persistent_node_metadata(&node_id).and_then(|node_metadata| node_metadata.reference.map(|reference| reference.to_string()))
 	}
 
-	pub fn get_alias(&self, node_id: &NodeId, use_document_network: bool) -> Option<String> {
+	pub fn get_alias(&self, node_id: &NodeId) -> Option<String> {
 		self.persistent_node_metadata(&node_id).map(|node_metadata| node_metadata.alias.clone())
 	}
 
-	pub fn untitled_layer_label(&self, node_id: &NodeId, use_document_network: bool) -> String {
-		self.get_alias(node_id, use_document_network)
-			.unwrap_or(if self.persistent_node_metadata(node_id).expect("Could not get persistent node metadata in untitled_layer_label").is_layer() && self.get_reference(node_id, use_document_network).is_some_and(|reference| reference == "Merge")  { "Untitled Layer".to_string() } else { self.get_reference(node_id, use_document_network).unwrap_or_default() })
+	pub fn untitled_layer_label(&self, node_id: &NodeId) -> String {
+		self.get_alias(node_id).unwrap_or(if self.persistent_node_metadata(node_id).expect("Could not get persistent node metadata in untitled_layer_label").is_layer() && self.get_reference(node_id, use_document_network).is_some_and(|reference| reference == "Merge")  { "Untitled Layer".to_string() } else { self.get_reference(node_id).unwrap_or_default() })
 	}
 
-	// TODO: Will use_document_network ever be false? Should locked even be stored for all layers, or just those in the document network
-	pub fn is_locked(&self, node_id: NodeId, use_document_network: bool) -> bool {
-		let Some(persistent_node_metadata) = self.persistent_node_metadata(&node_id) else {
+	pub fn is_locked(&self, node_id: &NodeId) -> bool {
+		let Some(persistent_node_metadata) = self.persistent_node_metadata(node_id) else {
 			log::error!("Could not get persistent node metadata in get_locked for node {node_id}");
 			return false;
 		};
-		if let NodeTypePersistentMetadata::Layer(layer_metadata) = persistent_node_metadata.node_type_metadata {
+		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &persistent_node_metadata.node_type_metadata {
 			layer_metadata.locked
 		} else {
 			false
@@ -633,7 +648,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
-		self.document_network_metadata().persistent_metadata.node_metadata.iter().filter_map(|(_, node_metadata)| if node_metadata.persistent_metadata.reference.is_some_and(|reference| reference == "Artboard") { Some(LayerNodeIdentifier::new(*node_id, self.document_network())) } else { None }).collect()
+		self.document_network_metadata().persistent_metadata.node_metadata.iter().filter_map(|(node_id, node_metadata)| if node_metadata.persistent_metadata.reference.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id)) { Some(LayerNodeIdentifier::new(*node_id, self.document_network())) } else { None }).collect()
 	}
 
 	/// Folders sorted from most nested to least nested
@@ -698,10 +713,14 @@ impl NodeNetworkInterface {
 	}
 	/// Gives an iterator to all nodes connected to the given nodes (inclusive) by all inputs (primary or primary + secondary depending on `only_follow_primary` choice), traversing backwards upstream starting from the given node's inputs.
 	pub fn upstream_flow_back_from_nodes(&self, node_ids: Vec<NodeId>, flow_type: FlowType) -> impl Iterator<Item = (&DocumentNode, NodeId)> {
+		let (Some(network), Some(network_metadata)) = (self.network_for_selected_nodes(node_ids.iter()), self.network_metadata_for_selected_nodes(node_ids.iter())) else {
+			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
+			return Vec::new().into_iter();
+		};
 		FlowIter {
 			stack: node_ids,
-			network: self.network_for_selected_nodes(node_ids.iter()),
-			network_metadata: self.network_metadata_for_selected_nodes(node_ids.iter()),
+			network,
+			network_metadata,
 			flow_type,
 		}
 	}
@@ -715,7 +734,7 @@ impl NodeNetworkInterface {
 
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
-	fn document_network_mut(&self) -> &mut NodeNetwork {
+	fn document_network_mut(&mut self) -> &mut NodeNetwork {
 		&mut self.network
 	}
 
@@ -740,12 +759,12 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the mutable network the selected nodes are part of, which is either the document network metadata or the metadata from the network_path.
-	fn network_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&NodeNetwork> {
+	fn network_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut NodeNetwork> {
 		self.network(self.selected_nodes_in_document_network(selected_nodes))
 	}
 
 	/// Get the metadata for the network the selected nodes are part of, which is either the document network metadata or the metadata from the network_path.
-	fn network_metadata_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&NodeNetworkMetadata> {
+	fn network_metadata_for_selected_nodes_mut<'a>(&mut self, selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut NodeNetworkMetadata> {
 		self.network_metadata_mut(self.selected_nodes_in_document_network(selected_nodes))
 	}
 
@@ -762,7 +781,8 @@ impl NodeNetworkInterface {
 		node_metadata.transient_metadata.get_transient_node_metadata(self, node_id, use_document_network)
 	}
 
-	pub fn get_transient_network_metadata(&mut self, node_id: &NodeId, use_document_network: bool) -> Option<&mut NodeNetworkTransientMetadata> {
+	// Get the transient metadata for the currently open network, or the document network
+	pub fn get_transient_network_metadata(&mut self, use_document_network: bool) -> Option<&mut NodeNetworkTransientMetadata> {
 		let Some(network_metadata) = self.network_metadata_mut(use_document_network) else {
 			log::error!("Could not get nested network_metadata in get_transient_node_metadata");
 			return None
@@ -808,10 +828,11 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		let node_ids: Vec<_> = network.nodes.iter().map(|(node_id, _)| *node_id).collect();
 
-		network.nodes.iter().filter_map(|(node_id, _)|{
+		node_ids.iter().filter_map(|(node_id, _)|{
 			self.get_transient_node_metadata(node_id, false).and_then(|transient_node_metadata|{
-				if let NodeTypeTransientMetadata::Layer(layer) = transient_node_metadata.node_type_metadata {
+				if let NodeTypeTransientMetadata::Layer(layer) = &transient_node_metadata.node_type_metadata {
 					layer.visibility_click_target.intersect_point(point, DAffine2::IDENTITY).then(|| *node_id)
 				} else {
 					None
@@ -835,7 +856,7 @@ impl NodeNetworkInterface {
 		network.nodes.iter().filter_map(|(node_id, _)|{
 			self.get_transient_node_metadata(node_id, false).and_then(|transient_node_metadata|{ 
 				transient_node_metadata.port_click_targets.clicked_input_port_from_point(point).map(|port| InputConnector::node(node_id, port))
-				.or_else(|| self.get_transient_network_metadata(network_interface, false).and_then(|transient_network_metadata|{
+				.or_else(|| self.get_transient_network_metadata(false).and_then(|transient_network_metadata|{
 					transient_network_metadata.export_ports.clicked_input_port_from_point(point).map(|port| InputConnector::Export(port))
 				}
 				))
@@ -854,11 +875,11 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
-
+		let encapsulating_node = self.network_path().last().copied();
 		network.nodes.iter().filter_map(|(node_id, _)|{
 			self.get_transient_node_metadata(node_id, false).and_then(|transient_node_metadata|{ 
 				transient_node_metadata.port_click_targets.clicked_output_port_from_point(point).map(|output_index| OutputConnector::node(node_id, output_index))
-				.or_else(|| self.get_transient_network_metadata(network_interface, false).and_then(|transient_network_metadata|{
+				.or_else(|| self.get_transient_network_metadata(false).and_then(|transient_network_metadata|{
 					transient_network_metadata.export_ports.clicked_output_port_from_point(point).map(|output_index| OutputConnector::Import(output_index))
 				}
 				))
@@ -895,7 +916,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in selected_nodes_bounding_box_viewport");
 			return None;
 		};
-
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
 		selected_nodes
 			.selected_nodes()
 			.filter_map(|node_id| {
@@ -903,7 +924,7 @@ impl NodeNetworkInterface {
 					log::debug!("Could not get click target for node {node_id}");
 					return None;
 				};
-				self.get_transient_node_metadata(node_id, use_document_network).and_then(|transient_node_metadata| transient_node_metadata.node_click_target.subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport))
+				self.get_transient_node_metadata(node_id, use_document_network).and_then(|transient_node_metadata| transient_node_metadata.node_click_target.subpath.bounding_box_with_transform(node_graph_to_viewport))
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -974,11 +995,8 @@ impl NodeNetworkInterface {
 					}
 				}
 			}
-
-			
-
 			while let Some((primary_root_node_id, parent_layer_node)) = awaiting_primary_flow.pop() {
-				let primary_flow_iter = graph.upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
+				let primary_flow_iter = self.document_network().upstream_flow_back_from_nodes(vec![primary_root_node_id], FlowType::PrimaryFlow);
 				// Skip the primary_root_node_id node
 				for (_, current_node_id) in primary_flow_iter.skip(1) {
 					if self.is_layer(&current_node_id) {
@@ -998,15 +1016,19 @@ impl NodeNetworkInterface {
 		self.document_metadata.upstream_transforms.retain(|node, _| self.document_network.nodes.contains_key(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
+	
+	pub fn document_metadata_mut(&mut self) -> &mut DocumentMetadata {
+		&mut self.document_metadata
+	}
 }
 
 // Public mutable methods
 impl NodeNetworkInterface {
 	/// Replaces the current network with another, and returns the old network. Since changes can be made to various sub networks, all network_metadata is reset.
 	pub fn replace(&mut self, new_network: NodeNetwork) -> NodeNetwork {
-		let old_network = std::mem::replace(&mut self.network, network);
+		let old_network = std::mem::replace(&mut self.network, new_network);
 		/// Clear all transient metadata from all network metadata
-		let stack = vec![&mut self.network_metadata];
+		let mut stack = vec![&mut self.network_metadata];
 		while let Some(network_metadata) = stack.pop() {
 			network_metadata.transient_metadata.unload();
 			network_metadata.persistent_metadata.node_metadata.values_mut().for_each(|node_metadata| node_metadata.transient_metadata.unload());
@@ -1100,7 +1122,7 @@ impl NodeNetworkInterface {
 		let outward_wires = self.network_metadata(use_document_network).outward_wires;
 
 		let mut delete_nodes = HashSet::new();
-		for node_id in &node_ids {
+		for node_id in &nodes_to_delete {
 			delete_nodes.insert(*node_id);
 
 			if !reconnect {
@@ -1114,6 +1136,7 @@ impl NodeNetworkInterface {
 				continue;
 			};
 
+			let root_node = self.get_root_node(use_document_network);
 			for (_, upstream_id) in self.upstream_flow_back_from_nodes(vec![*child_id], graph_craft::document::FlowType::UpstreamFlow) {
 				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
 				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
@@ -1124,17 +1147,15 @@ impl NodeNetworkInterface {
 					let Some(downstream_nodes) = outward_wires.get(&current_node) else { continue };
 					for downstream_node in downstream_nodes {
 						// If the traversal reaches the root node, and the root node should not be deleted, then the current node is not a sole dependent
-						if network
-							.get_root_node()
-							.is_some_and(|root_node| root_node.id == *downstream_node && !delete_nodes.contains(&root_node.id))
+						if root_node.is_some_and(|root_node| root_node.node_id == *downstream_node && !delete_nodes.contains(&root_node.node_id))
 						{
 							can_delete = false;
 						} else if !delete_nodes.contains(downstream_node) {
 							stack.push(*downstream_node);
 						}
-						// Continue traversing over the downstream sibling, which happens if the current node is a sibling to a node in node_ids
+						// Continue traversing over the downstream sibling, if the current node is a sibling to a node that will be deleted
 						else {
-							for deleted_node_id in &node_ids {
+							for deleted_node_id in &nodes_to_delete {
 								let Some(output_node) = network.nodes.get(&deleted_node_id) else { continue };
 								let Some(input) = output_node.inputs.get(0) else { continue };
 
@@ -1158,7 +1179,7 @@ impl NodeNetworkInterface {
 				log::error!("could not remove references from network");
 				continue;
 			}
-			self.network.nodes.remove(&node_id);
+			self.network.nodes.remove(&delete_node_id);
 			//node_graph.update_click_target(node_id, document_network, network_path.clone());
 		}
 		// Updates the selected nodes, and rerender the document
@@ -1355,11 +1376,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		if let NodeTypePersistentMetadata::Layer(layer_metadata) = &mut node_metadata.persistent_metadata.node_type_metadata {
-			layer_metadata.locked = locked;
-		} else {
-			log::error!("Cannot set non layer node to locked");
-		}
+		node_metadata.persistent_metadata.alias = alias;
 		//TODO: Recalculate transient metadata
 		node_metadata.transient_metadata.unload();
 	}
@@ -1587,7 +1604,7 @@ impl<'a> Iterator for FlowIter<'a> {
 	type Item = (&'a DocumentNode, NodeId);
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			let mut node_id = self.stack.pop()?;
+			let node_id = self.stack.pop()?;
 
 			// Special handling for iterating from ROOT_PARENT in load_structure`
 			// TODO: Delete this
@@ -1630,7 +1647,7 @@ impl InputConnector {
 }
 
 /// Represents an output connector
-#[derive(Debug, Clone, Default, Hash, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, Hash, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OutputConnector {
 	Node {node_id: NodeId, output_index: usize},
 	Import(usize),
@@ -1855,11 +1872,11 @@ impl NodeNetworkTransientMetadata {
 		};
 		let network = network_interface.network(use_document_network).expect("Could not get nested network when creating NetworkMetadata");
 
-		let mut encapsulating_path = network_path.clone();
+		let mut encapsulating_path = network_interface.network_path().clone();
 		// Import count is based on the number of inputs to the encapsulating node. If the current network is the document network, there is no import node
 		// TODO: Use length of import_types in NodeNetwork
 		encapsulating_path.pop().map(|encapsulating_node| {
-			let parent_node = document_network
+			let parent_node = network_interface.document_network()
 				.nested_network(&encapsulating_path)
 				.expect("Encapsulating path should always exist")
 				.nodes
@@ -1870,7 +1887,7 @@ impl NodeNetworkTransientMetadata {
 			let node_top_left = network.imports_metadata.1.as_dvec2() * 24.;
 
 			// Skip first row since the first row is reserved for the "Exports" name
-			let mut output_row_count = import_count + 1;
+			let output_row_count = import_count + 1;
 			let width = 5 * NodeNetworkMetadata::GRID_SIZE;
 			let height = output_row_count as u32 * NodeNetworkMetadata::GRID_SIZE;
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
@@ -1929,10 +1946,10 @@ pub struct DocumentNodeMetadata {
 
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DocumentNodePersistentMetadata {
+pub struct DocumentNodePersistentMetadata<'a> {
 	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties if no alias is set.
 	/// Used during serialization/deserialization to prevent storing implementation or inputs (and possible other fields) if they are the same as the definition.
-	pub reference: Option<&'static str>,
+	pub reference: Option<&'a str>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
 	#[serde(default)]
 	pub alias: String,
@@ -2073,8 +2090,8 @@ pub struct LayerTransientMetadata {
 	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node
 	/// This is necessary since calculating the layer width through web_sys is very slow
 	pub layer_width: u32,
+	// Should not be a performance concern to calculate when needed with get_chain_width.
 	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail to the end of the chain
-	/// Should not be a performance concern to calculate when needed with get_chain_width.
 	// chain_width: u32,
 }
 
@@ -2118,7 +2135,7 @@ impl DocumentNodeTransientMetadata {
 				}
 			}
 
-			let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &node.implementation {
+			let number_of_outputs = if let DocumentNodeImplementation::Network(network) = &document_node.implementation {
 				network.exports.len()
 			} else {
 				1
@@ -2142,12 +2159,12 @@ impl DocumentNodeTransientMetadata {
 		} else {
 			// Layer inputs
 			port_click_targets.insert_layer_input(0, node_top_left);
-			if node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
+			if document_node.inputs.iter().filter(|input| input.is_exposed()).count() > 1 {
 				port_click_targets.insert_layer_input(1, node_top_left);
 			}
 			port_click_targets.insert_layer_output(node_top_left);
 
-			let layer_width_cells = Self::layer_width_cells(node);
+			let layer_width_cells = Self::layer_width_cells(document_node);
 			let width = layer_width_cells * NodeNetworkMetadata::GRID_SIZE;
 			let height = 2 * NodeNetworkMetadata::GRID_SIZE;
 

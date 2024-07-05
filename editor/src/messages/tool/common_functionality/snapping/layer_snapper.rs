@@ -22,10 +22,10 @@ impl LayerSnapper {
 		if !document.snapping_state.target_enabled(target) {
 			return;
 		}
-		let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+		let Some(bounds) = document.network_interface.document_metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 			return;
 		};
-		let bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+		let bounds = document.network_interface.document_metadata().transform_to_document(layer) * Quad::from_box(bounds);
 		if bounds.0.iter().any(|point| !point.is_finite()) {
 			return;
 		}
@@ -46,21 +46,21 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		self.paths_to_snap.clear();
 
-		for layer in document.metadata.all_layers() {
+		for layer in document.network_interface.document_metadata().all_layers() {
 			if !document.network_interface.is_artboard(&layer.to_node()) {
 				continue;
 			}
 			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
 		}
 		for &layer in snap_data.get_candidates() {
-			let transform = document.metadata.transform_to_document(layer);
+			let transform = document.network_interface.document_metadata().transform_to_document(layer);
 			if !transform.is_finite() {
 				continue;
 			}
 
 			if document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Intersection)) || document.snapping_state.target_enabled(SnapTarget::Geometry(GeometrySnapTarget::Path))
 			{
-				for subpath in document.metadata.layer_outline(layer) {
+				for subpath in document.network_interface.document_metadata().layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
 						let start = subpath.manipulator_groups()[start_index].id.into();
@@ -168,15 +168,15 @@ impl LayerSnapper {
 		let document = snap_data.document;
 		self.points_to_snap.clear();
 
-		for layer in document.metadata.all_layers() {
+		for layer in document.network_interface.document_metadata().all_layers() {
 			if !document.network_interface.is_artboard(&layer.to_node()) {
 				continue;
 			}
 			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
-				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+				let Some(bounds) = document.network_interface.document_metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 					continue;
 				};
-				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+				let quad = document.network_interface.document_metadata().transform_to_document(layer) * Quad::from_box(bounds);
 				let values = BBoxSnapValues {
 					corner_source: SnapSource::Board(BoardSnapSource::Corner),
 					corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
@@ -193,10 +193,10 @@ impl LayerSnapper {
 			if snap_data.ignore_bounds(layer) {
 				continue;
 			}
-			let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+			let Some(bounds) = document.network_interface.document_metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 				continue;
 			};
-			let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+			let quad = document.network_interface.document_metadata().transform_to_document(layer) * Quad::from_box(bounds);
 			let values = BBoxSnapValues::BOUNDING_BOX;
 			get_bbox_points(quad, &mut self.points_to_snap, values, document);
 		}
@@ -432,17 +432,17 @@ pub fn are_manipulator_handles_colinear<Id: bezier_rs::Identifier>(group: &bezie
 pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, points: &mut Vec<SnapCandidatePoint>) {
 	let document = snap_data.document;
 
-	if document.network_interface.is_artboard(layer) {
+	if document.network_interface.is_artboard(&layer.to_node()) {
 		return;
 	}
 
-	if layer.has_children(document.metadata) {
-		for child in layer.descendants(document.metadata()) {
+	if layer.has_children(document.network_interface.document_metadata()) {
+		for child in layer.descendants(document.network_interface.document_metadata()) {
 			get_layer_snap_points(child, snap_data, points);
 		}
-	} else if document.metadata.layer_outline(layer).next().is_some() {
-		let to_document = document.metadata.transform_to_document(layer);
-		for subpath in document.metadata.layer_outline(layer) {
+	} else if document.network_interface.document_metadata().layer_outline(layer).next().is_some() {
+		let to_document = document.network_interface.document_metadata().transform_to_document(layer);
+		for subpath in document.network_interface.document_metadata().layer_outline(layer) {
 			subpath_anchor_snap_points(layer, subpath, snap_data, points, to_document);
 		}
 	}

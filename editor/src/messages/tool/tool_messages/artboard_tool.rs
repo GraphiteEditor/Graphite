@@ -123,17 +123,15 @@ impl ArtboardToolData {
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
 
-		let mut intersections = document
-			.click_xray(input.mouse.position)
-			.filter(|&layer| document.network_interface.is_artboard(&layer.to_node()));
+		let mut intersections = document.click_xray(input.mouse.position).filter(|&layer| document.network_interface.is_artboard(&layer.to_node()));
 
 		if let Some(intersection) = intersections.next() {
 			self.selected_artboard = Some(intersection);
 
-			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
+			if let Some(bounds) = document.network_interface.document_metadata().bounding_box_document(intersection) {
 				let bounding_box_manager = self.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 				bounding_box_manager.bounds = bounds;
-				bounding_box_manager.transform = document.metadata().document_to_viewport;
+				bounding_box_manager.transform = document.network_interface.document_metadata().document_to_viewport;
 			}
 
 			responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![intersection.to_node()] });
@@ -187,10 +185,13 @@ impl Fsm for ArtboardToolFsmState {
 
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays(mut overlay_context)) if state != ArtboardToolFsmState::Drawing => {
-				if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
+				if let Some(bounds) = tool_data
+					.selected_artboard
+					.and_then(|layer| document.network_interface.document_metadata().bounding_box_document(layer))
+				{
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 					bounding_box_manager.bounds = bounds;
-					bounding_box_manager.transform = document.metadata().document_to_viewport;
+					bounding_box_manager.transform = document.network_interface.document_metadata().document_to_viewport;
 
 					bounding_box_manager.render_overlays(&mut overlay_context);
 				} else {
@@ -267,7 +268,7 @@ impl Fsm for ArtboardToolFsmState {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
 
-				let root_transform = document.metadata().document_to_viewport.inverse();
+				let root_transform = document.network_interface.document_metadata().document_to_viewport.inverse();
 
 				let mut start = tool_data.drag_start;
 				let mut size = snapped_mouse_position - start;
@@ -397,7 +398,10 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Ready
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
-				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.network_interface.is_artboard(layer.to_node()));
+				tool_data.selected_artboard = document
+					.selected_nodes
+					.selected_layers(document.network_interface.document_metadata())
+					.find(|layer| document.network_interface.is_artboard(&layer.to_node()));
 				self
 			}
 			(_, ArtboardToolMessage::DeleteSelected) => {

@@ -480,7 +480,7 @@ impl<'a> DoubleEndedIterator for DescendantsIter<'a> {
 // =============
 
 #[derive(Debug, Clone, Copy, Default)]
-struct NodeRelations {
+pub struct NodeRelations {
 	parent: Option<LayerNodeIdentifier>,
 	previous_sibling: Option<LayerNodeIdentifier>,
 	next_sibling: Option<LayerNodeIdentifier>,

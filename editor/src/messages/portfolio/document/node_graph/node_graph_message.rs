@@ -1,5 +1,6 @@
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
-use crate::messages::portfolio::document::utility_types::network_interface::{Connector, InputConnector, OutputConnector};
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::{Connector, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 
 use graph_craft::document::value::TaggedValue;
@@ -10,7 +11,11 @@ use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 #[impl_message(Message, DocumentMessage, NodeGraph)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NodeGraphMessage {
-	// Messages
+	AddNodes {
+		nodes: HashMap<NodeId, NodeTemplate>,
+		new_ids: HashMap<NodeId, NodeId>,
+		use_document_network: bool,
+	},
 	Init,
 	SelectedNodesUpdated,
 	Copy,
@@ -72,7 +77,9 @@ pub enum NodeGraphMessage {
 		use_document_network: bool,
 	},
 	MoveLayerToStack {
-		layer: LayerN, parent, insert_index
+		layer: LayerNodeIdentifier,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
 	},
 	PasteNodes {
 		serialized_nodes: String,

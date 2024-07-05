@@ -206,7 +206,7 @@ impl Fsm for SplineToolFsmState {
 				responses.add(DocumentMessage::DeselectAllLayers);
 
 				let parent = document.new_layer_parent(true);
-				let transform = document.metadata().transform_to_viewport(parent);
+				let transform = document.network_interface.document_metadata().transform_to_viewport(parent);
 
 				let snapped_position = input.mouse.position;
 
@@ -237,7 +237,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				let snapped_position = input.mouse.position;
-				let transform = document.metadata().transform_to_viewport(layer);
+				let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 
 				if let Some(last_pos) = tool_data.points.last() {
@@ -256,7 +256,7 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 				let snapped_position = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-				let transform = document.metadata().transform_to_viewport(layer);
+				let transform = document.network_interface.document_metadata().transform_to_viewport(layer);
 				let pos = transform.inverse().transform_point2(snapped_position);
 				tool_data.next_point = pos;
 

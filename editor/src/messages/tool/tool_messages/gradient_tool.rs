@@ -109,10 +109,10 @@ enum GradientToolFsmState {
 
 /// Computes the transform from gradient space to viewport space (where gradient space is 0..1)
 fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> DAffine2 {
-	let bounds = document.metadata().nonzero_bounding_box(layer);
+	let bounds = document.network_interface.document_metadata().nonzero_bounding_box(layer);
 	let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
-	let multiplied = document.metadata().transform_to_viewport(layer);
+	let multiplied = document.network_interface.document_metadata().transform_to_viewport(layer);
 
 	multiplied * bound_transform
 }
@@ -249,7 +249,7 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
+				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
@@ -324,7 +324,7 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
+				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
 					let Some(mut gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -363,7 +363,7 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.selected_nodes.selected_visible_layers(document.metadata(), &document.network_interface) {
+				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
@@ -399,11 +399,11 @@ impl Fsm for GradientToolFsmState {
 					document.backup_nonmut(responses);
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input.mouse.position, &document.metadata);
+					let selected_layer = document.click(input.mouse.position, &document.network_interface.document_metadata());
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
-						if !document.selected_nodes.selected_layers_contains(layer, document.metadata()) {
+						if !document.selected_nodes.selected_layers_contains(layer, document.network_interface.document_metadata()) {
 							let nodes = vec![layer.to_node()];
 
 							responses.add(NodeGraphMessage::SelectedNodesSet { nodes });

@@ -3,6 +3,8 @@ use graph_craft::document::NodeId;
 
 use std::collections::HashMap;
 
+use super::network_interface::NodeTemplate;
+
 #[repr(u8)]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, PartialEq, Eq, Debug, specta::Type)]
 pub enum Clipboard {

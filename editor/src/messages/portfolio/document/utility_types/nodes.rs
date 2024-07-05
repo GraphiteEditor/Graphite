@@ -59,7 +59,7 @@ pub struct SelectedNodes(pub Vec<NodeId>);
 
 impl SelectedNodes {
 	pub fn layer_visible(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-		layer.ancestors(metadata).all(|layer| {
+		layer.ancestors(network_interface.document_metadata()).all(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
 				network_interface.is_visible(layer.to_node(), true)
 			} else {
@@ -72,10 +72,10 @@ impl SelectedNodes {
 		self.selected_layers(metadata).filter(move |&layer| self.layer_visible(layer, network_interface))
 	}
 
-	pub fn layer_locked(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata, network_interface: &'a NodeNetworkInterface) -> bool {
-		layer.ancestors(metadata).any(|layer| {
+	pub fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
+		layer.ancestors(network_interface.document_metadata()).any(|layer| {
 			if layer != LayerNodeIdentifier::ROOT_PARENT {
-				network_interface.is_locked(layer.to_node(), true)
+				network_interface.is_locked(&layer.to_node())
 			} else {
 				false
 			}
@@ -83,12 +83,12 @@ impl SelectedNodes {
 	}
 
 	pub fn selected_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata).filter(move |&layer| !self.layer_locked(layer, metadata, network_interface))
+		self.selected_layers(metadata).filter(move |&layer| !self.layer_locked(layer, network_interface))
 	}
 
-	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, metadata: &'a DocumentMetadata, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata)
-			.filter(move |&layer| self.layer_visible(layer, network_interface) && !self.layer_locked(layer, metadata, network_interface))
+	pub fn selected_visible_and_unlocked_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(network_interface.document_metadata())
+			.filter(move |&layer| self.layer_visible(layer, network_interface) && !self.layer_locked(layer, network_interface))
 	}
 
 	pub fn selected_layers<'a>(&'a self, metadata: &'a DocumentMetadata) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
@@ -96,7 +96,8 @@ impl SelectedNodes {
 	}
 
 	pub fn selected_layers_except_artboards<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata).filter(move |&layer| !network_interface.is_artboard(&layer.to_node()))
+		self.selected_layers(network_interface.document_metadata())
+			.filter(move |&layer| !network_interface.is_artboard(&layer.to_node()))
 	}
 
 	pub fn selected_layers_contains(&self, layer: LayerNodeIdentifier, metadata: &DocumentMetadata) -> bool {

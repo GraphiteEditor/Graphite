@@ -2,6 +2,7 @@ use super::tool_prelude::*;
 use crate::messages::portfolio::document::graph_operation::transform_utils::{get_current_normalized_pivot, get_current_transform};
 use crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 
 use graph_craft::document::value::TaggedValue;
@@ -259,19 +260,19 @@ impl BrushToolData {
 	fn load_existing_strokes(&mut self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
 		self.transform = DAffine2::IDENTITY;
 
-		if document.selected_nodes.selected_layers(document.metadata()).count() != 1 {
+		if document.selected_nodes.selected_layers(document.network_interface.document_metadata()).count() != 1 {
 			return None;
 		}
-		let Some(layer) = document.selected_nodes.selected_layers(document.metadata()).next() else {
+		let Some(layer) = document.selected_nodes.selected_layers(document.network_interface.document_metadata()).next() else {
 			return None;
 		};
 
 		self.layer = Some(layer);
-		for (node, node_id) in document
-			.network_interface
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], graph_craft::document::FlowType::HorizontalFlow)
-		{
-			if node.name == "Brush" && node_id != layer.to_node() {
+		for (node, node_id) in document.network_interface.upstream_flow_back_from_nodes(vec![layer.to_node()], FlowType::HorizontalFlow) {
+			let Some(reference) = document.network_interface.get_reference(&node_id) else {
+				continue;
+			};
+			if reference == "Brush" && node_id != layer.to_node() {
 				let points_input = node.inputs.get(2)?;
 				let NodeInput::Value {
 					tagged_value: TaggedValue::BrushStrokes(strokes),
@@ -283,8 +284,8 @@ impl BrushToolData {
 				self.strokes = strokes.clone();
 
 				return Some(layer);
-			} else if node.name == "Transform" {
-				let upstream = document.metadata().upstream_transform(node_id);
+			} else if reference == "Transform" {
+				let upstream = document.network_interface.document_metadata().upstream_transform(node_id);
 				let pivot = DAffine2::from_translation(upstream.transform_point2(get_current_normalized_pivot(&node.inputs)));
 				self.transform = pivot * get_current_transform(&node.inputs) * pivot.inverse() * self.transform;
 			}
@@ -321,11 +322,16 @@ impl Fsm for BrushToolFsmState {
 				let layer = loaded_layer.unwrap_or_else(|| new_brush_layer(document, responses));
 				tool_data.layer = Some(layer);
 
-				let parent = layer.parent(document.metadata()).unwrap_or_else(|| document.new_layer_parent(true));
-				let parent_transform = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
+				let parent = layer.parent(document.network_interface.document_metadata()).unwrap_or_else(|| document.new_layer_parent(true));
+				let parent_transform = document
+					.network_interface
+					.document_metadata()
+					.transform_to_viewport(parent)
+					.inverse()
+					.transform_point2(input.mouse.position);
 				let layer_position = tool_data.transform.inverse().transform_point2(parent_transform);
 
-				let layer_document_scale = document.metadata().transform_to_document(parent) * tool_data.transform;
+				let layer_document_scale = document.network_interface.document_metadata().transform_to_document(parent) * tool_data.transform;
 
 				// TODO: Also scale it based on the input image ('Background' parameter).
 				// TODO: Resizing the input image results in a different brush size from the chosen diameter.
@@ -359,8 +365,13 @@ impl Fsm for BrushToolFsmState {
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let parent = layer.parent(document.metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
-						let parent_position = document.metadata().transform_to_viewport(parent).inverse().transform_point2(input.mouse.position);
+						let parent = layer.parent(document.network_interface.document_metadata()).unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
+						let parent_position = document
+							.network_interface
+							.document_metadata()
+							.transform_to_viewport(parent)
+							.inverse()
+							.transform_point2(input.mouse.position);
 						let layer_position = tool_data.transform.inverse().transform_point2(parent_position);
 
 						stroke.trace.push(BrushInputSample { position: layer_position })
