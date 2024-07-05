@@ -155,11 +155,14 @@ impl Default for SvgRender {
 	}
 }
 
+#[derive(Default)]
 pub enum ImageRenderMode {
+	#[default]
 	Base64,
 }
 
 /// Static state used whilst rendering
+#[derive(Default)]
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
 	pub image_render_mode: ImageRenderMode,
@@ -402,7 +405,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push(self.alias.clone().unwrap_or_else(|| "Artboard".to_string()).into());
+					render.svg.push(self.label.to_string().into());
 				},
 			);
 		}
@@ -481,6 +484,7 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 		!self.artboards.is_empty()
 	}
 }
+
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);

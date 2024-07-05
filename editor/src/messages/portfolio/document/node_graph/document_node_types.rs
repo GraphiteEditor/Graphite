@@ -266,12 +266,12 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							name: "To Artboard".to_string(),
 							manual_composition: Some(concrete!(Footprint)),
 							inputs: vec![
-								NodeInput::network(concrete!(graphene_core::GraphicGroup), 1),
+								NodeInput::network(concrete!(TaggedValue), 1),
+								NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
 								NodeInput::network(concrete!(TaggedValue), 2),
 								NodeInput::network(concrete!(TaggedValue), 3),
 								NodeInput::network(concrete!(TaggedValue), 4),
 								NodeInput::network(concrete!(TaggedValue), 5),
-								NodeInput::network(concrete!(TaggedValue), 6),
 							],
 							implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"),
 							metadata: DocumentNodeMetadata { position: glam::IVec2::new(-10, -3) }, // To Artboard
@@ -310,12 +310,11 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			}),
 			inputs: vec![
 				DocumentInputType::value("Artboards", TaggedValue::ArtboardGroup(ArtboardGroup::EMPTY), true),
-				DocumentInputType::value("Over", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
+				DocumentInputType::value("Contents", TaggedValue::GraphicGroup(GraphicGroup::EMPTY), true),
 				DocumentInputType::value("Location", TaggedValue::IVec2(glam::IVec2::ZERO), false),
 				DocumentInputType::value("Dimensions", TaggedValue::IVec2(glam::IVec2::new(1920, 1080)), false),
 				DocumentInputType::value("Background", TaggedValue::Color(Color::WHITE), false),
 				DocumentInputType::value("Clip", TaggedValue::Bool(false), false),
-				DocumentInputType::value("Alias", TaggedValue::NodeAlias(String::new()), false),
 			],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::Artboard)],
 			properties: node_properties::artboard_properties,
@@ -478,6 +477,70 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					default: NodeInput::network(concrete!(WasmEditorApi), 0),
 				},
 			],
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Rasterize",
+			category: "Raster",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(2), 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 2)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Rasterize".to_string(),
+						inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Artwork",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::VectorData(VectorData::default()), true),
+				},
+				DocumentInputType {
+					name: "Footprint",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(
+						TaggedValue::Footprint(Footprint {
+							transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
+							resolution: UVec2::new(100, 100),
+							..Default::default()
+						}),
+						false,
+					),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
+				},
+			],
+			properties: node_properties::rasterize_properties,
 			outputs: vec![DocumentOutputType {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
@@ -721,7 +784,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Mask",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::raster::MaskImageNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -734,7 +797,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Insert Channel",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::raster::InsertChannelNode<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -748,7 +811,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Combine Channels",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::raster::CombineChannelsNode"),
 			inputs: vec![
 				DocumentInputType::value("None", TaggedValue::None, false),
@@ -766,7 +829,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Blend",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendNode<_, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -780,7 +843,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Levels",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::LevelsNode<_, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType {
@@ -820,7 +883,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Black & White",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlackAndWhiteNode<_, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType {
@@ -870,7 +933,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Color Channel",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
 			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::default()), false)],
 			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
@@ -888,7 +951,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Luminance",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -900,7 +963,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Extract Channel",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -912,7 +975,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Extract Opaque",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractOpaqueNode<>"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -920,7 +983,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Split Channels",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![
 					NodeInput::node(NodeId(0), 0),
@@ -1585,7 +1648,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			name: "GpuImage",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::executor::MapGpuSingleImageNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1606,7 +1669,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			name: "Blend (GPU)",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::executor::BlendGpuImageNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1700,7 +1763,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Invert RGB",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::InvertRGBNode"),
 			inputs: vec![DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true)],
 			outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
@@ -1708,7 +1771,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Hue/Saturation",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::HueSaturationNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1722,7 +1785,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Brightness/Contrast",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::BrightnessContrastNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1736,7 +1799,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Curves",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1748,7 +1811,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Threshold",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ThresholdNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1762,7 +1825,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Vibrance",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::VibranceNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1774,7 +1837,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Channel Mixer",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ChannelMixerNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1809,7 +1872,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Selective Color",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto(
 				"graphene_core::raster::SelectiveColorNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>",
 			),
@@ -1871,7 +1934,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Opacity",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1883,7 +1946,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Blend Mode",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::BlendModeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1895,7 +1958,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Posterize",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::PosterizeNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -1907,7 +1970,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Exposure",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExposureNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -2290,7 +2353,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
-			name: "Path Modify",
+			name: "Path",
 			category: "Vector",
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -2676,7 +2739,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
 		DocumentNodeDefinition {
 			name: "Image Segmentation",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::image_segmentation::ImageSegmentationNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -2687,7 +2750,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Index",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::IndexNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Segmentation", TaggedValue::Segments(vec![ImageFrame::empty()]), true),
@@ -2700,7 +2763,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// Applies the given color to each pixel of an image but maintains the alpha value
 		DocumentNodeDefinition {
 			name: "Color Fill",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::ColorFillNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -2712,7 +2775,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Color Overlay",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::adjustments::ColorOverlayNode<_, _, _>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
@@ -2726,7 +2789,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		DocumentNodeDefinition {
 			name: "Image Color Palette",
-			category: "Image Adjustments",
+			category: "Raster",
 			implementation: DocumentNodeImplementation::proto("graphene_std::image_color_palette::ImageColorPaletteNode<_>"),
 			inputs: vec![
 				DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),

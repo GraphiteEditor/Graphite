@@ -5,14 +5,14 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
-use graphene_core::vector::VectorModificationType;
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
 use graphene_core::vector::ManipulatorPointId;
+use graphene_core::vector::VectorModificationType;
+use graphene_std::vector::{HandleId, PointId};
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::{HandleId, PointId};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -76,7 +76,10 @@ impl OriginalTransforms {
 					let Some(vector_data) = document_metadata.compute_modified_vector(layer, document_network) else {
 						continue;
 					};
-					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else { continue };
+					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {
+						continue;
+					};
+
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
 					let anchors = anchor_ids.filter_map(|id| vector_data.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
@@ -92,8 +95,9 @@ impl OriginalTransforms {
 							let anchor = id.to_manipulator_point().get_anchor(&vector_data)?;
 							let initial = id.to_manipulator_point().get_position(&vector_data)?;
 							let relative = vector_data.point_domain.position_from_id(anchor)?;
-							let other_handle = id.to_manipulator_point().get_handle_pair(&vector_data).map(|[_, other]| other);
-							let other_handle = other_handle.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
+							let other_handle = vector_data
+								.other_colinear_handle(id)
+								.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
 							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector_data)?)));
 
 							Some((id, HandlePoint { initial, relative, anchor, mirror }))
@@ -421,11 +425,13 @@ impl<'a> Selected<'a> {
 			let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
+
 		for (&id, handle) in initial_points.handles.iter() {
 			let new_pos_viewport = layerspace_rotation.transform_point2(viewspace.transform_point2(handle.initial));
 			let relative = initial_points.anchors.get(&handle.anchor).map_or(handle.relative, |anchor| anchor.current);
 			let modification_type = id.set_relative_position(new_pos_viewport - relative);
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
 			if let Some((id, initial)) = handle.mirror {
 				let direction = viewspace.transform_vector2(new_pos_viewport - relative).try_normalize();
 				let length = viewspace.transform_vector2(initial - relative).length();
@@ -480,9 +486,11 @@ impl<'a> Selected<'a> {
 							let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
 							self.responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
+
 						for (&point, &handle) in &points.handles {
 							let modification_type = point.set_relative_position(handle.initial - handle.relative);
 							self.responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
 							if let Some((id, initial)) = handle.mirror {
 								let modification_type = id.set_relative_position(initial - handle.relative);
 								self.responses.add(GraphOperationMessage::Vector { layer, modification_type });

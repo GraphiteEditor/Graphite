@@ -8,9 +8,11 @@ use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use glam::{IVec2, Vec2Swizzles};
+
 use graph_craft::document::NodeId;
 use graphene_core::renderer::Quad;
+
+use glam::{IVec2, Vec2Swizzles};
 
 #[derive(Default)]
 pub struct ArtboardTool {
@@ -361,11 +363,11 @@ impl Fsm for ArtboardToolFsmState {
 						id,
 						artboard: graphene_core::Artboard {
 							graphic_group: graphene_core::GraphicGroup::EMPTY,
+							label: String::from("Artboard"),
 							location: start.round().as_ivec2(),
 							dimensions: IVec2::splat(1),
 							background: graphene_core::Color::WHITE,
 							clip: false,
-							alias: None,
 						},
 					})
 				}

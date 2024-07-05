@@ -1,7 +1,8 @@
 use bezier_rs::Subpath;
-use glam::{DAffine2, DVec2};
 use graph_craft::document::{value::TaggedValue, NodeInput};
 use graphene_core::vector::PointId;
+
+use glam::{DAffine2, DVec2};
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
 pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64, DVec2, DVec2) {
@@ -38,7 +39,6 @@ pub fn update_transform(inputs: &mut [NodeInput], transform: DAffine2) {
 	inputs[4] = NodeInput::value(TaggedValue::DVec2(shear), false);
 }
 
-#[cfg(test)]
 // TODO: This should be extracted from the graph at the location of the transform node.
 pub struct LayerBounds {
 	pub bounds: [DVec2; 2],
@@ -46,13 +46,12 @@ pub struct LayerBounds {
 	pub layer_transform: DAffine2,
 }
 
-#[cfg(test)]
-use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-
-#[cfg(test)]
 impl LayerBounds {
 	/// Extract the layer bounds and their transform for a layer.
-	pub fn new(metadata: &DocumentMetadata, layer: LayerNodeIdentifier) -> Self {
+	pub fn new(
+		metadata: &crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata,
+		layer: crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier,
+	) -> Self {
 		Self {
 			bounds: metadata.nonzero_bounding_box(layer),
 			bounds_transform: DAffine2::IDENTITY,

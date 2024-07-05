@@ -1,9 +1,9 @@
+use super::HandleId;
+
 use dyn_any::{DynAny, StaticType};
 
 use glam::{DAffine2, DVec2};
 use std::collections::HashMap;
-
-use super::HandleId;
 
 /// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
@@ -283,12 +283,12 @@ impl SegmentDomain {
 		}
 	}
 
-	/// Enumerate all segments that start a the point.
+	/// Enumerate all segments that start at the point.
 	pub fn start_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
 		self.start_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
 	}
 
-	/// Enumerate all segments that end a the point.
+	/// Enumerate all segments that end at the point.
 	pub fn end_connected(&self, point: PointId) -> impl Iterator<Item = SegmentId> + '_ {
 		self.end_point.iter().zip(&self.ids).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
 	}
@@ -365,9 +365,11 @@ impl RegionDomain {
 	pub fn ids(&self) -> &[RegionId] {
 		&self.ids
 	}
+
 	pub fn segment_range(&self) -> &[core::ops::RangeInclusive<SegmentId>] {
 		&self.segment_range
 	}
+
 	pub fn fill(&self) -> &[FillId] {
 		&self.fill
 	}

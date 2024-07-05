@@ -13,8 +13,7 @@ use graphene_core::text::Font;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
 use graphene_core::vector::{PointId, VectorModificationType};
-use graphene_core::Type;
-use graphene_core::{Artboard, Color};
+use graphene_core::{Artboard, Color, Type};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
@@ -661,13 +660,13 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {
-		self.modify_inputs("Path Modify", false, |inputs, _node_id, _metadata| {
+		self.modify_inputs("Path", false, |inputs, _node_id, _metadata| {
 			let [_, NodeInput::Value {
 				tagged_value: TaggedValue::VectorModification(modification),
 				..
 			}] = inputs.as_mut_slice()
 			else {
-				panic!("Path Modify does not have modification input");
+				panic!("Path node does not have modification input");
 			};
 
 			modification.modify(&modification_type);

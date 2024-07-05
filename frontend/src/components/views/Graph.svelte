@@ -507,7 +507,7 @@
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
 					action={() => {
-						/*Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown*/
+						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
 					tooltip={node.visible ? "Visible" : "Hidden"}
 				/>
@@ -658,7 +658,8 @@
 	</div>
 </div>
 
-<!-- Box select widget -->
+<!-- Box selection widget -->
+<!-- TODO: Make its initial corner stay put (in graph space) when panning around -->
 {#if $nodeGraph.box}
 	<div
 		class="box-selection"

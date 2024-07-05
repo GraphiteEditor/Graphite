@@ -1,7 +1,9 @@
 use super::*;
 use crate::Node;
+
 use bezier_rs::BezierHandles;
 use dyn_any::{DynAny, StaticType};
+
 use std::collections::{HashMap, HashSet};
 
 /// Represents a procedural change to the [`PointDomain`] in [`VectorData`].
@@ -10,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 pub struct PointModification {
 	add: Vec<PointId>,
 	remove: HashSet<PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	delta: HashMap<PointId, DVec2>,
 }
 
@@ -18,13 +21,15 @@ impl PointModification {
 	pub fn apply(&self, point_domain: &mut PointDomain, segment_domain: &mut SegmentDomain) {
 		point_domain.retain(|id| !self.remove.contains(id));
 
-		for (id, pos) in point_domain.positions_mut() {
+		for (id, position) in point_domain.positions_mut() {
 			let Some(&delta) = self.delta.get(&id) else { continue };
 			if !delta.is_finite() {
-				warn!("invalid delta");
+				warn!("Invalid delta when applying a point modification");
 				continue;
 			}
-			*pos += delta;
+
+			*position += delta;
+
 			for (_, handles, start, end) in segment_domain.handles_mut() {
 				if start == id {
 					handles.move_start(delta);
@@ -38,9 +43,10 @@ impl PointModification {
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
 			if !position.is_finite() {
-				warn!("invalid position");
+				warn!("Invalid position when applying a point modification");
 				continue;
 			}
+
 			point_domain.push(add_id, position);
 		}
 	}
@@ -54,9 +60,9 @@ impl PointModification {
 		}
 	}
 
-	fn push(&mut self, id: PointId, pos: DVec2) {
+	fn push(&mut self, id: PointId, position: DVec2) {
 		self.add.push(id);
-		self.delta.insert(id, pos);
+		self.delta.insert(id, position);
 	}
 
 	fn remove(&mut self, id: PointId) {
@@ -72,10 +78,15 @@ impl PointModification {
 pub struct SegmentModification {
 	add: Vec<SegmentId>,
 	remove: HashSet<SegmentId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	start_point: HashMap<SegmentId, PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	end_point: HashMap<SegmentId, PointId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	handle_primary: HashMap<SegmentId, Option<DVec2>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	handle_end: HashMap<SegmentId, Option<DVec2>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	stroke: HashMap<SegmentId, StrokeId>,
 }
 
@@ -87,36 +98,41 @@ impl SegmentModification {
 		for (id, point) in segment_domain.start_point_mut() {
 			let Some(&new) = self.start_point.get(&id) else { continue };
 			if !point_domain.ids().contains(&new) {
-				warn!("invalid start id");
+				warn!("Invalid start ID when applying a segment modification");
 				continue;
 			}
+
 			*point = new;
 		}
+
 		for (id, point) in segment_domain.end_point_mut() {
 			let Some(&new) = self.end_point.get(&id) else { continue };
 			if !point_domain.ids().contains(&new) {
-				warn!("invalid end id");
+				warn!("Invalid end ID when applying a segment modification");
 				continue;
 			}
+
 			*point = new;
 		}
+
 		for (id, handles, start, end) in segment_domain.handles_mut() {
 			let Some(start) = point_domain.position_from_id(start) else { continue };
 			let Some(end) = point_domain.position_from_id(end) else { continue };
-			// Compute the acutal start and end position based on the offset from the anchor
+
+			// Compute the actual start and end position based on the offset from the anchor
 			let start = self.handle_primary.get(&id).copied().map(|handle| handle.map(|handle| handle + start));
 			let end = self.handle_end.get(&id).copied().map(|handle| handle.map(|handle| handle + end));
 
 			if !start.unwrap_or_default().map_or(true, |start| start.is_finite()) || !end.unwrap_or_default().map_or(true, |end| end.is_finite()) {
-				warn!("invalid handles");
+				warn!("Invalid handles when applying a segment modification");
 				continue;
 			}
+
 			match (start, end) {
 				// The new handles are fully specified by the modification
 				(Some(Some(handle_start)), Some(Some(handle_end))) => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				(Some(Some(handle)), Some(None)) | (Some(None), Some(Some(handle))) => *handles = BezierHandles::Quadratic { handle },
 				(Some(None), Some(None)) => *handles = BezierHandles::Linear,
-
 				// Remove the end handle
 				(None, Some(None)) => {
 					if let BezierHandles::Cubic { handle_start, .. } = *handles {
@@ -129,7 +145,6 @@ impl SegmentModification {
 					BezierHandles::Quadratic { handle: handle_start } => *handles = BezierHandles::Cubic { handle_start, handle_end },
 					BezierHandles::Cubic { handle_start, .. } => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				},
-
 				// Remove the start handle
 				(Some(None), None) => *handles = BezierHandles::Linear,
 				// Change the start handle
@@ -138,11 +153,11 @@ impl SegmentModification {
 					BezierHandles::Quadratic { .. } => *handles = BezierHandles::Quadratic { handle: handle_start },
 					BezierHandles::Cubic { handle_end, .. } => *handles = BezierHandles::Cubic { handle_start, handle_end },
 				},
-
 				// No change
 				(None, None) => {}
 			};
 		}
+
 		for (id, stroke) in segment_domain.stroke_mut() {
 			let Some(&new) = self.stroke.get(&id) else { continue };
 			*stroke = new;
@@ -154,6 +169,7 @@ impl SegmentModification {
 			let Some(&handle_start) = self.handle_primary.get(&add_id) else { continue };
 			let Some(&handle_end) = self.handle_end.get(&add_id) else { continue };
 			let Some(&stroke) = self.stroke.get(&add_id) else { continue };
+
 			if !point_domain.ids().contains(&start) {
 				warn!("invalid start id");
 				continue;
@@ -162,17 +178,23 @@ impl SegmentModification {
 				warn!("invalid end id");
 				continue;
 			}
+
 			let Some(start_position) = point_domain.position_from_id(start) else { continue };
 			let Some(end_position) = point_domain.position_from_id(end) else { continue };
-			let handles = match (handle_start.map(|handle| handle + start_position), handle_end.map(|handle| handle + end_position)) {
-				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic { handle_start, handle_end },
-				(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle },
+			let handles = match (handle_start, handle_end) {
+				(Some(handle_start), Some(handle_end)) => BezierHandles::Cubic {
+					handle_start: handle_start + start_position,
+					handle_end: handle_end + end_position,
+				},
+				(Some(handle), None) | (None, Some(handle)) => BezierHandles::Quadratic { handle: handle + start_position },
 				(None, None) => BezierHandles::Linear,
 			};
+
 			if !handles.is_finite() {
 				warn!("invalid handles");
 				continue;
 			}
+
 			segment_domain.push(add_id, start, end, handles, stroke);
 		}
 	}
@@ -191,6 +213,7 @@ impl SegmentModification {
 	}
 
 	fn push(&mut self, id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2], stroke: StrokeId) {
+		self.remove.remove(&id);
 		self.add.push(id);
 		self.start_point.insert(id, points[0]);
 		self.end_point.insert(id, points[1]);
@@ -216,7 +239,9 @@ impl SegmentModification {
 pub struct RegionModification {
 	add: Vec<RegionId>,
 	remove: HashSet<RegionId>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	segment_range: HashMap<RegionId, core::ops::RangeInclusive<SegmentId>>,
+	#[serde(serialize_with = "serialize_hashmap", deserialize_with = "deserialize_hashmap")]
 	fill: HashMap<RegionId, FillId>,
 }
 
@@ -229,6 +254,7 @@ impl RegionModification {
 			let Some(new) = self.segment_range.get(&id) else { continue };
 			*segment_range = new.clone(); // Range inclusive is not copy
 		}
+
 		for (id, fill) in region_domain.fill_mut() {
 			let Some(&new) = self.fill.get(&id) else { continue };
 			*fill = new;
@@ -259,20 +285,20 @@ pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
 	regions: RegionModification,
-	add_g1_continous: HashSet<[HandleId; 2]>,
-	remove_g1_continous: HashSet<[HandleId; 2]>,
+	add_g1_continuous: HashSet<[HandleId; 2]>,
+	remove_g1_continuous: HashSet<[HandleId; 2]>,
 }
 
 /// A modification type that can be added to a [`VectorModification`].
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VectorModificationType {
 	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
-	InsertPoint { id: PointId, pos: DVec2 },
+	InsertPoint { id: PointId, position: DVec2 },
 
 	RemoveSegment { id: SegmentId },
 	RemovePoint { id: PointId },
 
-	SetG1Continous { handles: [HandleId; 2], enabled: bool },
+	SetG1Continuous { handles: [HandleId; 2], enabled: bool },
 	SetHandles { segment: SegmentId, handles: [Option<DVec2>; 2] },
 	SetPrimaryHandle { segment: SegmentId, relative_position: DVec2 },
 	SetEndHandle { segment: SegmentId, relative_position: DVec2 },
@@ -290,11 +316,14 @@ impl VectorModification {
 		self.points.apply(&mut vector_data.point_domain, &mut vector_data.segment_domain);
 		self.segments.apply(&mut vector_data.segment_domain, &vector_data.point_domain);
 		self.regions.apply(&mut vector_data.region_domain);
+
+		let valid = |val: &[HandleId; 2]| vector_data.segment_domain.ids().contains(&val[0].segment) && vector_data.segment_domain.ids().contains(&val[1].segment);
 		vector_data
 			.colinear_manipulators
-			.retain(|val| !self.remove_g1_continous.contains(val) && !self.remove_g1_continous.contains(&[val[1], val[0]]));
-		for handles in &self.add_g1_continous {
-			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) {
+			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
+
+		for handles in &self.add_g1_continuous {
+			if !vector_data.colinear_manipulators.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
 				vector_data.colinear_manipulators.push(*handles);
 			}
 		}
@@ -304,35 +333,35 @@ impl VectorModification {
 	pub fn modify(&mut self, vector_data_modification: &VectorModificationType) {
 		match vector_data_modification {
 			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles, StrokeId::ZERO),
-			VectorModificationType::InsertPoint { id, pos } => self.points.push(*id, *pos),
+			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
 
 			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
 			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
 
-			VectorModificationType::SetG1Continous { handles, enabled } => {
+			VectorModificationType::SetG1Continuous { handles, enabled } => {
 				if *enabled {
-					if !self.add_g1_continous.contains(&[handles[1], handles[0]]) {
-						self.add_g1_continous.insert(*handles);
+					if !self.add_g1_continuous.contains(&[handles[1], handles[0]]) {
+						self.add_g1_continuous.insert(*handles);
 					}
-					self.remove_g1_continous.remove(handles);
-					self.remove_g1_continous.remove(&[handles[1], handles[0]]);
+					self.remove_g1_continuous.remove(handles);
+					self.remove_g1_continuous.remove(&[handles[1], handles[0]]);
 				} else {
-					if !self.remove_g1_continous.contains(&[handles[1], handles[0]]) {
-						self.remove_g1_continous.insert(*handles);
+					if !self.remove_g1_continuous.contains(&[handles[1], handles[0]]) {
+						self.remove_g1_continuous.insert(*handles);
 					}
-					self.add_g1_continous.remove(handles);
-					self.add_g1_continous.remove(&[handles[1], handles[0]]);
+					self.add_g1_continuous.remove(handles);
+					self.add_g1_continuous.remove(&[handles[1], handles[0]]);
 				}
 			}
 			VectorModificationType::SetHandles { segment, handles } => {
 				self.segments.handle_primary.insert(*segment, handles[0]);
 				self.segments.handle_end.insert(*segment, handles[1]);
 			}
-			VectorModificationType::SetPrimaryHandle { segment, relative_position: pos } => {
-				self.segments.handle_primary.insert(*segment, Some(*pos));
+			VectorModificationType::SetPrimaryHandle { segment, relative_position } => {
+				self.segments.handle_primary.insert(*segment, Some(*relative_position));
 			}
-			VectorModificationType::SetEndHandle { segment, relative_position: pos } => {
-				self.segments.handle_end.insert(*segment, Some(*pos));
+			VectorModificationType::SetEndHandle { segment, relative_position } => {
+				self.segments.handle_end.insert(*segment, Some(*relative_position));
 			}
 			VectorModificationType::SetStartPoint { segment, id } => {
 				self.segments.start_point.insert(*segment, *id);
@@ -345,12 +374,12 @@ impl VectorModification {
 				*self.points.delta.entry(*point).or_default() += *delta;
 			}
 			VectorModificationType::ApplyPrimaryDelta { segment, delta } => {
-				let pos = self.segments.handle_primary.entry(*segment).or_default();
-				*pos = Some(pos.unwrap_or_default() + *delta);
+				let position = self.segments.handle_primary.entry(*segment).or_default();
+				*position = Some(position.unwrap_or_default() + *delta);
 			}
 			VectorModificationType::ApplyEndDelta { segment, delta } => {
-				let pos = self.segments.handle_end.entry(*segment).or_default();
-				*pos = Some(pos.unwrap_or_default() + *delta);
+				let position = self.segments.handle_end.entry(*segment).or_default();
+				*position = Some(position.unwrap_or_default() + *delta);
 			}
 		}
 	}
@@ -361,8 +390,8 @@ impl VectorModification {
 			points: PointModification::create_from_vector(vector_data),
 			segments: SegmentModification::create_from_vector(vector_data),
 			regions: RegionModification::create_from_vector(vector_data),
-			add_g1_continous: vector_data.colinear_manipulators.iter().copied().collect(),
-			remove_g1_continous: HashSet::new(),
+			add_g1_continuous: vector_data.colinear_manipulators.iter().copied().collect(),
+			remove_g1_continuous: HashSet::new(),
 		}
 	}
 }
@@ -428,7 +457,9 @@ fn modify_existing() {
 
 	let mut new = VectorData::empty();
 	modify_new.apply(&mut new);
+
 	modify_original.apply(&mut vector_data);
+
 	assert_eq!(vector_data, new);
 	assert_eq!(vector_data.point_domain.positions()[0], DVec2::X);
 	assert_eq!(vector_data.point_domain.positions()[9], DVec2::new(11., 0.));
@@ -440,4 +471,60 @@ fn modify_existing() {
 		vector_data.segment_bezier_iter().nth(9).unwrap().1,
 		Bezier::from_quadratic_dvec2(DVec2::new(11., 0.), DVec2::new(16., 10.), DVec2::new(20., 0.))
 	);
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+use serde::de::{SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use std::hash::Hash;
+fn serialize_hashmap<K, V, S>(hashmap: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	K: Serialize + Eq + Hash,
+	V: Serialize,
+	S: Serializer,
+{
+	let mut seq = serializer.serialize_seq(Some(hashmap.len()))?;
+	for (key, value) in hashmap {
+		seq.serialize_element(&(key, value))?;
+	}
+	seq.end()
+}
+
+fn deserialize_hashmap<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
+where
+	K: Deserialize<'de> + Eq + Hash,
+	V: Deserialize<'de>,
+	D: Deserializer<'de>,
+{
+	struct HashMapVisitor<K, V> {
+		marker: std::marker::PhantomData<fn() -> HashMap<K, V>>,
+	}
+
+	impl<'de, K, V> Visitor<'de> for HashMapVisitor<K, V>
+	where
+		K: Deserialize<'de> + Eq + Hash,
+		V: Deserialize<'de>,
+	{
+		type Value = HashMap<K, V>;
+
+		fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+			formatter.write_str("a sequence of tuples")
+		}
+
+		fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+		where
+			A: SeqAccess<'de>,
+		{
+			let mut hashmap = HashMap::new();
+			while let Some((key, value)) = seq.next_element()? {
+				hashmap.insert(key, value);
+			}
+			Ok(hashmap)
+		}
+	}
+
+	let visitor = HashMapVisitor { marker: std::marker::PhantomData };
+	deserializer.deserialize_seq(visitor)
 }

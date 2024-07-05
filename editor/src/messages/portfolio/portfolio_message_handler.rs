@@ -23,7 +23,7 @@ pub struct PortfolioMessageData<'a> {
 #[derive(Debug, Default)]
 pub struct PortfolioMessageHandler {
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub(crate) documents: HashMap<DocumentId, DocumentMessageHandler>,
+	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: Vec<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
 	copy_buffer: [Vec<CopyBufferEntry>; INTERNAL_CLIPBOARD_COUNT as usize],
@@ -375,6 +375,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_saved,
 				document_serialized_content,
 			} => {
+				// TODO: Eventually remove this (probably starting late 2024)
+				let do_not_upgrade = document_name.contains("__DO_NOT_UPGRADE__");
+				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
+				if document_serialized_content.contains("ManipulatorGroupIds") && !do_not_upgrade {
+					responses.add(FrontendMessage::TriggerUpgradeDocumentToVectorManipulationFormat {
+						document_id,
+						document_name,
+						document_is_auto_saved,
+						document_is_saved,
+						document_serialized_content,
+					});
+					return;
+				}
+
 				let document = DocumentMessageHandler::with_name_and_content(document_name, document_serialized_content);
 				match document {
 					Ok(mut document) => {
@@ -657,9 +671,7 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		println!("Poll eval");
 		let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
-			println!("No active doc");
 			return Err("No active document".to_string());
 		};
 

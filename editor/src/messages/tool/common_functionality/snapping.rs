@@ -1,17 +1,20 @@
 mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
+pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
+
 use crate::consts::COLOR_OVERLAY_BLUE;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
+
 use bezier_rs::{Subpath, TValue};
-use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
 use graphene_core::vector::PointId;
+
+use glam::{DAffine2, DVec2};
 use std::cmp::Ordering;
-pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
 
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
@@ -61,7 +64,7 @@ impl SnapConstraint {
 	}
 }
 pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
-	document.snapping_state.tolerance / document.navigation.zoom
+	document.snapping_state.tolerance / document.document_ptz.zoom
 }
 
 fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {

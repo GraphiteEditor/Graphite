@@ -1240,7 +1240,7 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 	if is_layer_fed_by_node_of_name(layer, document_network, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, document_network, "Path Modify") {
+	} else if is_layer_fed_by_node_of_name(layer, document_network, "Path") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

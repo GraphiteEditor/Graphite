@@ -30,6 +30,7 @@ js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 ron = { workspace = true, optional = true }
 bezier-rs = { workspace = true }
+glam = { workspace = true }
 # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 wgpu = { workspace = true, features = ["fragile-send-sync-non-atomic-wasm"] }
 meval = "0.2.0"

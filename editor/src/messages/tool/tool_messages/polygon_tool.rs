@@ -7,6 +7,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
+
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::Color;
@@ -285,7 +286,7 @@ impl Fsm for PolygonToolFsmState {
 			(PolygonToolFsmState::Drawing, PolygonToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = tool_data.data.layer {
-						// todo: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
+						// TODO: make the scale impact the polygon/star node - we need to determine how to allow the polygon node to make irregular shapes
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),

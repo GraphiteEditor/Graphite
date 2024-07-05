@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::color_selector::{ToolColorOptio
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::SnapData;
+
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::Color;
@@ -232,7 +233,7 @@ impl Fsm for RectangleToolFsmState {
 			(RectangleToolFsmState::Drawing, RectangleToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some([start, end]) = shape_data.calculate_points(document, input, center, lock_ratio) {
 					if let Some(layer) = shape_data.layer {
-						// todo: make the scale impact the rect node
+						// TODO: make the scale impact the rect node
 						responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(end - start, 0., (start + end) / 2.),

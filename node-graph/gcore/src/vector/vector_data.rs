@@ -1,16 +1,15 @@
 mod attributes;
 mod modification;
-
-use core::borrow::Borrow;
+pub use attributes::*;
+pub use modification::*;
 
 use super::style::{PathStyle, Stroke};
 use crate::{AlphaBlending, Color};
-pub use attributes::*;
-pub use modification::*;
 
 use bezier_rs::ManipulatorGroup;
 use dyn_any::{DynAny, StaticType};
 
+use core::borrow::Borrow;
 use glam::{DAffine2, DVec2};
 
 /// [VectorData] is passed between nodes.
@@ -184,6 +183,16 @@ impl VectorData {
 			}
 			ManipulatorPointId::PrimaryHandle(segment) => has_handle(HandleId::primary(segment)),
 			ManipulatorPointId::EndHandle(segment) => has_handle(HandleId::end(segment)),
+		}
+	}
+
+	pub fn other_colinear_handle(&self, handle: HandleId) -> Option<HandleId> {
+		let pair = self.colinear_manipulators.iter().find(|pair| pair.iter().any(|&val| val == handle))?;
+		let other = pair.iter().copied().find(|&val| val != handle)?;
+		if handle.to_manipulator_point().get_anchor(self) == other.to_manipulator_point().get_anchor(self) {
+			Some(other)
+		} else {
+			None
 		}
 	}
 }

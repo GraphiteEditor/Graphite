@@ -5,7 +5,7 @@ use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{ProtoNodeIdentifier, Type};
 
-use glam::{DAffine2, IVec2};
+use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -66,6 +66,58 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	Ok(s)
 }
 
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum NodeInputVersions {
+	OldNodeInput(OldNodeInput),
+	NodeInput(NodeInput),
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+#[derive(Debug, serde::Deserialize)]
+pub enum OldNodeInput {
+	/// A reference to another node in the same network from which this node can receive its input.
+	Node { node_id: NodeId, output_index: usize, lambda: bool },
+
+	/// A hardcoded value that can't change after the graph is compiled. Gets converted into a value node during graph compilation.
+	Value { tagged_value: TaggedValue, exposed: bool },
+
+	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
+	Network(Type),
+
+	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
+	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
+	Inline(InlineRust),
+}
+
+// TODO: Eventually remove this (probably starting late 2024)
+use serde::Deserialize;
+fn deserialize_inputs<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
+
+	let inputs = input_versions
+		.into_iter()
+		.map(|old_input| {
+			let old_input = match old_input {
+				NodeInputVersions::OldNodeInput(old_input) => old_input,
+				NodeInputVersions::NodeInput(node_input) => return node_input,
+			};
+			match old_input {
+				OldNodeInput::Node { node_id, output_index, .. } => NodeInput::node(node_id, output_index),
+				OldNodeInput::Value { tagged_value, exposed } => NodeInput::value(tagged_value, exposed),
+				OldNodeInput::Network(network_type) => NodeInput::network(network_type, 0),
+				OldNodeInput::Inline(inline) => NodeInput::Inline(inline),
+			}
+		})
+		.collect();
+
+	Ok(inputs)
+}
+
 /// An instance of a [`DocumentNodeDefinition`] that has been instantiated in a [`NodeNetwork`].
 /// Currently, when an instance is made, it lives all on its own without any lasting connection to the definition.
 /// But we will want to change it in the future so it merely references its definition.
@@ -87,7 +139,7 @@ pub struct DocumentNode {
 	///
 	/// In the root network, it is resolved when evaluating the borrow tree.
 	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
-	// #[serde(deserialize_with = "deserialize_inputs")]
+	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
 	///
@@ -565,7 +617,6 @@ pub struct NodeOutput {
 	pub node_output_index: usize,
 }
 
-use serde::Deserialize;
 // TODO: Eventually remove this (probably starting late 2024)
 fn deserialize_exports<'de, D>(deserializer: D) -> Result<Vec<NodeInput>, D::Error>
 where
@@ -615,9 +666,6 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
-	/// Transform from node graph space to viewport space.
-	#[serde(default)]
-	pub node_graph_to_viewport: DAffine2,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -640,7 +688,6 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
-			node_graph_to_viewport: DAffine2::default(),
 		}
 	}
 }
@@ -1064,14 +1111,14 @@ impl NodeNetwork {
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_fns(node, merge_ids, || NodeId(generate_uuid()))
+	pub fn flatten(&mut self, node_id: NodeId) {
+		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
-			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
+	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
+		let Some((id, mut node)) = self.nodes.remove_entry(&node_id) else {
+			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
 
@@ -1120,6 +1167,7 @@ impl NodeNetwork {
 					}
 				}
 			}
+
 			// Replace value inputs with value nodes, added to flattened network
 			for input in node.inputs.iter_mut() {
 				let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
@@ -1155,11 +1203,19 @@ impl NodeNetwork {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
+
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
+				if nested_node.name == "To Artboard" {
+					let label_index = 1;
+					let label = if !node.alias.is_empty() { node.alias.clone() } else { node.name.clone() };
+					let label_input = NodeInput::value(TaggedValue::String(label), false);
+					nested_node.inputs[label_index] = label_input;
+				}
+
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
-						let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 						match *parent_input {
 							// If the input to self is a node, connect the corresponding output of the inner network to it
 							NodeInput::Node { node_id, output_index, lambda } => {
@@ -1185,7 +1241,7 @@ impl NodeNetwork {
 			// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
 			// for (i, export) in inner_network.exports.iter().enumerate() {
 			// 	if let NodeInput::Network { import_index, .. } = export {
-			// 		let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+			// 		let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 			// 		match *parent_input {
 			// 			// If the input to self is a node, connect the corresponding output of the inner network to it
 			// 			NodeInput::Node { node_id, output_index, lambda } => {
@@ -1310,24 +1366,6 @@ impl NodeNetwork {
 		for id in id_nodes {
 			if let Err(e) = self.remove_id_node(id) {
 				log::warn!("{e}")
-			}
-		}
-	}
-
-	/// Resolve nodes using TaggedValue::NodeAlias to access their alias e.g. artboard node
-	pub fn resolve_alias(&mut self) {
-		for node in self.nodes.values_mut() {
-			if let Some(network) = node.implementation.get_network_mut() {
-				network.resolve_alias();
-			}
-			for input in node.inputs.iter_mut() {
-				if let NodeInput::Value {
-					tagged_value: crate::document::TaggedValue::NodeAlias(alias),
-					..
-				} = input
-				{
-					*alias = node.alias.clone();
-				}
 			}
 		}
 	}

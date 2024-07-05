@@ -165,7 +165,7 @@ pub enum RenderQuality {
 	Scale(f32),
 	/// Flip a coin to decide if the render should be available with the current quality or done at full quality
 	/// This should be used to gradually update the render quality of a cached node
-	Probabilty(f32),
+	Probability(f32),
 	/// Render at full quality
 	Full,
 }
@@ -199,6 +199,16 @@ impl Footprint {
 		let start = inverse.transform_point2((0., 0.).into());
 		let end = inverse.transform_point2(self.resolution.as_dvec2());
 		AxisAlignedBbox { start, end }
+	}
+
+	pub fn scale(&self) -> DVec2 {
+		let x = self.transform.transform_vector2((1., 0.).into()).length();
+		let y = self.transform.transform_vector2((0., 1.).into()).length();
+		DVec2::new(x, y)
+	}
+
+	pub fn offset(&self) -> DVec2 {
+		self.transform.transform_point2(DVec2::ZERO)
 	}
 }
 
@@ -244,15 +254,13 @@ pub(crate) async fn transform_vector_data<Fut: Future>(
 where
 	Fut::Output: TransformMut,
 {
-	let transform = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
+	let modification = DAffine2::from_scale_angle_translation(scale, rotate, translate) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.]);
 	if !footprint.ignore_modifications {
-		let modification = transform;
 		*footprint.transform_mut() = footprint.transform() * modification;
 	}
 
 	let mut data = self.transform_target.eval(footprint).await;
 
-	let modification = transform;
 	let data_transform = data.transform_mut();
 	*data_transform = modification * (*data_transform);
 

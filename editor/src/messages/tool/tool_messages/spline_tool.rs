@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
+
 use graph_craft::document::{value::TaggedValue, NodeId, NodeInput};
 use graphene_core::uuid::generate_uuid;
 use graphene_core::Color;
@@ -327,9 +328,7 @@ fn update_spline(document: &DocumentMessageHandler, tool_data: &SplineToolData, 
 	}
 	let value = TaggedValue::VecDVec2(points);
 
-	let Some(layer) = tool_data.layer else {
-		return;
-	};
+	let Some(layer) = tool_data.layer else { return };
 
 	let Some(node_id) = graph_modification_utils::NodeGraphLayer::new(layer, document.network()).upstream_node_id_from_name("Spline") else {
 		return;
