@@ -155,6 +155,7 @@ tagged_value! {
 	GradientStops(graphene_core::vector::style::GradientStops),
 	Quantization(graphene_core::quantization::QuantizationChannels),
 	OptionalColor(Option<graphene_core::raster::color::Color>),
+	#[serde(alias = "ManipulatorGroupIds")] // TODO: Eventually remove this alias (probably starting late 2024)
 	PointIds(Vec<graphene_core::vector::PointId>),
 	Font(graphene_core::text::Font),
 	BrushStrokes(Vec<graphene_core::vector::brush_stroke::BrushStroke>),

@@ -4,14 +4,18 @@ use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::FrontendDocumentDetails;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
+use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document::DocumentMessageData;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup};
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 
-use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_core::text::Font;
+use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use std::sync::Arc;
 
@@ -375,10 +379,104 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				document_is_saved,
 				document_serialized_content,
 			} => {
-				// TODO: Eventually remove this (probably starting late 2024)
-				let do_not_upgrade = document_name.contains("__DO_NOT_UPGRADE__");
+				let upgrade_from_before_editable_subgraphs = document_serialized_content.contains("node_output_index");
+				let upgrade_vector_manipulation_format = document_serialized_content.contains("ManipulatorGroupIds") && !document_name.contains("__DO_NOT_UPGRADE__");
 				let document_name = document_name.replace("__DO_NOT_UPGRADE__", "");
-				if document_serialized_content.contains("ManipulatorGroupIds") && !do_not_upgrade {
+
+				let document = DocumentMessageHandler::with_name_and_content(document_name.clone(), document_serialized_content);
+				let mut document = match document {
+					Ok(document) => document,
+					Err(e) => {
+						if !document_is_auto_saved {
+							responses.add(DialogMessage::DisplayDialogError {
+								title: "Failed to open document".to_string(),
+								description: e.to_string(),
+							});
+						}
+
+						return;
+					}
+				};
+
+				// TODO: Eventually remove this (probably starting late 2024)
+				// Upgrade all old nodes to support editable subgraphs introduced in #1750
+				if upgrade_from_before_editable_subgraphs {
+					for (_, node) in &mut document.network.nodes {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+						let default_definition_node = node_definition.default_document_node();
+
+						node.implementation = default_definition_node.implementation.clone();
+					}
+				}
+				if document.network.nodes.iter().any(|(node_id, node)| node.name == "Output" && *node_id == NodeId(0)) {
+					ModifyInputsContext::delete_nodes(
+						&mut document.node_graph_handler,
+						&mut document.network,
+						&mut SelectedNodes(vec![]),
+						vec![NodeId(0)],
+						true,
+						responses,
+						Vec::new(),
+					);
+				}
+
+				// TODO: Eventually remove this (probably starting late 2024)
+				// Upgrade Fill nodes to the format change in #1778
+				for (_, node) in &mut document.network.nodes {
+					if node.name == "Fill" && node.inputs.len() == 8 {
+						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
+						let default_definition_node = node_definition.default_document_node();
+
+						node.implementation = default_definition_node.implementation.clone();
+						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
+
+						node.inputs[0] = old_inputs[0].clone();
+
+						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
+						let TaggedValue::FillType(fill_type) = fill_type else { continue };
+						let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
+						let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
+						let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
+						let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
+						let Some(start) = old_inputs[4].as_value().cloned() else { continue };
+						let TaggedValue::DVec2(start) = start else { continue };
+						let Some(end) = old_inputs[5].as_value().cloned() else { continue };
+						let TaggedValue::DVec2(end) = end else { continue };
+						let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
+						let TaggedValue::DAffine2(transform) = transform else { continue };
+						let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
+						let TaggedValue::GradientStops(positions) = positions else { continue };
+
+						let fill = match (fill_type, solid_color) {
+							(FillType::Solid, None) => Fill::None,
+							(FillType::Solid, Some(color)) => Fill::Solid(color),
+							(FillType::Gradient, _) => Fill::Gradient(Gradient {
+								stops: positions,
+								gradient_type,
+								start,
+								end,
+								transform,
+							}),
+						};
+						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
+						match fill {
+							Fill::None => {
+								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
+							}
+							Fill::Solid(color) => {
+								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
+							}
+							Fill::Gradient(gradient) => {
+								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
+							}
+						}
+					}
+				}
+
+				// TODO: Eventually remove this (probably starting late 2024)
+				// Upgrade document to the new vector manipulation format introduced in #1676
+				let document_serialized_content = document.serialize_document();
+				if upgrade_vector_manipulation_format && document_serialized_content != "" {
 					responses.add(FrontendMessage::TriggerUpgradeDocumentToVectorManipulationFormat {
 						document_id,
 						document_name,
@@ -389,25 +487,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 					return;
 				}
 
-				let document = DocumentMessageHandler::with_name_and_content(document_name, document_serialized_content);
-				match document {
-					Ok(mut document) => {
-						document.set_auto_save_state(document_is_auto_saved);
-						document.set_save_state(document_is_saved);
-						self.load_document(document, document_id, responses);
-					}
-					Err(e) => {
-						if !document_is_auto_saved {
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to open document".to_string(),
-								description: e.to_string(),
-							});
-						}
-					}
-				}
-
-				// TODO: Eventually remove this (probably starting late 2024)
-				responses.add(GraphOperationMessage::DeleteLegacyOutputNode);
+				document.set_auto_save_state(document_is_auto_saved);
+				document.set_save_state(document_is_saved);
+				self.load_document(document, document_id, responses);
 			}
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>| {
