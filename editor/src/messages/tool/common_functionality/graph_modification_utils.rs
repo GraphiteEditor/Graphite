@@ -12,6 +12,7 @@ use graphene_core::vector::style::Gradient;
 use graphene_core::Color;
 
 use glam::DVec2;
+use specta::reference;
 use std::collections::VecDeque;
 
 /// Create a new vector layer from a vector of [`bezier_rs::Subpath`].
@@ -69,18 +70,18 @@ pub fn get_subpaths(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 }
 
 /// Locate the final pivot from the transform (TODO: decide how the pivot should actually work)
-pub fn get_pivot(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<DVec2> {
+pub fn get_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	let pivot_node_input_index = 5;
-	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network).find_input("Transform", pivot_node_input_index)? {
+	if let TaggedValue::DVec2(pivot) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", pivot_node_input_index)? {
 		Some(*pivot)
 	} else {
 		None
 	}
 }
 
-pub fn get_viewport_pivot(layer: LayerNodeIdentifier, document_network: &NodeNetwork, document_metadata: &DocumentMetadata) -> DVec2 {
-	let [min, max] = document_metadata.nonzero_bounding_box(layer);
-	let pivot = get_pivot(layer, document_network).unwrap_or(DVec2::splat(0.5));
+pub fn get_viewport_pivot(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DVec2 {
+	let [min, max] = network_interface.document_metadata().nonzero_bounding_box(layer);
+	let pivot = get_pivot(layer, network_interface).unwrap_or(DVec2::splat(0.5));
 	document_metadata.transform_to_viewport(layer).transform_point2(min + (max - min) * pivot)
 }
 
@@ -95,10 +96,10 @@ pub fn get_colinear_manipulators(layer: LayerNodeIdentifier, network_interface: 
 }
 
 /// Get the current gradient of a layer from the closest Fill node
-pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Gradient> {
+pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Gradient> {
 	let fill_index = 1;
 
-	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
 	let TaggedValue::Fill(graphene_std::vector::style::Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
@@ -106,10 +107,10 @@ pub fn get_gradient(layer: LayerNodeIdentifier, document_network: &NodeNetwork) 
 }
 
 /// Get the current fill of a layer from the closest Fill node
-pub fn get_fill_color(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<Color> {
+pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
 
-	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Fill")?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
 	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
@@ -117,8 +118,8 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, document_network: &NodeNetwork
 }
 
 /// Get the current blend mode of a layer from the closest Blend Mode node
-pub fn get_blend_mode(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<BlendMode> {
-	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Blend Mode")?;
+pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Blend Mode")?;
 	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
@@ -132,25 +133,25 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, document_network: &NodeNetwork
 /// - Already factored into the pixel alpha channel of an image
 /// - The default value of 100% if no Opacity node is present, but this function returns None in that case
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
-pub fn get_opacity(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<f64> {
-	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Opacity")?;
+pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Opacity")?;
 	let TaggedValue::F64(opacity) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
 }
 
-pub fn get_fill_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, document_network).upstream_node_id_from_name("Fill")
+pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
 }
 
-pub fn get_text_id(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, document_network).upstream_node_id_from_name("Text")
+pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
 }
 
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> Option<(&String, &Font, f64)> {
-	let inputs = NodeGraphLayer::new(layer, document_network).find_node_inputs("Text")?;
+pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, f64)> {
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Text")?;
 	let NodeInput::Value {
 		tagged_value: TaggedValue::String(text),
 		..
@@ -178,9 +179,9 @@ pub fn get_text(layer: LayerNodeIdentifier, document_network: &NodeNetwork) -> O
 	Some((text, font, font_size))
 }
 
-pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Option<f64> {
+pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
 	let weight_node_input_index = 2;
-	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network).find_input("Stroke", weight_node_input_index)? {
+	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).find_input("Stroke", weight_node_input_index)? {
 		Some(*width)
 	} else {
 		None
@@ -188,8 +189,8 @@ pub fn get_stroke_width(layer: LayerNodeIdentifier, network: &NodeNetwork) -> Op
 }
 
 /// Checks if a specified layer uses an upstream node matching the given name.
-pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, document_network: &NodeNetwork, node_name: &str) -> bool {
-	NodeGraphLayer::new(layer, document_network).find_node_inputs(node_name).is_some()
+pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, node_name: &str) -> bool {
+	NodeGraphLayer::new(layer, network_interface).find_node_inputs(node_name).is_some()
 }
 
 /// Convert subpaths to an iterator of manipulator groups
@@ -225,16 +226,18 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Node id of a node if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_name(&self, node_name: &str) -> Option<NodeId> {
-		self.horizontal_layer_flow().find(|(node, _)| node.name == node_name).map(|(_, id)| id)
+		self.horizontal_layer_flow()
+			.find(|(_, node_id)| self.network_interface.get_reference(node_id).is_some_and(|reference| reference == node_name))
+			.map(|(_, id)| id)
 	}
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
 		self.horizontal_layer_flow()
 			.skip(1)// Skip self
-			.take_while(|(node, _)| !node.is_layer)
-			.find(|(node, _)| node.name == node_name)
-			.map(|(node, _id)| &node.inputs)
+			.take_while(|(_, node_id)| !self.network_interface.is_layer(node_id))
+			.find(|(_, node_id)| self.network_interface.get_reference(node_id).is_some_and(|reference| reference == node_name))
+			.map(|(node, _)| &node.inputs)
 	}
 
 	/// Find a specific input of a node within the layer's primary flow

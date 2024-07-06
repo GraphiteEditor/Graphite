@@ -353,7 +353,7 @@ impl<'a> Selected<'a> {
 		let xy_summation = self
 			.selected
 			.iter()
-			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.network_interface.document_network(), self.network_interface.document_metadata()))
+			.map(|&layer| graph_modification_utils::get_viewport_pivot(layer, self.network_interface))
 			.reduce(|a, b| a + b)
 			.unwrap_or_default();
 

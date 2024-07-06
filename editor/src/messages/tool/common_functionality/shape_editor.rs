@@ -89,14 +89,20 @@ pub struct ClosestSegment {
 }
 
 impl ClosestSegment {
-	fn new(info: ClosestSegmentInfo, layer: LayerNodeIdentifier, document_network: &NodeNetwork, start: ManipulatorGroup<ManipulatorGroupId>, end: ManipulatorGroup<ManipulatorGroupId>) -> Self {
+	fn new(
+		info: ClosestSegmentInfo,
+		layer: LayerNodeIdentifier,
+		network_interface: &NodeNetworkInterface,
+		start: ManipulatorGroup<ManipulatorGroupId>,
+		end: ManipulatorGroup<ManipulatorGroupId>,
+	) -> Self {
 		// 0.5 is half the line (center to side) but it's convenient to allow targetting slightly more than half the line width
 		const STROKE_WIDTH_PERCENT: f64 = 0.7;
 
 		let bezier = info.bezier;
 		let t = info.t;
 		let (t_min, t_max) = ClosestSegment::t_min_max(&bezier, info.layer_scale);
-		let stroke_width = graph_modification_utils::get_stroke_width(layer, document_network).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
+		let stroke_width = graph_modification_utils::get_stroke_width(layer, network_interface).unwrap_or(1.) as f64 * STROKE_WIDTH_PERCENT;
 		let bezier_point_to_viewport = info.bezier_point_to_viewport;
 		let has_start_handle = start.has_out_handle();
 		let has_end_handle = end.has_in_handle();
@@ -271,7 +277,7 @@ impl ShapeState {
 		let mut offset = mouse_delta;
 		let mut best_snapped = SnappedPoint::infinite_snap(document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 		for (layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(*layer, &document.document_network()) else { continue };
+			let Some(subpaths) = get_subpaths(*layer, &document.network_interface) else { continue };
 
 			let to_document = document.network_interface.document_metadata().transform_to_document(*layer);
 
@@ -383,21 +389,21 @@ impl ShapeState {
 	}
 
 	/// Selects all anchors, and deselects all handles, for the given layer.
-	pub fn select_all_anchors_in_layer(&mut self, document_network: &NodeNetwork, layer: LayerNodeIdentifier) {
+	pub fn select_all_anchors_in_layer(&mut self, network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier) {
 		let Some(state) = self.selected_shape_state.get_mut(&layer) else { return };
-		Self::select_all_anchors_in_layer_with_state(document_network, layer, state);
+		Self::select_all_anchors_in_layer_with_state(network_interface, layer, state);
 	}
 
 	/// Selects all anchors, and deselects all handles, for the selected layers.
-	pub fn select_all_anchors_in_selected_layers(&mut self, document_network: &NodeNetwork) {
+	pub fn select_all_anchors_in_selected_layers(&mut self, network_interface: &NodeNetworkInterface) {
 		for (&layer, state) in self.selected_shape_state.iter_mut() {
-			Self::select_all_anchors_in_layer_with_state(document_network, layer, state);
+			Self::select_all_anchors_in_layer_with_state(network_interface, layer, state);
 		}
 	}
 
 	/// Internal helper function that selects all anchors, and deselects all handles, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
-	fn select_all_anchors_in_layer_with_state(document_network: &NodeNetwork, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
-		let Some(subpaths) = get_subpaths(layer, document_network) else { return };
+	fn select_all_anchors_in_layer_with_state(network_interface: &NodeNetworkInterface, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
+		let Some(subpaths) = get_subpaths(layer, network_interface) else { return };
 		for manipulator in get_manipulator_groups(subpaths) {
 			state.select_point(ManipulatorPointId::new(manipulator.id, SelectedType::Anchor));
 			state.deselect_point(ManipulatorPointId::new(manipulator.id, SelectedType::InHandle));
@@ -577,11 +583,11 @@ impl ShapeState {
 	/// If only one handle is selected, the other handle will be moved to match the angle of the selected handle.
 	/// If both or neither handles are selected, the angle of both handles will be averaged from their current angles, weighted by their lengths.
 	/// Assumes all selected manipulators have handles that are already not colinear.
-	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, document_network: &NodeNetwork) -> Option<()> {
+	pub fn convert_selected_manipulators_to_colinear_handles(&self, responses: &mut VecDeque<Message>, network_interface: &NodeNetworkInterface) -> Option<()> {
 		let mut skip_set = HashSet::new();
 
 		for (&layer, layer_state) in self.selected_shape_state.iter() {
-			let subpaths = get_subpaths(layer, document_network)?;
+			let subpaths = get_subpaths(layer, network_interface)?;
 
 			for point in layer_state.selected_points.iter() {
 				if skip_set.contains(&point.group) {
@@ -761,11 +767,11 @@ impl ShapeState {
 	}
 
 	/// The opposing handle lengths.
-	pub fn opposing_handle_lengths(&self, document_network: &NodeNetwork) -> OpposingHandleLengths {
+	pub fn opposing_handle_lengths(&self, network_interface: &NodeNetworkInterface) -> OpposingHandleLengths {
 		self.selected_shape_state
 			.iter()
 			.filter_map(|(&layer, state)| {
-				let subpaths = get_subpaths(layer, document_network)?;
+				let subpaths = get_subpaths(layer, network_interface)?;
 				let opposing_handle_lengths = subpaths
 					.iter()
 					.flat_map(|subpath| {
@@ -803,10 +809,10 @@ impl ShapeState {
 	}
 
 	/// Reset the opposing handle lengths.
-	pub fn reset_opposing_handle_lengths(&self, document_network: &NodeNetwork, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
+	pub fn reset_opposing_handle_lengths(&self, network_interface: &NodeNetworkInterface, opposing_handle_lengths: &OpposingHandleLengths, responses: &mut VecDeque<Message>) {
 		for (&layer, state) in &self.selected_shape_state {
-			let Some(subpaths) = get_subpaths(layer, document_network) else { continue };
-			let Some(colinear_manipulators) = get_colinear_manipulators(layer, document_network) else {
+			let Some(subpaths) = get_subpaths(layer, network_interface) else { continue };
+			let Some(colinear_manipulators) = get_colinear_manipulators(layer, network_interface) else {
 				continue;
 			};
 			let Some(opposing_handle_lengths) = opposing_handle_lengths.get(&layer) else { continue };

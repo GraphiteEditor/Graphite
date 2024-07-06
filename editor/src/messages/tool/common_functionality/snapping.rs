@@ -279,7 +279,7 @@ impl SnapManager {
 
 		if let Some(root) = snap_data.document.network_interface.get_root_node(true) {
 			if snap_data.document.network_interface.is_layer(&root.node_id) {
-				add_candidates(LayerNodeIdentifier::new(root.node_id, &snap_data.network_interface.document_network()), snap_data, quad, &mut candidates);
+				add_candidates(LayerNodeIdentifier::new(root.node_id, &snap_data.document.network_interface.document_network()), snap_data, quad, &mut candidates);
 			}
 		}
 

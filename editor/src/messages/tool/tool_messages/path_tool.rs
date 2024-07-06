@@ -315,9 +315,6 @@ impl PathToolData {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 
-		let document_network = document.document_network();
-		let document_metadata = document.network_interface.document_metadata();
-
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
@@ -345,7 +342,7 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-			shape_editor.select_all_anchors_in_layer(&document.document_network(), layer);
+			shape_editor.select_all_anchors_in_layer(&document.network_interface, layer);
 
 			PathToolFsmState::Dragging
 		}
@@ -397,17 +394,17 @@ impl PathToolData {
 
 		if shift {
 			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.document_network()));
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.network_interface));
 			}
 		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
-			shape_editor.reset_opposing_handle_lengths(&document.document_network(), opposing_handle_lengths, responses);
+			shape_editor.reset_opposing_handle_lengths(&document.network_interface, opposing_handle_lengths, responses);
 			self.opposing_handle_lengths = None;
 		}
 
 		// Move the selected points with the mouse
 		let previous_mouse = document.network_interface.document_metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
 		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
-		shape_editor.move_selected_points(document.network_interface, snapped_delta, shift, responses);
+		shape_editor.move_selected_points(&document.network_interface, snapped_delta, shift, responses);
 		self.previous_mouse_position += document.network_interface.document_metadata().document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -523,7 +520,7 @@ impl Fsm for PathToolFsmState {
 				// Auto-panning
 				if let Some(delta) = tool_data.auto_panning.shift_viewport(input, responses) {
 					let shift_state = input.keyboard.get(shift as usize);
-					shape_editor.move_selected_points(document.network_interface -delta, shift_state, responses);
+					shape_editor.move_selected_points(&document.network_interface, -delta, shift_state, responses);
 				}
 
 				PathToolFsmState::Dragging
@@ -542,8 +539,7 @@ impl Fsm for PathToolFsmState {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(
-						&document.document_network(),
-						&document.network_interface.document_metadata(),
+						&document.network_interface,
 						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
 						!shift_pressed,
 					);
@@ -571,7 +567,7 @@ impl Fsm for PathToolFsmState {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
 					shape_editor.select_all_in_quad(
-						document.network_interface,
+						&document.network_interface,
 						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
 						!equidistant,
 					);
@@ -634,12 +630,12 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(&document.network_interface, , (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(&document.network_interface, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectAllAnchors) => {
-				shape_editor.select_all_anchors_in_selected_layers(&document.document_network());
+				shape_editor.select_all_anchors_in_selected_layers(&document.network_interface);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -667,7 +663,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.set_colinear_handles_state_on_selected(true, responses);
-				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, &document.document_network());
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, &document.network_interface);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}

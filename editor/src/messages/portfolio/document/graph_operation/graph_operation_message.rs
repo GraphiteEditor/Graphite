@@ -139,10 +139,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		name: String,
 	},
-	SetNodeInput {
-		input_connector: InputConnector,
-		input: NodeInput,
-	},
 	ToggleSelectedVisibility,
 	ToggleVisibility {
 		node_id: NodeId,

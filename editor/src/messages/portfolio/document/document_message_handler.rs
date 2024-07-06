@@ -31,6 +31,7 @@ use graphene_core::vector::style::ViewMode;
 use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2, IVec2};
+use usvg::filter::Input;
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -596,7 +597,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						for layer in self
 							.selected_nodes
 							.selected_layers(self.metadata())
-							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer,  &self.network_interface))
+							.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, &self.network_interface))
 						{
 							let to = self.metadata().document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
 							let original_transform = self.metadata().upstream_transform(layer.to_node());
@@ -732,7 +733,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let all_layers_except_artboards_invisible_and_locked = metadata
 					.all_layers()
 					.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node()))
-					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer,  &self.network_interface));
+					.filter(|&layer| self.selected_nodes.layer_visible(layer, &self.network_interface) && !self.selected_nodes.layer_locked(layer, &self.network_interface));
 				let nodes = all_layers_except_artboards_invisible_and_locked.map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 			}
@@ -963,10 +964,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					// Output_index must be 0 since layers only have 1 output
 					let downstream_input = NodeInput::node(child_layer.to_node(), 0);
-					responses.add(GraphOperationMessage::SetNodeInput {
-						node_id: downstream_node_id,
-						input_index: downstream_input_index,
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(downstream_node_id, downstream_input_index),
 						input: downstream_input,
+						use_document_network: true,
 					});
 
 					// Get the node that feeds into the primary input for the folder (if it exists)
@@ -984,10 +985,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 						// Connect the primary input of the bottom layer of the node to the upstream sibling
 						let bottom_layer_node_input = NodeInput::node(upstream_sibling_id, 0);
-						responses.add(GraphOperationMessage::SetNodeInput {
-							node_id: last_child_node_id,
-							input_index: 0,
+
+						responses.add(NodeGraphMessage::SetInput {
+							input_connector: InputConnector::node(last_child_node_id, 0),
 							input: bottom_layer_node_input,
+							use_document_network: true,
 						});
 
 						// Shift upstream_sibling down by the height of the child layer stack
@@ -1192,7 +1194,7 @@ impl DocumentMessageHandler {
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
 	pub fn selected_visible_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
 		self.selected_nodes
-			.selected_visible_layers(self.metadata(), &self.network_interface)
+			.selected_visible_layers(&self.network_interface)
 			.filter_map(|layer| self.metadata.bounding_box_viewport(layer))
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}

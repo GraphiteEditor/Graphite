@@ -68,8 +68,9 @@ impl SelectedNodes {
 		})
 	}
 
-	pub fn selected_visible_layers<'a>(&'a self, metadata: &'a DocumentMetadata, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
-		self.selected_layers(metadata).filter(move |&layer| self.layer_visible(layer, network_interface))
+	pub fn selected_visible_layers<'a>(&'a self, network_interface: &'a NodeNetworkInterface) -> impl Iterator<Item = LayerNodeIdentifier> + '_ {
+		self.selected_layers(network_interface.document_metadata())
+			.filter(move |&layer| self.layer_visible(layer, network_interface))
 	}
 
 	pub fn layer_locked(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {

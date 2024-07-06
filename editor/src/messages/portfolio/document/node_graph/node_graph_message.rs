@@ -114,7 +114,7 @@ pub enum NodeGraphMessage {
 		input_index: usize,
 		value: TaggedValue,
 	},
-	SetNodeInput {
+	SetInput {
 		input_connector: InputConnector,
 		input: NodeInput,
 		use_document_network: bool,

@@ -250,7 +250,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					
 					// Since all the new nodes are already connected, just connect the input of the layer to first new node
 					let first_new_node_id = new_ids[&NodeId(0)];
-					responses.add(NodeGraphMessage::SetNodeInput {
+					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(layer.to_node(), 1),
 						input: NodeInput::node(first_new_node_id, 0),
 						use_document_network: true,
@@ -339,11 +339,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::SendGraph);
-				}
-			}
-			GraphOperationMessage::SetNodeInput { input_connector, input } => {
-				if modify_inputs.set_input(input_connector, input, false) {
-					load_network_structure(document_network, document_metadata, collapsed);
 				}
 			}
 			GraphOperationMessage::ShiftUpstream { node_id, shift, shift_self } => {

@@ -83,7 +83,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				for (old_node_id, node_template) in nodes {
 					// Get the new node template
 					node_template = network_interface.map_ids(node_template, &old_node_id, &new_ids, use_document_network);
-					
+
 					// Insert node into network
 					let node_id = *new_ids.get(&old_node_id).unwrap();
 					network_interface.insert_node(node_id, node_template, use_document_network);
@@ -143,7 +143,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.wire_in_progress_to_connector = None;
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 			}
-			NodeGraphMessage::CreateNode { node_id, node_type, input_override, use_document_network } => {
+			NodeGraphMessage::CreateNode {
+				node_id,
+				node_type,
+				input_override,
+				use_document_network,
+			} => {
 				let node_id = node_id.unwrap_or_else(|| NodeId(generate_uuid()));
 
 				let Some(document_node_type) = document_node_types::resolve_document_node_type(&node_type) else {
@@ -158,7 +163,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				self.context_menu = None;
 
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::InsertNode { node_id, node_template, use_document_network });
+				responses.add(NodeGraphMessage::InsertNode {
+					node_id,
+					node_template,
+					use_document_network,
+				});
 
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				if !use_document_network {
@@ -167,7 +176,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							log::error!("Could not get output from connector start");
 							return;
 						};
-	
+
 						// Ensure connection is to correct input of new node. If it does not have an input then do not connect
 						if let Some((input_index, _)) = node_template
 							.document_node
@@ -191,7 +200,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							}
 							responses.add(NodeGraphMessage::SendGraph);
 						}
-	
+
 						self.wire_in_progress_from_connector = None;
 						self.wire_in_progress_to_connector = None;
 					}
@@ -231,53 +240,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				});
 			}
 			NodeGraphMessage::DisconnectInput {
-				input_connector: input,
+				input_connector,
 				use_document_network,
 			} => {
-				let Some(network) = network_interface.network(use_document_network) else {
-					return;
-				};
-
-				let existing_input = match input {
-					InputConnector::Node { node_id, input_index } => network.nodes.get(&node_id).and_then(|node| node.inputs.get(input_index)),
-					InputConnector::Export(input_index) => network.exports.get(input_index),
-				};
-
-				let Some(existing_input) = existing_input else {
-					warn!("Could not find input for {node_id} at index {input_index} when disconnecting");
-					return;
-				};
-
-				let tagged_value = TaggedValue::from_type(&network_interface.get_input_type(node_id, input.input_index(), use_document_network));
-
-				let mut value_input = NodeInput::value(tagged_value, true);
-				if let NodeInput::Value { exposed, .. } = &mut value_input {
-					*exposed = existing_input.is_exposed();
-				}
-				if let InputConnector::Node { node_id, .. } = input {
-					responses.add(NodeGraphMessage::SetNodeInput {
-						input_connector: input,
-						input: value_input,
-
-						use_document_network,
-					});
-					
-				} else {
-					// Since it is only possible to drag the solid line, if previewing then there must be a dashed connection, which becomes the new export
-					if matches!(network_interface.previewing(use_document_network), Previewing::Yes { .. }) {
-						network_interface.start_previewing_without_restore();
-					}
-					// If there is no preview, then disconnect
-					else {
-						responses.add(NodeGraphMessage::SetNodeInput {
-							input_connector: input,
-							input: value_input,
-							use_document_network,
-						});
-					}
-				}
-
-				responses.add(NodeGraphMessage::SendGraph);
+				network_interface.disconnect_input(input_connector, false, use_document_network);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(selected_nodes.selected_nodes_ref().iter());
@@ -304,7 +270,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					// document_node.metadata.position += IVec2::splat(2);
 
 					// Insert new node into graph
-					responses.add(NodeGraphMessage::InsertNode { node_id, node_template, use_document_network: false });
+					responses.add(NodeGraphMessage::InsertNode {
+						node_id,
+						node_template,
+						use_document_network: false,
+					});
 				}
 
 				self.update_selected(network_interface, selected_nodes, responses);
@@ -374,7 +344,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					return;
 				}
 
-				responses.add(NodeGraphMessage::SetNodeInput {
+				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
 					use_document_network,
@@ -383,7 +353,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::InsertNode { node_id, node_template, use_document_network } => {
+			NodeGraphMessage::InsertNode {
+				node_id,
+				node_template,
+				use_document_network,
+			} => {
 				network_interface.insert_node(node_id, node_template, use_document_network);
 			}
 			NodeGraphMessage::InsertNodeBetween {
@@ -448,7 +422,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(DocumentMessage::StartTransaction);
 
 				let new_ids: HashMap<_, _> = data.iter().map(|&(id, _)| (id, NodeId(generate_uuid()))).collect();
-				responses.add(NodeGraphMessage::AddNodes { nodes: data, new_ids, use_document_network: false });
+				responses.add(NodeGraphMessage::AddNodes {
+					nodes: data,
+					new_ids,
+					use_document_network: false,
+				});
 
 				//TODO: Move nodes to correct location and run layout system
 				let nodes = new_ids.values().copied().collect();
@@ -1043,7 +1021,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				let use_document_network = network_interface.selected_nodes_in_document_network(std::iter::once(&node_id));
 				let input = NodeInput::Value { tagged_value: value, exposed: false };
-				responses.add(NodeGraphMessage::SetNodeInput {
+				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
 					use_document_network,
@@ -1053,7 +1031,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			NodeGraphMessage::SetNodeInput {
+			NodeGraphMessage::SetInput {
 				input_connector,
 				input,
 				use_document_network,
@@ -1066,7 +1044,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				displacement_y,
 			} => {
 				for node_id in node_ids {
-					network_interface.shift_node(node_id, IVec2::new(displacement_x, displacement_y));
+					network_interface.shift_node(&node_id, IVec2::new(displacement_x, displacement_y));
 				}
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::SendGraph);

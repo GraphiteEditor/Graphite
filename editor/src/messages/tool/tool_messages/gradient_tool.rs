@@ -249,8 +249,8 @@ impl Fsm for GradientToolFsmState {
 			(_, GradientToolMessage::Overlays(mut overlay_context)) => {
 				let selected = tool_data.selected_gradient.as_ref();
 
-				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
-					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
+				for layer in document.selected_nodes.selected_visible_layers(&document.network_interface) {
+					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					let dragging = selected
 						.filter(|selected| selected.layer.map_or(false, |selected_layer| selected_layer == layer))
@@ -324,8 +324,8 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
-					let Some(mut gradient) = get_gradient(layer, &document.document_network()) else { continue };
+				for layer in document.selected_nodes.selected_visible_layers(&document.network_interface) {
+					let Some(mut gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
 					let mouse = input.mouse.position;
@@ -363,8 +363,8 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
-				for layer in document.selected_nodes.selected_visible_layers(document.network_interface.document_metadata(), &document.network_interface) {
-					let Some(gradient) = get_gradient(layer, &document.document_network()) else { continue };
+				for layer in document.selected_nodes.selected_visible_layers(&document.network_interface) {
+					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 
 					// Check for dragging step
@@ -412,7 +412,7 @@ impl Fsm for GradientToolFsmState {
 						responses.add(DocumentMessage::StartTransaction);
 
 						// Use the already existing gradient if it exists
-						let gradient = if let Some(gradient) = get_gradient(layer, &document.document_network()) {
+						let gradient = if let Some(gradient) = get_gradient(layer, &document.network_interface) {
 							gradient.clone()
 						} else {
 							// Generate a new gradient
