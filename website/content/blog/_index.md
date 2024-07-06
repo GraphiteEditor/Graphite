@@ -3,7 +3,7 @@ title = "Blog"
 template = "blog.html"
 page_template = "article.html"
 sort_by = "date"
-generate_feed = true
+generate_feeds = true
 +++
 
 <section id="intro">
