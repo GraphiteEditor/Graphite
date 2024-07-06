@@ -29,33 +29,33 @@ pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, Ty
 
 #[derive(Clone)]
 pub struct NodeContainer {
-	#[cfg(feature = "dealloc_nodes")]
-	pub node: *mut TypeErasedNode<'static>,
-	#[cfg(not(feature = "dealloc_nodes"))]
+	// #[cfg(feature = "dealloc_nodes")]
+	// pub node: *mut TypeErasedNode<'static>,
+	// #[cfg(not(feature = "dealloc_nodes"))]
 	pub node: TypeErasedRef<'static>,
 }
 
 impl Deref for NodeContainer {
 	type Target = TypeErasedNode<'static>;
 
-	#[cfg(feature = "dealloc_nodes")]
-	fn deref(&self) -> &Self::Target {
-		unsafe { &*(self.node as *const TypeErasedNode) }
-		#[cfg(not(feature = "dealloc_nodes"))]
-		self.node
-	}
-	#[cfg(not(feature = "dealloc_nodes"))]
+	// #[cfg(feature = "dealloc_nodes")]
+	// fn deref(&self) -> &Self::Target {
+	// 	unsafe { &*(self.node as *const TypeErasedNode) }
+	// 	#[cfg(not(feature = "dealloc_nodes"))]
+	// 	self.node
+	// }
+	// #[cfg(not(feature = "dealloc_nodes"))]
 	fn deref(&self) -> &Self::Target {
 		self.node
 	}
 }
 
-#[cfg(feature = "dealloc_nodes")]
-impl Drop for NodeContainer {
-	fn drop(&mut self) {
-		unsafe { self.dealloc_unchecked() }
-	}
-}
+// #[cfg(feature = "dealloc_nodes")]
+// impl Drop for NodeContainer {
+// 	fn drop(&mut self) {
+// 		unsafe { self.dealloc_unchecked() }
+// 	}
+// }
 
 impl core::fmt::Debug for NodeContainer {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -69,10 +69,10 @@ impl NodeContainer {
 		Self { node }.into()
 	}
 
-	#[cfg(feature = "dealloc_nodes")]
-	unsafe fn dealloc_unchecked(&mut self) {
-		std::mem::drop(Box::from_raw(self.node));
-	}
+	// #[cfg(feature = "dealloc_nodes")]
+	// unsafe fn dealloc_unchecked(&mut self) {
+	// 	std::mem::drop(Box::from_raw(self.node));
+	// }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

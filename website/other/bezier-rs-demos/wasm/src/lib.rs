@@ -15,15 +15,13 @@ pub fn init() {
 	log::set_logger(&LOGGER).expect("Failed to set logger");
 	log::set_max_level(log::LevelFilter::Trace);
 
-	fn panic_hook(info: &core::panic::PanicInfo) {
+	std::panic::set_hook(Box::new(|info| {
 		// Skip if we have already panicked
 		if HAS_CRASHED.with(|cell| cell.replace(true)) {
 			return;
 		}
 		log::error!("{}", info);
-	}
-
-	std::panic::set_hook(Box::new(panic_hook));
+	}));
 }
 
 /// Logging to the JS console
