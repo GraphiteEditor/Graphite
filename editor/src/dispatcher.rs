@@ -452,9 +452,12 @@ mod test {
 			portfolio
 				.executor
 				.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE);
+			println!("Graph submitted for evaluation");
 			crate::node_graph_executor::run_node_graph().await;
+			println!("Ran node graph");
 			let mut messages = VecDeque::new();
 			editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");
+			println!("Polled node graph evaluations");
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
@@ -468,6 +471,7 @@ mod test {
 					}
 				}
 			}
+			println!("Done");
 		}
 	}
 }
