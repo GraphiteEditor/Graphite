@@ -352,6 +352,7 @@ pub struct Selected<'a> {
 }
 
 impl<'a> Selected<'a> {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		original_transforms: &'a mut OriginalTransforms,
 		pivot: &'a mut DVec2,

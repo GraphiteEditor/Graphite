@@ -105,6 +105,12 @@ impl KeyMappingEntries {
 	}
 }
 
+impl Default for KeyMappingEntries {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub struct MappingEntry {
 	/// Serves two purposes:

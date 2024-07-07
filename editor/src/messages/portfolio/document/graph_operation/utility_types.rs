@@ -75,6 +75,7 @@ impl<'a> ModifyInputsContext<'a> {
 		update_input(&mut document_node.inputs, node_id, self.document_metadata);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn insert_between(
 		node_graph: &mut NodeGraphMessageHandler,
 		document_network: &mut NodeNetwork,
@@ -818,7 +819,7 @@ impl<'a> ModifyInputsContext<'a> {
 			// Check whether the being-deleted node's first (primary) input is a node
 			if let Some(node) = network.nodes.get(&deleting_node_id) {
 				// Reconnect to the node below when deleting a layer node.
-				if matches!(&node.inputs.first(), Some(NodeInput::Node { .. })) || matches!(&node.inputs.get(0), Some(NodeInput::Network { .. })) {
+				if matches!(&node.inputs.first(), Some(NodeInput::Node { .. })) || matches!(&node.inputs.first(), Some(NodeInput::Network { .. })) {
 					reconnect_to_input = Some(node.inputs[0].clone());
 				}
 			}
@@ -874,11 +875,12 @@ impl<'a> ModifyInputsContext<'a> {
 
 		//let Some(network) = document_network.nested_network(network_path) else { return false };
 
-		if let Some(Previewing::Yes { root_node_to_restore }) = document_network.nested_network(network_path).map(|network| &network.previewing) {
-			if let Some(root_node_to_restore) = root_node_to_restore {
-				if root_node_to_restore.id == deleting_node_id {
-					document_network.nested_network_mut(network_path).unwrap().start_previewing_without_restore();
-				}
+		if let Some(Previewing::Yes {
+			root_node_to_restore: Some(root_node_to_restore),
+		}) = document_network.nested_network(network_path).map(|network| &network.previewing)
+		{
+			if root_node_to_restore.id == deleting_node_id {
+				document_network.nested_network_mut(network_path).unwrap().start_previewing_without_restore();
 			}
 		}
 
@@ -942,7 +944,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Get the [`Type`] for any `node_id` and `input_index`. The `network_path` is the path to the encapsulating node (including the encapsulating node). The `node_id` is the selected node.
-	pub fn get_input_type(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
+	pub fn get_input_type(document_network: &NodeNetwork, network_path: &[NodeId], node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, input_index: usize) -> Type {
 		let Some(network) = document_network.nested_network(network_path) else {
 			log::error!("Could not get network in get_tagged_value");
 			return concrete!(());
@@ -959,7 +961,7 @@ impl<'a> ModifyInputsContext<'a> {
 			input_type.clone()
 		} else if node_id == network.exports_metadata.0 {
 			if let Some(parent_node_id) = network_path.last() {
-				let mut parent_path = network_path.clone();
+				let mut parent_path = network_path.to_owned();
 				parent_path.pop();
 
 				let parent_node = document_network
@@ -970,7 +972,7 @@ impl<'a> ModifyInputsContext<'a> {
 					.expect("Last path node should always exist in parent network");
 
 				let output_types = NodeGraphMessageHandler::get_output_types(parent_node, resolved_types, network_path);
-				output_types.iter().get(input_index).map_or_else(
+				output_types.get(input_index).map_or_else(
 					|| {
 						warn!("Could not find output type for export node {node_id}");
 						concrete!(())

@@ -417,7 +417,7 @@ impl PathToolData {
 		let previous_mouse = document.metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
 		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
-		shape_editor.move_selected_points(handle_lengths, &document, snapped_delta, equidistant, responses);
+		shape_editor.move_selected_points(handle_lengths, document, snapped_delta, equidistant, responses);
 		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
@@ -608,7 +608,7 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.delete_selected_points(&document, responses);
+				shape_editor.delete_selected_points(document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
@@ -634,7 +634,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), &document, (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), document, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}
