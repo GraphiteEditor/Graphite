@@ -175,7 +175,6 @@ impl ToolTransition for FreehandTool {
 
 #[derive(Clone, Debug, Default)]
 struct FreehandToolData {
-	extend_from_start: bool,
 	end_point: Option<(DVec2, PointId)>,
 	dragged: bool,
 	weight: f64,
@@ -208,12 +207,13 @@ impl Fsm for FreehandToolFsmState {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.dragged = false;
-				tool_data.extend_from_start = false;
+				tool_data.end_point = None;
 				tool_data.weight = tool_options.line_weight;
 
 				// Extend an endpoint of the selected path
-				if let Some((layer, _, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, crate::consts::SNAP_POINT_TOLERANCE) {
 					tool_data.layer = Some(layer);
+					tool_data.end_point = Some((position, point));
 
 					extend_path_with_next_segment(tool_data, position, responses);
 
@@ -260,6 +260,7 @@ impl Fsm for FreehandToolFsmState {
 					responses.add(DocumentMessage::DocumentHistoryBackward);
 				}
 
+				tool_data.end_point = None;
 				tool_data.layer = None;
 
 				FreehandToolFsmState::Ready
@@ -267,6 +268,7 @@ impl Fsm for FreehandToolFsmState {
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
+				tool_data.end_point = None;
 
 				FreehandToolFsmState::Ready
 			}
