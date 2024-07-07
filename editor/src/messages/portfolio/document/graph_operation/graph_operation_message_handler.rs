@@ -91,7 +91,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					}),
 					(Some(downstream_node), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: downstream_node,
-						input_index: input_index,
+						input_index,
 						input: NodeInput::node(*new_layer_id, 0),
 					}),
 					(None, Some(upstream_node)) => responses.add(GraphOperationMessage::InsertNodeBetween {
@@ -215,20 +215,20 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				};
 
 				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: node_id,
+					node_id,
 					shift: offset_to_post_node,
 					shift_self: true,
 				});
 
 				match (post_node_id, pre_node_id) {
 					(Some(post_node_id), Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
-						post_node_id: post_node_id,
-						post_node_input_index: post_node_input_index,
+						post_node_id,
+						post_node_input_index,
 						insert_node_output_index: 0,
 						insert_node_id: node_id,
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
-						pre_node_id: pre_node_id,
+						pre_node_id,
 					}),
 					(None, Some(pre_node_id)) => responses.add(GraphOperationMessage::InsertNodeBetween {
 						post_node_id: document_network.exports_metadata.0,
@@ -237,7 +237,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 						insert_node_id: node_id,
 						insert_node_input_index: 0,
 						pre_node_output_index: 0,
-						pre_node_id: pre_node_id,
+						pre_node_id,
 					}),
 					(Some(post_node_id), None) => responses.add(GraphOperationMessage::SetNodeInput {
 						node_id: post_node_id,
@@ -253,13 +253,13 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 				// Shift stack down, starting at the moved node.
 				responses.add(GraphOperationMessage::ShiftUpstream {
-					node_id: node_id,
+					node_id,
 					shift: IVec2::new(0, 3),
 					shift_self: true,
 				});
 			}
 			GraphOperationMessage::InsertBooleanOperation { operation } => {
-				let mut selected_layers = selected_nodes.selected_layers(&document_metadata);
+				let mut selected_layers = selected_nodes.selected_layers(document_metadata);
 
 				let upper_layer = selected_layers.next();
 				let lower_layer = selected_layers.next();
@@ -466,7 +466,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				}
 			}
 			GraphOperationMessage::MoveSelectedSiblingsToChild { new_parent } => {
-				let Some(group_parent) = new_parent.parent(&document_metadata) else {
+				let Some(group_parent) = new_parent.parent(document_metadata) else {
 					log::error!("Could not find parent for layer {:?}", new_parent);
 					return;
 				};
@@ -475,7 +475,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				let mut selected_siblings = Vec::new();
 
 				// Skip over horizontal non layer node chain that feeds into parent
-				let Some(mut current_stack_node_id) = group_parent.first_child(&document_metadata).and_then(|current_stack_node| Some(current_stack_node.to_node())) else {
+				let Some(mut current_stack_node_id) = group_parent.first_child(document_metadata).map(|current_stack_node| current_stack_node.to_node()) else {
 					log::error!("Folder should always have child");
 					return;
 				};
@@ -486,14 +486,14 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 
 					// Check if the current stack node is a selected layer
 					if selected_nodes
-						.selected_layers(&document_metadata)
+						.selected_layers(document_metadata)
 						.any(|selected_node_id| selected_node_id.to_node() == *current_stack_node_id)
 					{
 						selected_siblings.push(*current_stack_node_id);
 
 						// Push all non layer sibling nodes directly upstream of the selected layer
 						loop {
-							let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
+							let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.first() else { break };
 
 							let next_node = document_network.nodes.get(node_id).expect("Stack node id should always be a node");
 
@@ -510,7 +510,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					}
 
 					// Get next node
-					let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.get(0) else { break };
+					let Some(NodeInput::Node { node_id, .. }) = current_stack_node.inputs.first() else { break };
 					*current_stack_node_id = *node_id;
 				}
 
@@ -567,7 +567,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
 					if let Some(node) = modify_inputs.document_network.nodes.get_mut(&id) {
-						node.alias = alias.clone();
+						node.alias.clone_from(&alias);
 					}
 
 					let shift = nodes
@@ -703,9 +703,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are hidden, show them all. Otherwise, hide them all.
-				let visible = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_visible(layer.to_node()));
+				let visible = !selected_nodes.selected_layers(document_metadata).all(|layer| document_metadata.node_is_visible(layer.to_node()));
 
-				for layer in selected_nodes.selected_layers(&document_metadata) {
+				for layer in selected_nodes.selected_layers(document_metadata) {
 					responses.add(GraphOperationMessage::SetVisibility { node_id: layer.to_node(), visible });
 				}
 			}
@@ -738,9 +738,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageData<'_>> for Gr
 				responses.add(DocumentMessage::StartTransaction);
 
 				// If any of the selected nodes are locked, show them all. Otherwise, hide them all.
-				let locked = !selected_nodes.selected_layers(&document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
+				let locked = !selected_nodes.selected_layers(document_metadata).all(|layer| document_metadata.node_is_locked(layer.to_node()));
 
-				for layer in selected_nodes.selected_layers(&document_metadata) {
+				for layer in selected_nodes.selected_layers(document_metadata) {
 					responses.add(GraphOperationMessage::SetLocked { node_id: layer.to_node(), locked });
 				}
 			}

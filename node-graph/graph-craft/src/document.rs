@@ -827,7 +827,7 @@ impl NodeNetwork {
 	}
 
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
+	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
 		} else {
@@ -836,7 +836,7 @@ impl NodeNetwork {
 	}
 
 	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
+	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
 			Some(self)
 		} else {
@@ -1215,7 +1215,7 @@ impl NodeNetwork {
 
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
-						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
+						let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
 						match *parent_input {
 							// If the input to self is a node, connect the corresponding output of the inner network to it
 							NodeInput::Node { node_id, output_index, lambda } => {

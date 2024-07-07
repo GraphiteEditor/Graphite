@@ -30,7 +30,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
-	let bits_per_sample: usize = ifd.bits_per_sample.into();
+	let _bits_per_sample: usize = ifd.bits_per_sample.into();
 	let [cfa_pattern_width, cfa_pattern_height] = ifd.cfa_pattern_dim;
 	assert!(cfa_pattern_width == 2 && cfa_pattern_height == 2);
 
@@ -81,10 +81,11 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 			let max_minus_min = max as i32 - min as i32;
 			let shift_by_bits = (0..4).find(|&shift| (0x80 << shift) > max_minus_min).unwrap_or(4);
 
-			let mut pixel = [0_u16; 16];
+			let mut pixels = [0_u16; 16];
 			let mut bit = 30;
-			for i in 0..16 {
-				pixel[i] = match () {
+			// for i in 0..16 {
+			for (i, pixel) in pixels.iter_mut().enumerate() {
+				*pixel = match () {
 					_ if i as u32 == index_to_set_max => max,
 					_ if i as u32 == index_to_set_min => min,
 					_ => {
@@ -98,7 +99,7 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 				};
 			}
 
-			for value in pixel {
+			for value in pixels {
 				image[row * width + column] = curve.get((value << 1).into()) >> 2;
 
 				// Skip between interlaced columns

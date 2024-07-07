@@ -342,7 +342,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				};
 
 				if !self.eligible_to_be_layer(network, node_id) {
-					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id: node_id, is_layer: false })
+					responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer: false })
 				}
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
@@ -582,7 +582,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				if right_click {
 					let context_menu_data = if let Some((node_id, node)) = clicked_id.and_then(|node_id| network.nodes.get(&node_id).map(|node| (node_id, node))) {
 						ContextMenuData::ToggleLayer {
-							node_id: node_id,
+							node_id,
 							currently_is_node: !node.is_layer,
 						}
 					} else {
@@ -1351,10 +1351,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					let Some(node) = network_mut.nodes.get_mut(&node_id) else { continue };
 
 					if node.has_primary_output {
-						responses.add(NodeGraphMessage::SetToNodeOrLayer {
-							node_id: node_id,
-							is_layer: !node.is_layer,
-						});
+						responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer: !node.is_layer });
 					}
 
 					if network_mut.connected_to_output(node_id) {
@@ -2272,7 +2269,7 @@ impl NodeGraphMessageHandler {
 				previewed,
 				visible: node.visible,
 				locked: node.locked,
-				errors: errors,
+				errors,
 				ui_only: false,
 			});
 		}
@@ -2350,12 +2347,10 @@ impl NodeGraphMessageHandler {
 			// First import index is visually connected to the root node instead of its actual export input so previewing does not change the connection
 			let connected = if index == 0 {
 				network.get_root_node().map(|root_node| root_node.id)
+			} else if let NodeInput::Node { node_id, .. } = export {
+				Some(*node_id)
 			} else {
-				if let NodeInput::Node { node_id, .. } = export {
-					Some(*node_id)
-				} else {
-					None
-				}
+				None
 			};
 
 			let definition_name = export_names[index].clone();

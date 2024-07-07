@@ -406,10 +406,8 @@ impl PathToolData {
 		}
 		self.alt_debounce = alt;
 
-		if shift {
-			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
-			}
+		if shift && self.opposing_handle_lengths.is_none() {
+			self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 		}
 		false
 	}

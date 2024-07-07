@@ -173,7 +173,7 @@ tagged_value! {
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
 }
 
-impl<'a> TaggedValue {
+impl TaggedValue {
 	pub fn to_string(&self) -> String {
 		match self {
 			TaggedValue::String(x) => x.to_string(),

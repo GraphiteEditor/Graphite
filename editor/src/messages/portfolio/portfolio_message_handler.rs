@@ -199,12 +199,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 						let previous_alias = active_document.network().nodes.get(&layer_node_id).map(|node| node.alias.clone()).unwrap_or_default();
 
 						let mut copy_ids = HashMap::new();
-						copy_ids.insert(layer_node_id, NodeId(0 as u64));
+						copy_ids.insert(layer_node_id, NodeId(0_u64));
 						if let Some(input_node) = active_document
 							.network()
 							.nodes
 							.get(&layer_node_id)
-							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
+							.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.first() })
 							.and_then(|input| input.as_node())
 						{
 							active_document
@@ -401,7 +401,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this (probably starting late 2024)
 				// Upgrade all old nodes to support editable subgraphs introduced in #1750
 				if upgrade_from_before_editable_subgraphs {
-					for (_, node) in &mut document.network.nodes {
+					for node in document.network.nodes.values_mut() {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
 						let default_definition_node = node_definition.default_document_node();
 
@@ -422,7 +422,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 
 				// TODO: Eventually remove this (probably starting late 2024)
 				// Upgrade Fill nodes to the format change in #1778
-				for (_, node) in &mut document.network.nodes {
+				for node in document.network.nodes.values_mut() {
 					if node.name == "Fill" && node.inputs.len() == 8 {
 						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
 						let default_definition_node = node_definition.default_document_node();
@@ -476,7 +476,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageData<'_>> for PortfolioMes
 				// TODO: Eventually remove this (probably starting late 2024)
 				// Upgrade document to the new vector manipulation format introduced in #1676
 				let document_serialized_content = document.serialize_document();
-				if upgrade_vector_manipulation_format && document_serialized_content != "" {
+				if upgrade_vector_manipulation_format && !document_serialized_content.is_empty() {
 					responses.add(FrontendMessage::TriggerUpgradeDocumentToVectorManipulationFormat {
 						document_id,
 						document_name,
@@ -707,7 +707,7 @@ impl PortfolioMessageHandler {
 		doc_title_numbers.sort_unstable();
 		doc_title_numbers.iter_mut().enumerate().for_each(|(i, number)| *number = *number - i as isize - 2);
 		// Uses binary search to find the index of the element where number is bigger than i
-		let new_doc_title_num = doc_title_numbers.binary_search(&0).map_or_else(|e| e, |v| v) + 1;
+		let new_doc_title_num = doc_title_numbers.binary_search(&0).unwrap_or_else(|e| e) + 1;
 
 		match new_doc_title_num {
 			1 => DEFAULT_DOCUMENT_NAME.to_string(),
@@ -721,7 +721,7 @@ impl PortfolioMessageHandler {
 		self.document_ids.push(document_id);
 		new_document.update_layers_panel_options_bar_widgets(responses);
 
-		new_document.node_graph_handler.update_all_click_targets(&mut new_document.network, Vec::new());
+		new_document.node_graph_handler.update_all_click_targets(&new_document.network, Vec::new());
 
 		self.documents.insert(document_id, new_document);
 

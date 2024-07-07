@@ -167,7 +167,7 @@ impl Dispatcher {
 					if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
 						let data = ToolMessageData {
 							document_id: self.message_handlers.portfolio_message_handler.active_document_id().unwrap(),
-							document: document,
+							document,
 							input: &self.message_handlers.input_preprocessor_message_handler,
 							persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 							node_graph: &self.message_handlers.portfolio_message_handler.executor,
