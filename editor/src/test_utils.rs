@@ -73,7 +73,7 @@ impl EditorTestUtils for Editor {
 	}
 
 	fn move_mouse(&mut self, x: f64, y: f64) {
-		let mut editor_mouse_state = EditorMouseState {
+		let editor_mouse_state = EditorMouseState {
 			editor_position: ViewportPosition::new(x, y),
 			..Default::default()
 		};

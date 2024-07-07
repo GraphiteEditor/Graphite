@@ -1985,7 +1985,7 @@ impl NodeGraphMessageHandler {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(network) = context
 			.document_network
-			.nested_network_for_selected_nodes(&context.nested_path, selected_nodes.selected_nodes(context.document_network))
+			.nested_network_for_selected_nodes(context.nested_path, selected_nodes.selected_nodes(context.document_network))
 		else {
 			warn!("No network in collate_properties");
 			return Vec::new();
@@ -2605,7 +2605,7 @@ impl NodeGraphMessageHandler {
 	/// Returns an iterator of nodes to be copied and their ids, excluding output and input nodes
 	pub fn copy_nodes<'a>(
 		document_network: &'a NodeNetwork,
-		network_path: &'a Vec<NodeId>,
+		network_path: &'a [NodeId],
 		resolved_types: &'a ResolvedDocumentNodeTypes,
 		new_ids: &'a HashMap<NodeId, NodeId>,
 	) -> impl Iterator<Item = (NodeId, DocumentNode)> + 'a {
@@ -2622,7 +2622,7 @@ impl NodeGraphMessageHandler {
 			})
 	}
 
-	pub fn get_default_inputs(document_network: &NodeNetwork, network_path: &Vec<NodeId>, node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, node: &DocumentNode) -> Vec<NodeInput> {
+	pub fn get_default_inputs(document_network: &NodeNetwork, network_path: &[NodeId], node_id: NodeId, resolved_types: &ResolvedDocumentNodeTypes, node: &DocumentNode) -> Vec<NodeInput> {
 		let mut default_inputs = Vec::new();
 
 		for (input_index, input) in node.inputs.iter().enumerate() {
@@ -2666,14 +2666,12 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn untitled_layer_label(node: &DocumentNode) -> String {
-		if (!node.alias.is_empty()) {
+		if !node.alias.is_empty() {
 			node.alias.to_string()
+		} else if node.is_layer && node.name == "Merge" {
+			"Untitled Layer".to_string()
 		} else {
-			if node.is_layer && node.name == "Merge" {
-				"Untitled Layer".to_string()
-			} else {
-				node.name.clone()
-			}
+			node.name.clone()
 		}
 	}
 

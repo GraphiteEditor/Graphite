@@ -2103,13 +2103,12 @@ impl DocumentMessageHandler {
 
 fn root_network() -> NodeNetwork {
 	{
-		let network = NodeNetwork {
+		NodeNetwork {
 			exports: vec![NodeInput::Value {
 				tagged_value: TaggedValue::ArtboardGroup(graphene_core::ArtboardGroup::EMPTY),
 				exposed: true,
 			}],
 			..Default::default()
-		};
-		network
+		}
 	}
 }
