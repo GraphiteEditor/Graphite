@@ -75,6 +75,7 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: imaginate_refresh_frequency },
 		]))
 	}
+
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, preferences: &PreferencesMessageHandler) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: self.layout(preferences),
@@ -85,6 +86,7 @@ impl PreferencesDialogMessageHandler {
 	fn layout_column_2(&self) -> Layout {
 		Layout::default()
 	}
+
 	fn send_layout_column_2(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: self.layout_column_2(),
@@ -108,6 +110,7 @@ impl PreferencesDialogMessageHandler {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
+
 	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {
 		responses.add(LayoutMessage::SendLayout {
 			layout: self.layout_buttons(),
