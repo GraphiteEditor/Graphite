@@ -2,7 +2,6 @@ use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
 use graphene_core::transform::Footprint;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::misc::BooleanOperation;
 pub use graphene_core::vector::*;
 
@@ -69,10 +68,10 @@ fn from_svg_string(svg_string: &str) -> VectorData {
 		return VectorData::empty();
 	};
 
-	VectorData::from_subpaths(convert_usvg_path(path))
+	VectorData::from_subpaths(convert_usvg_path(path), false)
 }
 
-pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<ManipulatorGroupId>> {
+pub fn convert_usvg_path(path: &usvg::Path) -> Vec<Subpath<PointId>> {
 	let mut subpaths = Vec::new();
 	let mut groups = Vec::new();
 

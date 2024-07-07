@@ -1,5 +1,4 @@
 use super::utility_types::TransformIn;
-use super::utility_types::VectorDataModification;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
@@ -8,9 +7,10 @@ use bezier_rs::Subpath;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_core::raster::{BlendMode, ImageFrame};
 use graphene_core::text::Font;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::vector::brush_stroke::BrushStroke;
 use graphene_core::vector::style::{Fill, Stroke};
+use graphene_core::vector::PointId;
+use graphene_core::vector::VectorModificationType;
 use graphene_core::{Artboard, Color};
 use graphene_std::vector::misc::BooleanOperation;
 
@@ -46,11 +46,6 @@ pub enum GraphOperationMessage {
 		layer: LayerNodeIdentifier,
 		blend_mode: BlendMode,
 	},
-	UpdateBounds {
-		layer: LayerNodeIdentifier,
-		old_bounds: [DVec2; 2],
-		new_bounds: [DVec2; 2],
-	},
 	StrokeSet {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,
@@ -73,7 +68,7 @@ pub enum GraphOperationMessage {
 	},
 	Vector {
 		layer: LayerNodeIdentifier,
-		modification: VectorDataModification,
+		modification_type: VectorModificationType,
 	},
 	Brush {
 		layer: LayerNodeIdentifier,
@@ -97,7 +92,7 @@ pub enum GraphOperationMessage {
 	},
 	NewVectorLayer {
 		id: NodeId,
-		subpaths: Vec<Subpath<ManipulatorGroupId>>,
+		subpaths: Vec<Subpath<PointId>>,
 		parent: LayerNodeIdentifier,
 		insert_index: isize,
 	},

@@ -4,13 +4,12 @@ use crate::messages::portfolio::document::overlays::utility_functions::path_over
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
-use crate::messages::tool::common_functionality::graph_modification_utils::{get_colinear_manipulators, get_manipulator_from_id, get_subpaths};
 use crate::messages::tool::common_functionality::shape_editor::{ClosestSegment, ManipulatorAngle, ManipulatorPointInfo, OpposingHandleLengths, SelectedPointsInfo, ShapeState};
 use crate::messages::tool::common_functionality::snapping::{SnapData, SnapManager};
 
 use graph_craft::document::NodeNetwork;
 use graphene_core::renderer::Quad;
-use graphene_core::vector::{ManipulatorPointId, SelectedType};
+use graphene_core::vector::ManipulatorPointId;
 
 use std::vec;
 
@@ -92,10 +91,7 @@ impl LayoutHolder for PathTool {
 		let (x, y) = coordinates.map(|point| (Some(point.x), Some(point.y))).unwrap_or((None, None));
 
 		let selection_status = &self.tool_data.selection_status;
-		let manipulator_angle = selection_status
-			.as_multiple()
-			.map(|multiple| multiple.manipulator_angle)
-			.or_else(|| selection_status.as_one().map(|point| point.manipulator_angle));
+		let manipulator_angle = selection_status.angle();
 
 		let x_location = NumberInput::new(x)
 			.unit(" px")
@@ -105,8 +101,11 @@ impl LayoutHolder for PathTool {
 			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
-				let new_x = number_input.value.unwrap_or(x.unwrap());
-				PathToolMessage::SelectedPointXChanged { new_x }.into()
+				if let Some(new_x) = number_input.value.or(x) {
+					PathToolMessage::SelectedPointXChanged { new_x }.into()
+				} else {
+					Message::NoOp
+				}
 			})
 			.widget_holder();
 
@@ -118,8 +117,11 @@ impl LayoutHolder for PathTool {
 			.min(-((1_u64 << std::f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << std::f64::MANTISSA_DIGITS) as f64)
 			.on_update(move |number_input: &NumberInput| {
-				let new_y = number_input.value.unwrap_or(y.unwrap());
-				PathToolMessage::SelectedPointYChanged { new_y }.into()
+				if let Some(new_y) = number_input.value.or(y) {
+					PathToolMessage::SelectedPointYChanged { new_y }.into()
+				} else {
+					Message::NoOp
+				}
 			})
 			.widget_holder();
 
@@ -273,7 +275,7 @@ impl PathToolData {
 	fn update_insertion(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, mouse_position: DVec2) -> PathToolFsmState {
 		if let Some(closed_segment) = &mut self.segment {
 			closed_segment.update_closest_point(&document.network_interface.document_metadata(), mouse_position);
-			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE) {
+			if closed_segment.too_far(mouse_position, INSERT_POINT_ON_SEGMENT_TOO_FAR_DISTANCE, &document.network_interface.document_metadata()) {
 				self.end_insertion(shape_editor, responses, InsertEndKind::Abort)
 			} else {
 				PathToolFsmState::InsertPoint
@@ -315,6 +317,8 @@ impl PathToolData {
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 
+		self.drag_start_pos = input.mouse.position;
+
 		// Select the first point within the threshold (in pixels)
 		if let Some(selected_points) = shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, add_to_selection) {
 			if let Some(selected_points) = selected_points {
@@ -334,7 +338,7 @@ impl PathToolData {
 			}
 		}
 		// We didn't find a segment path, so consider selecting the nearest shape instead
-		else if let Some(layer) = document.click(input.mouse.position, &document.network_interface.document_metadata()) {
+		else if let Some(layer) = document.click(input.mouse.position) {
 			if add_to_selection {
 				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![layer.to_node()] });
 			} else {
@@ -342,7 +346,7 @@ impl PathToolData {
 			}
 			self.drag_start_pos = input.mouse.position;
 			self.previous_mouse_position = document.network_interface.document_metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-			shape_editor.select_all_anchors_in_layer(&document.network_interface, layer);
+			shape_editor.select_connected_anchors(document, layer, input.mouse.position);
 
 			PathToolFsmState::Dragging
 		}
@@ -367,16 +371,12 @@ impl PathToolData {
 		// Do not snap against handles when anchor is selected
 		let mut additional_selected_points = Vec::new();
 		for point in selected_points.points.iter() {
-			if point.point_id.manipulator_type == SelectedType::Anchor {
-				additional_selected_points.push(ManipulatorPointInfo {
-					layer: point.layer,
-					point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::InHandle),
-				});
-				additional_selected_points.push(ManipulatorPointInfo {
-					layer: point.layer,
-					point_id: ManipulatorPointId::new(point.point_id.group, SelectedType::OutHandle),
-				});
-			}
+			let Some(anchor) = point.point_id.as_anchor() else { continue };
+
+			let connected = selected_points.vector_data.segment_domain.all_connected(anchor).map(|handle| handle.to_manipulator_point());
+			let filtered = connected.filter(|point| point.get_position(&selected_points.vector_data).is_some());
+			let point_info = filtered.map(|point_id| ManipulatorPointInfo { layer: point.layer, point_id });
+			additional_selected_points.extend(point_info);
 		}
 		selected_points.points.extend(additional_selected_points);
 
@@ -384,28 +384,40 @@ impl PathToolData {
 		self.previous_mouse_position = viewport_to_document.transform_point2(input.mouse.position - selected_points.offset);
 	}
 
-	fn drag(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn update_colinear(&mut self, shift: bool, alt: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		// Check if the alt key has just been pressed
 		if alt && !self.alt_debounce {
 			self.opposing_handle_lengths = None;
-			shape_editor.toggle_colinear_handles_state_on_selected(responses);
+			let colinear = self.selection_status.angle().map_or(false, |angle| match angle {
+				ManipulatorAngle::Colinear => true,
+				ManipulatorAngle::Free => false,
+				ManipulatorAngle::Mixed => false,
+			});
+			if colinear {
+				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
+			} else {
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+			}
+			self.alt_debounce = true;
+			return true;
 		}
 		self.alt_debounce = alt;
 
 		if shift {
 			if self.opposing_handle_lengths.is_none() {
-				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(&document.network_interface));
+				self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 			}
-		} else if let Some(opposing_handle_lengths) = &self.opposing_handle_lengths {
-			shape_editor.reset_opposing_handle_lengths(&document.network_interface, opposing_handle_lengths, responses);
-			self.opposing_handle_lengths = None;
 		}
+		false
+	}
 
+	fn drag(&mut self, equidistant: bool, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Move the selected points with the mouse
 		let previous_mouse = document.network_interface.document_metadata().document_to_viewport.transform_point2(self.previous_mouse_position);
 		let snapped_delta = shape_editor.snap(&mut self.snap_manager, document, input, previous_mouse);
-		shape_editor.move_selected_points(&document.network_interface, snapped_delta, shift, responses);
-		self.previous_mouse_position += document.network_interface.document_metadata().document_to_viewport.inverse().transform_vector2(snapped_delta);
+		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
+		shape_editor.move_selected_points(handle_lengths, &document, snapped_delta, equidistant, responses);
+		self.previous_mouse_position += document.metadata.document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 }
 
@@ -428,7 +440,6 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 
 				responses.add(PathToolMessage::SelectedPointUpdated);
-				// This can happen in any state (which is why we return self)
 				self
 			}
 			(_, PathToolMessage::Overlays(mut overlay_context)) => {
@@ -500,7 +511,9 @@ impl Fsm for PathToolFsmState {
 			(PathToolFsmState::Dragging, PathToolMessage::PointerMove { alt, shift }) => {
 				let alt_state = input.keyboard.get(alt as usize);
 				let shift_state = input.keyboard.get(shift as usize);
-				tool_data.drag(shift_state, alt_state, shape_editor, document, input, responses);
+				if !tool_data.update_colinear(shift_state, alt_state, shape_editor, document, responses) {
+					tool_data.drag(shift_state, shape_editor, document, input, responses);
+				}
 
 				// Auto-panning
 				let messages = [PathToolMessage::PointerOutsideViewport { alt, shift }.into(), PathToolMessage::PointerMove { alt, shift }.into()];
@@ -518,9 +531,9 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging, PathToolMessage::PointerOutsideViewport { shift, .. }) => {
 				// Auto-panning
-				if let Some(delta) = tool_data.auto_panning.shift_viewport(input, responses) {
+				if tool_data.auto_panning.shift_viewport(input, responses).is_some() {
 					let shift_state = input.keyboard.get(shift as usize);
-					shape_editor.move_selected_points(&document.network_interface, -delta, shift_state, responses);
+					tool_data.drag(shift_state, shape_editor, document, input, responses);
 				}
 
 				PathToolFsmState::Dragging
@@ -538,11 +551,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(
-						&document.network_interface,
-						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
-						!shift_pressed,
-					);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !shift_pressed);
 				}
 				responses.add(OverlaysMessage::Draw);
 
@@ -566,11 +575,7 @@ impl Fsm for PathToolFsmState {
 				if tool_data.drag_start_pos == tool_data.previous_mouse_position {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				} else {
-					shape_editor.select_all_in_quad(
-						&document.network_interface,
-						[tool_data.drag_start_pos, tool_data.previous_mouse_position],
-						!equidistant,
-					);
+					shape_editor.select_all_in_quad(&document.network_interface, [tool_data.drag_start_pos, tool_data.previous_mouse_position], !equidistant);
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
@@ -580,18 +585,16 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::DragStop { equidistant }) => {
 				let equidistant = input.keyboard.get(equidistant as usize);
 
-				let nearest_point = shape_editor
-					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
-					.map(|(_, nearest_point)| nearest_point);
+				let nearest_point = shape_editor.find_nearest_point_indices(&document.network, &document.metadata, input.mouse.position, SELECTION_THRESHOLD);
 
-				shape_editor.delete_selected_handles_with_zero_length(&document.network_interface, &tool_data.opposing_handle_lengths, responses);
-
-				if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
-					let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == Some(point));
-					if clicked_selected {
-						shape_editor.deselect_all_points();
-						shape_editor.change_point_selection(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD, false);
-						responses.add(OverlaysMessage::Draw);
+				if let Some((layer, nearest_point)) = nearest_point {
+					if tool_data.drag_start_pos.distance(input.mouse.position) <= DRAG_THRESHOLD && !equidistant {
+						let clicked_selected = shape_editor.selected_points().any(|&point| nearest_point == point);
+						if clicked_selected {
+							shape_editor.deselect_all_points();
+							shape_editor.selected_shape_state.entry(layer).or_default().select_point(nearest_point);
+							responses.add(OverlaysMessage::Draw);
+						}
 					}
 				}
 
@@ -604,17 +607,17 @@ impl Fsm for PathToolFsmState {
 			(_, PathToolMessage::Delete) => {
 				// Delete the selected points and clean up overlays
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.delete_selected_points(responses);
+				shape_editor.delete_selected_points(&document, responses);
 				responses.add(PathToolMessage::SelectionChanged);
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
-				shape_editor.break_path_at_selected_point(&document.network_interface, responses);
+				shape_editor.break_path_at_selected_point(document, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
-				shape_editor.delete_point_and_break_path(&document.network_interface, responses);
+				shape_editor.delete_point_and_break_path(document, responses);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::FlipSmoothSharp) => {
@@ -630,12 +633,12 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::PointerMove { .. }) => self,
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
-				shape_editor.move_selected_points(&document.network_interface, (delta_x, delta_y).into(), true, responses);
+				shape_editor.move_selected_points(tool_data.opposing_handle_lengths.take(), &document, (delta_x, delta_y).into(), true, responses);
 
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectAllAnchors) => {
-				shape_editor.select_all_anchors_in_selected_layers(&document.network_interface);
+				shape_editor.select_all_anchors_in_selected_layers(document);
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -646,13 +649,13 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network_interface, DVec2::new(new_x, coordinates.y), layer);
+					shape_editor.reposition_control_point(&id, &document.network_interface, DVec2::new(new_x, coordinates.y), layer, responses);
 				}
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
-					shape_editor.reposition_control_point(&id, responses, &document.network_interface, DVec2::new(coordinates.x, new_y), layer);
+					shape_editor.reposition_control_point(&id, &document.network_interface, DVec2::new(coordinates.x, new_y), layer, responses);
 				}
 				PathToolFsmState::Ready
 			}
@@ -662,14 +665,14 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_colinear_handles_state_on_selected(true, responses);
-				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, &document.network_interface);
+				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(PathToolMessage::SelectionChanged);
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
-				shape_editor.set_colinear_handles_state_on_selected(false, responses);
+				shape_editor.disable_colinear_handles_state_on_selected(&document.metadata, &document.network, responses);
 				responses.add(DocumentMessage::CommitTransaction);
 				PathToolFsmState::Ready
 			}
@@ -748,10 +751,11 @@ impl SelectionStatus {
 		}
 	}
 
-	fn as_multiple(&self) -> Option<&MultipleSelectedPoints> {
+	fn angle(&self) -> Option<ManipulatorAngle> {
 		match self {
-			SelectionStatus::Multiple(multiple) => Some(multiple),
-			_ => None,
+			Self::None => None,
+			Self::One(one) => Some(one.manipulator_angle),
+			Self::Multiple(one) => Some(one.manipulator_angle),
 		}
 	}
 }
@@ -780,33 +784,23 @@ fn get_selection_status(network_interface: &NodeNetworkInterface, shape_state: &
 		let Some(layer) = selection_layers.find(|(_, v)| *v > 0).map(|(k, _)| k) else {
 			return SelectionStatus::None;
 		};
-		let Some(subpaths) = get_subpaths(layer, network_interface) else {
+		let Some(vector_data) = network_interface.document_metadata().compute_modified_vector(layer, network_interface) else {
 			return SelectionStatus::None;
 		};
-		let Some(colinear_manipulators) = get_colinear_manipulators(layer, network_interface) else {
+		let Some(&point) = shape_state.selected_points().next() else {
 			return SelectionStatus::None;
 		};
-		let Some(point) = shape_state.selected_points().next() else {
-			return SelectionStatus::None;
-		};
-		let Some(manipulator) = get_manipulator_from_id(subpaths, point.group) else {
-			return SelectionStatus::None;
-		};
-		let Some(local_position) = point.manipulator_type.get_position(manipulator) else {
+		let Some(local_position) = point.get_position(&vector_data) else {
 			return SelectionStatus::None;
 		};
 
 		let coordinates = document_metadata.transform_to_document(layer).transform_point2(local_position);
-		let manipulator_angle = if colinear_manipulators.contains(&point.group) {
-			ManipulatorAngle::Colinear
-		} else {
-			ManipulatorAngle::Free
-		};
+		let manipulator_angle = if vector_data.colinear(point) { ManipulatorAngle::Colinear } else { ManipulatorAngle::Free };
 
 		return SelectionStatus::One(SingleSelectedPoint {
 			coordinates,
 			layer,
-			id: *point,
+			id: point,
 			manipulator_angle,
 		});
 	};

@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![allow(dead_code, unused_imports, unused_import_braces)]
 
 pub(crate) mod compare;
 

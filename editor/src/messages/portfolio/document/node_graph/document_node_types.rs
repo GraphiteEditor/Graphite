@@ -306,12 +306,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								manual_composition: Some(concrete!(Footprint)),
 								inputs: vec![
 									NodeInput::network(concrete!(graphene_core::GraphicGroup), 1),
+									NodeInput::value(TaggedValue::String(String::from("Artboard")), false),
 									NodeInput::network(concrete!(TaggedValue), 2),
 									NodeInput::network(concrete!(TaggedValue), 3),
 									NodeInput::network(concrete!(TaggedValue), 4),
 									NodeInput::network(concrete!(TaggedValue), 5),
 								],
-								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _>"),
+								implementation: DocumentNodeImplementation::proto("graphene_core::ConstructArtboardNode<_, _, _, _, _, _>"),
 								..Default::default()
 							},
 							// The monitor node is used to display a thumbnail in the UI.
@@ -666,6 +667,134 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Rasterize",
+			category: "Raster",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(2), 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 2)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Rasterize".to_string(),
+						inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Artwork",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::VectorData(VectorData::default()), true),
+				},
+				DocumentInputType {
+					name: "Footprint",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(
+						TaggedValue::Footprint(Footprint {
+							transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
+							resolution: UVec2::new(100, 100),
+							..Default::default()
+						}),
+						false,
+					),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
+				},
+			],
+			properties: node_properties::rasterize_properties,
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Rasterize",
+			category: "Raster",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(2), 0)],
+				nodes: [
+					DocumentNode {
+						name: "Create Canvas".to_string(),
+						inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 2)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
+						skip_deduplication: true,
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Cache".to_string(),
+						manual_composition: Some(concrete!(())),
+						inputs: vec![NodeInput::node(NodeId(0), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
+						..Default::default()
+					},
+					DocumentNode {
+						name: "Rasterize".to_string(),
+						inputs: vec![NodeInput::network(generic!(T), 0), NodeInput::network(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RasterizeNode<_, _>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType {
+					name: "Artwork",
+					data_type: FrontendGraphDataType::Raster,
+					default: NodeInput::value(TaggedValue::VectorData(VectorData::default()), true),
+				},
+				DocumentInputType {
+					name: "Footprint",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::value(
+						TaggedValue::Footprint(Footprint {
+							transform: DAffine2::from_scale_angle_translation(DVec2::new(100., 100.), 0., DVec2::new(0., 0.)),
+							resolution: UVec2::new(100, 100),
+							..Default::default()
+						}),
+						false,
+					),
+				},
+				DocumentInputType {
+					name: "In",
+					data_type: FrontendGraphDataType::General,
+					default: NodeInput::network(concrete!(WasmEditorApi), 0),
+				},
+			],
+			properties: node_properties::rasterize_properties,
+			outputs: vec![DocumentOutputType {
+				name: "Canvas",
+				data_type: FrontendGraphDataType::General,
+			}],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			// This essentially builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
 			identifier: "Begin Scope",
 			node_template: NodeTemplate {
@@ -930,17 +1059,17 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::UVec2((512, 512).into()), false),
 						NodeInput::value(TaggedValue::U32(0), false),
 						NodeInput::value(TaggedValue::F64(10.), false),
-						NodeInput::value(TaggedValue::NoiseType(NoiseType::Perlin), false),
-						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::None), false),
+						NodeInput::value(TaggedValue::NoiseType(NoiseType::default()), false),
+						NodeInput::value(TaggedValue::DomainWarpType(DomainWarpType::default()), false),
 						NodeInput::value(TaggedValue::F64(100.), false),
-						NodeInput::value(TaggedValue::FractalType(FractalType::None), false),
+						NodeInput::value(TaggedValue::FractalType(FractalType::default()), false),
 						NodeInput::value(TaggedValue::U32(3), false),
 						NodeInput::value(TaggedValue::F64(2.), false),
 						NodeInput::value(TaggedValue::F64(0.5), false),
 						NodeInput::value(TaggedValue::F64(0.), false), // 0-1 range
 						NodeInput::value(TaggedValue::F64(2.), false),
-						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::Euclidean), false),
-						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::Nearest), false),
+						NodeInput::value(TaggedValue::CellularDistanceFunction(CellularDistanceFunction::default()), false),
+						NodeInput::value(TaggedValue::CellularReturnType(CellularReturnType::default()), false),
 						NodeInput::value(TaggedValue::F64(1.), false),
 					],
 					..Default::default()
@@ -1018,7 +1147,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::mask_properties,
 			..Default::default()
 		},
@@ -1031,7 +1160,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
 					],
 					..Default::default()
 				},
@@ -1041,7 +1170,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::insert_channel_properties,
 			..Default::default()
 		},
@@ -1066,7 +1195,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		// TODO: This needs to work with resolution-aware (raster with footprint, post-Cull node) data.
@@ -1089,7 +1218,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::blend_properties,
 			..Default::default()
 		},
@@ -1121,7 +1250,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::levels_properties,
 			..Default::default()
 		},
@@ -1157,7 +1286,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::black_and_white_properties,
 			..Default::default()
 		},
@@ -1180,11 +1309,20 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			..Default::default()
 		},
 		DocumentNodeDefinition {
+			name: "Color Channel",
+			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
+			inputs: vec![DocumentInputType::value("Channel", TaggedValue::RedGreenBlue(RedGreenBlue::Red), false)],
+			category: "Raster",
+			outputs: vec![DocumentOutputType::new("Out", FrontendGraphDataType::General)],
+			properties: node_properties::color_channel_properties,
+			..Default::default()
+		},
+		DocumentNodeDefinition {
 			identifier: "Blend Mode Value",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-					inputs: vec![NodeInput::value(TaggedValue::BlendMode(BlendMode::Normal), false)],
+					inputs: vec![NodeInput::value(TaggedValue::BlendMode(BlendMode::default()), false)],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
@@ -1204,7 +1342,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::LuminanceNode<_>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::LuminanceCalculation(LuminanceCalculation::SRGB), false),
+						NodeInput::value(TaggedValue::LuminanceCalculation(LuminanceCalculation::default()), false),
 					],
 					..Default::default()
 				},
@@ -1214,7 +1352,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::luminance_properties,
 			..Default::default()
 		},
@@ -1225,7 +1363,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					implementation: DocumentNodeImplementation::proto("graphene_core::raster::ExtractChannelNode<_>"),
 					inputs: vec![
 						NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-						NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
+						NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::default()), false),
 					],
 					..Default::default()
 				},
@@ -1235,7 +1373,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::extract_channel_properties,
 			..Default::default()
 		},
@@ -1256,7 +1394,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -1365,7 +1503,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2296,7 +2434,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		#[cfg(feature = "gpu")]
@@ -2319,7 +2457,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::blend_properties,
 			..Default::default()
 		},
@@ -2421,7 +2559,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2443,7 +2581,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::adjust_hsl_properties,
 			..Default::default()
 		},
@@ -2466,7 +2604,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::brightness_contrast_properties,
 			..Default::default()
 		},
@@ -2487,7 +2625,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::curves_properties,
 			..Default::default()
 		},
@@ -2510,7 +2648,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::adjust_threshold_properties,
 			..Default::default()
 		},
@@ -2528,7 +2666,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::adjust_vibrance_properties,
 			..Default::default()
 		},
@@ -2559,7 +2697,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(100.), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
 						// Display-only properties (not used within the node)
-						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::Red), false),
+						NodeInput::value(TaggedValue::RedGreenBlue(RedGreenBlue::default()), false),
 					],
 					..Default::default()
 				},
@@ -2592,7 +2730,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::adjust_channel_mixer_properties,
 			..Default::default()
 		},
@@ -2606,7 +2744,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					inputs: vec![
 						NodeInput::Value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
 						// Mode
-						NodeInput::Value(TaggedValue::RelativeAbsolute(RelativeAbsolute::Relative), false),
+						NodeInput::Value(TaggedValue::RelativeAbsolute(RelativeAbsolute::default()), false),
 						// Reds
 						NodeInput::Value(TaggedValue::F64(0.), false),
 						NodeInput::Value(TaggedValue::F64(0.), false),
@@ -2653,7 +2791,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::Value(TaggedValue::F64(0.), false),
 						NodeInput::Value(TaggedValue::F64(0.), false),
 						// Display-only properties (not used within the node)
-						NodeInput::Value(TaggedValue::SelectiveColorChoice(SelectiveColorChoice::Reds), false),
+						NodeInput::Value(TaggedValue::SelectiveColorChoice(SelectiveColorChoice::default()), false),
 					],
 					..Default::default()
 				},
@@ -2703,7 +2841,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 
 			properties: node_properties::adjust_selective_color_properties,
 			..Default::default()
@@ -2722,7 +2860,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::opacity_properties,
 			..Default::default()
 		},
@@ -2743,7 +2881,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::blend_mode_properties,
 			..Default::default()
 		},
@@ -2761,7 +2899,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::posterize_properties,
 			..Default::default()
 		},
@@ -2784,7 +2922,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::exposure_properties,
 			..Default::default()
 		},
@@ -3417,19 +3555,78 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::proto("graphene_core::vector::generator_nodes::PathGenerator<_>"),
 					inputs: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::value(TaggedValue::Subpaths(vec![]), false),
+						NodeInput::value(TaggedValue::PointIds(vec![]), false),
 						NodeInput::value(TaggedValue::ManipulatorGroupIds(vec![]), false),
 					],
 					..Default::default()
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_names: vec!["None".to_string(), "Path Data".to_string(), "Colinear Manipulators".to_string()],
+					input_names: vec!["Path Data".to_string(), "Colinear Manipulators".to_string()],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()
 				},
 			},
 			category: "Vector",
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Path",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+						..monitor_node()
+					},
+					DocumentNode {
+						name: "Path Modify".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_core::vector::VectorModification), 1)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::PathModify<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
+				DocumentInputType::value("Modification", TaggedValue::VectorModification(Default::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector Data", FrontendGraphDataType::VectorData)],
+			..Default::default()
+		},
+		DocumentNodeDefinition {
+			name: "Path",
+			category: "Vector",
+			implementation: DocumentNodeImplementation::Network(NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: vec![
+					DocumentNode {
+						inputs: vec![NodeInput::network(concrete!(VectorData), 0)],
+						..monitor_node()
+					},
+					DocumentNode {
+						name: "Path Modify".to_string(),
+						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::network(concrete!(graphene_core::vector::VectorModification), 1)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::PathModify<_>")),
+						..Default::default()
+					},
+				]
+				.into_iter()
+				.enumerate()
+				.map(|(id, node)| (NodeId(id as u64), node))
+				.collect(),
+				..Default::default()
+			}),
+			inputs: vec![
+				DocumentInputType::value("Vector Data", TaggedValue::VectorData(VectorData::empty()), true),
+				DocumentInputType::value("Modification", TaggedValue::VectorModification(Default::default()), false),
+			],
+			outputs: vec![DocumentOutputType::new("Vector Data", FrontendGraphDataType::VectorData)],
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -3688,8 +3885,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						NodeInput::value(TaggedValue::F64(0.), false),
 						NodeInput::value(TaggedValue::VecF64(Vec::new()), false),
 						NodeInput::value(TaggedValue::F64(0.), false),
-						NodeInput::value(TaggedValue::LineCap(graphene_core::vector::style::LineCap::Butt), false),
-						NodeInput::value(TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::Miter), false),
+						NodeInput::value(TaggedValue::LineCap(graphene_core::vector::style::LineCap::default()), false),
+						NodeInput::value(TaggedValue::LineJoin(graphene_core::vector::style::LineJoin::default()), false),
 						NodeInput::value(TaggedValue::F64(4.), false),
 					],
 					..Default::default()
@@ -4115,7 +4312,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -4132,7 +4329,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::index_properties,
 			..Default::default()
 		},
@@ -4154,7 +4351,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::color_fill_properties,
 			..Default::default()
 		},
@@ -4177,7 +4374,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::color_overlay_properties,
 			..Default::default()
 		},
@@ -4195,7 +4392,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			category: "Image Adjustments",
+			category: "Raster",
 			properties: node_properties::image_color_palette,
 			..Default::default()
 		},

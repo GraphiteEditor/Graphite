@@ -1145,12 +1145,12 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find the deepest layer given in the sorted array (by returning the one which is not a folder from the list of layers under the click location).
-	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier], metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
+	pub fn find_deepest(&self, node_list: &[LayerNodeIdentifier]) -> Option<LayerNodeIdentifier> {
 		node_list
 			.iter()
 			.find(|&&layer| {
 				if layer != LayerNodeIdentifier::ROOT_PARENT {
-					layer.has_children(metadata)
+					layer.has_children(self.network_interface.document_metadata())
 				} else {
 					log::error!("ROOT_PARENT should not exist in find_deepest");
 					false
@@ -1160,35 +1160,27 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_list_any(&self, viewport_location: DVec2) -> Vec<LayerNodeIdentifier> {
-		self.click_xray(viewport_location)
-			.filter(|&layer| !self.network_interface.is_artboard(&layer.to_node()))
-			.collect::<Vec<_>>()
+	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray(viewport_location).filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node()))
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list(&self, viewport_location: DVec2, metadata: &DocumentMetadata) -> Vec<LayerNodeIdentifier> {
-		let mut node_list = self.click_list_any(viewport_location);
-		node_list.truncate(
-			node_list
-				.iter()
-				.position(|&layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						layer.has_children(metadata)
-					} else {
-						log::error!("ROOT_PARENT should not exist in click_list_any");
-						false
-					}
-				})
-				.unwrap_or(0)
-				+ 1,
-		);
-		node_list
+	pub fn click_list<'a>(&'a self, viewport_location: DVec2) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray_no_artboards(viewport_location)
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = layer.has_children(self.network_interface.document_metadata());
+					Some(layer)
+				} else {
+					None
+				}
+			})
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
-	pub fn click(&self, viewport_location: DVec2, metadata: &DocumentMetadata) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location, metadata).last().copied()
+	pub fn click(&self, viewport_location: DVec2) -> Option<LayerNodeIdentifier> {
+		self.click_list(viewport_location).last()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space

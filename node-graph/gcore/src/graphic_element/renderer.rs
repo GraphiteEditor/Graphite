@@ -154,11 +154,14 @@ impl Default for SvgRender {
 	}
 }
 
+#[derive(Default)]
 pub enum ImageRenderMode {
+	#[default]
 	Base64,
 }
 
 /// Static state used whilst rendering
+#[derive(Default)]
 pub struct RenderParams {
 	pub view_mode: crate::vector::style::ViewMode,
 	pub image_render_mode: ImageRenderMode,
@@ -330,8 +333,14 @@ impl GraphicElementRendered for VectorData {
 
 	fn add_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		let stroke_width = self.style.stroke().as_ref().map_or(0., crate::vector::style::Stroke::weight);
-		click_targets.extend(self.region_bezier_paths().map(|(_, subpath)| ClickTarget { stroke_width, subpath }));
-		click_targets.extend(self.stroke_bezier_paths().map(|subpath| ClickTarget { stroke_width, subpath }));
+		let filled = self.style.fill() != &crate::vector::style::Fill::None;
+		let fill = |mut subpath: bezier_rs::Subpath<_>| {
+			if filled {
+				subpath.set_closed(true);
+			}
+			subpath
+		};
+		click_targets.extend(self.stroke_bezier_paths().map(fill).map(|subpath| ClickTarget { stroke_width, subpath }));
 	}
 
 	fn to_usvg_node(&self) -> usvg::Node {
@@ -395,7 +404,7 @@ impl GraphicElementRendered for Artboard {
 				},
 				|render| {
 					// TODO: Use the artboard's layer name
-					render.svg.push("Artboard".into());
+					render.svg.push(self.label.to_string().into());
 				},
 			);
 		}
@@ -471,9 +480,10 @@ impl GraphicElementRendered for crate::ArtboardGroup {
 	}
 
 	fn contains_artboard(&self) -> bool {
-		self.artboards.len() > 0
+		!self.artboards.is_empty()
 	}
 }
+
 impl GraphicElementRendered for ImageFrame<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let transform: String = format_transform_matrix(self.transform * render.transform);

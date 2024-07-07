@@ -80,6 +80,8 @@ macro_rules! register_node {
 macro_rules! async_node {
 	// TODO: we currently need to annotate the type here because the compiler would otherwise (correctly)
 	// assign a Pin<Box<dyn Future<Output=T>>> type to the node, which is not what we want for now.
+	//
+	// This `params` variant of the macro wraps the normal `fn_params` variant and is used as a shorthand for writing `T` instead of `() => T`
 	($path:ty, input: $input:ty, output: $output:ty, params: [ $($type:ty),*]) => {
 		async_node!($path, input: $input, output: $output, fn_params: [ $(() => $type),*])
 	};
@@ -89,10 +91,10 @@ macro_rules! async_node {
 			ProtoNodeIdentifier::new(stringify!($path)),
 			|mut args| {
 				Box::pin(async move {
-				args.reverse();
-				let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
-				let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
-				Box::new(any) as TypeErasedBox
+					args.reverse();
+					let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+					let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				})
 			},
 			{
@@ -104,7 +106,7 @@ macro_rules! async_node {
 				let params = vec![$(fn_type!($arg, $type)),*];
 				let mut node_io = NodeIO::<'_, $input>::to_node_io(&node, params);
 				node_io.input = concrete!(<$input as StaticType>::Static);
-				node_io.input = concrete!(<$input as StaticType>::Static);
+				node_io.input = concrete!(<$input as StaticType>::Static); // Why are there 2 of them?
 				node_io.output = concrete!(<$output as StaticType>::Static);
 				node_io
 			},
@@ -345,7 +347,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicGroup, fn_params: [Footprint => graphene_core::GraphicGroup]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: graphene_core::GraphicElement, fn_params: [Footprint => graphene_core::GraphicElement]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => graphene_core::Artboard]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => Artboard]),
 		async_node!(graphene_std::wasm_application_io::LoadResourceNode<_>, input: WasmEditorApi, output: Arc<[u8]>, params: [String]),
 		register_node!(graphene_std::wasm_application_io::DecodeImageNode, input: Arc<[u8]>, params: []),
 		async_node!(graphene_std::wasm_application_io::CreateSurfaceNode, input: WasmEditorApi, output: Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>, params: []),
@@ -520,7 +522,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					}
 				})
 			},
-			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f32), fn_type!(f32), fn_type!(bool)]),
+			NodeIOTypes::new(concrete!(ImageFrame<Color>), concrete!(ImageFrame<Color>), vec![fn_type!(f64), fn_type!(f64), fn_type!(bool)]),
 		)],
 		vec![
 			(
@@ -664,7 +666,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Vec<DVec2>, params: [Vec<DVec2>]),
-		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<WasmSurfaceHandle>, params: [Arc<WasmSurfaceHandle>]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>, params: [Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ShaderInputFrame<WgpuExecutor>, params: [ShaderInputFrame<WgpuExecutor>]),
 		#[cfg(feature = "gpu")]
@@ -681,23 +683,25 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::quantization::QuantizeNode<_>, input: Color, params: [QuantizationChannels]),
 		register_node!(graphene_core::quantization::DeQuantizeNode<_>, input: PackedPixel, params: [QuantizationChannels]),
 		register_node!(graphene_core::ops::CloneNode<_>, input: &QuantizationChannels, params: []),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ImageFrame<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => VectorData, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Artboard, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ArtboardGroup, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => ImageFrame<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => VectorData, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => GraphicGroup, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => Artboard, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => bool, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => f32, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => f64, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => String, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => Option<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Option<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [() => Vec<Color>, () => Arc<WasmSurfaceHandle>]),
-		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Vec<Color>, () => Arc<WasmSurfaceHandle>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ImageFrame<Color>, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => VectorData, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => GraphicGroup, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Artboard, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ArtboardGroup, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Option<Color>, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Vec<Color>, () => Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [ImageFrame<Color>, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [VectorData, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [GraphicGroup, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [Artboard, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [bool, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [f32, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [f64, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [String, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [Option<Color>, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RenderNode<_, _, _>, input: WasmEditorApi, output: RenderOutput, params: [Vec<Color>, Arc<SurfaceHandle<<graphene_std::wasm_application_io::WasmApplicationIo as graphene_core::application_io::ApplicationIo>::Surface>>]),
+		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: VectorData, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
+		async_node!(graphene_std::wasm_application_io::RasterizeNode<_, _>, input: GraphicGroup, output: ImageFrame<Color>, params: [Footprint, Arc<WasmSurfaceHandle>]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: VectorData, fn_params: [Footprint => VectorData, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: WasmSurfaceHandleFrame, fn_params: [Footprint => WasmSurfaceHandleFrame, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
 		async_node!(graphene_core::transform::TransformNode<_, _, _, _, _, _>, input: Footprint, output: ImageFrame<Color>, fn_params: [Footprint => ImageFrame<Color>, () => DVec2, () => f64, () => DVec2, () => DVec2, () => DVec2]),
@@ -796,9 +800,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::vector::generator_nodes::SplineGenerator<_>, input: (), params: [Vec<DVec2>]),
 		register_node!(
 			graphene_core::vector::generator_nodes::PathGenerator<_>,
-			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::uuid::ManipulatorGroupId>>,
-			params: [Vec<graphene_core::uuid::ManipulatorGroupId>]
+			input: Vec<graphene_core::vector::bezier_rs::Subpath<graphene_core::vector::PointId>>,
+			params: [Vec<graphene_core::vector::PointId>]
 		),
+		register_node!(graphene_core::vector::PathModify<_>, input: VectorData, params: [graphene_core::vector::VectorModification]),
 		register_node!(graphene_core::text::TextGeneratorNode<_, _, _>, input: WasmEditorApi, params: [String, graphene_core::text::Font, f64]),
 		register_node!(graphene_std::brush::VectorPointsNode, input: VectorData, params: []),
 		register_node!(graphene_core::ExtractImageFrame, input: WasmEditorApi, params: []),
@@ -811,7 +816,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::ToGraphicGroupNode, input: ImageFrame<Color>, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: GraphicGroup, params: []),
 		register_node!(graphene_core::ToGraphicGroupNode, input: Artboard, params: []),
-		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
+		async_node!(graphene_core::ConstructArtboardNode<_, _, _, _, _, _>, input: Footprint, output: Artboard, fn_params: [Footprint => GraphicGroup, () => String, () => glam::IVec2, () => glam::IVec2, () => Color, () => bool]),
 		async_node!(graphene_core::AddArtboardNode<_, _>, input: Footprint, output: ArtboardGroup, fn_params: [Footprint => ArtboardGroup, Footprint => Artboard]),
 	];
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();

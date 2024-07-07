@@ -52,6 +52,7 @@ fn migrate_layer_to_merge<'de, D: serde::Deserializer<'de>>(deserializer: D) -> 
 	}
 	Ok(s)
 }
+
 // TODO: Eventually remove this (probably starting late 2024)
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
@@ -85,7 +86,6 @@ where
 {
 	let input_versions = Vec::<NodeInputVersions>::deserialize(deserializer)?;
 
-	// Convert Vec<NodeOutput> to Vec<NodeInput>
 	let inputs = input_versions
 		.into_iter()
 		.map(|old_input| {
@@ -115,8 +115,9 @@ pub struct DocumentNode {
 	/// - From other nodes within this graph [`NodeInput::Node`],
 	/// - A constant value [`NodeInput::Value`],
 	/// - A [`NodeInput::Network`] which specifies that this input is from outside the graph, which is resolved in the graph flattening step in the case of nested networks.
-	///   In the root network, it is resolved when evaluating the borrow tree.
-	///  Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
+	///
+	/// In the root network, it is resolved when evaluating the borrow tree.
+	/// Ensure the click target in the encapsulating network is updated when the inputs cause the node shape to change (currently only when exposing/hiding an input) by using network.update_click_target(node_id).
 	#[serde(deserialize_with = "deserialize_inputs")]
 	pub inputs: Vec<NodeInput>,
 	/// Manual composition is a way to override the default composition flow of one node into another.
@@ -823,14 +824,14 @@ impl NodeNetwork {
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten(&mut self, node: NodeId) {
-		self.flatten_with_fns(node, merge_ids, || NodeId(generate_uuid()))
+	pub fn flatten(&mut self, node_id: NodeId) {
+		self.flatten_with_fns(node_id, merge_ids, || NodeId(generate_uuid()))
 	}
 
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
-	pub fn flatten_with_fns(&mut self, node: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
-		let Some((id, mut node)) = self.nodes.remove_entry(&node) else {
-			warn!("The node which was supposed to be flattened does not exist in the network, id {node} network {self:#?}");
+	pub fn flatten_with_fns(&mut self, node_id: NodeId, map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy, gen_id: impl Fn() -> NodeId + Copy) {
+		let Some((id, mut node)) = self.nodes.remove_entry(&node_id) else {
+			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
 
@@ -878,6 +879,7 @@ impl NodeNetwork {
 					}
 				}
 			}
+
 			// Replace value inputs with value nodes, added to flattened network
 			for input in node.inputs.iter_mut() {
 				let previous_input = std::mem::replace(input, NodeInput::network(concrete!(()), 0));
@@ -912,11 +914,19 @@ impl NodeNetwork {
 			// Connect all network inputs to either the parent network nodes, or newly created value nodes for the parent node.
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
+
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
+				if nested_node.name == "To Artboard" {
+					let label_index = 1;
+					let label = if !node.alias.is_empty() { node.alias.clone() } else { node.name.clone() };
+					let label_input = NodeInput::value(TaggedValue::String(label), false);
+					nested_node.inputs[label_index] = label_input;
+				}
+
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
-						let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 						match *parent_input {
 							// If the input to self is a node, connect the corresponding output of the inner network to it
 							NodeInput::Node { node_id, output_index, lambda } => {
@@ -942,7 +952,7 @@ impl NodeNetwork {
 			// Match the document node input and the exports of the inner network if the export is a NodeInput::Network
 			// for (i, export) in inner_network.exports.iter().enumerate() {
 			// 	if let NodeInput::Network { import_index, .. } = export {
-			// 		let parent_input = node.inputs.get(*import_index).expect("Import index should always exist");
+			// 		let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
 			// 		match *parent_input {
 			// 			// If the input to self is a node, connect the corresponding output of the inner network to it
 			// 			NodeInput::Node { node_id, output_index, lambda } => {

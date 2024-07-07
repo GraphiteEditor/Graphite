@@ -48,6 +48,14 @@ impl BezierHandles {
 		matches!(self, Self::Cubic { .. })
 	}
 
+	pub fn is_finite(&self) -> bool {
+		match self {
+			BezierHandles::Linear => true,
+			BezierHandles::Quadratic { handle } => handle.is_finite(),
+			BezierHandles::Cubic { handle_start, handle_end } => handle_start.is_finite() && handle_end.is_finite(),
+		}
+	}
+
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn start(&self) -> Option<DVec2> {
 		match *self {
@@ -61,6 +69,18 @@ impl BezierHandles {
 		match *self {
 			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
 			_ => None,
+		}
+	}
+
+	pub fn move_start(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } = self {
+			*handle_start += delta
+		}
+	}
+
+	pub fn move_end(&mut self, delta: DVec2) {
+		if let BezierHandles::Cubic { handle_end, .. } = self {
+			*handle_end += delta
 		}
 	}
 
@@ -78,6 +98,17 @@ impl BezierHandles {
 				let handle_end = transformation_function(handle_end);
 				Self::Cubic { handle_start, handle_end }
 			}
+		}
+	}
+
+	#[must_use]
+	pub fn flipped(self) -> Self {
+		match self {
+			BezierHandles::Cubic { handle_start, handle_end } => Self::Cubic {
+				handle_start: handle_end,
+				handle_end: handle_start,
+			},
+			_ => self,
 		}
 	}
 }

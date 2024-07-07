@@ -16,6 +16,7 @@ import {
 	TriggerImport,
 	TriggerOpenDocument,
 	TriggerRevokeBlobUrl,
+	TriggerUpgradeDocumentToVectorManipulationFormat,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 } from "@graphite/wasm-communication/messages";
@@ -109,6 +110,11 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerRevokeBlobUrl, async (triggerRevokeBlobUrl) => {
 		URL.revokeObjectURL(triggerRevokeBlobUrl.url);
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerUpgradeDocumentToVectorManipulationFormat, async (triggerUpgradeDocumentToVectorManipulationFormat) => {
+		// TODO: Eventually remove this (probably starting late 2024)
+		const { documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent } = triggerUpgradeDocumentToVectorManipulationFormat;
+		editor.handle.triggerUpgradeDocumentToVectorManipulationFormat(documentId, documentName, documentIsAutoSaved, documentIsSaved, documentSerializedContent);
 	});
 
 	return {

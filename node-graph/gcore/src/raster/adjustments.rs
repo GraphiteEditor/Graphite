@@ -581,8 +581,9 @@ fn vibrance_node(color: Color, vibrance: f64) -> Color {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum RedGreenBlue {
+	#[default]
 	Red,
 	Green,
 	Blue,
@@ -600,8 +601,9 @@ impl core::fmt::Display for RedGreenBlue {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum RedGreenBlueAlpha {
+	#[default]
 	Red,
 	Green,
 	Blue,
@@ -621,8 +623,9 @@ impl core::fmt::Display for RedGreenBlueAlpha {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum NoiseType {
+	#[default]
 	Perlin,
 	OpenSimplex2,
 	OpenSimplex2S,
@@ -662,8 +665,9 @@ impl NoiseType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum FractalType {
+	#[default]
 	None,
 	FBm,
 	Ridged,
@@ -700,8 +704,9 @@ impl FractalType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum CellularDistanceFunction {
+	#[default]
 	Euclidean,
 	EuclideanSq,
 	Manhattan,
@@ -732,9 +737,10 @@ impl CellularDistanceFunction {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum CellularReturnType {
 	CellValue,
+	#[default]
 	Nearest,
 	NextNearest,
 	Average,
@@ -773,8 +779,9 @@ impl CellularReturnType {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum DomainWarpType {
+	#[default]
 	None,
 	OpenSimplex2,
 	OpenSimplex2Reduced,
@@ -867,8 +874,9 @@ fn channel_mixer_node(
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum RelativeAbsolute {
+	#[default]
 	Relative,
 	Absolute,
 }
@@ -885,8 +893,9 @@ impl core::fmt::Display for RelativeAbsolute {
 #[repr(C)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "std", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny)]
 pub enum SelectiveColorChoice {
+	#[default]
 	Reds,
 	Yellows,
 	Greens,

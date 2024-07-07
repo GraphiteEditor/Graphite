@@ -734,9 +734,15 @@ impl NodeNetworkInterface {
 		self.upstream_flow_back_from_nodes(vec![node], FlowType::HorizontalFlow).any(|(_, id)| id == potentially_upstream_node)
 	}
 
-	
-	fn get_text_width(&self, node_id: &NodeId) -> Option<f64> {
-		let document = window().unwrap().document().unwrap();
+	#[cfg(not(target_arch = "wasm32"))]
+	fn get_text_width(node_id: &NodeId) -> Option<f64> {
+		warn!("Failed to find width of {node_id:#?} due to non-wasm arch");
+		None
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	fn get_text_width(node_id: &NodeId) -> Option<f64> {
+		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
 			Ok(div) => div,
 			Err(err) => {
@@ -1078,6 +1084,7 @@ impl NodeNetworkInterface {
 
 		self.document_metadata.upstream_transforms.retain(|node, _| self.document_network().nodes.contains_key(node));
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.vector_modify.retain(|node, _| self.document_network().nodes.contains_key(node));
 	}
 	
 	pub fn document_metadata_mut(&mut self) -> &mut DocumentMetadata {

@@ -1,14 +1,17 @@
 use super::network_interface;
 use super::nodes::SelectedNodes;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::FlowType;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_core::renderer::ClickTarget;
 use graphene_core::renderer::Quad;
 use graphene_core::transform::Footprint;
+use graphene_std::vector::PointId;
+use graphene_std::vector::VectorData;
 
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::PointId;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 
@@ -24,6 +27,7 @@ pub struct DocumentMetadata {
 	pub upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub vector_modify: HashMap<NodeId, VectorData>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
@@ -33,6 +37,7 @@ impl Default for DocumentMetadata {
 		Self {
 			upstream_transforms: HashMap::new(),
 			structure: HashMap::new(),
+			vector_modify: HashMap::new(),
 			click_targets: HashMap::new(),
 			document_to_viewport: DAffine2::IDENTITY,
 		}
@@ -54,6 +59,24 @@ impl DocumentMetadata {
 
 	pub fn click_target(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
 		self.click_targets.get(&layer)
+	}
+
+	// TODO: Move into network interface so that it does not have to be passed as an argument
+	/// Get vector data after the modification is applied
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<VectorData> {
+		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
+
+		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.vector_modify.get(&node)) {
+			let mut modified = vector_data.clone();
+			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
+				modification.apply(&mut modified);
+			}
+			return Some(modified);
+		}
+		self.click_targets
+			.get(&layer)
+			.map(|click| click.iter().map(|click| &click.subpath))
+			.map(|subpaths| VectorData::from_subpaths(subpaths, true))
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -119,9 +142,10 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
-	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+	/// Update the cached click targets and vector modify values of the layers
+	pub fn update_from_monitor(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>, new_vector_modify: HashMap<NodeId, VectorData>) {
 		self.click_targets = new_click_targets;
+		self.vector_modify = new_vector_modify;
 	}
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
@@ -205,7 +229,7 @@ impl Default for LayerNodeIdentifier {
 }
 
 impl LayerNodeIdentifier {
-	/// A conceptual node used to represent the parent of all stacks
+	/// A conceptual layer used to represent the parent of layers feed into the export
 	pub const ROOT_PARENT: Self = LayerNodeIdentifier::new_unchecked(NodeId(0));
 
 	/// Construct a [`LayerNodeIdentifier`] without checking if it is a layer node

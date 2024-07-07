@@ -17,16 +17,12 @@ use bezier_rs::Subpath;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, FlowType, NodeId, NodeInput, NodeNetwork, Previewing, Source};
 use graph_craft::proto::GraphErrors;
-use graphene_core::uuid::ManipulatorGroupId;
 use graphene_core::*;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
+use renderer::{ClickTarget, Quad};
+use vector::PointId;
 
 use glam::{DAffine2, DVec2, IVec2, UVec2};
-use renderer::{ClickTarget, Quad};
-use specta::reference;
-use usvg::filter::Input;
-use usvg::Node;
-use web_sys::window;
 
 #[derive(Debug)]
 pub struct NodeGraphHandlerData<'a> {
