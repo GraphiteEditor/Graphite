@@ -83,7 +83,6 @@ fn sony_arw2_load_raw<R: Read + Seek>(width: usize, height: usize, curve: CurveL
 
 			let mut pixels = [0_u16; 16];
 			let mut bit = 30;
-			// for i in 0..16 {
 			for (i, pixel) in pixels.iter_mut().enumerate() {
 				*pixel = match () {
 					_ if i as u32 == index_to_set_max => max,
