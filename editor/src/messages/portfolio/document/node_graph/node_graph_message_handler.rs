@@ -837,13 +837,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							if input_index == 0 {
 								DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. + 2. * 24. + 12.)
 							} else {
-								DVec2::new(to_connector_node_position.x as f64 * 24. - 2.95, to_connector_node_position.y as f64 * 24. + 24.)
+								DVec2::new(to_connector_node_position.x as f64 * 24., to_connector_node_position.y as f64 * 24. + 24.)
 							}
 						} else {
-							DVec2::new(
-								to_connector_node_position.x as f64 * 24. - 2.95,
-								to_connector_node_position.y as f64 * 24. + input_index as f64 * 24. + 24.,
-							)
+							DVec2::new(to_connector_node_position.x as f64 * 24., to_connector_node_position.y as f64 * 24. + input_index as f64 * 24. + 24.)
 						};
 						self.wire_in_progress_to_connector = Some((to_connector_position, input_index == 0 && is_layer));
 					} else if let Some((to_connector_node_position, is_layer, output_index)) =
@@ -857,7 +854,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 							DVec2::new(to_connector_node_position.x as f64 * 24. + 2. * 24., to_connector_node_position.y as f64 * 24. - 12.)
 						} else {
 							DVec2::new(
-								to_connector_node_position.x as f64 * 24. + 5. * 24. + 2.95,
+								to_connector_node_position.x as f64 * 24. + 5. * 24.,
 								to_connector_node_position.y as f64 * 24. + output_index as f64 * 24. + 24.,
 							)
 						};
