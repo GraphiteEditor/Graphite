@@ -794,7 +794,7 @@ impl<'a> ModifyInputsContext<'a> {
 		node_id: NodeId,
 		reconnect: bool,
 		responses: &mut VecDeque<Message>,
-		network_path: &Vec<NodeId>,
+		network_path: &[NodeId],
 	) -> bool {
 		if !ModifyInputsContext::remove_references_from_network(node_graph, document_network, node_id, reconnect, network_path) {
 			log::error!("could not remove_references_from_network");
@@ -804,14 +804,14 @@ impl<'a> ModifyInputsContext<'a> {
 
 		network.nodes.remove(&node_id);
 		selected_nodes.retain_selected_nodes(|&id| id != node_id || id == network.exports_metadata.0 || id == network.imports_metadata.0);
-		node_graph.update_click_target(node_id, document_network, network_path.clone());
+		node_graph.update_click_target(node_id, document_network, network_path.to_owned());
 
 		responses.add(BroadcastEvent::SelectionChanged);
 
 		true
 	}
 
-	pub fn remove_references_from_network(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool, network_path: &Vec<NodeId>) -> bool {
+	pub fn remove_references_from_network(node_graph: &mut NodeGraphMessageHandler, document_network: &mut NodeNetwork, deleting_node_id: NodeId, reconnect: bool, network_path: &[NodeId]) -> bool {
 		let Some(network) = document_network.nested_network(network_path) else { return false };
 		let mut reconnect_to_input: Option<NodeInput> = None;
 
@@ -951,7 +951,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		// TODO: Store types for all document nodes, not just the compiled proto nodes, which currently skips isolated nodes
-		let node_id_path = &[&network_path[..], &[node_id]].concat();
+		let node_id_path = &[network_path, &[node_id]].concat();
 		let input_type = resolved_types.inputs.get(&graph_craft::document::Source {
 			node: node_id_path.clone(),
 			index: input_index,
