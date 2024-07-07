@@ -30,7 +30,7 @@ fn test_images_match_with_libraw() {
 
 			print!("{} => ", path.display());
 
-			let raw_image = match test_raw_data(&content) {
+			let _raw_image = match test_raw_data(&content) {
 				Err(err_msg) => {
 					failed_tests += 1;
 					return println!("{}", err_msg);
@@ -150,7 +150,7 @@ fn test_raw_data(content: &[u8]) -> Result<RawImage, String> {
 }
 
 #[cfg(feature = "raw-rs-tests")]
-fn test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> {
+fn _test_final_image(content: &[u8], raw_image: RawImage) -> Result<(), String> {
 	let processor = libraw::Processor::new();
 	let libraw_image = processor.process_8bit(content).unwrap();
 
