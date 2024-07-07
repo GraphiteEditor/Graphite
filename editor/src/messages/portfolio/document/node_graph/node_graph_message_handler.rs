@@ -63,6 +63,8 @@ pub struct NodeGraphMessageHandler {
 	// Bounding box around all nodes and the node graph to viewport transform for all networks
 	/// TODO: Only store network metadata for the network that is being viewed
 	pub network_metadata: HashMap<Vec<NodeId>, NetworkMetadata>,
+	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
+	pub deselect_on_pointer_up: Option<usize>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -531,7 +533,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::MoveSelectedNodes { displacement_x, displacement_y } => {
+			NodeGraphMessage::MoveSelectedNodes {
+				displacement_x,
+				displacement_y,
+				move_upstream,
+			} => {
 				let network_path = if selected_nodes.selected_nodes_ref().iter().any(|node_id| document_network.nodes.contains_key(node_id)) {
 					Vec::new()
 				} else {
@@ -542,7 +548,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
-				for node_id in selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>() {
+				let mut nodes_to_move = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
+				if move_upstream {
+					let mut seen_upstream = HashSet::new();
+					nodes_to_move = network
+						.upstream_flow_back_from_nodes(nodes_to_move, FlowType::UpstreamFlow)
+						.map(|(_, node_id)| node_id)
+						.filter(move |node_id| seen_upstream.insert(*node_id)) // Ensure all nodes are unique
+						.collect::<Vec<_>>();
+				}
+				for node_id in nodes_to_move {
 					if document_network.nested_network(&network_path).unwrap().exports_metadata.0 == node_id {
 						let network = document_network.nested_network_mut(&network_path).unwrap();
 						network.exports_metadata.1 += IVec2::new(displacement_x, displacement_y);
@@ -886,12 +901,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						modified_selected = true;
 
 						let index = updated_selected.iter().enumerate().find_map(|(i, node_id)| if *node_id == clicked_id { Some(i) } else { None });
-						// Remove from selection if already selected
-						if let Some(index) = index {
-							updated_selected.remove(index);
-						}
+						// Remove from selection (on PointerUp) if already selected
+						self.deselect_on_pointer_up = index;
+
 						// Add to selection if not already selected. Necessary in order to drag multiple nodes
-						else {
+						if index.is_none() {
 							updated_selected.push(clicked_id);
 						};
 					}
@@ -932,7 +946,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				}
 				self.box_selection_start = Some(UVec2::new(viewport_location.x.round().abs() as u32, viewport_location.y.round().abs() as u32));
 			}
-			// TODO: Alt+drag should move all upstream nodes as well
 			NodeGraphMessage::PointerMove { shift } => {
 				let Some(network) = document_network.nested_network(&self.network) else {
 					return;
@@ -1052,6 +1065,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						responses.add(NodeGraphMessage::MoveSelectedNodes {
 							displacement_x: graph_delta.x - drag_start.round_x,
 							displacement_y: graph_delta.y - drag_start.round_y,
+							move_upstream: ipp.keyboard.get(shift as usize),
 						});
 						drag_start.round_x = graph_delta.x;
 						drag_start.round_y = graph_delta.y;
@@ -1103,6 +1117,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up {
+					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+					new_selected_nodes.remove(node_to_deselect);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+					self.deselect_on_pointer_up = None;
+				}
+
 				// Disconnect if the wire was previously connected to an input
 				let viewport_location = ipp.mouse.position;
 				let point = network.node_graph_to_viewport.inverse().transform_point2(viewport_location);
@@ -2974,6 +2995,7 @@ impl Default for NodeGraphMessageHandler {
 			context_menu: None,
 			node_metadata: HashMap::new(),
 			network_metadata: HashMap::new(),
+			deselect_on_pointer_up: None,
 		}
 	}
 }
