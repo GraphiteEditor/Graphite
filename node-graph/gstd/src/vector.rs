@@ -1,21 +1,23 @@
 use crate::Node;
 
 use bezier_rs::{ManipulatorGroup, Subpath};
-use graphene_core::transform::Footprint;
-use graphene_core::vector::misc::BooleanOperation;
+use graphene_core::raster::{Bitmap, ImageFrame};
 pub use graphene_core::vector::*;
+use graphene_core::{transform::Footprint, GraphicGroup};
+use graphene_core::{vector, Artboard};
+use graphene_core::{vector::misc::BooleanOperation, GraphicElement};
 
 use futures::Future;
 use glam::{DAffine2, DVec2};
 use wasm_bindgen::prelude::*;
 
-pub struct BooleanOperationNode<LowerVectorData, BooleanOp> {
+pub struct BinaryBooleanOperationNode<LowerVectorData, BooleanOp> {
 	lower_vector_data: LowerVectorData,
 	boolean_operation: BooleanOp,
 }
 
-#[node_macro::node_fn(BooleanOperationNode)]
-async fn boolean_operation_node<Fut: Future<Output = VectorData>>(
+#[node_macro::node_fn(BinaryBooleanOperationNode)]
+async fn binary_boolean_operation_node<Fut: Future<Output = VectorData>>(
 	upper_vector_data: VectorData,
 	lower_vector_data: impl Node<Footprint, Output = Fut>,
 	boolean_operation: BooleanOperation,
@@ -49,6 +51,87 @@ async fn boolean_operation_node<Fut: Future<Output = VectorData>>(
 	result.alpha_blending = if use_lower_style { lower_vector_data.alpha_blending } else { upper_vector_data.alpha_blending };
 
 	result
+}
+
+pub struct BooleanOperationNode<BooleanOp> {
+	boolean_operation: BooleanOp,
+}
+
+#[node_macro::node_fn(BooleanOperationNode)]
+fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: BooleanOperation) -> VectorData {
+	fn vector_from_image<P: graphene_core::raster::Pixel>(image_frame: &ImageFrame<P>) -> VectorData {
+		let corner1 = DVec2::ZERO;
+		let corner2 = DVec2::new(image_frame.image.width as f64, image_frame.image.height as f64);
+		let mut subpath = Subpath::new_rect(corner1, corner2);
+		subpath.apply_transform(image_frame.transform);
+		VectorData::from_subpath(subpath)
+	}
+
+	fn union_vector_data(graphic_element: &GraphicElement) -> VectorData {
+		match graphic_element {
+			GraphicElement::VectorData(vector_data) => *vector_data.clone(),
+			GraphicElement::GraphicGroup(graphic_group) => {
+				let mut vector_data = collect_vector_data(graphic_group);
+				boolean_operation_on_vector_data(vector_data, BooleanOperation::Union)
+			}
+			GraphicElement::ImageFrame(image) => vector_from_image(image),
+			GraphicElement::Text(_) => VectorData::empty(),
+			GraphicElement::Artboard(artboard) => {
+				let mut vector_data = collect_vector_data(&artboard.graphic_group);
+				boolean_operation_on_vector_data(vector_data, BooleanOperation::Union)
+			}
+		}
+	};
+
+	fn collect_vector_data(graphic_group: &GraphicGroup) -> impl Iterator<Item = VectorData> + '_ {
+		graphic_group.iter().map(|graphic_element| union_vector_data(graphic_element))
+	}
+
+	fn boolean_operation_on_vector_data(mut vector_data: impl Iterator<Item = VectorData>, boolean_operation: BooleanOperation) -> VectorData {
+		let mut result = vector_data.next().unwrap_or(VectorData::empty());
+		let mut second_vector_data = Some(vector_data.next().unwrap_or(VectorData::empty()));
+
+		while let Some(lower_vector_data) = second_vector_data {
+			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+
+			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+			let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
+
+			let mut use_lower_style = false;
+
+			#[allow(unused_unsafe)]
+			let boolean_result = unsafe {
+				match boolean_operation {
+					BooleanOperation::Union => boolean_union(upper_path_string, lower_path_string),
+					BooleanOperation::SubtractFront => {
+						use_lower_style = true;
+						boolean_subtract(lower_path_string, upper_path_string)
+					}
+					BooleanOperation::SubtractBack => boolean_subtract(upper_path_string, lower_path_string),
+					BooleanOperation::Intersect => boolean_intersect(upper_path_string, lower_path_string),
+					BooleanOperation::Difference => boolean_difference(upper_path_string, lower_path_string),
+					BooleanOperation::Divide => boolean_divide(upper_path_string, lower_path_string),
+				}
+			};
+			let operation_result = from_svg_string(&boolean_result);
+			result.colinear_manipulators = operation_result.colinear_manipulators;
+			result.point_domain = operation_result.point_domain;
+			result.segment_domain = operation_result.segment_domain;
+			result.region_domain = operation_result.region_domain;
+
+			if use_lower_style {
+				result.style = lower_vector_data.style.clone()
+			};
+			if use_lower_style {
+				result.alpha_blending = lower_vector_data.alpha_blending
+			};
+
+			second_vector_data = vector_data.next();
+		}
+		result
+	}
+
+	boolean_operation_on_vector_data(collect_vector_data(&graphic_group), boolean_operation)
 }
 
 fn to_svg_string(vector: &VectorData, transform: DAffine2) -> String {
