@@ -251,7 +251,7 @@ impl Fsm for PolygonToolFsmState {
 							.to_document_node_default_inputs(
 								[
 									None,
-									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
+									Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
 									Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 								],
 								Default::default(),
@@ -259,7 +259,7 @@ impl Fsm for PolygonToolFsmState {
 						PolygonType::Star => resolve_document_node_type("Star").expect("Star node does not exist").to_document_node_default_inputs(
 							[
 								None,
-								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices as u32), false)),
+								Some(NodeInput::value(TaggedValue::U32(tool_options.vertices), false)),
 								Some(NodeInput::value(TaggedValue::F64(0.5), false)),
 								Some(NodeInput::value(TaggedValue::F64(0.25), false)),
 							],

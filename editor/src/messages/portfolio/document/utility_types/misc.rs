@@ -233,8 +233,8 @@ impl Default for GridSnapping {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
 			grid_color: COLOR_OVERLAY_GRAY
-				.strip_prefix("#")
-				.and_then(|value| Color::from_rgb_str(value))
+				.strip_prefix('#')
+				.and_then(Color::from_rgb_str)
 				.expect("Should create Color from prefixed hex string"),
 			dot_display: false,
 		}

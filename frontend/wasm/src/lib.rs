@@ -48,9 +48,9 @@ pub fn panic_hook(info: &panic::PanicInfo) {
 	});
 }
 
-/// The JavaScript `Error` type
 #[wasm_bindgen]
 extern "C" {
+	/// The JavaScript `Error` type
 	#[derive(Clone, Debug)]
 	pub type Error;
 

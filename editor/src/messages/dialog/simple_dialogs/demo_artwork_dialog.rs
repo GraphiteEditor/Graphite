@@ -28,7 +28,7 @@ impl LayoutHolder for DemoArtworkDialog {
 	fn layout(&self) -> Layout {
 		let mut rows_of_images_with_buttons: Vec<_> = ARTWORK
 			.chunks(3)
-			.map(|chunk| {
+			.flat_map(|chunk| {
 				let images = chunk.iter().map(|(_, thumbnail, _)| ImageLabel::new(*thumbnail).width(Some("256px".into())).widget_holder()).collect();
 
 				let buttons = chunk
@@ -52,7 +52,6 @@ impl LayoutHolder for DemoArtworkDialog {
 
 				vec![LayoutGroup::Row { widgets: images }, LayoutGroup::Row { widgets: buttons }, LayoutGroup::Row { widgets: vec![] }]
 			})
-			.flatten()
 			.collect();
 		let _ = rows_of_images_with_buttons.pop();
 
