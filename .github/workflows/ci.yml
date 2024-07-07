@@ -87,7 +87,7 @@ jobs:
 
       - name: 🧪 Run Rust tests
         run: |
-          mold -run cargo nextest run --all-features
+          cargo nextest run --all-features
 
   # miri:
   #   runs-on: self-hosted
