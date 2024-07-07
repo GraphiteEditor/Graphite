@@ -3,11 +3,16 @@ use crate::application::generate_uuid;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::snapping;
+use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
+use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
-use glam::{IVec2, Vec2Swizzles};
 use graph_craft::document::NodeId;
+use graphene_core::renderer::Quad;
+
+use glam::{IVec2, Vec2Swizzles};
 
 #[derive(Default)]
 pub struct ArtboardTool {
@@ -57,7 +62,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for Artboar
 		);
 
 		let additional = match self.fsm_state {
-			ArtboardToolFsmState::Ready => actions!(ArtboardToolMessageDiscriminant; PointerDown),
+			ArtboardToolFsmState::Ready { .. } => actions!(ArtboardToolMessageDiscriminant; PointerDown),
 			_ => actions!(ArtboardToolMessageDiscriminant; PointerUp, Abort),
 		};
 		common.extend(additional);
@@ -82,13 +87,18 @@ impl ToolTransition for ArtboardTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ArtboardToolFsmState {
-	#[default]
-	Ready,
+	Ready { hovered: bool },
 	Drawing,
 	ResizingBounds,
 	Dragging,
+}
+
+impl Default for ArtboardToolFsmState {
+	fn default() -> Self {
+		Self::Ready { hovered: false }
+	}
 }
 
 #[derive(Clone, Debug, Default)]
@@ -100,9 +110,20 @@ struct ArtboardToolData {
 	drag_start: DVec2,
 	drag_current: DVec2,
 	auto_panning: AutoPanning,
+	snap_candidates: Vec<SnapCandidatePoint>,
 }
 
 impl ArtboardToolData {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
+		self.snap_candidates.clear();
+
+		let Some(layer) = self.selected_artboard else { return };
+
+		if let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) {
+			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
+		}
+	}
+
 	fn check_dragging_bounds(&mut self, cursor: DVec2) -> Option<(bool, bool, bool, bool)> {
 		let bounding_box = self.bounding_box_manager.as_mut()?;
 		let edges = bounding_box.check_selected_edges(cursor)?;
@@ -120,14 +141,17 @@ impl ArtboardToolData {
 		}
 	}
 
+	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
+		document
+			.click_xray(input.mouse.position)
+			.filter(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()))
+			.next()
+	}
+
 	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		responses.add(DocumentMessage::StartTransaction);
 
-		let mut intersections = document
-			.click_xray(input.mouse.position)
-			.filter(|&layer| document.network.nodes.get(&layer.to_node()).map_or(false, |document_node| document_node.is_artboard()));
-
-		if let Some(intersection) = intersections.next() {
+		if let Some(intersection) = Self::hovered_artboard(document, input) {
 			self.selected_artboard = Some(intersection);
 
 			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
@@ -148,7 +172,7 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, _document: &DocumentMessageHandler, mouse_position: DVec2, from_center: bool, constrain_square: bool) {
+	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, from_center: bool, constrain_square: bool) {
 		let Some(bounds) = &self.bounding_box_manager else {
 			return;
 		};
@@ -161,7 +185,13 @@ impl ArtboardToolData {
 		}
 
 		let center = from_center.then_some(bounds.center_of_transformation);
-		let (min, size) = movement.new_size(mouse_position, bounds.transform, center, constrain_square, None);
+		let ignore = self.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
+		let snap = Some(SizeSnapData {
+			manager: &mut self.snap_manager,
+			points: &mut self.snap_candidates,
+			snap_data: SnapData::ignore(document, input, &ignore),
+		});
+		let (min, size) = movement.new_size(input.mouse.position, bounds.transform, center, constrain_square, snap);
 		let max = min + size;
 		let position = min.min(max);
 		let size = (max - min).abs();
@@ -185,41 +215,58 @@ impl Fsm for ArtboardToolFsmState {
 			return self;
 		};
 
-		match (self, event) {
-			(state, ArtboardToolMessage::Overlays(mut overlay_context)) if state != ArtboardToolFsmState::Drawing => {
-				if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
-					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
-					bounding_box_manager.bounds = bounds;
-					bounding_box_manager.transform = document.metadata().document_to_viewport;
+		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
 
-					bounding_box_manager.render_overlays(&mut overlay_context);
-				} else {
-					tool_data.bounding_box_manager.take();
+		match (self, event) {
+			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
+				if state != ArtboardToolFsmState::Drawing {
+					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
+						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
+						bounding_box_manager.bounds = bounds;
+						bounding_box_manager.transform = document.metadata().document_to_viewport;
+
+						bounding_box_manager.render_overlays(&mut overlay_context);
+					} else {
+						tool_data.bounding_box_manager.take();
+					}
 				}
+
+				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
-
-			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerDown) => {
-				tool_data.drag_start = input.mouse.position;
-				tool_data.drag_current = input.mouse.position;
+			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
+				let to_viewport = document.metadata().document_to_viewport;
+				let to_document = to_viewport.inverse();
+				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
+				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
 
 				if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
-					tool_data.start_resizing(selected_edges, document, input);
 
+					tool_data.start_resizing(selected_edges, document, input);
+					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
 				} else if tool_data.select_artboard(document, input, responses) {
+					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::Dragging
 				} else {
+					tool_data.get_snap_candidates(document, input);
+
+					let point = SnapCandidatePoint::handle(to_document.transform_point2(input.mouse.position));
+
+					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, None, false);
+
+					tool_data.drag_start = snapped.snapped_point_document;
+					tool_data.drag_current = snapped.snapped_point_document;
+
 					ArtboardToolFsmState::Drawing
 				}
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let from_center = input.keyboard.get(center as usize);
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
-				let mouse_position = input.mouse.position;
-				tool_data.resize_artboard(responses, document, mouse_position, from_center, constrain_square);
+				tool_data.resize_artboard(responses, document, input, from_center, constrain_square);
 
 				// AutoPanning
 				let messages = [
@@ -233,13 +280,19 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				if let Some(ref mut bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
-					let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
+
+					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
+					let snap_data = SnapData::ignore(document, input, &ignore);
+					let document_to_viewport = document.metadata().document_to_viewport;
+					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
+					let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+
 					let size = bounds.bounds[1] - bounds.bounds[0];
-					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_position - tool_data.drag_current);
+					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
 
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
-						return ArtboardToolFsmState::Ready;
+						return ArtboardToolFsmState::Ready { hovered };
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						id: tool_data.selected_artboard.unwrap().to_node(),
@@ -248,7 +301,7 @@ impl Fsm for ArtboardToolFsmState {
 					});
 
 					// The second term is added to prevent the slow change in position due to rounding errors.
-					tool_data.drag_current = mouse_position + bounds.transform.transform_vector2(position.round() - position);
+					tool_data.drag_current += (document_to_viewport.inverse() * bounds.transform).transform_vector2(position.round() - bounds.bounds[0]);
 
 					// Update bounds if another `PointerMove` message comes before `ResizeArtboard` is finished.
 					bounds.bounds[0] = position.round();
@@ -264,28 +317,34 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let to_viewport = document.metadata().document_to_viewport;
+				let ignore = if let Some(layer) = tool_data.selected_artboard { vec![layer] } else { vec![] };
+				let snap_data = SnapData::ignore(document, input, &ignore);
 
-				let root_transform = document.metadata().document_to_viewport.inverse();
+				let document_mouse = to_viewport.inverse().transform_point2(input.mouse.position);
 
-				let mut start = tool_data.drag_start;
+				let snapped = tool_data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), None, false);
+				let snapped_mouse_position = to_viewport.transform_point2(snapped.snapped_point_document);
+
+				tool_data.snap_manager.update_indicator(snapped);
+
+				let mut start = to_viewport.transform_point2(tool_data.drag_start);
 				let mut size = snapped_mouse_position - start;
+
 				// Constrain axis
 				if input.keyboard.get(constrain_axis_or_aspect as usize) {
 					size = size.abs().max(size.abs().yx()) * size.signum();
 				}
+
 				// From center
 				if input.keyboard.get(center as usize) {
 					start -= size;
 					size *= 2.;
 				}
 
-				let start = root_transform.transform_point2(start);
-				let size = root_transform.transform_vector2(size);
+				let start = to_viewport.inverse().transform_point2(start);
+				let size = to_viewport.inverse().transform_vector2(size);
 				let end = start + size;
-				let size = (start - end).abs();
-				let start = start.min(end);
 
 				if let Some(artboard) = tool_data.selected_artboard {
 					if artboard == LayerNodeIdentifier::ROOT_PARENT {
@@ -293,8 +352,8 @@ impl Fsm for ArtboardToolFsmState {
 					} else {
 						responses.add(GraphOperationMessage::ResizeArtboard {
 							id: artboard.to_node(),
-							location: start.round().as_ivec2(),
-							dimensions: size.round().as_ivec2(),
+							location: start.min(end).round().as_ivec2(),
+							dimensions: (start.round() - end.round()).abs().as_ivec2(),
 						});
 					}
 				} else {
@@ -306,6 +365,7 @@ impl Fsm for ArtboardToolFsmState {
 						id,
 						artboard: graphene_core::Artboard {
 							graphic_group: graphene_core::GraphicGroup::EMPTY,
+							label: String::from("Artboard"),
 							location: start.round().as_ivec2(),
 							dimensions: IVec2::splat(1),
 							background: graphene_core::Color::WHITE,
@@ -323,15 +383,24 @@ impl Fsm for ArtboardToolFsmState {
 
 				ArtboardToolFsmState::Drawing
 			}
-			(ArtboardToolFsmState::Ready, ArtboardToolMessage::PointerMove { .. }) => {
-				let cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+
+			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerMove { .. }) => {
+				let mut cursor = tool_data.bounding_box_manager.as_ref().map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false));
+
+				if cursor == MouseCursorIcon::Default && !hovered {
+					tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+					responses.add(OverlaysMessage::Draw);
+					cursor = MouseCursorIcon::Crosshair;
+				} else {
+					tool_data.snap_manager.cleanup(responses);
+				}
 
 				if tool_data.cursor != cursor {
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
@@ -341,18 +410,13 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					tool_data.drag_current += shift;
-					tool_data.drag_start += shift;
-				}
+				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// AutoPanning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					tool_data.drag_start += shift;
-				}
+				tool_data.auto_panning.shift_viewport(input, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
@@ -373,7 +437,7 @@ impl Fsm for ArtboardToolFsmState {
 					bounds.original_transforms.clear();
 				}
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerUp) => {
 				tool_data.snap_manager.cleanup(responses);
@@ -384,7 +448,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
 				tool_data.snap_manager.cleanup(responses);
@@ -394,7 +458,7 @@ impl Fsm for ArtboardToolFsmState {
 				}
 				responses.add(OverlaysMessage::Draw);
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
 				tool_data.selected_artboard = document.selected_nodes.selected_layers(document.metadata()).find(|layer| document.metadata().is_artboard(*layer));
@@ -403,7 +467,8 @@ impl Fsm for ArtboardToolFsmState {
 			(_, ArtboardToolMessage::DeleteSelected) => {
 				tool_data.selected_artboard.take();
 				responses.add(NodeGraphMessage::DeleteSelectedNodes { reconnect: true });
-				ArtboardToolFsmState::Ready
+
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(_, ArtboardToolMessage::NudgeSelected { delta_x, delta_y }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -418,17 +483,15 @@ impl Fsm for ArtboardToolFsmState {
 					}
 				}
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
-				// ArtboardTool currently doesn't implement snapping
-				// tool_data.snap_manager.cleanup(responses);
-
+				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 
-				ArtboardToolFsmState::Ready
+				ArtboardToolFsmState::Ready { hovered }
 			}
 			_ => self,
 		}
@@ -436,7 +499,7 @@ impl Fsm for ArtboardToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			ArtboardToolFsmState::Ready => HintData(vec![
+			ArtboardToolFsmState::Ready { .. } => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
@@ -459,6 +522,10 @@ impl Fsm for ArtboardToolFsmState {
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
-		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+		if let Self::Ready { hovered: false } = self {
+			responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+		} else {
+			responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+		}
 	}
 }

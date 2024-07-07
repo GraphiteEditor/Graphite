@@ -38,6 +38,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 					responses.add(PortfolioMessage::ImaginateServerHostname);
 					responses.add(PortfolioMessage::ImaginateCheckServerStatus);
 					responses.add(PortfolioMessage::ImaginatePreferences);
+					responses.add(PreferencesMessage::ModifyLayout {
+						zoom_with_scroll: self.zoom_with_scroll,
+					});
 				}
 			}
 			PreferencesMessage::ResetToDefaults => {

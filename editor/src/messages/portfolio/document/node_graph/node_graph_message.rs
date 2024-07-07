@@ -82,6 +82,9 @@ pub enum NodeGraphMessage {
 		shift: Key,
 	},
 	PointerUp,
+	PointerOutsideViewport {
+		shift: Key,
+	},
 	PrintSelectedNodeCoordinates,
 	RunDocumentGraph,
 	SelectedNodesAdd {

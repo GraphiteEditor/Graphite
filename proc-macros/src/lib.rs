@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod as_message;
 mod combined_message_attrs;
 mod discriminant;

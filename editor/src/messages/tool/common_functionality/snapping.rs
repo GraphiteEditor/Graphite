@@ -1,17 +1,20 @@
 mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
+pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
+
 use crate::consts::COLOR_OVERLAY_BLUE;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{BoundingBoxSnapTarget, GeometrySnapTarget, GridSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
+
 use bezier_rs::{Subpath, TValue};
-use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::PointId;
+
+use glam::{DAffine2, DVec2};
 use std::cmp::Ordering;
-pub use {grid_snapper::*, layer_snapper::*, snap_results::*};
 
 /// Handles snapping and snap overlays
 #[derive(Debug, Clone, Default)]
@@ -61,7 +64,7 @@ impl SnapConstraint {
 	}
 }
 pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
-	document.snapping_state.tolerance / document.navigation.zoom
+	document.snapping_state.tolerance / document.document_ptz.zoom
 }
 
 fn compare_points(a: &&SnappedPoint, b: &&SnappedPoint) -> Ordering {
@@ -150,7 +153,7 @@ pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
-	pub manipulators: Vec<(LayerNodeIdentifier, ManipulatorGroupId)>,
+	pub manipulators: Vec<(LayerNodeIdentifier, PointId)>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
 impl<'a> SnapData<'a> {
@@ -172,7 +175,7 @@ impl<'a> SnapData<'a> {
 	fn ignore_bounds(&self, layer: LayerNodeIdentifier) -> bool {
 		self.manipulators.iter().any(|&(ignore, _)| ignore == layer)
 	}
-	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<ManipulatorGroupId>) -> bool {
+	fn ignore_manipulator(&self, layer: LayerNodeIdentifier, manipulator: impl Into<PointId>) -> bool {
 		self.manipulators.contains(&(layer, manipulator.into()))
 	}
 }
@@ -277,10 +280,8 @@ impl SnapManager {
 			}
 		}
 
-		if let Some(root) = snap_data.document.network.get_root_node() {
-			if snap_data.document.network.nodes.get(&root.id).expect("Root should always be a node in find_candidates").is_layer {
-				add_candidates(LayerNodeIdentifier::new(root.id, &snap_data.document.network), snap_data, quad, &mut candidates);
-			}
+		for layer in LayerNodeIdentifier::ROOT_PARENT.children(&document.metadata) {
+			add_candidates(layer, snap_data, quad, &mut candidates);
 		}
 
 		if candidates.len() > 10 {
@@ -333,7 +334,7 @@ impl SnapManager {
 		if let Some(ind) = &self.indicator {
 			for curve in &ind.curves {
 				let Some(curve) = curve else { continue };
-				overlay_context.outline::<ManipulatorGroupId>([Subpath::from_bezier(curve)].iter(), to_viewport);
+				overlay_context.outline([Subpath::from_bezier(curve)].iter(), to_viewport);
 			}
 			if let Some(quad) = ind.target_bounds {
 				overlay_context.quad(to_viewport * quad);

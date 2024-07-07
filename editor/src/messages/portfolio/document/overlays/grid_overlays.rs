@@ -12,7 +12,7 @@ use graphene_std::vector::style::FillChoice;
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color: Color = document.snapping_state.grid.grid_color;
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document.metadata().document_to_viewport;
@@ -37,11 +37,10 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(
+			overlay_context.colored_line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-				None,
+				&("#".to_string() + &grid_color.rgba_hex()),
 			);
 		}
 	}
@@ -55,7 +54,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 fn grid_overlay_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = document.snapping_state.grid.grid_color;
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.navigation) else {
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document.metadata().document_to_viewport;
@@ -98,7 +97,7 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.document_ptz) else {
 		return;
 	};
 	let isometric_spacing = spacing * spacing_multiplier;
@@ -112,11 +111,10 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 		let x_pos = (((min_x - origin.x) / spacing).ceil() + line_index as f64) * spacing + origin.x;
 		let start = DVec2::new(x_pos, min_y);
 		let end = DVec2::new(x_pos, max_y);
-		overlay_context.line(
+		overlay_context.colored_line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
-			Some(&("#".to_string() + &grid_color.rgba_hex())),
-			None,
+			&("#".to_string() + &grid_color.rgba_hex()),
 		);
 	}
 
@@ -131,11 +129,10 @@ fn grid_overlay_isometric(document: &DocumentMessageHandler, overlay_context: &m
 			let y_pos = (((inverse_project(&min_y) - origin.y) / spacing).ceil() + line_index as f64) * spacing + origin.y;
 			let start = DVec2::new(min_x, project(&DVec2::new(min_x, y_pos)));
 			let end = DVec2::new(max_x, project(&DVec2::new(max_x, y_pos)));
-			overlay_context.line(
+			overlay_context.colored_line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				Some(&("#".to_string() + &grid_color.rgba_hex())),
-				None,
+				&("#".to_string() + &grid_color.rgba_hex()),
 			);
 		}
 	}
@@ -150,7 +147,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
 	let spacing = DVec2::new(y_axis_spacing / (tan_a + tan_b), y_axis_spacing);
-	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.navigation) else {
+	let Some(spacing_multiplier) = GridSnapping::compute_isometric_multiplier(y_axis_spacing, tan_a + tan_b, &document.document_ptz) else {
 		return;
 	};
 	let isometric_spacing = spacing * spacing_multiplier;
@@ -178,7 +175,7 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 		let start = DVec2::new(min_x + x_offset, project(&DVec2::new(min_x + x_offset, y_pos)));
 		let end = DVec2::new(max_x + x_offset, project(&DVec2::new(max_x + x_offset, y_pos)));
 
-		overlay_context.line(
+		overlay_context.dashed_line(
 			document_to_viewport.transform_point2(start),
 			document_to_viewport.transform_point2(end),
 			Some(&("#".to_string() + &grid_color.rgba_hex())),

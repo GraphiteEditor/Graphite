@@ -33,14 +33,14 @@ use syn::{
 ///
 /// - Mapping the type of the function's first argument (the node's primary input) to the impl'd `Node`'s generic type, e.g.:
 ///   
-///   ```
+///   ```ignore
 ///   Node<'input, Color>
 ///   ```
 ///   
 ///   for a `Color` primary input type.
 /// - Mapping the type of the function's remaining arguments (the node's secondary inputs) to the given struct fields' generic types, e.g.:
 ///   
-///   ```
+///   ```ignore
 ///   TheGivenStruct<S0, S1>
 ///       where S0: Node<'input, (), Output = f64>,
 ///       where S1: Node<'input, (), Output = f64>,
@@ -49,7 +49,7 @@ use syn::{
 ///   for two `f64` parameter (secondary input) types. Since Graphene works by having each function evaluate its upstream node as a lambda that returns output data, these secondary inputs are not directly `f64` values but rather `Node`s that output `f64` values when evaluated (in this case, with an empty input of `()`).
 /// - Mapping the function's return type to the impl'd `Node` trait's associated type, e.g.:
 ///   
-///   ```
+///   ```ignore
 ///   Output = Color
 ///   ```
 ///   
@@ -67,7 +67,7 @@ use syn::{
 ///   
 ///   The function body runs with the actual primary input value from the `eval` method's argument and the secondary input values from the `eval` method's `let` declarations. The result looks like this:
 ///   
-///   ```
+///   ```ignore
 ///   fn eval(&'input self, color: Color) -> Self::Output {
 ///       let secondaryA = self.secondaryA.eval(());
 ///       let secondaryB = self.secondaryB.eval(());

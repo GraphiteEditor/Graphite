@@ -19,6 +19,7 @@ members = [
 	"libraries/dyn-any",
 	"libraries/bezier-rs",
 	"libraries/raw-rs",
+	"libraries/raw-rs/tag-derive",
 	"website/other/bezier-rs-demos/wasm",
 ]
 resolver = "2"
@@ -49,7 +50,7 @@ tempfile = "3"
 thiserror = "1.0"
 anyhow = "1.0.66"
 proc-macro2 = "1"
-syn = { version = "2.0", default-features = false, features = ["full"] }
+syn = { version = "2.0", default-features = false, features = ["full", "derive"] }
 quote = "1.0"
 axum = "0.6"
 chrono = "^0.4.23"

@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Selecte
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::is_layer_fed_by_node_of_name;
 use crate::messages::tool::common_functionality::pivot::Pivot;
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
+use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 
 use graph_craft::document::{DocumentNode, NodeId, NodeNetwork};
@@ -529,7 +529,7 @@ impl Fsm for SelectToolFsmState {
 					.unwrap_or_default();
 
 				let mut selected: Vec<_> = document.selected_nodes.selected_visible_and_unlocked_layers(document.metadata()).collect();
-				let intersection_list = document.click_list(input.mouse.position, &document.network);
+				let intersection_list = document.click_list(input.mouse.position, &document.network).collect::<Vec<_>>();
 				let intersection = document.find_deepest(&intersection_list, &document.network);
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
@@ -681,38 +681,14 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				let axis_align = input.keyboard.key(modifier_keys.axis_align);
-				let mouse_position = axis_align_drag(axis_align, input.mouse.position, tool_data.drag_start);
-				let total_mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_start);
 
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
 				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_target(layer).is_some());
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
 
 				let snap_data = SnapData::ignore(document, input, ignore);
-				let mouse_delta_document = document.metadata.document_to_viewport.inverse().transform_vector2(mouse_position - tool_data.drag_current);
-				let mut offset = mouse_delta_document;
-				let mut best_snap = SnappedPoint::infinite_snap(document.metadata.document_to_viewport.inverse().transform_point2(mouse_position));
-
-				for point in &mut tool_data.snap_candidates {
-					point.document_point += total_mouse_delta_document;
-					let snapped = if axis_align {
-						let constraint = SnapConstraint::Line {
-							origin: point.document_point,
-							direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
-						};
-						tool_data.snap_manager.constrained_snap(&snap_data, point, constraint, None)
-					} else {
-						tool_data.snap_manager.free_snap(&snap_data, point, None, false)
-					};
-					if best_snap.other_snap_better(&snapped) {
-						offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
-						best_snap = snapped;
-					}
-					point.document_point -= total_mouse_delta_document;
-				}
-				tool_data.snap_manager.update_indicator(best_snap);
-
-				let mouse_delta = document.metadata.document_to_viewport.transform_vector2(offset);
+				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
+				let mouse_delta = snap_drag(start, current, axis_align, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
 				for layer_ancestors in document.metadata().shallowest_unique_layers(tool_data.layers_dragging.iter().copied()) {
@@ -1264,7 +1240,7 @@ fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, document_network:
 	if is_layer_fed_by_node_of_name(layer, document_network, "Text") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
-	} else if is_layer_fed_by_node_of_name(layer, document_network, "Shape") {
+	} else if is_layer_fed_by_node_of_name(layer, document_network, "Path") {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path });
 	}
 }

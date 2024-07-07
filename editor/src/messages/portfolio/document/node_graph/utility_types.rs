@@ -1,6 +1,7 @@
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::NodeId;
 use graphene_core::Type;
+use graphene_std::renderer::ClickTarget;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -17,7 +18,7 @@ impl FrontendGraphDataType {
 	pub fn with_type(input: &Type) -> Self {
 		match TaggedValue::from_type(input) {
 			TaggedValue::Image(_) | TaggedValue::ImageFrame(_) => Self::Raster,
-			TaggedValue::Subpaths(_) | TaggedValue::RcSubpath(_) | TaggedValue::VectorData(_) => Self::VectorData,
+			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
 			| TaggedValue::F64(_)
@@ -165,4 +166,18 @@ pub struct ContextMenuInformation {
 	pub context_menu_coordinates: (i32, i32),
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeMetadata {
+	/// Cache for all node click targets in node graph space. Ensure `update_click_target` is called when modifying a node property that changes its size. Currently this is `alias`, `inputs`, `is_layer`, and `metadata`.
+	pub node_click_target: ClickTarget,
+	/// Cache for all node inputs. Should be automatically updated when `update_click_target` is called.
+	pub input_click_targets: Vec<ClickTarget>,
+	/// Cache for all node outputs. Should be automatically updated when `update_click_target` is called.
+	pub output_click_targets: Vec<ClickTarget>,
+	/// Cache for all visibility buttons. Should be automatically updated when `update_click_target` is called.
+	pub visibility_click_target: Option<ClickTarget>,
+	/// Stores the width in grid cell units for layer nodes from the left edge of the thumbnail (+12px padding since thumbnail ends between grid spaces) to the end of the node.
+	pub layer_width: Option<u32>,
 }

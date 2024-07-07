@@ -76,7 +76,9 @@ fn repeat_vector_data(vector_data: VectorData, direction: DVec2, angle: f64, ins
 	// Repeat the vector data
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
+	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
+		return vector_data;
+	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	for i in 0..instances {
@@ -108,7 +110,9 @@ fn circular_repeat_vector_data(vector_data: VectorData, angle_offset: f64, radiu
 
 	let mut result = VectorData::empty();
 
-	let Some(bounding_box) = vector_data.bounding_box() else { return vector_data };
+	let Some(bounding_box) = vector_data.bounding_box_with_transform(vector_data.transform) else {
+		return vector_data;
+	};
 	let center = (bounding_box[0] + bounding_box[1]) / 2.;
 
 	let base_transform = DVec2::new(0., radius) - center;
@@ -128,11 +132,8 @@ pub struct BoundingBoxNode;
 
 #[node_macro::node_fn(BoundingBoxNode)]
 fn generate_bounding_box(vector_data: VectorData) -> VectorData {
-	let bounding_box = vector_data.bounding_box().unwrap();
-	VectorData::from_subpath(Subpath::new_rect(
-		vector_data.transform.transform_point2(bounding_box[0]),
-		vector_data.transform.transform_point2(bounding_box[1]),
-	))
+	let bounding_box = vector_data.bounding_box_with_transform(vector_data.transform).unwrap();
+	VectorData::from_subpath(Subpath::new_rect(bounding_box[0], bounding_box[1]))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,11 +170,11 @@ fn solidify_stroke(vector_data: VectorData) -> VectorData {
 		// This is where we determine whether we have a closed or open path. Ex: Oval vs line segment.
 		if subpath_out.1.is_some() {
 			// Two closed subpaths, closed shape. Add both subpaths.
-			result.append_subpath(subpath_out.0);
-			result.append_subpath(subpath_out.1.unwrap());
+			result.append_subpath(subpath_out.0, false);
+			result.append_subpath(subpath_out.1.unwrap(), false);
 		} else {
 			// One closed subpath, open path.
-			result.append_subpath(subpath_out.0);
+			result.append_subpath(subpath_out.0, false);
 		}
 	}
 
@@ -362,7 +363,7 @@ pub struct PoissonDiskPoints<SeparationDiskDiameter> {
 fn poisson_disk_points(vector_data: VectorData, separation_disk_diameter: f64) -> VectorData {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 	let mut result = VectorData::empty();
-	for (_, mut subpath) in vector_data.region_bezier_paths() {
+	for mut subpath in vector_data.stroke_bezier_paths() {
 		if subpath.manipulator_groups().len() < 3 {
 			continue;
 		}
@@ -399,6 +400,8 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 	let first_handles = bezier_rs::solve_spline_first_handle(points.positions());
 
+	let stroke_id = StrokeId::ZERO;
+
 	for (start_index, end_index) in (0..(points.positions().len())).zip(1..(points.positions().len())) {
 		let handle_start = first_handles[start_index];
 		let handle_end = points.positions()[end_index] * 2. - first_handles[end_index];
@@ -406,7 +409,7 @@ fn splines_from_points(mut vector_data: VectorData) -> VectorData {
 
 		vector_data
 			.segment_domain
-			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, StrokeId::generate())
+			.push(SegmentId::generate(), points.ids()[start_index], points.ids()[end_index], handles, stroke_id)
 	}
 
 	vector_data
@@ -483,7 +486,7 @@ async fn morph<SourceFuture: Future<Output = VectorData>, TargetFuture: Future<O
 			manipulator.anchor = manipulator.anchor.lerp(target.anchor, time);
 		}
 
-		result.append_subpath(source_path);
+		result.append_subpath(source_path, true);
 	}
 	// Mismatched subpath count
 	for mut source_path in source_paths {
@@ -652,6 +655,16 @@ mod test {
 		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
 		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
 		assert_eq!(&subpath.anchors()[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
+
+		// test a VectorData with non-zero rotation
+		let mut square = VectorData::from_subpath(Subpath::new_rect(DVec2::NEG_ONE, DVec2::ONE));
+		square.transform *= DAffine2::from_angle(core::f64::consts::FRAC_PI_4);
+		let bounding_box = BoundingBoxNode.eval(square);
+		assert_eq!(bounding_box.region_bezier_paths().count(), 1);
+		let subpath = bounding_box.region_bezier_paths().next().unwrap().1;
+		let sqrt2 = core::f64::consts::SQRT_2;
+		let sqrt2_bounding_box = [DVec2::new(-sqrt2, -sqrt2), DVec2::new(sqrt2, -sqrt2), DVec2::new(sqrt2, sqrt2), DVec2::new(-sqrt2, sqrt2)];
+		assert!(subpath.anchors()[..4].iter().zip(sqrt2_bounding_box).all(|(p1, p2)| p1.abs_diff_eq(p2, f64::EPSILON)));
 	}
 	#[tokio::test]
 	async fn copy_to_points() {

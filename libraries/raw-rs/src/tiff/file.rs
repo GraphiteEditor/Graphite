@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Endian {
+pub enum Endian {
 	Little,
 	Big,
 }
@@ -15,7 +15,7 @@ impl<R: Read + Seek> TiffRead<R> {
 	pub fn new(mut reader: R) -> Result<Self> {
 		let error = Error::new(ErrorKind::InvalidData, "Invalid Tiff format");
 
-		let mut data = [0u8; 2];
+		let mut data = [0_u8; 2];
 		reader.read_exact(&mut data)?;
 		let endian = if data[0] == 0x49 && data[1] == 0x49 {
 			Endian::Little
@@ -35,6 +35,10 @@ impl<R: Read + Seek> TiffRead<R> {
 		}
 
 		Ok(Self { reader, endian })
+	}
+
+	pub fn endian(&self) -> Endian {
+		self.endian
 	}
 }
 
@@ -61,7 +65,7 @@ impl<R: Read + Seek> TiffRead<R> {
 	}
 
 	pub fn read_n<const N: usize>(&mut self) -> Result<[u8; N]> {
-		let mut data = [0u8; N];
+		let mut data = [0_u8; N];
 		self.read_exact(&mut data)?;
 		Ok(data)
 	}

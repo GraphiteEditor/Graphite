@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::utility_types::misc::{SnapSource, Snap
 use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
+use graphene_core::vector::PointId;
 
 #[derive(Clone, Debug, Default)]
 pub struct SnapResults {
@@ -79,7 +79,7 @@ pub struct SnappedLine {
 #[derive(Clone, Debug)]
 pub struct SnappedCurve {
 	pub layer: LayerNodeIdentifier,
-	pub start: ManipulatorGroupId,
+	pub start: PointId,
 	pub point: SnappedPoint,
 	pub document_curve: Bezier,
 }

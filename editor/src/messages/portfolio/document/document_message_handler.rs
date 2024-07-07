@@ -27,11 +27,8 @@ use graphene_core::raster::BlendMode;
 use graphene_core::raster::ImageFrame;
 use graphene_core::renderer::ClickTarget;
 use graphene_core::vector::style::ViewMode;
-use graphene_std::vector::style::{Fill, FillType, Gradient};
 
 use glam::{DAffine2, DVec2, IVec2};
-
-use std::vec;
 
 pub struct DocumentMessageData<'a> {
 	pub document_id: DocumentId,
@@ -74,9 +71,7 @@ pub struct DocumentMessageHandler {
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
-	pub navigation: PTZ,
-	/// The current pan, and zoom state of the viewport's view of the node graph.
-	node_graph_transform: PTZ,
+	pub document_ptz: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	document_mode: DocumentMode,
 	/// The current view mode that the user has set for rendering the document within the viewport.
@@ -119,6 +114,12 @@ pub struct DocumentMessageHandler {
 	/// This is updated frequently, whenever the information it's derived from changes.
 	#[serde(skip)]
 	pub metadata: DocumentMetadata,
+	/// The current pan, and zoom state of the viewport's view of the node graph.
+	#[serde(skip)]
+	node_graph_ptz: HashMap<Vec<NodeId>, PTZ>,
+	/// Transform from node graph space to viewport space.
+	#[serde(skip)]
+	node_graph_to_viewport: HashMap<Vec<NodeId>, DAffine2>,
 }
 
 impl Default for DocumentMessageHandler {
@@ -139,8 +140,7 @@ impl Default for DocumentMessageHandler {
 			collapsed: CollapsedLayers::default(),
 			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
-			navigation: PTZ::default(),
-			node_graph_transform: PTZ::default(),
+			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
 			view_mode: ViewMode::default(),
 			overlays_visible: true,
@@ -157,6 +157,8 @@ impl Default for DocumentMessageHandler {
 			undo_in_progress: false,
 			layer_range_selection_reference: None,
 			metadata: Default::default(),
+			node_graph_ptz: HashMap::new(),
+			node_graph_to_viewport: HashMap::new(),
 		}
 	}
 }
@@ -181,10 +183,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 					} else {
 						self.selected_visible_layers_bounding_box_viewport()
 					},
-					ptz: if self.graph_view_overlay_open { &mut self.node_graph_transform } else { &mut self.navigation },
+					document_ptz: &mut self.document_ptz,
+					node_graph_ptz: &mut self.node_graph_ptz,
 					graph_view_overlay_open: self.graph_view_overlay_open,
-					document_network: &self.network,
 					node_graph_handler: &self.node_graph_handler,
+					node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 				};
 
 				self.navigation_handler.process_message(message, responses, data);
@@ -218,6 +221,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 						collapsed: &mut self.collapsed,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
+						node_graph_to_viewport: &self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY),
 					},
 				);
 			}
@@ -378,7 +382,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			DocumentMessage::GraphViewOverlay { open } => {
 				self.graph_view_overlay_open = open;
 
-				// TODO: Find a better way to update click targets when undoing/redoing
+				// TODO: Update click targets when node graph is closed so that this is not necessary
 				if self.graph_view_overlay_open {
 					self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 				}
@@ -735,16 +739,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
 			DocumentMessage::RenderRulers => {
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
 
 				let ruler_origin = if !self.graph_view_overlay_open {
 					self.metadata().document_to_viewport.transform_point2(DVec2::ZERO)
 				} else {
-					let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
-						log::error!("Nested network not found in UpdateDocumentTransform");
-						return;
-					};
-					network.node_graph_to_viewport.transform_point2(DVec2::ZERO)
+					self.node_graph_to_viewport
+						.get(&self.node_graph_handler.network)
+						.unwrap_or(&DAffine2::IDENTITY)
+						.transform_point2(DVec2::ZERO)
 				};
 				let log = document_transform_scale.log2();
 				let ruler_interval: f64 = if log < 0. { 100. * 2_f64.powf(-log.ceil()) } else { 100. / 2_f64.powf(log.ceil()) };
@@ -758,7 +761,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
-				let document_transform_scale = self.navigation_handler.snapped_zoom(self.navigation.zoom);
+				let document_transform_scale = self.navigation_handler.snapped_zoom(self.document_ptz.zoom);
 
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
@@ -767,7 +770,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {
-					self.node_graph_handler.graph_bounds_viewport_space(&self.network).unwrap_or([viewport_mid; 2])
+					self.node_graph_to_viewport
+						.get(&self.node_graph_handler.network)
+						.and_then(|node_graph_to_viewport| self.node_graph_handler.graph_bounds_viewport_space(*node_graph_to_viewport))
+						.unwrap_or([viewport_mid; 2])
 				};
 				let bounds1 = bounds1.min(viewport_mid) - viewport_size * scale;
 				let bounds2 = bounds2.max(viewport_mid) + viewport_size * scale;
@@ -1086,6 +1092,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 				responses.add(DocumentMessage::DocumentStructureChanged);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			DocumentMessage::ResetTransform => {
+				let transform = if self.graph_view_overlay_open {
+					*self.node_graph_to_viewport.entry(self.node_graph_handler.network.clone()).or_insert(DAffine2::IDENTITY)
+				} else {
+					self.metadata.document_to_viewport
+				};
+				responses.add(DocumentMessage::UpdateDocumentTransform { transform });
+			}
 			DocumentMessage::UpdateDocumentTransform { transform } => {
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
@@ -1095,11 +1109,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
-					let Some(network) = self.network.nested_network_mut(&self.node_graph_handler.network) else {
-						log::error!("Nested network not found in UpdateDocumentTransform");
-						return;
-					};
-					network.node_graph_to_viewport = transform;
+					self.node_graph_to_viewport.insert(self.node_graph_handler.network.clone(), transform);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
 						transform: Transform {
@@ -1120,10 +1130,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageData<'_>> for DocumentMessag
 			}
 			DocumentMessage::ZoomCanvasToFitAll => {
 				let bounds = if self.graph_view_overlay_open {
-					self.node_graph_handler
-						.network_metadata
-						.get(&self.node_graph_handler.network)
-						.and_then(|network_metadata| network_metadata.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box()))
+					self.node_graph_handler.bounding_box_subpath.as_ref().and_then(|subpath| subpath.bounding_box())
 				} else {
 					self.metadata().document_bounds_document_space(true)
 				};
@@ -1228,32 +1235,27 @@ impl DocumentMessageHandler {
 	}
 
 	/// Find any layers sorted by index that are under the given location in viewport space.
-	pub fn click_list_any(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		self.click_xray(viewport_location).filter(|&layer| !is_artboard(layer, network)).collect::<Vec<_>>()
+	pub fn click_xray_no_artboards<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray(viewport_location).filter(move |&layer| !is_artboard(layer, network))
 	}
 
 	/// Find layers under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
-	pub fn click_list(&self, viewport_location: DVec2, network: &NodeNetwork) -> Vec<LayerNodeIdentifier> {
-		let mut node_list = self.click_list_any(viewport_location, network);
-		node_list.truncate(
-			node_list
-				.iter()
-				.position(|&layer| {
-					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						!network.nodes.get(&layer.to_node()).map(|node| node.layer_has_child_layers(network)).unwrap_or_default()
-					} else {
-						log::error!("ROOT_PARENT should not exist in click_list_any");
-						false
-					}
-				})
-				.unwrap_or(0) + 1,
-		);
-		node_list
+	pub fn click_list<'a>(&'a self, viewport_location: DVec2, network: &'a NodeNetwork) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		self.click_xray_no_artboards(viewport_location, network)
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = network.nodes.get(&layer.to_node()).map_or(false, |node| node.layer_has_child_layers(network));
+					Some(layer)
+				} else {
+					None
+				}
+			})
 	}
 
 	/// Find the deepest layer that has been clicked on from a location in viewport space.
 	pub fn click(&self, viewport_location: DVec2, network: &NodeNetwork) -> Option<LayerNodeIdentifier> {
-		self.click_list(viewport_location, network).last().copied()
+		self.click_list(viewport_location, network).last()
 	}
 
 	/// Get the combined bounding box of the click targets of the selected visible layers in viewport space
@@ -1274,17 +1276,15 @@ impl DocumentMessageHandler {
 		self.selected_nodes
 			.selected_nodes(network)
 			.filter_map(|node| {
-				let mut node_path = self.node_graph_handler.network.clone();
-				node_path.push(*node);
-				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node_path) else {
+				let Some(node_metadata) = self.node_graph_handler.node_metadata.get(&node) else {
 					log::debug!("Could not get click target for node {node}");
 					return None;
 				};
-				let Some(network_metadata) = self.node_graph_handler.network_metadata.get(&self.node_graph_handler.network) else {
-					log::debug!("Could not get network_metadata in selected_nodes_bounding_box_viewport");
+				let Some(node_graph_to_viewport) = self.node_graph_to_viewport.get(&self.node_graph_handler.network) else {
+					log::debug!("Could not get node_graph_to_viewport for network: {:?}", self.node_graph_handler.network);
 					return None;
 				};
-				node_metadata.node_click_target.subpath.bounding_box_with_transform(network_metadata.node_graph_to_viewport)
+				node_metadata.node_click_target.subpath.bounding_box_with_transform(*node_graph_to_viewport)
 			})
 			.reduce(graphene_core::renderer::Quad::combine_bounds)
 	}
@@ -1311,81 +1311,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		// serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
-
-		match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-			Ok(mut document) => {
-				for (_, node) in &mut document.network.nodes {
-					// Upgrade Fill nodes to the format change in #1778
-					// TODO: Eventually remove this (probably starting late 2024)
-					if node.name == "Fill" && node.inputs.len() == 8 {
-						let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-						let default_definition_node = node_definition.default_document_node();
-
-						node.implementation = default_definition_node.implementation.clone();
-						let old_inputs = std::mem::replace(&mut node.inputs, default_definition_node.inputs.clone());
-
-						node.inputs[0] = old_inputs[0].clone();
-
-						let Some(fill_type) = old_inputs[1].as_value().cloned() else { continue };
-						let TaggedValue::FillType(fill_type) = fill_type else { continue };
-						let Some(solid_color) = old_inputs[2].as_value().cloned() else { continue };
-						let TaggedValue::OptionalColor(solid_color) = solid_color else { continue };
-						let Some(gradient_type) = old_inputs[3].as_value().cloned() else { continue };
-						let TaggedValue::GradientType(gradient_type) = gradient_type else { continue };
-						let Some(start) = old_inputs[4].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(start) = start else { continue };
-						let Some(end) = old_inputs[5].as_value().cloned() else { continue };
-						let TaggedValue::DVec2(end) = end else { continue };
-						let Some(transform) = old_inputs[6].as_value().cloned() else { continue };
-						let TaggedValue::DAffine2(transform) = transform else { continue };
-						let Some(positions) = old_inputs[7].as_value().cloned() else { continue };
-						let TaggedValue::GradientStops(positions) = positions else { continue };
-
-						let fill = match (fill_type, solid_color) {
-							(FillType::Solid, None) => Fill::None,
-							(FillType::Solid, Some(color)) => Fill::Solid(color),
-							(FillType::Gradient, _) => Fill::Gradient(Gradient {
-								stops: positions,
-								gradient_type,
-								start,
-								end,
-								transform,
-							}),
-						};
-						node.inputs[1] = NodeInput::value(TaggedValue::Fill(fill.clone()), false);
-						match fill {
-							Fill::None => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(None), false);
-							}
-							Fill::Solid(color) => {
-								node.inputs[2] = NodeInput::value(TaggedValue::OptionalColor(Some(color)), false);
-							}
-							Fill::Gradient(gradient) => {
-								node.inputs[3] = NodeInput::value(TaggedValue::Gradient(gradient), false);
-							}
-						}
-					}
-				}
-				Ok(document)
-			}
-			Err(e) => Err(e),
-		}
-
-		// TODO: This can be used, if uncommented, to upgrade demo artwork with outdated document node internals from their definitions. Delete when it's no longer needed.
-		// Used for upgrading old internal networks for demo artwork nodes. Will reset all node internals for any opened file
-		// match serde_json::from_str::<Self>(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string())) {
-		// 	Ok(mut document) => {
-		// 		for (_, node) in &mut document.network.nodes {
-		// 			let node_definition = crate::messages::portfolio::document::node_graph::document_node_types::resolve_document_node_type(&node.name).unwrap();
-		// 			let default_definition_node = node_definition.default_document_node();
-
-		// 			node.implementation = default_definition_node.implementation.clone();
-		// 		}
-		// 		Ok(document)
-		// 	}
-		// 	Err(e) => Err(e),
-		// }
+		serde_json::from_str(serialized_content).map_err(|e| EditorError::DocumentDeserialization(e.to_string()))
 	}
 
 	pub fn with_name(name: String, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Self {
@@ -1500,13 +1426,11 @@ impl DocumentMessageHandler {
 	pub fn undo_with_history(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(previous_network) = self.undo(responses) else { return };
 
+		self.update_modified_click_targets(&previous_network);
+
 		self.document_redo_history.push_back(previous_network);
 		if self.document_redo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
 			self.document_redo_history.pop_front();
-		}
-		// TODO: Find a better way to update click targets when undoing/redoing
-		if self.graph_view_overlay_open {
-			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
 		}
 	}
 	pub fn undo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
@@ -1520,6 +1444,18 @@ impl DocumentMessageHandler {
 		let previous_network = std::mem::replace(&mut self.network, network);
 		Some(previous_network)
 	}
+	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
+		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
+		let Some(previous_network) = self.redo(responses) else { return };
+
+		self.update_modified_click_targets(&previous_network);
+
+		self.document_undo_history.push_back(previous_network);
+		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			self.document_undo_history.pop_front();
+		}
+	}
+
 	pub fn redo(&mut self, responses: &mut VecDeque<Message>) -> Option<NodeNetwork> {
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -1531,18 +1467,36 @@ impl DocumentMessageHandler {
 		let previous_network = std::mem::replace(&mut self.network, network);
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, responses: &mut VecDeque<Message>) {
-		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-		let Some(previous_network) = self.redo(responses) else { return };
 
-		self.document_undo_history.push_back(previous_network);
-		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-			self.document_undo_history.pop_front();
+	pub fn update_modified_click_targets(&mut self, previous_network: &NodeNetwork) {
+		// TODO: Cache nodes that were changed alongside every network in the undo/redo history, although this is complex since undoing to a previous state may change different nodes than redoing to the same state
+		let Some(previous_nested_network) = previous_network.nested_network(&self.node_graph_handler.network) else {
+			return;
+		};
+
+		let Some(network) = self.network.nested_network(&self.node_graph_handler.network) else {
+			log::error!("Could not get nested network in redo_with_history");
+			return;
+		};
+
+		for (node_id, current_node) in &network.nodes {
+			if let Some(previous_node) = previous_nested_network.nodes.get(&node_id) {
+				if previous_node.alias == current_node.alias
+					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					&& previous_node.is_layer == current_node.is_layer
+					&& previous_node.metadata.position == current_node.metadata.position
+				{
+					continue;
+				}
+			}
+
+			self.node_graph_handler.update_click_target(*node_id, &self.network, self.node_graph_handler.network.clone());
 		}
-		// TODO: Find a better way to update click targets when undoing/redoing
-		if self.graph_view_overlay_open {
-			self.node_graph_handler.update_all_click_targets(&mut self.network, self.node_graph_handler.network.clone())
-		}
+
+		self.node_graph_handler
+			.update_click_target(network.imports_metadata.0, &self.network, self.node_graph_handler.network.clone());
+		self.node_graph_handler
+			.update_click_target(network.exports_metadata.0, &self.network, self.node_graph_handler.network.clone());
 	}
 
 	pub fn current_hash(&self) -> Option<u64> {
@@ -1889,7 +1843,7 @@ impl DocumentMessageHandler {
 				.tooltip("Reset Tilt and Zoom to 100%")
 				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 				.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-				.disabled(self.navigation.tilt.abs() < 1e-4 && (self.navigation.zoom - 1.).abs() < 1e-4)
+				.disabled(self.document_ptz.tilt.abs() < 1e-4 && (self.document_ptz.zoom - 1.).abs() < 1e-4)
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(vec![
@@ -1920,7 +1874,7 @@ impl DocumentMessageHandler {
 				])
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
-			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.navigation.zoom) * 100.))
+			NumberInput::new(Some(self.navigation_handler.snapped_zoom(self.document_ptz.zoom) * 100.))
 				.unit("%")
 				.min(0.000001)
 				.max(1000000.)
@@ -1937,7 +1891,7 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 		];
 
-		let tilt_value = self.navigation_handler.snapped_tilt(self.navigation.tilt) / (std::f64::consts::PI / 180.);
+		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
 				Separator::new(SeparatorType::Related).widget_holder(),

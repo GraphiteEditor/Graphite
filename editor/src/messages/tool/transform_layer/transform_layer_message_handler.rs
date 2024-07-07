@@ -2,7 +2,6 @@ use crate::consts::SLOWING_DIVISOR;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::utility_types::transformation::{Axis, OriginalTransforms, Selected, TransformOperation, Typing};
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 
@@ -69,16 +68,12 @@ impl<'a> MessageHandler<TransformLayerMessage, TransformData<'a>> for TransformL
 			}
 
 			if using_path_tool {
-				if let Some(subpaths) = selected_layers.first().and_then(|&layer| graph_modification_utils::get_subpaths(layer, &document.network)) {
+				if let Some(vector_data) = selected_layers.first().and_then(|&layer| document.metadata.compute_modified_vector(layer, &document.network)) {
 					*selected.original_transforms = OriginalTransforms::default();
 					let viewspace = document.metadata().transform_to_viewport(selected_layers[0]);
 
 					let mut point_count: usize = 0;
-					let get_location = |point: &ManipulatorPointId| {
-						graph_modification_utils::get_manipulator_from_id(subpaths, point.group)
-							.and_then(|manipulator_group| point.manipulator_type.get_position(manipulator_group))
-							.map(|position| viewspace.transform_point2(position))
-					};
+					let get_location = |point: &ManipulatorPointId| point.get_position(&vector_data).map(|position| viewspace.transform_point2(position));
 					let points = shape_editor.selected_points();
 
 					*selected.pivot = points.filter_map(get_location).inspect(|_| point_count += 1).sum::<DVec2>() / point_count as f64;

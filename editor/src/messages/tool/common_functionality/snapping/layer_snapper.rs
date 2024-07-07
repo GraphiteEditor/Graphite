@@ -1,15 +1,14 @@
 use super::*;
 use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{
-	BoardSnapSource, BoardSnapTarget, BoundingBoxSnapSource, BoundingBoxSnapTarget, GeometrySnapSource, GeometrySnapTarget, SnapSource, SnapTarget,
-};
+use crate::messages::portfolio::document::utility_types::misc::*;
 use crate::messages::prelude::*;
+
 use bezier_rs::{Bezier, Identifier, Subpath, TValue};
-use glam::{DAffine2, DVec2};
 use graphene_core::renderer::Quad;
-use graphene_core::uuid::ManipulatorGroupId;
-use graphene_std::vector::PointId;
+use graphene_core::vector::PointId;
+
+use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Debug, Default)]
 pub struct LayerSnapper {
@@ -22,18 +21,26 @@ impl LayerSnapper {
 		if !document.snapping_state.target_enabled(target) {
 			return;
 		}
-		let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
-			return;
+
+		let bounds = if document.metadata.is_artboard(layer) {
+			document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)).map(Quad::from_box)
+		} else {
+			document
+				.metadata
+				.bounding_box_with_transform(layer, DAffine2::IDENTITY)
+				.map(|bounds| document.metadata.transform_to_document(layer) * Quad::from_box(bounds))
 		};
-		let bounds = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
+		let Some(bounds) = bounds else { return };
+
 		if bounds.0.iter().any(|point| !point.is_finite()) {
 			return;
 		}
+
 		for document_curve in bounds.bezier_lines() {
 			self.paths_to_snap.push(SnapCandidatePath {
 				document_curve,
 				layer,
-				start: ManipulatorGroupId::new(),
+				start: PointId::new(),
 				target,
 				bounds: Some(bounds),
 			});
@@ -47,7 +54,7 @@ impl LayerSnapper {
 		self.paths_to_snap.clear();
 
 		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) {
+			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
 			self.add_layer_bounds(document, layer, SnapTarget::Board(BoardSnapTarget::Edge));
@@ -133,7 +140,7 @@ impl LayerSnapper {
 			let direction = constraint.direction().normalize_or_zero();
 			let start = constrained_point - tolerance * direction;
 			let end = constrained_point + tolerance * direction;
-			Subpath::<ManipulatorGroupId>::new_line(start, end)
+			Subpath::<PointId>::new_line(start, end)
 		};
 
 		for path in &self.paths_to_snap {
@@ -169,22 +176,16 @@ impl LayerSnapper {
 		self.points_to_snap.clear();
 
 		for layer in document.metadata.all_layers() {
-			if !document.metadata.is_artboard(layer) {
+			if !document.metadata.is_artboard(layer) || snap_data.ignore.contains(&layer) {
 				continue;
 			}
+
 			if document.snapping_state.target_enabled(SnapTarget::Board(BoardSnapTarget::Corner)) {
-				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+				let Some(bounds) = document.metadata.bounding_box_with_transform(layer, document.metadata.transform_to_document(layer)) else {
 					continue;
 				};
-				let quad = document.metadata.transform_to_document(layer) * Quad::from_box(bounds);
-				let values = BBoxSnapValues {
-					corner_source: SnapSource::Board(BoardSnapSource::Corner),
-					corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
-					center_source: SnapSource::Board(BoardSnapSource::Center),
-					center_target: SnapTarget::Board(BoardSnapTarget::Center),
-					..Default::default()
-				};
-				get_bbox_points(quad, &mut self.points_to_snap, values, document);
+
+				get_bbox_points(Quad::from_box(bounds), &mut self.points_to_snap, BBoxSnapValues::ARTBOARD, document);
 			}
 		}
 		for &layer in snap_data.get_candidates() {
@@ -296,7 +297,7 @@ fn normals_and_tangents(path: &SnapCandidatePath, normals: bool, tangents: bool,
 struct SnapCandidatePath {
 	document_curve: Bezier,
 	layer: LayerNodeIdentifier,
-	start: ManipulatorGroupId,
+	start: PointId,
 	target: SnapTarget,
 	bounds: Option<Quad>,
 }
@@ -351,6 +352,15 @@ impl BBoxSnapValues {
 		edge_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
 		center_source: SnapSource::BoundingBox(BoundingBoxSnapSource::Center),
 		center_target: SnapTarget::BoundingBox(BoundingBoxSnapTarget::Center),
+	};
+
+	pub const ARTBOARD: Self = Self {
+		corner_source: SnapSource::Board(BoardSnapSource::Corner),
+		corner_target: SnapTarget::Board(BoardSnapTarget::Corner),
+		edge_source: SnapSource::None,
+		edge_target: SnapTarget::None,
+		center_source: SnapSource::Board(BoardSnapSource::Center),
+		center_target: SnapTarget::Board(BoardSnapTarget::Center),
 	};
 }
 pub fn get_bbox_points(quad: Quad, points: &mut Vec<SnapCandidatePoint>, values: BBoxSnapValues, document: &DocumentMessageHandler) {
@@ -418,8 +428,7 @@ fn subpath_anchor_snap_points(layer: LayerNodeIdentifier, subpath: &Subpath<Poin
 	}
 }
 
-/// Returns true if both handles in a manipulator group are colinear, unless the anchor is an endpoint. Endpoint anchors are never considered colinear.
-pub fn are_manipulator_handles_colinear<Id: bezier_rs::Identifier>(group: &bezier_rs::ManipulatorGroup<Id>, to_document: DAffine2, subpath: &Subpath<Id>, index: usize) -> bool {
+pub fn are_manipulator_handles_colinear(group: &bezier_rs::ManipulatorGroup<PointId>, to_document: DAffine2, subpath: &Subpath<PointId>, index: usize) -> bool {
 	let anchor = group.anchor;
 	let handle_in = group.in_handle.map(|handle| anchor - handle).filter(handle_not_under(to_document));
 	let handle_out = group.out_handle.map(|handle| handle - anchor).filter(handle_not_under(to_document));
