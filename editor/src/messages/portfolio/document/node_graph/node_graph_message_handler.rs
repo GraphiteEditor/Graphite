@@ -2326,12 +2326,11 @@ impl NodeGraphMessageHandler {
 				}
 			} else if let NodeInput::Value { tagged_value, .. } = export {
 				(FrontendGraphDataType::with_type(&tagged_value.ty()), Some(tagged_value.ty()))
-			}
 			// TODO: Get type from parent node input when <https://github.com/GraphiteEditor/Graphite/issues/1762> is possible
 			// else if let NodeInput::Network { import_type, .. } = export {
 			// 	(FrontendGraphDataType::with_type(import_type), Some(import_type.clone()))
 			// }
-			else {
+			} else {
 				(FrontendGraphDataType::General, None)
 			};
 
