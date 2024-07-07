@@ -18,8 +18,8 @@ use wasm_bindgen::prelude::*;
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 thread_local! {
-	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = OnceCell::new();
-	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = OnceCell::new();
+	pub static EDITOR: OnceCell<RefCell<editor::application::Editor>> = const { OnceCell::new() };
+	pub static EDITOR_HANDLE: OnceCell<RefCell<editor_api::EditorHandle>> = const { OnceCell::new() };
 }
 
 /// Initialize the backend
