@@ -28,15 +28,11 @@ impl LayoutHolder for DemoArtworkDialog {
 	fn layout(&self) -> Layout {
 		let mut rows_of_images_with_buttons: Vec<_> = ARTWORK
 			.chunks(3)
-			.into_iter()
 			.map(|chunk| {
-				let images = chunk
-					.into_iter()
-					.map(|(_, thumbnail, _)| ImageLabel::new(*thumbnail).width(Some("256px".into())).widget_holder())
-					.collect();
+				let images = chunk.iter().map(|(_, thumbnail, _)| ImageLabel::new(*thumbnail).width(Some("256px".into())).widget_holder()).collect();
 
 				let buttons = chunk
-					.into_iter()
+					.iter()
 					.map(|(name, _, filename)| {
 						TextButton::new(*name)
 							.min_width(256)

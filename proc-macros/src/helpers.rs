@@ -3,6 +3,9 @@ use syn::punctuated::Punctuated;
 use syn::{Path, PathArguments, PathSegment, Token};
 
 /// Returns `Ok(Vec<T>)` if all items are `Ok(T)`, else returns a combination of every error encountered (not just the first one)
+// Allowing this lint because this is a false positive in this case. The fold can only be changed into a `try_fold` if the closure
+// doesn't have an error case. See for details: https://rust-lang.github.io/rust-clippy/master/index.html#/manual_try_fold.
+#[allow(clippy::manual_try_fold)]
 pub fn fold_error_iter<T>(iter: impl Iterator<Item = syn::Result<T>>) -> syn::Result<Vec<T>> {
 	iter.fold(Ok(vec![]), |acc, x| match acc {
 		Ok(mut v) => x.map(|x| {

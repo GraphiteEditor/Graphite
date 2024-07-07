@@ -69,12 +69,12 @@ impl ScrollDelta {
 	}
 
 	pub fn as_dvec2(&self) -> DVec2 {
-		DVec2::new(self.x as f64, self.y as f64)
+		DVec2::new(self.x, self.y)
 	}
 
 	pub fn scroll_delta(&self) -> f64 {
 		let (dx, dy) = (self.x, self.y);
-		dy.signum() as f64 * ((dy * dy + f64::min(dy.abs(), dx.abs()).powi(2)) as f64).sqrt()
+		dy.signum() * (dy * dy + f64::min(dy.abs(), dx.abs()).powi(2)).sqrt()
 	}
 }
 

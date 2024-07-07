@@ -149,8 +149,7 @@ fn solidify_stroke(vector_data: VectorData) -> VectorData {
 	// Perform operation on all subpaths in this shape.
 	for mut subpath in subpaths {
 		let stroke = style.stroke().unwrap();
-		let transform = transform.clone();
-		subpath.apply_transform(transform);
+		subpath.apply_transform(*transform);
 
 		// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
 		let subpath_out = subpath.outline(
