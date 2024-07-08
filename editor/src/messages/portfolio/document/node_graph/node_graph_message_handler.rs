@@ -494,11 +494,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 				let mut nodes_to_move = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
 				if move_upstream {
 					let mut seen_upstream = HashSet::new();
-					nodes_to_move = network
-						.upstream_flow_back_from_nodes(nodes_to_move, FlowType::UpstreamFlow)
-						.map(|(_, node_id)| node_id)
-						.filter(move |node_id| seen_upstream.insert(*node_id)) // Ensure all nodes are unique
-						.collect::<Vec<_>>();
+					for selected_node_id in selected_nodes.selected_nodes(network) {
+						let Some(selected_node) = network.nodes.get(selected_node_id) else {
+							log::error!("Could not get selected node from network");
+							continue;
+						};
+						// Only drag nodes that are children of the selected layer
+						if let Some(NodeInput::Node { node_id, .. }) = selected_node.inputs.get(1) {
+							nodes_to_move.extend(
+								network
+									.upstream_flow_back_from_nodes(vec![*node_id], FlowType::UpstreamFlow)
+									.map(|(_, node_id)| node_id)
+									.filter(|node_id| seen_upstream.insert(*node_id)), // Ensure all nodes are unique
+							)
+						};
+					}
 				}
 				for node_id in nodes_to_move {
 					if document_network.nested_network(&network_path).unwrap().exports_metadata.0 == node_id {
