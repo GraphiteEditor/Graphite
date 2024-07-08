@@ -1482,7 +1482,7 @@ impl DocumentMessageHandler {
 		for (node_id, current_node) in &network.nodes {
 			if let Some(previous_node) = previous_nested_network.nodes.get(node_id) {
 				if previous_node.alias == current_node.alias
-					&& previous_node.inputs.iter().map(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().map(|node_input| node_input.is_exposed()).count()
+					&& previous_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count() == current_node.inputs.iter().filter(|node_input| node_input.is_exposed()).count()
 					&& previous_node.is_layer == current_node.is_layer
 					&& previous_node.metadata.position == current_node.metadata.position
 				{
