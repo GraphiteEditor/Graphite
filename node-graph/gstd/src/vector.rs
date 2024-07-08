@@ -84,23 +84,24 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 	};
 
 	fn collect_vector_data(graphic_group: &GraphicGroup) -> impl Iterator<Item = VectorData> + '_ {
-		graphic_group.iter().map(|graphic_element| union_vector_data(graphic_element))
+		graphic_group.iter().rev().map(|graphic_element| union_vector_data(graphic_element))
 	}
 
 	fn boolean_operation_on_vector_data(mut vector_data: impl Iterator<Item = VectorData>, boolean_operation: BooleanOperation) -> VectorData {
-		let mut result = vector_data.next().unwrap_or(VectorData::empty());
+		let mut result = VectorData::empty();
+		let first_vector_data = vector_data.next().unwrap_or(VectorData::empty());
 		let mut second_vector_data = Some(vector_data.next().unwrap_or(VectorData::empty()));
 
 		while let Some(lower_vector_data) = second_vector_data {
-			let transform_of_lower_into_space_of_upper = result.transform.inverse() * lower_vector_data.transform;
+			let transform_of_lower_into_space_of_upper = first_vector_data.transform.inverse() * lower_vector_data.transform;
 
-			let upper_path_string = to_svg_string(&result, DAffine2::IDENTITY);
+			let upper_path_string = to_svg_string(&first_vector_data, DAffine2::IDENTITY);
 			let lower_path_string = to_svg_string(&lower_vector_data, transform_of_lower_into_space_of_upper);
 
 			let mut use_lower_style = false;
 
 			#[allow(unused_unsafe)]
-			let boolean_result = unsafe {
+			let boolean_operation_string = unsafe {
 				match boolean_operation {
 					BooleanOperation::Union => boolean_union(upper_path_string, lower_path_string),
 					BooleanOperation::SubtractFront => {
@@ -113,18 +114,14 @@ fn boolean_operation_node(graphic_group: GraphicGroup, boolean_operation: Boolea
 					BooleanOperation::Divide => boolean_divide(upper_path_string, lower_path_string),
 				}
 			};
-			let operation_result = from_svg_string(&boolean_result);
-			result.colinear_manipulators = operation_result.colinear_manipulators;
-			result.point_domain = operation_result.point_domain;
-			result.segment_domain = operation_result.segment_domain;
-			result.region_domain = operation_result.region_domain;
+			let mut boolean_operation_result = from_svg_string(&boolean_operation_string);
 
-			if use_lower_style {
-				result.style = lower_vector_data.style.clone()
-			};
-			if use_lower_style {
-				result.alpha_blending = lower_vector_data.alpha_blending
-			};
+			result = from_svg_string(&unsafe { boolean_union(to_svg_string(&result, DAffine2::IDENTITY), to_svg_string(&boolean_operation_result, DAffine2::IDENTITY)) });
+			result.transform = first_vector_data.transform;
+
+			result.transform = first_vector_data.transform;
+			result.style = if use_lower_style { lower_vector_data.style } else { first_vector_data.style.clone() };
+			result.alpha_blending = if use_lower_style { lower_vector_data.alpha_blending } else { first_vector_data.alpha_blending };
 
 			second_vector_data = vector_data.next();
 		}
