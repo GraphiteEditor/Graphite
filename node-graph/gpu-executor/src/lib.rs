@@ -496,7 +496,9 @@ async fn read_output_buffer_node<'a: 'input, E: 'a + GpuExecutor>(buffer: Arc<Sh
 pub struct CreateGpuSurfaceNode {}
 
 #[node_macro::node_fn(CreateGpuSurfaceNode)]
-async fn create_gpu_surface<'a: 'input, E: 'a + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E>>(editor_api: EditorApi<'a, Io>) -> Arc<SurfaceHandle<E::Surface<'a>>> {
+async fn create_gpu_surface<'a: 'input, E: 'input + GpuExecutor<Window = Io::Surface>, Io: ApplicationIo<Executor = E> + 'input>(
+	editor_api: &'a EditorApi<Io>,
+) -> Arc<SurfaceHandle<E::Surface<'input>>> {
 	let canvas = editor_api.application_io.create_surface();
 	let executor = editor_api.application_io.gpu_executor().unwrap();
 	Arc::new(executor.create_surface(canvas).unwrap())

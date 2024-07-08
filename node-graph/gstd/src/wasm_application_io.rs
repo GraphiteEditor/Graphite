@@ -81,9 +81,9 @@ unsafe impl StaticType for WasmApplicationIo {
 	type Static = WasmApplicationIo;
 }
 
-impl<'a> From<WasmEditorApi<'a>> for &'a WasmApplicationIo {
-	fn from(editor_api: WasmEditorApi<'a>) -> Self {
-		editor_api.application_io
+impl<'a> From<&'a WasmEditorApi> for &'a WasmApplicationIo {
+	fn from(editor_api: &'a WasmEditorApi) -> Self {
+		&editor_api.application_io
 	}
 }
 #[cfg(feature = "wgpu")]
@@ -93,7 +93,7 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 	}
 }
 
-pub type WasmEditorApi<'a> = graphene_core::application_io::EditorApi<'a, WasmApplicationIo>;
+pub type WasmEditorApi = graphene_core::application_io::EditorApi<WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_arch = "wasm32")]
@@ -234,7 +234,7 @@ pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
 pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
-async fn create_surface_node<'a: 'input>(editor: WasmEditorApi<'a>) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
+async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
 	editor.application_io.create_surface().into()
 }
 
@@ -266,7 +266,7 @@ pub struct LoadResourceNode<Url> {
 }
 
 #[node_macro::node_fn(LoadResourceNode)]
-async fn load_resource_node<'a: 'input>(editor: WasmEditorApi<'a>, url: String) -> Arc<[u8]> {
+async fn load_resource_node<'a: 'input>(editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
 	editor.application_io.load_resource(url).unwrap().await.unwrap()
 }
 
@@ -321,7 +321,7 @@ fn render_canvas(
 	mut render: SvgRender,
 	render_params: RenderParams,
 	footprint: Footprint,
-	editor: WasmEditorApi<'_>,
+	editor: &'_ WasmEditorApi,
 	surface_handle: Arc<SurfaceHandle<HtmlCanvasElement>>,
 ) -> RenderOutput {
 	let resolution = footprint.resolution;
@@ -421,7 +421,7 @@ async fn rasterize<_T: GraphicElementRendered + TransformMut>(mut data: _T, foot
 }
 
 // Render with the data node taking in Footprint.
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, WasmEditorApi<'a>>
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, &'a RenderConfig>
 	for RenderNode<Data, Surface, Footprint>
 where
 	Data: Node<'input, Footprint, Output = F>,
@@ -431,14 +431,14 @@ where
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 
 	#[inline]
-	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
+	fn eval(&'input self, render_config: &'a RenderConfig) -> Self::Output {
 		Box::pin(async move {
-			let footprint = editor.render_config.viewport;
+			let footprint = render_config.viewport;
 
-			let RenderConfig { hide_artboards, for_export, .. } = editor.render_config;
-			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+			let RenderConfig { hide_artboards, for_export, .. } = render_config;
+			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, *hide_artboards, *for_export);
 
-			let output_format = editor.render_config.export_format;
+			let output_format = render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(footprint).await, SvgRender::new(), render_params, footprint),
 				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]
@@ -450,7 +450,7 @@ where
 }
 
 // Render with the data node taking in ().
-impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, WasmEditorApi<'a>>
+impl<'input, 'a: 'input, T: 'input + GraphicElementRendered, F: 'input + Future<Output = T>, Data: 'input, Surface: 'input, SurfaceFuture: 'input> Node<'input, &'a RenderConfig>
 	for RenderNode<Data, Surface, ()>
 where
 	Data: Node<'input, (), Output = F>,
@@ -459,14 +459,14 @@ where
 {
 	type Output = core::pin::Pin<Box<dyn core::future::Future<Output = RenderOutput> + 'input>>;
 	#[inline]
-	fn eval(&'input self, editor: WasmEditorApi<'a>) -> Self::Output {
+	fn eval(&'input self, render_config: &'a RenderConfig) -> Self::Output {
 		Box::pin(async move {
-			let footprint = editor.render_config.viewport;
+			let footprint = render_config.viewport;
 
-			let RenderConfig { hide_artboards, for_export, .. } = editor.render_config;
-			let render_params = RenderParams::new(editor.render_config.view_mode, ImageRenderMode::Base64, None, false, hide_artboards, for_export);
+			let RenderConfig { hide_artboards, for_export, .. } = render_config;
+			let render_params = RenderParams::new(render_config.view_mode, ImageRenderMode::Base64, None, false, *hide_artboards, *for_export);
 
-			let output_format = editor.render_config.export_format;
+			let output_format = render_config.export_format;
 			match output_format {
 				ExportFormat::Svg => render_svg(self.data.eval(()).await, SvgRender::new(), render_params, footprint),
 				#[cfg(all(any(feature = "resvg", feature = "vello"), target_arch = "wasm32"))]

@@ -365,6 +365,7 @@ impl DocumentNode {
 				}
 				NodeInput::Network { import_type, .. } => (ProtoNodeInput::ManualComposition(import_type), ConstructionArgs::Nodes(vec![])),
 				NodeInput::Inline(inline) => (ProtoNodeInput::None, ConstructionArgs::Inline(inline)),
+				NodeInput::Scope(_) => unreachable!("Scope input was not resolved"),
 			}
 		};
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Network { .. })), "received non resolved parameter");
@@ -452,6 +453,9 @@ pub enum NodeInput {
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network { import_type: Type, import_index: usize },
 
+	/// Input that is extracted from the parent scopes the node resides in.. The string argument is the key
+	Scope(String),
+
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
 	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
 	Inline(InlineRust),
@@ -498,6 +502,7 @@ impl NodeInput {
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Network { .. } => true,
 			NodeInput::Inline(_) => false,
+			NodeInput::Scope(_) => true,
 		}
 	}
 	pub fn ty(&self) -> Type {
@@ -506,6 +511,7 @@ impl NodeInput {
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			NodeInput::Network { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
+			NodeInput::Scope(_) => unreachable!("ty() called on NodeInput::Scope"),
 		}
 	}
 	pub fn as_value(&self) -> Option<&TaggedValue> {
@@ -666,6 +672,10 @@ pub struct NodeNetwork {
 	pub imports_metadata: (NodeId, IVec2),
 	#[serde(default = "default_export_metadata")]
 	pub exports_metadata: (NodeId, IVec2),
+
+	/// A network may expose nodes as constants which can by used by other nodes using a
+	/// `NodeInput::Scope(key)``
+	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
 impl std::hash::Hash for NodeNetwork {
@@ -688,6 +698,7 @@ impl Default for NodeNetwork {
 			previewing: Default::default(),
 			imports_metadata: default_import_metadata(),
 			exports_metadata: default_export_metadata(),
+			scope_injections: Default::default(),
 		}
 	}
 }
@@ -1204,6 +1215,17 @@ impl NodeNetwork {
 			inner_network.map_ids(|inner_id| map_ids(id, inner_id));
 			let new_nodes = inner_network.nodes.keys().cloned().collect::<Vec<_>>();
 
+			for (key, value) in inner_network.scope_injections.into_iter() {
+				match self.scope_injections.entry(key) {
+					std::collections::hash_map::Entry::Occupied(o) => {
+						log::warn!("Found duplicate scope injection for key {}, ignoring", o.key());
+					}
+					std::collections::hash_map::Entry::Vacant(v) => {
+						v.insert(value);
+					}
+				}
+			}
+
 			// Match the document node input and the inputs of the inner network
 			for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
 				if nested_node.name == "To Artboard" {
@@ -1215,7 +1237,7 @@ impl NodeNetwork {
 
 				for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 					if let NodeInput::Network { import_index, .. } = nested_input {
-						let parent_input = node.inputs.get(*import_index).expect(&format!("Import index {} should always exist", import_index));
+						let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {} should always exist", import_index));
 						match *parent_input {
 							// If the input to self is a node, connect the corresponding output of the inner network to it
 							NodeInput::Node { node_id, output_index, lambda } => {
@@ -1232,6 +1254,11 @@ impl NodeNetwork {
 							}
 							NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 							NodeInput::Inline(_) => (),
+							NodeInput::Scope(ref key) => {
+								let (import_id, ty) = self.scope_injections.get(key).expect("Tried to import a non existent key from scope");
+								// TODO use correct output index
+								nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
+							}
 						}
 					}
 				}

@@ -43,7 +43,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	});
 
 	let editor_api = WasmEditorApi {
-		image_frame: None,
 		font_cache: &FontCache::default(),
 		application_io: &application_io,
 		node_graph_message_sender: &UpdateLogger {},

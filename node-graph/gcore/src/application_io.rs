@@ -4,7 +4,7 @@ use crate::transform::{Footprint, Transform, TransformMut};
 use crate::vector::style::ViewMode;
 use crate::{Color, Node};
 
-use dyn_any::{StaticType, StaticTypeSized};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 
 use alloc::sync::Arc;
 use core::fmt::Debug;
@@ -148,7 +148,7 @@ pub enum ExportFormat {
 	Canvas,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub export_format: ExportFormat,
@@ -157,82 +157,19 @@ pub struct RenderConfig {
 	pub for_export: bool,
 }
 
-pub struct EditorApi<'a, Io> {
-	// TODO: Is `image_frame` still used? I think it's only ever set to None.
-	pub image_frame: Option<ImageFrame<Color>>,
-	pub font_cache: &'a FontCache,
-	pub application_io: &'a Io,
-	pub node_graph_message_sender: &'a dyn NodeGraphUpdateSender,
-	pub imaginate_preferences: &'a dyn GetImaginatePreferences,
-	pub render_config: RenderConfig,
+pub struct EditorApi<Io> {
+	pub font_cache: FontCache,
+	pub application_io: Io,
+	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender>,
+	pub imaginate_preferences: Box<dyn GetImaginatePreferences>,
 }
 
-impl<'a, Io> Clone for EditorApi<'a, Io> {
-	fn clone(&self) -> Self {
-		Self {
-			image_frame: self.image_frame.clone(),
-			font_cache: self.font_cache,
-			application_io: self.application_io,
-			node_graph_message_sender: self.node_graph_message_sender,
-			imaginate_preferences: self.imaginate_preferences,
-			render_config: self.render_config,
-		}
-	}
-}
-
-impl<'a, T> PartialEq for EditorApi<'a, T> {
-	fn eq(&self, other: &Self) -> bool {
-		self.image_frame == other.image_frame && self.font_cache == other.font_cache
-	}
-}
-
-impl<'a, T> Hash for EditorApi<'a, T> {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.image_frame.hash(state);
-		self.font_cache.hash(state);
-	}
-}
-
-impl<'a, T> Debug for EditorApi<'a, T> {
+impl<'a, T> Debug for EditorApi<T> {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		f.debug_struct("EditorApi").field("image_frame", &self.image_frame).field("font_cache", &self.font_cache).finish()
+		f.debug_struct("EditorApi").field("font_cache", &self.font_cache).finish()
 	}
 }
 
-unsafe impl<T: StaticTypeSized> StaticType for EditorApi<'_, T> {
-	type Static = EditorApi<'static, T::Static>;
-}
-
-impl<'a, T> AsRef<EditorApi<'a, T>> for EditorApi<'a, T> {
-	fn as_ref(&self) -> &EditorApi<'a, T> {
-		self
-	}
-}
-
-// Required for the EndLetNode
-impl<'a, IO> From<EditorApi<'a, IO>> for Footprint {
-	fn from(value: EditorApi<'a, IO>) -> Self {
-		value.render_config.viewport
-	}
-}
-
-// Required for the EndLetNode
-impl<'a, IO> From<EditorApi<'a, IO>> for () {
-	fn from(_value: EditorApi<'a, IO>) -> Self {}
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExtractImageFrame;
-
-impl<'a: 'input, 'input, T> Node<'input, EditorApi<'a, T>> for ExtractImageFrame {
-	type Output = ImageFrame<Color>;
-	fn eval(&'input self, editor_api: EditorApi<'a, T>) -> Self::Output {
-		editor_api.image_frame.unwrap_or(ImageFrame::identity())
-	}
-}
-
-impl ExtractImageFrame {
-	pub fn new() -> Self {
-		Self
-	}
+unsafe impl<T: StaticTypeSized> StaticType for EditorApi<T> {
+	type Static = EditorApi<T::Static>;
 }

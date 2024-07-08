@@ -51,7 +51,10 @@ impl core::fmt::Debug for ImaginatePersistentData {
 impl Default for ImaginatePersistentData {
 	fn default() -> Self {
 		let mut status = ImaginateServerStatus::default();
+		#[cfg(not(miri))]
 		let client = new_client().map_err(|err| status = ImaginateServerStatus::Failed(err.to_string())).ok();
+		#[cfg(miri)]
+		let client = None;
 		let ImaginatePreferences { host_name } = Default::default();
 		Self {
 			pending_server_check: None,
@@ -263,7 +266,7 @@ struct ImaginateCommonImageRequest<'a> {
 #[allow(clippy::too_many_arguments)]
 pub async fn imaginate<'a, P: Pixel>(
 	image: Image<P>,
-	editor_api: impl Future<Output = WasmEditorApi<'a>>,
+	editor_api: impl Future<Output = &'a WasmEditorApi>,
 	controller: ImaginateController,
 	seed: impl Future<Output = f64>,
 	res: impl Future<Output = Option<DVec2>>,

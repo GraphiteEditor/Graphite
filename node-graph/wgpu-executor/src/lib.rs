@@ -37,8 +37,8 @@ impl std::fmt::Debug for WgpuExecutor {
 	}
 }
 
-impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<EditorApi<'a, T>> for &'a WgpuExecutor {
-	fn from(editor_api: EditorApi<'a, T>) -> Self {
+impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &'a WgpuExecutor {
+	fn from(editor_api: &'a EditorApi<T>) -> Self {
 		editor_api.application_io.gpu_executor().unwrap()
 	}
 }

@@ -67,7 +67,7 @@ impl<T: GpuExecutor> Clone for ComputePass<T> {
 }
 
 #[node_macro::node_impl(MapGpuNode)]
-async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: graphene_core::application_io::EditorApi<'a, WasmApplicationIo>) -> ImageFrame<Color> {
+async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
 	let executor = &editor_api.application_io.gpu_executor.as_ref().unwrap();
 

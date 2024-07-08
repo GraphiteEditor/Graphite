@@ -192,7 +192,6 @@ impl NodeRuntime {
 			application_io: self.wasm_application_io.as_ref().unwrap(),
 			node_graph_message_sender: &self.sender,
 			render_config,
-			image_frame: None,
 		};
 
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.

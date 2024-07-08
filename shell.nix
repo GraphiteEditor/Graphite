@@ -28,10 +28,10 @@ let
   };
 
   # Define the rustc we need
-  rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
+  rustc-wasm = pkgs.rust-bin.nightly.latest.default.override {
     targets = [ "wasm32-unknown-unknown" ];
     # wasm-pack needs this
-    extensions = [ "rust-src" "rust-analyzer" "clippy" ];
+    extensions = [ "rust-src" "rust-analyzer" "clippy" "miri"];
   };
 in
   # Make a shell with the dependencies we need
@@ -50,11 +50,14 @@ in
       pkgs.webkitgtk
 
       pkgs.pkg-config
+      pkgs.openssl
 
       # Use Mold as a Linke
       pkgs.mold
     ];
 
+
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl];
     # Hacky way to run cago through Mold
     shellHook = ''
     alias cargo='mold --run cargo'

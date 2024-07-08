@@ -5,6 +5,7 @@ use crate::proto::{Any as DAny, FutureAny};
 
 use graphene_core::raster::brush_cache::BrushCache;
 use graphene_core::raster::{BlendMode, LuminanceCalculation};
+use graphene_core::text::FontCache;
 use graphene_core::{Color, Node, Type};
 
 use dyn_any::DynAny;
@@ -24,6 +25,7 @@ macro_rules! tagged_value {
 			$( $(#[$meta] ) *$identifier( $ty ), )*
 			RenderOutput(RenderOutput),
 			SurfaceFrame(graphene_core::SurfaceFrame),
+			EditorApi(u64),
 		}
 
 		// We must manually implement hashing because some values are floats and so do not reproducibly hash (see FakeHash below)
@@ -33,6 +35,7 @@ macro_rules! tagged_value {
 				core::mem::discriminant(self).hash(state);
 				match self {
 					Self::None => {}
+					Self::EditorApi(hash) => hash.hash(state),
 					$( Self::$identifier(x) => {x.hash(state)}),*
 					Self::RenderOutput(x) => x.hash(state),
 					Self::SurfaceFrame(x) => x.hash(state),
@@ -44,6 +47,7 @@ macro_rules! tagged_value {
 			pub fn to_any(self) -> Any<'a> {
 				match self {
 					Self::None => Box::new(()),
+					Self::EditorApi(_) => unreachable!("Tried to convert editor api tagged value to dyn any"),
 					$( Self::$identifier(x) => Box::new(x), )*
 					Self::RenderOutput(x) => Box::new(x),
 					Self::SurfaceFrame(x) => Box::new(x),
@@ -53,6 +57,12 @@ macro_rules! tagged_value {
 			pub fn ty(&self) -> Type {
 				match self {
 					Self::None => concrete!(()),
+					Self::EditorApi(_) => Type::Concrete(graphene_core::TypeDescriptor {
+						name: std::borrow::Cow::Borrowed("std::sync::Arc<graphene_core::application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>>"),
+						id: None,
+						size: 0,
+						align: 0,
+					}),
 					$( Self::$identifier(_) => concrete!($ty), )*
 					Self::RenderOutput(_) => concrete!(RenderOutput),
 					Self::SurfaceFrame(_) => concrete!(graphene_core::SurfaceFrame),
@@ -171,6 +181,7 @@ tagged_value! {
 	VectorModification(graphene_core::vector::VectorModification),
 	CentroidType(graphene_core::vector::misc::CentroidType),
 	BooleanOperation(graphene_core::vector::misc::BooleanOperation),
+	FontCache(Arc<graphene_core::text::FontCache>),
 }
 
 impl<'a> TaggedValue {
