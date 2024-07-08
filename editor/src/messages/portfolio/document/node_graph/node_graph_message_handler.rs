@@ -491,9 +491,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 					warn!("No network");
 					return;
 				};
-				let mut nodes_to_move = selected_nodes.selected_nodes(network).cloned().collect::<Vec<_>>();
+				let mut nodes_to_move = selected_nodes.selected_nodes(network).cloned().collect::<HashSet<_>>();
 				if move_upstream {
-					let mut seen_upstream = HashSet::new();
 					for selected_node_id in selected_nodes.selected_nodes(network) {
 						let Some(selected_node) = network.nodes.get(selected_node_id) else {
 							log::error!("Could not get selected node from network");
@@ -501,12 +500,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphHandlerData<'a>> for NodeGrap
 						};
 						// Only drag nodes that are children of the selected layer
 						if let Some(NodeInput::Node { node_id, .. }) = selected_node.inputs.get(1) {
-							nodes_to_move.extend(
-								network
-									.upstream_flow_back_from_nodes(vec![*node_id], FlowType::UpstreamFlow)
-									.map(|(_, node_id)| node_id)
-									.filter(|node_id| seen_upstream.insert(*node_id)), // Ensure all nodes are unique
-							)
+							nodes_to_move.extend(network.upstream_flow_back_from_nodes(vec![*node_id], FlowType::UpstreamFlow).map(|(_, node_id)| node_id))
 						};
 					}
 				}
