@@ -5,7 +5,7 @@ use graphene_std::vector::PointId;
 
 use glam::DVec2;
 
-/// Determines if a path should be extended. Returns the path and if it is extending from the start, if applicable.
+/// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = tolerance * tolerance;
