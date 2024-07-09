@@ -20,6 +20,7 @@ use graphene_core::transform::{Footprint, Transform};
 use graphene_core::vector::style::ViewMode;
 use graphene_core::vector::VectorData;
 use graphene_core::{Color, GraphicElement, SurfaceFrame};
+use graphene_std::application_io::EditorApi;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypes};
 
@@ -39,8 +40,10 @@ pub struct NodeRuntime {
 	executor: DynamicExecutor,
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: InternalNodeGraphUpdateSender,
+	imaginate_preferences: ImaginatePreferences,
+	recompile_graph: bool,
 
-	editor_api: WasmEditorApi,
+	editor_api: Arc<WasmEditorApi>,
 
 	graph_hash: Option<u64>,
 	node_graph_errors: GraphErrors,
@@ -84,7 +87,7 @@ pub struct ExecutionRequest {
 pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
-	responses: VecDeque<Message>,
+	responses: VecDeque<FrontendMessage>,
 	new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
 	new_vector_modify: HashMap<NodeId, VectorData>,
 	new_upstream_transforms: HashMap<NodeId, (Footprint, DAffine2)>,
@@ -98,6 +101,7 @@ pub enum NodeGraphUpdate {
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
+#[derive(Clone)]
 struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
 
 impl InternalNodeGraphUpdateSender {
@@ -122,6 +126,8 @@ impl NodeRuntime {
 			executor: DynamicExecutor::default(),
 			receiver,
 			sender: InternalNodeGraphUpdateSender(sender.clone()),
+			imaginate_preferences: ImaginatePreferences::default(),
+			recompile_graph: true,
 
 			editor_api: WasmEditorApi {
 				font_cache: FontCache::default(),
@@ -129,7 +135,8 @@ impl NodeRuntime {
 				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
 				application_io: None,
-			},
+			}
+			.into(),
 
 			graph_hash: None,
 			node_graph_errors: Vec::new(),
@@ -152,8 +159,26 @@ impl NodeRuntime {
 		requests.reverse();
 		for request in requests {
 			match request {
-				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.editor_api.font_cache = font_cache,
-				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.editor_api.imaginate_preferences = Box::new(preferences),
+				NodeRuntimeMessage::FontCacheUpdate(font_cache) => {
+					self.editor_api = WasmEditorApi {
+						font_cache,
+						application_io: self.editor_api.application_io.clone(),
+						node_graph_message_sender: Box::new(self.sender.clone()),
+						imaginate_preferences: Box::new(self.imaginate_preferences.clone()),
+					}
+					.into();
+					self.recompile_graph = true;
+				}
+				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => {
+					self.editor_api = WasmEditorApi {
+						font_cache: self.editor_api.font_cache.clone(),
+						application_io: self.editor_api.application_io.clone(),
+						node_graph_message_sender: Box::new(self.sender.clone()),
+						imaginate_preferences: Box::new(preferences),
+					}
+					.into();
+					self.recompile_graph = true;
+				}
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
 					execution_id, graph, render_config, ..
 				}) => {
@@ -182,7 +207,13 @@ impl NodeRuntime {
 
 	async fn execute_network(&mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		if self.editor_api.application_io.is_none() {
-			self.editor_api.application_io = Some(WasmApplicationIo::new().await);
+			self.editor_api = WasmEditorApi {
+				application_io: Some(WasmApplicationIo::new().await.into()),
+				font_cache: self.editor_api.font_cache.clone(),
+				node_graph_message_sender: Box::new(self.sender.clone()),
+				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+			}
+			.into();
 		}
 
 		let editor_api = &self.editor_api;
@@ -197,8 +228,8 @@ impl NodeRuntime {
 			self.graph_hash = None;
 		}
 
-		if self.graph_hash.is_none() {
-			let scoped_network = wrap_network_in_scope(graph, font_hash_code);
+		if self.graph_hash.is_none() || self.recompile_graph {
+			let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 			self.monitor_nodes = scoped_network
 				.recursive_nodes()
@@ -250,7 +281,7 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<Message>) {
+	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
@@ -316,7 +347,7 @@ impl NodeRuntime {
 				let old_thumbnail_svg = self.thumbnail_renders.entry(parent_network_node_id).or_default();
 
 				if old_thumbnail_svg != &new_thumbnail_svg {
-					responses.add(FrontendMessage::UpdateNodeThumbnail {
+					responses.push_back(FrontendMessage::UpdateNodeThumbnail {
 						id: parent_network_node_id,
 						value: new_thumbnail_svg.to_svg_string(),
 					});
@@ -567,7 +598,7 @@ impl NodeGraphExecutor {
 						transform,
 					} = execution_response;
 
-					responses.extend(existing_responses);
+					responses.extend(existing_responses.into_iter().map(|m| m.into()));
 					responses.add(NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors });
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(OverlaysMessage::Draw);

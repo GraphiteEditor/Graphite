@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let editor_api = WasmEditorApi {
 		font_cache: FontCache::default(),
-		application_io: Some(application_io),
+		application_io: Some(application_io.into()),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		imaginate_preferences: Box::new(ImaginatePreferences::default()),
 	};

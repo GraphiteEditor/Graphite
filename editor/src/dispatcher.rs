@@ -410,7 +410,6 @@ mod test {
 		assert_eq!(layers_after_copy[5], shape_id);
 	}
 
-	// #[tokio::test]
 	#[test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.
 	fn check_if_demo_art_opens() {
@@ -434,18 +433,19 @@ mod test {
 			init_logger();
 			let mut editor = Editor::create();
 
-			let files = [
-				include_str!("../../demo-artwork/isometric-fountain.graphite"),
-				include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
-				include_str!("../../demo-artwork/procedural-string-lights.graphite"),
-				include_str!("../../demo-artwork/red-dress.graphite"),
-				include_str!("../../demo-artwork/valley-of-spires.graphite"),
-			];
+			// Use this for running under miri
+			// let files = [
+			// 	include_str!("../../demo-artwork/isometric-fountain.graphite"),
+			// 	include_str!("../../demo-artwork/just-a-potted-cactus.graphite"),
+			// 	include_str!("../../demo-artwork/procedural-string-lights.graphite"),
+			// 	include_str!("../../demo-artwork/red-dress.graphite"),
+			// 	include_str!("../../demo-artwork/valley-of-spires.graphite"),
+			// ];
+			// for (id, document_serialized_content) in files.iter().enumerate() {
+			// let document_name = format!("document {id}");
 
-			// for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
-			for (id, document_serialized_content) in files.iter().enumerate() {
-				let document_name = format!("document {id}");
-				// let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
+			for (document_name, _, file_name) in crate::messages::dialog::simple_dialogs::ARTWORK {
+				let document_serialized_content = std::fs::read_to_string(format!("../demo-artwork/{file_name}")).unwrap();
 
 				assert_eq!(
 					document_serialized_content.lines().count(),
@@ -463,7 +463,8 @@ mod test {
 				let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
 				portfolio
 					.executor
-					.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE);
+					.submit_node_graph_evaluation(portfolio.documents.get_mut(&portfolio.active_document_id.unwrap()).unwrap(), glam::UVec2::ONE)
+					.unwrap();
 				crate::node_graph_executor::run_node_graph().await;
 				let mut messages = VecDeque::new();
 				editor.poll_node_graph_evaluation(&mut messages).expect("Graph should render");

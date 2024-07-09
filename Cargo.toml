@@ -37,6 +37,7 @@ dyn-any = { path = "libraries/dyn-any", features = ["derive", "glam"] }
 graphene-core = { path = "node-graph/gcore" }
 graph-craft = { path = "node-graph/graph-craft", features = ["serde"] }
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu.git" }
+wgpu-executor = { path = "node-graph/wgpu-executor" }
 bytemuck = { version = "1.13", features = ["derive"] }
 async-trait = { version = "0.1" }
 serde = { version = "1.0", features = ["derive", "rc"] }

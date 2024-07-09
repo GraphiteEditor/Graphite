@@ -5,6 +5,7 @@ use gpu_executor::{GpuExecutor, ShaderIO, ShaderInput};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::proto::*;
+use graphene_core::application_io::ApplicationIo;
 use graphene_core::quantization::QuantizationChannels;
 use graphene_core::raster::*;
 use graphene_core::*;
@@ -69,7 +70,7 @@ impl<T: GpuExecutor> Clone for ComputePass<T> {
 #[node_macro::node_impl(MapGpuNode)]
 async fn map_gpu<'a: 'input>(image: ImageFrame<Color>, node: DocumentNode, editor_api: &'a graphene_core::application_io::EditorApi<WasmApplicationIo>) -> ImageFrame<Color> {
 	log::debug!("Executing gpu node");
-	let executor = &editor_api.application_io.as_ref().unwrap().gpu_executor.as_ref().unwrap();
+	let executor = &editor_api.application_io.as_ref().and_then(|io| io.gpu_executor()).unwrap();
 
 	#[cfg(feature = "quantization")]
 	let quantization = crate::quantization::generate_quantization_from_image_frame(&image);

@@ -2744,7 +2744,7 @@ impl DocumentNodeDefinition {
 	}
 }
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
+pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
 	let inner_network = DocumentNode {
@@ -2804,7 +2804,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 		DocumentNode {
 			name: "Editor Api".into(),
 			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdentityNode"),
-			inputs: vec![NodeInput::value(TaggedValue::EditorApi(hash), false)],
+			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()
 		},
 	];

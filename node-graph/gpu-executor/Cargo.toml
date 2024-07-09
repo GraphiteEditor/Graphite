@@ -11,7 +11,7 @@ default = []
 
 [dependencies]
 graphene-core = { workspace = true, features = ["std", "alloc", "gpu"] }
-graph-craft = { workspace = true }
+# graph-craft = { workspace = true }
 node-macro = { path = "../node-macro" }
 dyn-any = { workspace = true, features = ["log-bad-types", "rc", "glam"] }
 num-traits = { workspace = true }

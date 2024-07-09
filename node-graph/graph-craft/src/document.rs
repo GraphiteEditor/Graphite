@@ -453,7 +453,7 @@ pub enum NodeInput {
 	/// Input that is provided by the parent network to this document node, instead of from a hardcoded value or another node within the same network.
 	Network { import_type: Type, import_index: usize },
 
-	/// Input that is extracted from the parent scopes the node resides in.. The string argument is the key
+	/// Input that is extracted from the parent scopes the node resides in. The string argument is the key.
 	Scope(Cow<'static, str>),
 
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.

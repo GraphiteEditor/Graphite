@@ -570,99 +570,42 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		register_node!(graphene_core::raster::BlendModeNode<_>, input: ImageFrame<Color>, params: [BlendMode]),
 		raster_node!(graphene_core::raster::PosterizeNode<_>, params: [f64]),
 		raster_node!(graphene_core::raster::ExposureNode<_, _, _>, params: [f64, f64, f64]),
-		// register_node!(graphene_core::memo::LetNode<_>, input: Option<ImageFrame<Color>>, params: []),
-		// register_node!(graphene_core::memo::LetNode<_>, input: Option<WasmEditorApi>, params: []),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: ImageFrame<Color>, params: [ImageFrame<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: VectorData, params: [VectorData]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [RenderOutput]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [f32]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [f64]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [bool]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [String]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [Option<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [Vec<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, params: [DVec2]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => VectorData]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => ImageFrame<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Option<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Vec<Color>]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => GraphicGroup]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => Artboard]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => f32]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => f64]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => bool]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => String]),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: RenderOutput, fn_params: [Footprint => DVec2]),
-		// async_node!(
-		// 	graphene_core::memo::EndLetNode<_, _>,
-		// 	input: &WasmEditorApi,
-		// 	output: GraphicGroup,
-		// 	params: [GraphicGroup]
-		// ),
-		// async_node!(
-		// 	graphene_core::memo::EndLetNode<_, _>,
-		// 	input: &WasmEditorApi,
-		// 	output: Artboard,
-		// 	params: [Artboard]
-		// ),
-		// async_node!(
-		// 	graphene_core::memo::EndLetNode<_, _>,
-		// 	input: &WasmEditorApi,
-		// 	output: WasmSurfaceHandleFrame,
-		// 	params: [WasmSurfaceHandleFrame]
-		// ),
-		// async_node!(graphene_core::memo::EndLetNode<_, _>, input: &WasmEditorApi, output: SurfaceFrame, params: [SurfaceFrame]),
-		vec![
-			// (
-			// 	ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>"),
-			// 	|args| {
-			// 		Box::pin(async move {
-			// 			let node: DowncastBothNode<Option<WasmEditorApi>, WasmEditorApi> = graphene_std::any::DowncastBothNode::new(args[0].clone());
-			// 			let node = <graphene_core::memo::RefNode<_, _>>::new(node);
-			// 			let any: DynAnyNode<(), _, _> = graphene_std::any::DynAnyNode::new(node);
-
-			// 			any.into_type_erased()
-			// 		})
-			// 	},
-			// 	NodeIOTypes::new(concrete!(()), concrete!(WasmEditorApi), vec![fn_type!(Option<WasmEditorApi>, WasmEditorApi)]),
-			// ),
-			(
-				ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
-				|args: Vec<graph_craft::proto::SharedNodeContainer>| {
-					Box::pin(async move {
-						use graphene_std::raster::ImaginateNode;
-						macro_rules! instantiate_imaginate_node {
+		vec![(
+			ProtoNodeIdentifier::new("graphene_std::raster::ImaginateNode<_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _>"),
+			|args: Vec<graph_craft::proto::SharedNodeContainer>| {
+				Box::pin(async move {
+					use graphene_std::raster::ImaginateNode;
+					macro_rules! instantiate_imaginate_node {
 							($($i:expr,)*) => { ImaginateNode::new($(graphene_std::any::input_node(args[$i].clone()),)* ) };
 						}
-						let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,);
-						let any = graphene_std::any::DynAnyNode::new(node);
-						any.into_type_erased()
-					})
-				},
-				NodeIOTypes::new(
-					concrete!(ImageFrame<Color>),
-					concrete!(ImageFrame<Color>),
-					vec![
-						fn_type!(WasmEditorApi),
-						fn_type!(ImaginateController),
-						fn_type!(u64),
-						fn_type!(Option<DVec2>),
-						fn_type!(u32),
-						fn_type!(ImaginateSamplingMethod),
-						fn_type!(f64),
-						fn_type!(String),
-						fn_type!(String),
-						fn_type!(bool),
-						fn_type!(f64),
-						fn_type!(bool),
-						fn_type!(f64),
-						fn_type!(ImaginateMaskStartingFill),
-						fn_type!(bool),
-						fn_type!(bool),
-					],
-				),
+					let node: ImaginateNode<Color, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _> = instantiate_imaginate_node!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,);
+					let any = graphene_std::any::DynAnyNode::new(node);
+					any.into_type_erased()
+				})
+			},
+			NodeIOTypes::new(
+				concrete!(ImageFrame<Color>),
+				concrete!(ImageFrame<Color>),
+				vec![
+					fn_type!(WasmEditorApi),
+					fn_type!(ImaginateController),
+					fn_type!(u64),
+					fn_type!(Option<DVec2>),
+					fn_type!(u32),
+					fn_type!(ImaginateSamplingMethod),
+					fn_type!(f64),
+					fn_type!(String),
+					fn_type!(String),
+					fn_type!(bool),
+					fn_type!(f64),
+					fn_type!(bool),
+					fn_type!(f64),
+					fn_type!(ImaginateMaskStartingFill),
+					fn_type!(bool),
+					fn_type!(bool),
+				],
 			),
-		],
+		)],
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: Image<Color>, params: [Image<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: ImageFrame<Color>, params: [ImageFrame<Color>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: (), output: QuantizationChannels, params: [QuantizationChannels]),

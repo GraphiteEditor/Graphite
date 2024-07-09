@@ -1,5 +1,4 @@
 use bytemuck::{Pod, Zeroable};
-use graph_craft::proto::ProtoNetwork;
 use graphene_core::*;
 
 use anyhow::Result;
@@ -61,15 +60,9 @@ pub trait GpuExecutor {
 	fn create_surface(&self, window: SurfaceHandle<Self::Window>) -> Result<SurfaceHandle<Self::Surface<'_>>>;
 }
 
-pub trait SpirVCompiler {
-	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CompileRequest {
-	pub networks: Vec<ProtoNetwork>,
-	pub io: ShaderIO,
-}
+// pub trait SpirVCompiler {
+// 	fn compile(&self, network: &[ProtoNetwork], io: &ShaderIO) -> Result<Shader>;
+// }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 /// GPU constants that can be used as inputs to a shader.

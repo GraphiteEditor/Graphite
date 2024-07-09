@@ -1,12 +1,13 @@
 use crate::node_registry;
 
 use dyn_any::StaticType;
-use graph_craft::document::value::{TaggedValue, UpcastNode};
+use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
 use graph_craft::document::{NodeId, Source};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::Type;
+use graphene_std::value::ValueNode;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -207,9 +208,15 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let upcasted = UpcastNode::new(value.to_owned());
-				let node = Box::new(upcasted) as TypeErasedBox<'_>;
-				let node: std::rc::Rc<NodeContainer> = NodeContainer::new(node);
+				let node: std::rc::Rc<NodeContainer> = if let TaggedValue::EditorApi(api) = value {
+					let editor_api = UpcastAsRefNode::new(api.clone());
+					let node = Box::new(editor_api) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
+				} else {
+					let upcasted = UpcastNode::new(value.to_owned());
+					let node = Box::new(upcasted) as TypeErasedBox<'_>;
+					NodeContainer::new(node)
+				};
 				self.store_node(node, id);
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),

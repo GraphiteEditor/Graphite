@@ -17,7 +17,7 @@ gpu = [
 	"gpu-executor",
 ]
 vulkan = ["gpu", "vulkan-executor"]
-wgpu = ["gpu", "wgpu-executor", "dep:wgpu"]
+wgpu = ["gpu", "wgpu-executor", "dep:wgpu", "graph-craft/wgpu"]
 quantization = ["autoquant"]
 wasm = ["wasm-bindgen", "web-sys", "js-sys"]
 imaginate = ["image/png", "base64", "js-sys", "web-sys", "wasm-bindgen-futures"]
