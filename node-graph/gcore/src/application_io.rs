@@ -158,9 +158,12 @@ pub struct RenderConfig {
 }
 
 pub struct EditorApi<Io> {
+	/// Font data (for rendering text) made available to the graph through the [`WasmEditorApi`].
 	pub font_cache: FontCache,
+	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
 	pub application_io: Option<Io>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender>,
+	/// Imaginate preferences made available to the graph through the [`WasmEditorApi`].
 	pub imaginate_preferences: Box<dyn GetImaginatePreferences>,
 }
 

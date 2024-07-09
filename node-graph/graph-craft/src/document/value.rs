@@ -58,7 +58,8 @@ macro_rules! tagged_value {
 				match self {
 					Self::None => concrete!(()),
 					Self::EditorApi(_) => Type::Concrete(graphene_core::TypeDescriptor {
-						name: std::borrow::Cow::Borrowed("std::sync::Arc<graphene_core::application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>>"),
+						// This is a bit hacky because we don't have access to the actual type from here
+						name: std::borrow::Cow::Borrowed("&graphene_core::application_io::EditorApi<graphene_std::wasm_application_io::WasmApplicationIo>"),
 						id: None,
 						size: 0,
 						align: 0,
