@@ -5827,7 +5827,6 @@ dependencies = [
  "glam",
  "once_cell",
  "paste",
- "serde",
  "specta-macros",
  "thiserror",
 ]
