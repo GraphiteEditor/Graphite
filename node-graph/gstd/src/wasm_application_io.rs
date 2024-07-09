@@ -83,7 +83,7 @@ unsafe impl StaticType for WasmApplicationIo {
 
 impl<'a> From<&'a WasmEditorApi> for &'a WasmApplicationIo {
 	fn from(editor_api: &'a WasmEditorApi) -> Self {
-		&editor_api.application_io
+		editor_api.application_io.as_ref().unwrap()
 	}
 }
 #[cfg(feature = "wgpu")]
@@ -235,7 +235,7 @@ pub struct CreateSurfaceNode {}
 
 #[node_macro::node_fn(CreateSurfaceNode)]
 async fn create_surface_node<'a: 'input>(editor: &'a WasmEditorApi) -> Arc<SurfaceHandle<<WasmApplicationIo as ApplicationIo>::Surface>> {
-	editor.application_io.create_surface().into()
+	editor.application_io.as_ref().unwrap().create_surface().into()
 }
 
 pub struct DrawImageFrameNode<Surface> {
@@ -267,7 +267,7 @@ pub struct LoadResourceNode<Url> {
 
 #[node_macro::node_fn(LoadResourceNode)]
 async fn load_resource_node<'a: 'input>(editor: &'a WasmEditorApi, url: String) -> Arc<[u8]> {
-	editor.application_io.load_resource(url).unwrap().await.unwrap()
+	editor.application_io.as_ref().unwrap().load_resource(url).unwrap().await.unwrap()
 }
 
 pub struct DecodeImageNode;

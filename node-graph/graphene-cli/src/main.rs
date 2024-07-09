@@ -43,15 +43,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	});
 
 	let editor_api = WasmEditorApi {
-		font_cache: &FontCache::default(),
-		application_io: &application_io,
-		node_graph_message_sender: &UpdateLogger {},
-		imaginate_preferences: &ImaginatePreferences::default(),
-		render_config: graphene_core::application_io::RenderConfig::default(),
+		font_cache: FontCache::default(),
+		application_io: Some(application_io),
+		node_graph_message_sender: Box::new(UpdateLogger {}),
+		imaginate_preferences: Box::new(ImaginatePreferences::default()),
 	};
+	let render_config = graphene_core::application_io::RenderConfig::default();
 
 	loop {
-		let _result = (&executor).execute(editor_api.clone()).await?;
+		let _result = (&executor).execute(&render_config).await?;
 		std::thread::sleep(std::time::Duration::from_millis(16));
 	}
 }

@@ -2,6 +2,7 @@ use super::node_properties;
 use super::utility_types::{FrontendGraphDataType, FrontendNodeType};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::document_metadata::DocumentMetadata;
+use crate::messages::portfolio::document::utility_types::misc::DocumentMode;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::Message;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -20,6 +21,7 @@ use graphene_core::text::Font;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::VectorData;
 use graphene_core::*;
+use graphene_std::application_io::RenderConfig;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
 use {gpu_executor::*, graphene_core::application_io::SurfaceHandle, wgpu_executor::WgpuExecutor};
@@ -545,81 +547,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				name: "Canvas",
 				data_type: FrontendGraphDataType::General,
 			}],
-			..Default::default()
-		},
-		DocumentNodeDefinition {
-			// This essentially builds the concept of a closure where we store variables (`let` bindings) so they can be accessed within this scope.
-			name: "Begin Scope",
-			category: "Ignore",
-			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
-				nodes: [
-					DocumentNode {
-						name: "SetNode".to_string(),
-						manual_composition: Some(concrete!(WasmEditorApi)),
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::SomeNode")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "LetNode".to_string(),
-						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::LetNode<_>")),
-						..Default::default()
-					},
-					DocumentNode {
-						name: "RefNode".to_string(),
-						manual_composition: Some(concrete!(())),
-						inputs: vec![NodeInput::lambda(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::RefNode<_, _>")),
-						..Default::default()
-					},
-				]
-				.into_iter()
-				.enumerate()
-				.map(|(id, node)| (NodeId(id as u64), node))
-				.collect(),
-
-				..Default::default()
-			}),
-			inputs: vec![DocumentInputType {
-				name: "In",
-				data_type: FrontendGraphDataType::Raster,
-				default: NodeInput::network(concrete!(WasmEditorApi), 0),
-			}],
-			outputs: vec![
-				DocumentOutputType {
-					name: "Scope",
-					data_type: FrontendGraphDataType::General,
-				},
-				DocumentOutputType {
-					name: "Binding",
-					data_type: FrontendGraphDataType::Raster,
-				},
-			],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Binds the input in a local scope as a variable"),
-			..Default::default()
-		},
-		DocumentNodeDefinition {
-			name: "End Scope",
-			category: "Ignore",
-			implementation: DocumentNodeImplementation::proto("graphene_core::memo::EndLetNode<_, _>"),
-			inputs: vec![
-				DocumentInputType {
-					name: "Scope",
-					data_type: FrontendGraphDataType::General,
-					default: NodeInput::value(TaggedValue::None, true),
-				},
-				DocumentInputType {
-					name: "Data",
-					data_type: FrontendGraphDataType::Raster,
-					default: NodeInput::value(TaggedValue::ImageFrame(ImageFrame::empty()), true),
-				},
-			],
-			outputs: vec![DocumentOutputType {
-				name: "Frame",
-				data_type: FrontendGraphDataType::Raster,
-			}],
-			properties: |_document_node, _node_id, _context| node_properties::string_properties("Consumes the scope opened by the Begin Scope node and evaluates the contained node network"),
 			..Default::default()
 		},
 		DocumentNodeDefinition {
@@ -2921,15 +2848,6 @@ impl DocumentNodeDefinition {
 pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 
-	let mut begin_scope = resolve_document_node_type("Begin Scope")
-		.expect("Begin Scope node type not found")
-		.to_document_node(vec![NodeInput::network(concrete!(WasmEditorApi), 0)], DocumentNodeMetadata::position((-12, -3)));
-	if let DocumentNodeImplementation::Network(g) = &mut begin_scope.implementation {
-		if let Some(node) = g.nodes.get_mut(&NodeId(0)) {
-			node.world_state_hash = hash;
-		}
-	}
-
 	let inner_network = DocumentNode {
 		name: "Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(network),
@@ -2946,7 +2864,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 			nodes: [
 				DocumentNode {
 					name: "Create Canvas".to_string(),
-					inputs: vec![NodeInput::network(concrete!(WasmEditorApi), 1)],
+					inputs: vec![NodeInput::Scope("editor-api".into())],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::CreateSurfaceNode")),
 					skip_deduplication: true,
 					..Default::default()
@@ -2958,10 +2876,11 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::memo::MemoNode<_, _>")),
 					..Default::default()
 				},
+				// TODO: Add conversion step
 				DocumentNode {
 					name: "RenderNode".to_string(),
+					manual_composition: Some(concrete!(RenderConfig)),
 					inputs: vec![
-						NodeInput::network(concrete!(WasmEditorApi), 1),
 						NodeInput::network(graphene_core::Type::Fn(Box::new(concrete!(Footprint)), Box::new(generic!(T))), 0),
 						NodeInput::node(NodeId(1), 0),
 					],
@@ -2981,17 +2900,20 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, hash: u64) -> NodeNetwork
 
 	// wrap the inner network in a scope
 	let nodes = vec![
-		begin_scope,
 		inner_network,
 		render_node,
-		resolve_document_node_type("End Scope")
-			.expect("End Scope node type not found")
-			.to_document_node(vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)], DocumentNodeMetadata::position((2, -3))),
+		DocumentNode {
+			name: "Editor Api".into(),
+			implementation: DocumentNodeImplementation::proto("graphene_core::ops::IdNode"),
+			inputs: vec![NodeInput::value(TaggedValue::EditorApi(hash), false)],
+			..Default::default()
+		},
 	];
 
 	NodeNetwork {
-		exports: vec![NodeInput::node(NodeId(3), 0)],
+		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: nodes.into_iter().enumerate().map(|(id, node)| (NodeId(id as u64), node)).collect(),
+		scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&WasmEditorApi)))].into_iter().collect(),
 		..Default::default()
 	}
 }

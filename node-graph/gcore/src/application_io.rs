@@ -159,7 +159,7 @@ pub struct RenderConfig {
 
 pub struct EditorApi<Io> {
 	pub font_cache: FontCache,
-	pub application_io: Io,
+	pub application_io: Option<Io>,
 	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender>,
 	pub imaginate_preferences: Box<dyn GetImaginatePreferences>,
 }

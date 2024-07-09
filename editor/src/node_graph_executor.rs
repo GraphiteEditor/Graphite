@@ -40,13 +40,8 @@ pub struct NodeRuntime {
 	receiver: Receiver<NodeRuntimeMessage>,
 	sender: InternalNodeGraphUpdateSender,
 
-	/// Font data (for rendering text) made available to the graph through the [`WasmEditorApi`].
-	font_cache: FontCache,
-	/// Imaginate preferences made available to the graph through the [`WasmEditorApi`].
-	imaginate_preferences: ImaginatePreferences,
+	editor_api: WasmEditorApi,
 
-	/// Gives access to APIs like a rendering surface (native window handle or HTML5 canvas) and WGPU (which becomes WebGPU on web).
-	wasm_application_io: Option<WasmApplicationIo>,
 	graph_hash: Option<u64>,
 	node_graph_errors: GraphErrors,
 	resolved_types: ResolvedDocumentNodeTypes,
@@ -126,12 +121,16 @@ impl NodeRuntime {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
-			sender: InternalNodeGraphUpdateSender(sender),
+			sender: InternalNodeGraphUpdateSender(sender.clone()),
 
-			font_cache: FontCache::default(),
-			imaginate_preferences: Default::default(),
+			editor_api: WasmEditorApi {
+				font_cache: FontCache::default(),
+				imaginate_preferences: Box::new(ImaginatePreferences::default()),
+				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
-			wasm_application_io: None,
+				application_io: None,
+			},
+
 			graph_hash: None,
 			node_graph_errors: Vec::new(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
@@ -153,8 +152,8 @@ impl NodeRuntime {
 		requests.reverse();
 		for request in requests {
 			match request {
-				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.font_cache = font_cache,
-				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.imaginate_preferences = preferences,
+				NodeRuntimeMessage::FontCacheUpdate(font_cache) => self.editor_api.font_cache = font_cache,
+				NodeRuntimeMessage::ImaginatePreferencesUpdate(preferences) => self.editor_api.imaginate_preferences = Box::new(preferences),
 				NodeRuntimeMessage::ExecutionRequest(ExecutionRequest {
 					execution_id, graph, render_config, ..
 				}) => {
@@ -182,18 +181,11 @@ impl NodeRuntime {
 	}
 
 	async fn execute_network(&mut self, graph: NodeNetwork, render_config: RenderConfig) -> Result<TaggedValue, String> {
-		if self.wasm_application_io.is_none() {
-			self.wasm_application_io = Some(WasmApplicationIo::new().await);
+		if self.editor_api.application_io.is_none() {
+			self.editor_api.application_io = Some(WasmApplicationIo::new().await);
 		}
 
-		let editor_api = WasmEditorApi {
-			font_cache: &self.font_cache,
-			imaginate_preferences: &self.imaginate_preferences,
-			application_io: self.wasm_application_io.as_ref().unwrap(),
-			node_graph_message_sender: &self.sender,
-			render_config,
-		};
-
+		let editor_api = &self.editor_api;
 		// Required to ensure that the appropriate proto nodes are reinserted when the Editor API changes.
 		let mut graph_input_hash = DefaultHasher::new();
 		editor_api.font_cache.hash(&mut graph_input_hash);
@@ -234,7 +226,7 @@ impl NodeRuntime {
 		use graph_craft::graphene_compiler::Executor;
 
 		let result = match self.executor.input_type() {
-			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(editor_api).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(WasmEditorApi) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),

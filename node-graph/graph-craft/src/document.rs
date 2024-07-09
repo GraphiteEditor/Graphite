@@ -3,7 +3,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode, ProtoNodeInput};
 
 use dyn_any::{DynAny, StaticType};
 pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{ProtoNodeIdentifier, Type};
+use graphene_core::{Cow, ProtoNodeIdentifier, Type};
 
 use glam::IVec2;
 use std::collections::hash_map::DefaultHasher;
@@ -454,7 +454,7 @@ pub enum NodeInput {
 	Network { import_type: Type, import_index: usize },
 
 	/// Input that is extracted from the parent scopes the node resides in.. The string argument is the key
-	Scope(String),
+	Scope(Cow<'static, str>),
 
 	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
 	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
@@ -1011,6 +1011,7 @@ impl NodeNetwork {
 				root_node_to_restore.id = f(root_node_to_restore.id);
 			}
 		}
+		self.scope_injections.values_mut().for_each(|(id, _ty)| *id = f(*id));
 		let nodes = std::mem::take(&mut self.nodes);
 		self.nodes = nodes
 			.into_iter()
@@ -1255,7 +1256,7 @@ impl NodeNetwork {
 							NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
 							NodeInput::Inline(_) => (),
 							NodeInput::Scope(ref key) => {
-								let (import_id, ty) = self.scope_injections.get(key).expect("Tried to import a non existent key from scope");
+								let (import_id, ty) = self.scope_injections.get(key.as_ref()).expect("Tried to import a non existent key from scope");
 								// TODO use correct output index
 								nested_node.inputs[nested_input_index] = NodeInput::node(*import_id, 0);
 							}
