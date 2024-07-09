@@ -64,7 +64,7 @@ wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.69"
 web-sys = "=0.3.69"
 winit = "0.29"
-url = "2.4"
+url = "2.5"
 tokio = { version = "1.29", features = ["fs", "io-std"] }
 vello = "0.1"
 resvg = "0.39"
