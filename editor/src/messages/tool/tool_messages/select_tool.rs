@@ -158,7 +158,7 @@ impl SelectTool {
 
 		let operations = BooleanOperation::list();
 		let icons = BooleanOperation::icons();
-		operations.into_iter().zip(icons.into_iter()).map(move |(operation, icon)| {
+		operations.into_iter().zip(icons).map(move |(operation, icon)| {
 			IconButton::new(icon, 24)
 				.tooltip(operation.to_string())
 				.disabled(!enabled(operation))
@@ -344,12 +344,12 @@ impl SelectToolData {
 			// Copy the layer
 			let mut copy_ids = HashMap::new();
 			let node = layer.to_node();
-			copy_ids.insert(node, NodeId(0 as u64));
+			copy_ids.insert(node, NodeId(0_u64));
 			if let Some(input_node) = document
 				.network()
 				.nodes
 				.get(&node)
-				.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.get(0) })
+				.and_then(|node| if node.is_layer { node.inputs.get(1) } else { node.inputs.first() })
 				.and_then(|input| input.as_node())
 			{
 				document
@@ -367,7 +367,7 @@ impl SelectToolData {
 
 			let new_ids: HashMap<_, _> = nodes.iter().map(|(&id, _)| (id, NodeId(generate_uuid()))).collect();
 
-			let layer_id = new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer").clone();
+			let layer_id = *new_ids.get(&NodeId(0)).expect("Node Id 0 should be a layer");
 			responses.add(GraphOperationMessage::AddNodesAsChild { nodes, new_ids, parent, insert_index });
 			new_dragging.push(LayerNodeIdentifier::new_unchecked(layer_id));
 		}

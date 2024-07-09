@@ -262,9 +262,7 @@ impl BrushToolData {
 		if document.selected_nodes.selected_layers(document.metadata()).count() != 1 {
 			return None;
 		}
-		let Some(layer) = document.selected_nodes.selected_layers(document.metadata()).next() else {
-			return None;
-		};
+		let layer = document.selected_nodes.selected_layers(document.metadata()).next()?;
 
 		self.layer = Some(layer);
 		for (node, node_id) in document.network().upstream_flow_back_from_nodes(vec![layer.to_node()], graph_craft::document::FlowType::HorizontalFlow) {
@@ -277,7 +275,7 @@ impl BrushToolData {
 				else {
 					continue;
 				};
-				self.strokes = strokes.clone();
+				self.strokes.clone_from(strokes);
 
 				return Some(layer);
 			} else if node.name == "Transform" {

@@ -17,7 +17,7 @@ use std::cell::RefCell;
 // use std::sync::Mutex;
 
 thread_local! {
-	static EDITOR: RefCell<Option<Editor>> = RefCell::new(None);
+	static EDITOR: RefCell<Option<Editor>> = const { RefCell::new(None) };
 }
 
 // async fn respond_to(id: Path<String>) -> impl IntoResponse {
@@ -61,7 +61,8 @@ async fn main() {
 
 	// run it with hyper on localhost:3000
 	tauri::async_runtime::spawn(async {
-		axum::Server::bind(&"0.0.0.0:3001".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
+		let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+		axum::serve(listener, app).await.unwrap();
 	});
 
 	tauri::Builder::default()

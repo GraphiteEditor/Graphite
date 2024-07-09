@@ -33,7 +33,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 pub use graph_craft::wasm_application_io::*;
 
 #[cfg(any(feature = "resvg", feature = "vello"))]
-pub struct Canvas(CanvasRenderingContext2d);
+pub struct Canvas(());
 
 pub type WasmSurfaceHandle = SurfaceHandle<HtmlCanvasElement>;
 pub type WasmSurfaceHandleFrame = SurfaceHandleFrame<HtmlCanvasElement>;
@@ -123,7 +123,7 @@ fn render_svg(data: impl GraphicElementRendered, mut render: SvgRender, render_p
 }
 
 #[cfg(any(feature = "resvg", feature = "vello"))]
-fn render_canvas(
+fn _render_canvas(
 	data: impl GraphicElementRendered,
 	mut render: SvgRender,
 	render_params: RenderParams,
@@ -138,13 +138,13 @@ fn render_canvas(
 	let max = footprint.transform.inverse().transform_point2(resolution.as_dvec2());
 	render.format_svg(min, max);
 	let string = render.svg.to_svg_string();
-	let array = string.as_bytes();
+	let _array = string.as_bytes();
 	let canvas = &surface_handle.surface;
 	canvas.set_width(resolution.x);
 	canvas.set_height(resolution.y);
 	let usvg_tree = data.to_usvg_tree(resolution, [min, max]);
 
-	if let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
+	if let Some(_exec) = editor.application_io.as_ref().unwrap().gpu_executor() {
 		todo!()
 	} else {
 		let pixmap_size = usvg_tree.size.to_int_size();

@@ -67,6 +67,7 @@ pub enum NodeGraphMessage {
 	MoveSelectedNodes {
 		displacement_x: i32,
 		displacement_y: i32,
+		move_upstream: bool,
 	},
 	PasteNodes {
 		serialized_nodes: String,

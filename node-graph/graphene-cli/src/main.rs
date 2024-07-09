@@ -89,7 +89,7 @@ fn create_executor(_document_string: String) -> Result<DynamicExecutor, Box<dyn 
 	// Ok(executor)
 }
 
-fn begin_scope() -> DocumentNode {
+fn _begin_scope() -> DocumentNode {
 	DocumentNode {
 		name: "Begin Scope".to_string(),
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {

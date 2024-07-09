@@ -276,6 +276,12 @@ impl<I, O> PanicNode<I, O> {
 	}
 }
 
+impl<I, O> Default for PanicNode<I, O> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;

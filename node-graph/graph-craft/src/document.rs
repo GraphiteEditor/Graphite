@@ -839,7 +839,7 @@ impl NodeNetwork {
 	}
 
 	/// Get the network the selected nodes are part of, which is either self or the nested network from nested_path. Used to get nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
+	pub fn nested_network_for_selected_nodes<'a>(&self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id) || self.exports_metadata.0 == *node_id || self.imports_metadata.0 == *node_id) {
 			Some(self)
 		} else {
@@ -848,7 +848,7 @@ impl NodeNetwork {
 	}
 
 	/// Get the mutable network the selected nodes are part of, which is either self or the nested network from nested_path. Used to modify nodes selected in the layer panel when viewing a nested network.
-	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &Vec<NodeId>, mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
+	pub fn nested_network_for_selected_nodes_mut<'a>(&mut self, nested_path: &[NodeId], mut selected_nodes: impl Iterator<Item = &'a NodeId>) -> Option<&mut Self> {
 		if selected_nodes.any(|node_id| self.nodes.contains_key(node_id)) {
 			Some(self)
 		} else {

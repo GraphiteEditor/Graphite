@@ -12,15 +12,21 @@ homepage = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/raw
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/raw-rs"
 documentation = "https://docs.rs/raw-rs"
 
-[dependencies]
-bitstream-io = "2.3.0"
-num_enum = "0.7.2"
-thiserror = { workspace = true }
-tag-derive = { path = "tag-derive" }
-libraw-rs = { version = "0.0.4", optional = true }
-
-[dev-dependencies]
-downloader = "0.2.7"
-
 [features]
 raw-rs-tests = ["libraw-rs"]
+
+[dependencies]
+# Local dependencies
+tag-derive = { path = "tag-derive" }
+
+# Required dependencies
+bitstream-io = "2.3.0"
+num_enum = "0.7.2"
+thiserror = "1.0"
+
+# Optional dependencies
+libraw-rs = { version = "0.0.4", optional = true } # Should be a dev dependency, but Cargo currently doesn't allow optional dev dependencies
+
+[dev-dependencies]
+# Required dependencies
+downloader = "0.2.7"

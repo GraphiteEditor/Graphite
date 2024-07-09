@@ -731,9 +731,9 @@ impl EditorHandle {
 						return;
 					}
 
-					let transform = get_current_transform(&inputs);
+					let transform = get_current_transform(inputs);
 					let upstream_transform = metadata.upstream_transform(node_id);
-					let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(&inputs))));
+					let pivot_transform = glam::DAffine2::from_translation(upstream_transform.transform_point2(bounds.local_pivot(get_current_normalized_pivot(inputs))));
 
 					update_transform(inputs, pivot_transform * transform * pivot_transform.inverse());
 				});
@@ -894,7 +894,7 @@ fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) ->
 			return T::default();
 		};
 
-		callback(&mut *editor)
+		callback(&mut editor)
 	})
 }
 

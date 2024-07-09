@@ -186,7 +186,7 @@ impl WidgetLayout {
 		// TODO: Diff insersion and deletion of items
 		if self.layout.len() != new.layout.len() {
 			// Update the layout to the new layout
-			self.layout = new.layout.clone();
+			self.layout.clone_from(&new.layout);
 
 			// Push an update sublayout to the diff
 			let new = DiffUpdate::SubLayout(new.layout);
@@ -342,7 +342,7 @@ impl LayoutGroup {
 				Widget::InvisibleStandinInput(_) | Widget::PivotInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) => continue,
 			};
 			if val.is_empty() {
-				*val = tooltip.clone();
+				val.clone_from(&tooltip);
 			}
 		}
 		if is_col {
@@ -361,7 +361,7 @@ impl LayoutGroup {
 				// TODO: Diff insersion and deletion of items
 				if current_widgets.len() != new_widgets.len() {
 					// Update to the new value
-					*current_widgets = new_widgets.clone();
+					current_widgets.clone_from(&new_widgets);
 
 					// Push back a LayoutGroup update to the diff
 					let new_value = DiffUpdate::LayoutGroup(if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } });
@@ -394,10 +394,10 @@ impl LayoutGroup {
 				// TODO: Diff insersion and deletion of items
 				if current_layout.len() != new_layout.len() || *current_name != new_name || *current_visible != new_visible || *current_id != new_id {
 					// Update self to reflect new changes
-					*current_name = new_name.clone();
+					current_name.clone_from(&new_name);
 					*current_visible = new_visible;
 					*current_id = new_id;
-					*current_layout = new_layout.clone();
+					current_layout.clone_from(&new_layout);
 
 					// Push an update layout group to the diff
 					let new_value = DiffUpdate::LayoutGroup(Self::Section {

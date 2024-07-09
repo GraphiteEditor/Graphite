@@ -70,7 +70,7 @@ impl LayerSnapper {
 				for subpath in document.metadata.layer_outline(layer) {
 					for (start_index, curve) in subpath.iter().enumerate() {
 						let document_curve = curve.apply_transformation(|p| transform.transform_point2(p));
-						let start = subpath.manipulator_groups()[start_index].id.into();
+						let start = subpath.manipulator_groups()[start_index].id;
 						if snap_data.ignore_manipulator(layer, start) || snap_data.ignore_manipulator(layer, subpath.manipulator_groups()[(start_index + 1) % subpath.len()].id) {
 							continue;
 						}
