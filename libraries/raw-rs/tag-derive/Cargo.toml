@@ -12,5 +12,6 @@ repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/r
 proc-macro = true
 
 [dependencies]
-quote.workspace = true
-syn.workspace = true
+# Workspace dependencies
+quote = { workspace = true }
+syn = { workspace = true }

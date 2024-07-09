@@ -8,12 +8,13 @@ license = "MIT OR Apache-2.0"
 default = []
 profiling = []
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+# Local dependencies
 graph-craft = { path = "../../graph-craft", features = ["serde"] }
 gpu-executor = { path = "../../gpu-executor" }
-log = "0.4"
-anyhow = "1.0.66"
-serde_json = "1.0.91"
-serde = { version = "1.0", features = ["derive"] }
+
+# Workspace dependencies
+log = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

@@ -7,9 +7,8 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+# Local dependencies
 graphene-core = { path = "../gcore", features = ["std", "alloc", "gpu"] }
 graph-craft = { path = "../graph-craft" }
 dyn-any = { path = "../../libraries/dyn-any", features = [
@@ -17,11 +16,17 @@ dyn-any = { path = "../../libraries/dyn-any", features = [
 	"rc",
 	"glam",
 ] }
+
+# Workspace dependencies
 num-traits = { workspace = true }
 log = { workspace = true }
-serde = { workspace = true, optional = true }
 glam = { workspace = true }
 base64 = { workspace = true }
-vulkano = { git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu" }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
+
+# Required dependencies
+vulkano = { git = "https://github.com/GraphiteEditor/vulkano", branch = "fix_rust_gpu" }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }

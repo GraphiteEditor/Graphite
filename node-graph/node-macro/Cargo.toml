@@ -10,12 +10,11 @@ homepage = "https://graphite.rs"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 proc-macro = true
 
 [dependencies]
+# Workspace dependencies
 syn = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }

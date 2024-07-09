@@ -11,39 +11,42 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-tauri = ["ron"]
-gpu = ["editor/gpu"]
 default = ["gpu"]
+gpu = ["editor/gpu"]
+tauri = ["ron"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Local dependencies
 editor = { path = "../../editor", package = "graphite-editor" }
+
+# Workspace dependencies
 graph-craft = { workspace = true }
 log = { workspace = true }
 graphene-core = { workspace = true, features = ["std", "alloc"] }
 serde = { workspace = true, features = ["derive"] }
 wasm-bindgen = { workspace = true }
-serde-wasm-bindgen = "0.6"
+serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-ron = { workspace = true, optional = true }
 bezier-rs = { workspace = true }
 glam = { workspace = true }
-# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
-wgpu = { workspace = true, features = ["fragile-send-sync-non-atomic-wasm"] }
-meval = "0.2.0"
-
-[dependencies.web-sys]
-workspace = true
-features = [
+meval = { workspace = true }
+wgpu = { workspace = true, features = [
+	"fragile-send-sync-non-atomic-wasm",
+] } # We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
+web-sys = { workspace = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",
 	"Document",
 	"HtmlCanvasElement",
-	"IdleRequestOptions"
-]
+	"IdleRequestOptions",
+] }
+
+# Optional workspace dependencies
+ron = { workspace = true, optional = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
