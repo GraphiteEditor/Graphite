@@ -675,6 +675,7 @@ pub struct NodeNetwork {
 
 	/// A network may expose nodes as constants which can by used by other nodes using a
 	/// `NodeInput::Scope(key)``
+	#[serde(default)]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
